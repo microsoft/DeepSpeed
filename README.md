@@ -1,25 +1,34 @@
 
 # DeepSpeed
 
+## Installation
 
 
 ## Testing
 
 DeepSpeed tracks two types of tests: unit tests and more costly model convergence tests.
-Model convergence tests run
+The model convergence tests train
 [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) and measure
-end-to-end convergence and related metrics.
+end-to-end convergence and related metrics.  Unit tests are found in `tests/unit/` and
+model convergence tests are found in `tests/model/`.
 
-DeepSpeed uses [PyTest](https://docs.pytest.org/en/latest/) to execute tests. PyTest can
-be installed from PyPI via `pip install pytest`.  Unit tests are found in `tests/unit/`
-and model convergence tests are found in `tests/model/`.
-
-Simply invoke `pytest` to run the unit tests:
+### Unit Tests
+[PyTest](https://docs.pytest.org/en/latest/) is used to execute tests. PyTest can be
+installed from PyPI via `pip install pytest`. Simply invoke `pytest` to run the unit
+tests:
 
     pytest tests/unit/
 
 You can also provide the `-v` flag to `pytest` to see additional information about the
 tests.
+
+### Model Tests
+To execute model tests, first [install DeepSpeed](#installation). The
+[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) repository is cloned
+as part of this process. Next, execute the model test driver:
+
+    cd tests/model/
+    pytest run_sanity_check.py
 
 
 
