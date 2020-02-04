@@ -39,7 +39,7 @@ def distributed_test(world_size=2):
                                     world_size=num_procs)
 
             if torch.cuda.is_available():
-                torch.cuda.set_device(rank)
+                torch.cuda.set_device(local_rank)
 
             run_func(*func_args, **func_kwargs)
 
