@@ -33,7 +33,7 @@ def distributed_test(world_size=2):
             """Initialize torch.distributed and execute the user function. """
             os.environ['MASTER_ADDR'] = '127.0.0.1'
             os.environ['MASTER_PORT'] = '29500'
-            dist.init_process_group('gloo',
+            dist.init_process_group(backend='nccl',
                                     init_method='env://',
                                     rank=local_rank,
                                     world_size=num_procs)
