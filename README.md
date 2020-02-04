@@ -4,14 +4,22 @@
 
 
 ## Testing
-DeepSpeed uses [PyTest](https://docs.pytest.org/en/latest/) for testing. Unit tests can
-be found under `tests/unit/`, and the more costly model convergence tests are found in
-`tests/model/`.
+
+DeepSpeed tracks two types of tests: unit tests and more costly model convergence tests.
+Model convergence tests run
+[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) and measure
+end-to-end convergence and related metrics.
+
+DeepSpeed uses [PyTest](https://docs.pytest.org/en/latest/) to execute tests. PyTest can
+be installed from PyPI via `pip install pytest`.  Unit tests are found in `tests/unit/`
+and model convergence tests are found in `tests/model/`.
 
 Simply invoke `pytest` to run the unit tests:
-```
-pytest tests/unit/
-```
+
+    pytest tests/unit/
+
+You can also provide the `-v` flag to `pytest` to see additional information about the
+tests.
 
 
 
@@ -25,14 +33,13 @@ DeepSpeed uses [pre-commit](https://pre-commit.com/) to ensure that formatting i
 consistent across DeepSpeed.  First, ensure that `pre-commit` is installed from either
 installing DeepSpeed or `pip install pre-commit`.  Next, the pre-commit hooks must be
 installed once before commits can be made:
-```
-pre-commit install
-```
+
+    pre-commit install
+
 Afterwards, our suite of formatting tests run automatically before each `git commit`. You
 can also run these manually:
-```
-pre-commit run --all-files
-```
+
+    pre-commit run --all-files
 
 
 ### Contributor License Agreement
