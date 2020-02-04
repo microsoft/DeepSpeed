@@ -11,7 +11,7 @@ import pytest
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 5
 
 
-def distributed_test(world_size=2, backend='nccl'):
+def distributed_test(world_size=2, backend='gloo'):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.
     This decorator manages the spawning and joining of processes, initialization of
     torch.distributed, and catching of errors.
