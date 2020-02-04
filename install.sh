@@ -53,6 +53,10 @@ case $key in
     ;;
     -H|--hostfile)
     hostfile=$2
+    if [ ! -f $2 ]; then
+        echo "User provided hostfile does not exist at $hostfile, exiting"
+        exit 1
+    fi
     shift
     shift
     ;;
