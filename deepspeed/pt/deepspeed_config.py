@@ -270,7 +270,6 @@ class DeepSpeedConfig(object):
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
 
-
     def _batch_assertion(self):
 
         train_batch = self.train_batch_size
@@ -279,44 +278,48 @@ class DeepSpeedConfig(object):
 
         assert train_batch > 0, \
             f'Train batch size: {train_batch} has to be greater than 0'
-        
+
         assert micro_batch > 0, \
             f'Micro batch size per gpu: {micro_batch} has to be greater than 0'
-        
+
         assert grad_acc > 0, \
             f'Gradient accumulation steps: {grad_acc} has to be greater than 0'
 
         assert train_batch == micro_batch * grad_acc * self.world_size, \
                 (f'Check batch related parameters. Train_batch_size is not equal'
-                'to micro_batch_per_gpu * gradient_acc_step * world_size' 
-                f'{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}') 
-        
+                'to micro_batch_per_gpu * gradient_acc_step * world_size'
+                f'{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}')
+
     def _set_batch_related_parameters(self):
 
         train_batch = self.train_batch_size
         micro_batch = self.train_micro_batch_size_per_gpu
         grad_acc = self.gradient_accumulation_steps
 
-        print(f' Before Train batch {train_batch} micoro_batch {micro_batch} and grad_acc {grad_acc}')
+        print(
+            f' Before Train batch {train_batch} micoro_batch {micro_batch} and grad_acc {grad_acc}'
+        )
 
         #all values are provided nothing needs to be set
         if train_batch is not None and \
             micro_batch is not None and \
-            grad_acc is not None: 
-            print(f' After Train batch {self.train_batch_size} micoro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}')       
-            return   
-        
+            grad_acc is not None:
+            print(
+                f' After Train batch {self.train_batch_size} micoro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}'
+            )
+            return
+
         #global_accumulation_steps needs to be set
         elif train_batch is not None and \
             micro_batch is not None:
             grad_acc = train_batch // micro_batch
             grad_acc = grad_acc // self.world_size
-            self.gradient_accumulation_steps = grad_acc 
+            self.gradient_accumulation_steps = grad_acc
 
         #micro_batch_per_gpu needs to be set
         elif train_batch is not None and \
             grad_acc is not None:
-            micro_batch = train_batch // self.world_size  
+            micro_batch = train_batch // self.world_size
             micro_batch = micro_batch // grad_acc
             self.train_micro_batch_size_per_gpu = micro_batch
 
@@ -334,7 +337,7 @@ class DeepSpeedConfig(object):
 
         #train_batch_size and gradient_accumulation_step is set
         elif micro_batch is not None:
-            self.train_batch_size = micro_batch  * self.world_size
+            self.train_batch_size = micro_batch * self.world_size
             self.gradient_accumulation_steps = 1
 
         #either none of the three parameters are provided or just gradient_accumulation_step is provided
@@ -342,7 +345,9 @@ class DeepSpeedConfig(object):
             assert False, \
                 'Either train_batch_size or micro_batch_per_gpu needs to be provided'
 
-        print(f' After Train batch {self.train_batch_size} micoro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}')
+        print(
+            f' After Train batch {self.train_batch_size} micoro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}'
+        )
 
     def _configure_train_batch_size(self):
         self._set_batch_related_parameters()
