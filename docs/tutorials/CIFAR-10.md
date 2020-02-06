@@ -195,7 +195,7 @@ The next step to use DeepSpeed is to create a configuration JSON file (ds_config
 To start training CIFAR-10 model with DeepSpeed applied, execute the following command, it will use all detected GPUs by default.
 
 ```bash
-deepspeed.pt cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
+deepspeed cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
 ```
 
 
