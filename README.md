@@ -311,7 +311,7 @@ DeepSpeed abstracts away data parallelism and model parallelism from the user wh
 comes to data loading. Users simply provide a PyTorch dataset, and DeepSpeed data loader
 can automatically handle batch creation appropriately.
 
-### Performance Breakdown
+### Performance Analysis and Debugging
 For performance debugging, DeepSpeed can give you a detailed breakdown of the time spent
 in different parts of the training with by simply enabling it in the `deepspeed_config`
 file. See [core API doc](../../API/core_api/core_api.md).
