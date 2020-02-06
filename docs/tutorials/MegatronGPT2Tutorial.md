@@ -1,30 +1,48 @@
 # Tutorial: Megatron-LM GPT2 with DeepSpeed
 **TODO: these two links are broken (not yet implemented).**
-If you haven't already stepped through [DeepSpeed Model Training](../../Onboard/model_training/deepspeed_model_training.md) and [DeepSpeed Setup and Onboarding](../../Onboard/onboard/onboard.md) we advise you to read that over first.
+If you haven't already stepped through [DeepSpeed Model
+Training](../../Onboard/model_training/deepspeed_model_training.md) and
+[DeepSpeed Setup and Onboarding](../../Onboard/onboard/onboard.md) we advise
+you to read that over first.
 
-In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which is a large, powerful transformer, support model-parallel and multi-node training. Please see the corresponding paper for more details: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
+In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which
+is a large, powerful transformer. Megatron-LM supports model-parallel and multi-node
+training. Please see the corresponding paper for more details: [Megatron-LM:
+Training Multi-Billion Parameter Language Models Using Model
+Parallelism](https://arxiv.org/abs/1909.08053)
 
-First we will go over data setup and how to train the GPT-2 model with original Megatron-LM. Then we will proceed step-by-step in enabling this model to run with DeepSpeed. Finally, we demonstrate the **_performance gains_**, and **_memory footprint reduction_** from using DeepSpeed.
+First we will go over data setup and how to train the GPT-2 model with original
+Megatron-LM. Then we will proceed step-by-step in enabling this model to run
+with DeepSpeed. Finally, we demonstrate the **_performance gains_**, and
+**_memory footprint reduction_** from using DeepSpeed.
 
 
 
 ## 1 Running GPT-2 Training with Original Megatron-LM
 
-Original model code from [Megatron-LM](https://github.com/NVIDIA/Megatron-LM),
-we've forked this repo under
-[DeepSpeedExamples/Megatron-LM/](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM).
+The original model code from
+[Megatron-LM](https://github.com/NVIDIA/Megatron-LM).  We've copied this repo
+under
+[DeepSpeedExamples/Megatron-LM/](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM)
+and made it available as a submodule. To download, execute:
+```bash
+git submodule update --init --recursive
+```
 
 ### 1.1 Training Data Setup
-* Download webtext data, and copy it to `DeepSpeedExamples/Megatron-LM/data`:
-  * (*Microsoft*:) Raw and pre-processed data has already been downloaded on all DLTS clusters: `/data/Megatron-LM/data/`
+* Follow Megatron's [instructions](https://github.com/NVIDIA/Megatron-LM#collecting-gpt2-webtext-data)
+* to download the webtext data and place a symbolic link under `DeepSpeedExamples/Megatron-LM/data`:
+  * (*Microsoft*:) Raw and pre-processed data has already been downloaded on
+     all DLTS clusters: `/data/Megatron-LM/data/`. You can simply execute
+      `ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/`.
 
 ### 1.2 Running Unmodified Megatron-LM GPT2 model
 
-* Single GPU run
+* For a single GPU run:
     - change `scripts/pretrain_gpt2.sh`, set its `--train-data` argument as `"webtext"`.
     - run `bash scripts/pretrain_gpt2.sh`
 
-* Multiple GPUs/Nodes run
+* For multiple GPUs and/or nodes run:
     - change `scripts/pretrain_gpt2_model_parallel.sh`
         - set its `--train-data` argument as `"webtext"`
         - `GPUS_PER_NODE` indicates how many GPUs per node involved in the testing
@@ -43,8 +61,9 @@ To use DeepSpeed we will modify three files :
 
 
 ### 2.1 Argument Parsing
-
-The first step to apply DeepSpeed is adding DeepSpeed arguments to Megatron-LM GPT2 model, using `deepspeed.add_config_arguments()` in `arguments.py`.
+The first step is to apply DeepSpeed is adding DeepSpeed arguments to
+Megatron-LM GPT2 model, using `deepspeed.add_config_arguments()` in
+`arguments.py`.
 
 ```python
 def get_args():
@@ -65,13 +84,11 @@ def get_args():
 
 
 ### 2.2 Initialization and Training
-
-We modify the `pretrain.py` to enable training with DeepSpeed.
+We modify `pretrain.py` to enable training with DeepSpeed.
 
 #### 2.2.1 Initialization
-
-We use `deepspeed.initialize` to create `model_engine`, `optimizer` and LR `scheduler`. Below is its definition.
-
+We use `deepspeed.initialize` to create `model_engine`, `optimizer` and LR
+`scheduler`. Below is its definition:
 ```python
 def initialize(args,
                model,
@@ -84,8 +101,9 @@ def initialize(args,
                collate_fn=None):
 ```
 
-For Megatron-LM GPT2 model, we initialize DeepSpeed in its `setup_model_and_optimizer()` function as below, to pass the raw `model`, `optimizer`, `args`, `lr_scheduler` and `mpu`.
-
+For Megatron-LM GPT2 model, we initialize DeepSpeed in its
+`setup_model_and_optimizer()` function as below, to pass the raw `model`,
+`optimizer`, `args`, `lr_scheduler` and `mpu`.
 ```python
 def setup_model_and_optimizer(args):
     """Setup model and optimizer."""
@@ -110,9 +128,10 @@ def setup_model_and_optimizer(args):
 ```
 
 
-
-Note that when FP16 is enabled Megatron-LM GPT2 adds a wrapper to the `Adam` optimizer. DeepSpeed has its own FP16 Optimizer, so we need to pass the `Adam` optimizer to DeepSpeed directly without any wrapper. We return the unwrapped Adam optimizer from `get_optimizer()` when DeepSpeed is enabled.
-
+Note that when FP16 is enabled, Megatron-LM GPT2 adds a wrapper to the `Adam`
+optimizer. DeepSpeed has its own FP16 Optimizer, so we need to pass the `Adam`
+optimizer to DeepSpeed directly without any wrapper. We return the unwrapped
+Adam optimizer from `get_optimizer()` when DeepSpeed is enabled.
 ```python
 def get_optimizer(model, args):
     """Setup the optimizer."""
@@ -129,18 +148,18 @@ def get_optimizer(model, args):
 ```
 
 #### 2.2.2 Using Training API
-
-The `model` returned by `deepspeed.initialize` is the _DeepSpeed Model Engine_ that we will use to train the model using the forward, backward and step API.
+The `model` returned by `deepspeed.initialize` is the _DeepSpeed Model Engine_
+that we will use to train the model using the forward, backward and step API.
 
 _Forward Propagation_
 
-Forward propagation API is compatible to PyTorch, and no change is required.
+The forward propagation API is compatible to PyTorch and no change is required.
 
 _Backward Propagation_
 
 Backward propagation is done by calling `backward(loss)` directly on the model engine.
 
-   ```python
+```python
     def backward_step(optimizer, model, lm_loss, args, timers):
         """Backward step."""
 
@@ -156,11 +175,13 @@ Backward propagation is done by calling `backward(loss)` directly on the model e
                 optimizer.backward(loss, update_master_grads=False)
             else:
                 loss.backward()
-   ```
+```
 
-Zeroing the gradients is handled automatically by DeepSpeed after the weights have been updated using a mini-batch.
+Zeroing the gradients is handled automatically by DeepSpeed after the weights
+have been updated using a mini-batch.
 
-Furthermore, DeepSpeed addresses distributed data parallel and FP16 under the hood, simplifying code in multiple places.
+Furthermore, DeepSpeed addresses distributed data parallel and FP16 under the
+hood, simplifying code in multiple places.
 
 (A) DeepSpeed also performs gradient averaging automatically at the gradient
 accumulation boundaries. So we skip the allreduce communication.
@@ -202,7 +223,8 @@ accumulation boundaries. So we skip the allreduce communication.
 
 _Updating the model Parameters_
 
-The `step()` function in DeepSpeed engine updates the model parameters as well as the learning rate.
+The `step()` function in DeepSpeed engine updates the model parameters as well
+as the learning rate.
 
 ```python
      if args.deepspeed:
@@ -222,7 +244,10 @@ The `step()` function in DeepSpeed engine updates the model parameters as well a
 
 _Loss Scaling Value_
 
-The GPT2 training script logs the loss scaling value during training. Inside, the DeepSpeed optimizer, this value is stored as `cur_scale` instead of `loss_scale` in Megatron's optimizer. Therefore, we appropriately replace it in the logging string.
+The GPT2 training script logs the loss scaling value during training. Inside,
+the DeepSpeed optimizer, this value is stored as `cur_scale` instead of
+`loss_scale` in Megatron's optimizer. Therefore, we appropriately replace it in
+the logging string.
 
 ```python
              if args.fp16:
@@ -234,16 +259,20 @@ The GPT2 training script logs the loss scaling value during training. Inside, th
 
 ### 2.3 Checkpoints Saving & Loading
 
-DeepSpeed engine has flexible APIs for checkpoint saving and loading, to handle the states from both the client model and its own internal.
+DeepSpeed engine has flexible APIs for checkpoint saving and loading, to handle
+the states from both the client model and its own internal.
 
 ```python
 def save_checkpoint(self, save_dir, tag, client_state={})
 def load_checkpoint(self, load_dir, tag)
 ```
 
-Applying DeepSpeed needs to update utils.py in which Megatron-LM GPT2 saves and loads its checkpoints.
+Applying DeepSpeed needs to update utils.py in which Megatron-LM GPT2 saves and
+loads its checkpoints.
 
-A new function `save_ds_checkpoint()` is created as below for DeepSpeed, it collects the client model states and passes to DeepSpeed engine by calling `save_checkpoint()` of DeepSpeed.
+A new function `save_ds_checkpoint()` is created as below for DeepSpeed, it
+collects the client model states and passes to DeepSpeed engine by calling
+`save_checkpoint()` of DeepSpeed.
 
 ```python
  def save_ds_checkpoint(iteration, model, args):
@@ -263,7 +292,8 @@ A new function `save_ds_checkpoint()` is created as below for DeepSpeed, it coll
 
 ```
 
-In Megatron-LM GPT2 `save_checkpoint()` function, adds following lines to invoke above function for DeepSpeed.
+In Megatron-LM GPT2 `save_checkpoint()` function, adds following lines to
+invoke the above function for DeepSpeed.
 
 ```python
  def save_checkpoint(iteration, model, optimizer,
@@ -276,7 +306,8 @@ In Megatron-LM GPT2 `save_checkpoint()` function, adds following lines to invoke
 
 ```
 
-In `load_checkpoint()` function, use DeepSpeed loading checkpoint API as below, and return the states for the client model.
+In `load_checkpoint()` function, use DeepSpeed loading checkpoint API as below,
+and return the states for the client model.
 
 ```python
  def load_checkpoint(model, optimizer, lr_scheduler, args):
@@ -297,8 +328,9 @@ In `load_checkpoint()` function, use DeepSpeed loading checkpoint API as below, 
 ```
 
 ### 2.4 Train  scripts
-
-Assume webtext data was prepared in previous step, to start training Megatron-LM GPT2 model with DeepSpeed applied, execute the following command to start training.
+Assume webtext data was prepared in previous step, to start training
+Megatron-LM GPT2 model with DeepSpeed applied, execute the following command to
+start training.
 
 - Single GPU run
   - run `bash scripts/ds_pretrain_gpt2.sh`
@@ -309,27 +341,70 @@ Assume webtext data was prepared in previous step, to start training Megatron-LM
 
 ## 3 DeepSpeed Improvements over Megatron
 
-DeepSpeed enables training very large models effectively via the advanced ZeRO optimizer. The [ZeRO optimizer](https://arxiv.org/abs/1910.02054v2) in DeepSpeed significantly reduces the memory footprint for training large models which means large models can be trained with i) less model parallelism and ii) larger batch sizes. A lower model parallelism degree improves training efficiency by increasing the granularity of the computation such as the matrix multiplication where performance is directly related to the size of the matrices. Furthermore, less model parallelism also results in less communication between model parallel GPUs, which further boosts performance. Larger batch size has a similar effect of increasing the computational granularity as well as reducing communication, also resulting in better performance. Therefore, using DeepSpeed with Megatron can be significantly faster than using Megatron without DeepSpeed.
+DeepSpeed enables training very large models effectively via the advanced ZeRO
+optimizer. The [ZeRO optimizer](https://arxiv.org/abs/1910.02054v2) in
+DeepSpeed significantly reduces the memory footprint for training large models
+which means large models can be trained with i) less model parallelism and ii)
+larger batch sizes. A lower model parallelism degree improves training
+efficiency by increasing the granularity of the computation such as the matrix
+multiplication where performance is directly related to the size of the
+matrices. Furthermore, less model parallelism also results in less
+communication between model parallel GPUs, which further boosts performance.
+Larger batch size has a similar effect of increasing the computational
+granularity as well as reducing communication, also resulting in better
+performance. Therefore, using DeepSpeed with Megatron can be significantly
+faster than using Megatron without DeepSpeed.
 
-The observed performance improvements depend on several factors such as the memory per GPU, the local GPU interconnect (i.e., PCI-E vs NVLINK vs NVSwitch), the model size, inter node network interconnect, etc. Below, we show some of the performance improvements from using DeepSpeed over Megatron on a 16 GPU Azure cluster and a 400 GPU DGX-2 cluster. For details please see the [ZeRO Paper](https://arxiv.org/abs/1910.02054v2). We also present performance improvement on a 64 GPU cluster along with detailed configuration analysis to show where the improvements come from.
+The observed performance improvements depend on several factors such as the
+memory per GPU, the local GPU interconnect (i.e., PCI-E vs NVLINK vs NVSwitch),
+the model size, inter node network interconnect, etc. Below, we show some of
+the performance improvements from using DeepSpeed over Megatron on a 16 GPU
+Azure cluster and a 400 GPU DGX-2 cluster. For details please see the [ZeRO
+Paper](https://arxiv.org/abs/1910.02054v2). We also present performance
+improvement on a 64 GPU cluster along with detailed configuration analysis to
+show where the improvements come from.
 
 ![DeepSpeed-vs-Megatron](../figures/DeepSpeed-vs-Megatron.png)
 
 ### 3.1 On Azure GPU Cluster
 
-The figure above shows that training 1.5B parameter model with DeepSpeed is nearly 4x faster than without DeepSpeed on a cluster with 4 nodes, 4 GPU per node, and 16 GPUs total. These GPUs have 16GB of memory each, and PCI-E interconnects GPUs within a node.
+The figure above shows that training 1.5B parameter model with DeepSpeed is
+nearly 4x faster than without DeepSpeed on a cluster with 4 nodes, 4 GPU per
+node, and 16 GPUs total. These GPUs have 16GB of memory each, and PCI-E
+interconnects GPUs within a node.
 
-The performance improvement comes from lower model parallelism degree and larger batch size as discussed earlier. Training 1.5B parameter model with Megatron alone requires 4-way model parallelism, and can only fit an effective batch size of 32 using all 16 GPUs. On the other hand, DeepSpeed does not require any model-parallelism to train this model, and can support and effective batch size of 128 without running out of memory, resulting in significantly higher performance.
+The performance improvement comes from lower model parallelism degree and
+larger batch size as discussed earlier. Training 1.5B parameter model with
+Megatron alone requires 4-way model parallelism, and can only fit an effective
+batch size of 32 using all 16 GPUs. On the other hand, DeepSpeed does not
+require any model-parallelism to train this model, and can support and
+effective batch size of 128 without running out of memory, resulting in
+significantly higher performance.
 
 ### 3.2 On DGX-2 GPU Cluster with Infiniband
 
-Each GPU on the DGX-2 cluster has 32 GB of memory, and GPUs inside a box is connected via NVSwitch which has much higher bandwidth than the PCI-E on the Azure Cluster. As such, running a 1.5B model on DGX-2 requires less model parallelism, and the performance improvement from DeepSpeed for this model size is not significant. However, at larger model sizes, Megatron still requires significantly larger model parallelism degree, and can only run much smaller batch sizes than DeepSpeed. Therefore, as the model sizes get larger, DeepSpeed starts to significantly outperform Megatron.
+Each GPU on the DGX-2 cluster has 32 GB of memory, and GPUs inside a box is
+connected via NVSwitch which has much higher bandwidth than the PCI-E on the
+Azure Cluster. As such, running a 1.5B model on DGX-2 requires less model
+parallelism, and the performance improvement from DeepSpeed for this model size
+is not significant. However, at larger model sizes, Megatron still requires
+significantly larger model parallelism degree, and can only run much smaller
+batch sizes than DeepSpeed. Therefore, as the model sizes get larger, DeepSpeed
+starts to significantly outperform Megatron.
 
 
 ### 3.3 Performance Improvements with Configuration Details
 
-The figure below compares DeepSpeed with Megatron on a 64 GPU cluster with 4 DGX-2 nodes. To give the readers a clear idea of source of the performance improvements, we also present the configuration table for both Megatron and DeepSpeed. It shows the smallest model parallelism degree and the largest batch size that can be used to train these models without running out of memory. As discussed above, the tables demonstrate that DeepSpeed can run with smaller model parallelism and larger batch size than Megatron, allowing DeepSpeed to achieve better performance than Megatron.
+The figure below compares DeepSpeed with Megatron on a 64 GPU cluster with 4
+DGX-2 nodes. To give the readers a clear idea of source of the performance
+improvements, we also present the configuration table for both Megatron and
+DeepSpeed. It shows the smallest model parallelism degree and the largest batch
+size that can be used to train these models without running out of memory. As
+discussed above, the tables demonstrate that DeepSpeed can run with smaller
+model parallelism and larger batch size than Megatron, allowing DeepSpeed to
+achieve better performance than Megatron.
 
+**TODO: update this figure**
 ![DeepSpeed Performance SpeedUp](../figures/megatron-gpt2-perf-test.png)
 
 **a ) Megatron-LM GPT2 Baseline**
