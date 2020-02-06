@@ -41,13 +41,13 @@ overview](#deepspeed-feature-overview) for descriptions and usage guide.
 
 ## Table of Contents
 
-| Section | Description |
-| ------- | ----------- |
-| [Why DeepSpeed?](#why-deepspeed) |  DeepSpeed overview |
-| [Installation](#installation) |  Installation instructions |
-| [Feature Overview](#deepspeed-feature-overview) |  Preview of DeepSpeed's features |
-| [Testing](#testing) |  Instructions for testing DeepSpeed |
-| [Contributing Overview](#contributing) |  Instructions for contributing to DeepSpeed |
+| Section                                 | Description                                 |
+| --------------------------------------- | ------------------------------------------- |
+| [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
+| [Installation](#installation)           |  Installation instructions                  |
+| [Feature Overview](#feature-overview)   |  Preview of DeepSpeed's features            |
+| [Testing](#testing)                     |  Instructions for testing DeepSpeed         |
+| [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
 
 
 
@@ -141,7 +141,7 @@ tutorial](../../Tutorials/QANet/QANetTutorial.md)
 **TODO**
 
 
-## DeepSpeed Feature Overview
+## Feature Overview
 
 ### Distributed Training with Mixed Precision
 
