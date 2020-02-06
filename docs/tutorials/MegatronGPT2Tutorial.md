@@ -11,11 +11,10 @@ training. Please see the corresponding paper for more details: [Megatron-LM:
 Training Multi-Billion Parameter Language Models Using Model
 Parallelism](https://arxiv.org/abs/1909.08053)
 
-First we will go over data setup and how to train the GPT-2 model with original
-Megatron-LM. Then we will proceed step-by-step in enabling this model to run
-with DeepSpeed. Finally, we demonstrate the **_performance gains_**, and
-**_memory footprint reduction_** from using DeepSpeed.
-
+First, we discuss data and environment setup and how to train the GPT-2 model with the
+original Megatron-LM. Next, we proceed step-by-step in enabling this model to run with
+DeepSpeed. Finally, we demonstrate the **_performance gains_**, and **_memory footprint
+reduction_** from using DeepSpeed.
 
 
 ## 1 Running GPT-2 Training with Original Megatron-LM
@@ -152,6 +151,8 @@ The `model` returned by `deepspeed.initialize` is the _DeepSpeed Model Engine_
 that we will use to train the model using the forward, backward and step API.
 
 _Forward Propagation_
+
+##### Forward Propagation
 
 The forward propagation API is compatible to PyTorch and no change is required.
 
