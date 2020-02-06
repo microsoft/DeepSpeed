@@ -99,7 +99,7 @@ def initialize(args,
                collate_fn=None):
 ```
 
-For Megatron-LM GPT2 model, we initialize DeepSpeed in its
+For the Megatron-LM GPT2 model, we initialize DeepSpeed in its
 `setup_model_and_optimizer()` function as below, to pass the raw `model`,
 `optimizer`, `args`, `lr_scheduler` and `mpu`.
 ```python
@@ -337,19 +337,17 @@ start training.
 
 ## 3 DeepSpeed Improvements over Megatron
 
-DeepSpeed enables training very large models effectively via the advanced ZeRO
-optimizer. The [ZeRO optimizer](https://arxiv.org/abs/1910.02054v2) in
-DeepSpeed significantly reduces the memory footprint for training large models
-which means large models can be trained with i) less model parallelism and ii)
-larger batch sizes. A lower model parallelism degree improves training
-efficiency by increasing the granularity of the computation such as the matrix
-multiplication where performance is directly related to the size of the
-matrices. Furthermore, less model parallelism also results in less
-communication between model parallel GPUs, which further boosts performance.
-Larger batch size has a similar effect of increasing the computational
-granularity as well as reducing communication, also resulting in better
-performance. Therefore, using DeepSpeed with Megatron can be significantly
-faster than using Megatron without DeepSpeed.
+DeepSpeed enables training very large models effectively via the advanced [ZeRO
+optimizer](https://arxiv.org/abs/1910.02054v2). ZeRO significantly reduces the memory
+footprint for training large models which means large models can be trained with i) less
+model parallelism and ii) larger batch sizes. A lower model parallelism degree improves
+training efficiency by increasing the granularity of the computation such as the matrix
+multiplication where performance is directly related to the size of the matrices.
+Furthermore, less model parallelism also results in less communication between model
+parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
+of increasing the computational granularity as well as reducing communication, also
+resulting in better performance. Therefore, using DeepSpeed with Megatron can be
+significantly faster than using Megatron without DeepSpeed.
 
 The observed performance improvements depend on several factors such as the
 memory per GPU, the local GPU interconnect (i.e., PCI-E vs NVLINK vs NVSwitch),
