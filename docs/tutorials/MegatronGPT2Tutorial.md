@@ -393,7 +393,6 @@ discussed above, the tables demonstrate that DeepSpeed can run with smaller
 model parallelism and larger batch size than Megatron, allowing DeepSpeed to
 achieve better performance than Megatron.
 
-**TODO: update this figure**
 ![DeepSpeed Performance SpeedUp](../figures/megatron-gpt2-perf-test.png)
 
 **a ) Megatron-LM GPT2 Baseline**
