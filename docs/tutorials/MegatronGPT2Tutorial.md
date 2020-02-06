@@ -146,18 +146,16 @@ def get_optimizer(model, args):
         return optimizer
 ```
 
-#### 2.2.2 Using Training API
+#### 2.2.2 Using the Training API
 The `model` returned by `deepspeed.initialize` is the _DeepSpeed Model Engine_
 that we will use to train the model using the forward, backward and step API.
 
-_Forward Propagation_
 
 ##### Forward Propagation
-
 The forward propagation API is compatible to PyTorch and no change is required.
 
-_Backward Propagation_
 
+##### Backward Propagation
 Backward propagation is done by calling `backward(loss)` directly on the model engine.
 
 ```python
@@ -222,8 +220,7 @@ accumulation boundaries. So we skip the allreduce communication.
 
    ```
 
-_Updating the model Parameters_
-
+##### Updating the Model Parameters
 The `step()` function in DeepSpeed engine updates the model parameters as well
 as the learning rate.
 
@@ -243,8 +240,7 @@ as the learning rate.
 
 
 
-_Loss Scaling Value_
-
+##### Loss Scaling
 The GPT2 training script logs the loss scaling value during training. Inside,
 the DeepSpeed optimizer, this value is stored as `cur_scale` instead of
 `loss_scale` in Megatron's optimizer. Therefore, we appropriately replace it in
