@@ -346,7 +346,7 @@ class DeepSpeedConfig(object):
                 'Either train_batch_size or micro_batch_per_gpu needs to be provided'
 
         print(
-            f' After Train batch {self.train_batch_size} micoro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}'
+            f' After Train batch {self.train_batch_size} micro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}'
         )
 
     def _configure_train_batch_size(self):
