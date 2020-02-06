@@ -192,31 +192,17 @@ The next step to use DeepSpeed is to create a configuration JSON file (ds_config
 
 ### 2.6 Run CIFAR-10 Model with DeepSpeed Enabled
 
-To start training CIFAR-10 model with DeepSpeed applied, execute the `run_ds.sh` script.
+To start training CIFAR-10 model with DeepSpeed applied, execute the following command, it will use all detected GPUs by default.
 
 ```bash
- #!/bin/bash
-
- num_gpus=1
- ds_config=ds_config.json
-
- args="--deepspeed --deepspeed_config ${ds_config}"
- run_cmd="deepspeed.pt --num_nodes 1 --num_gpus ${num_gpus} cifar10_deepspeed.py $@ ${args}"
- echo ${run_cmd}
- eval ${run_cmd}
+deepspeed.pt cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
 ```
-
-More specifically, the script calls deepspeed.pt job launcher. The launcher takes in the following parameters:
-
-deepspeed.pt --num_nodes ${num_nodes} --num_gpus ${num_gpus} ${main_script} ${options}
-
-where it allows you to specify how many nodes to use for training and how many GPUs per node.
 
 
 
 DeepSpeed usually prints more training details for user to monitor, including training settings, performance statistics and loss trends.
 
-```les
+```less
 deepspeed.pt --num_nodes 1 --num_gpus 1 cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
 Warning: Permanently added '[192.168.0.22]:42227' (ECDSA) to the list of known hosts.
 cmd=['pdsh', '-w', 'worker-0', 'export NCCL_VERSION=2.4.2; ', 'cd /data/users/deepscale/test/ds_v2/examples/cifar;', '/usr/bin/python', '-u', '-m', 'deepspeed.pt.deepspeed_launch', '--world_info=eyJ3b3JrZXItMCI6IFswXX0=', '--node_rank=%n', '--master_addr=192.168.0.22', '--master_port=29500', 'cifar10_deepspeed.py', '--deepspeed', '--deepspeed_config', 'ds_config.json']
