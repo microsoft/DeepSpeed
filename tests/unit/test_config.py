@@ -46,26 +46,10 @@ def _batch_assert(status, ds_config, batch, micro_batch, gas, success):
 
 #Tests different batch config provided in deepspeed json file
 @pytest.mark.parametrize('num_ranks,batch,micro_batch,gas,success',
-                         [(2,
-                           32,
-                           16,
-                           1,
-                           True),
-                          (2,
-                           32,
-                           8,
-                           2,
-                           True),
-                          (2,
-                           33,
-                           17,
-                           2,
-                           False),
-                          (2,
-                           32,
-                           18,
-                           1,
-                           False)])
+                         [(2,32,16,1,True),
+                         (2,32,8,2,True),
+                         (2,33,17,2,False),
+                         (2,32,18,1,False)]) # yapf: disable
 def test_batch_config(num_ranks, batch, micro_batch, gas, success):
     @distributed_test(world_size=2)
     def _test_batch_config(num_ranks, batch, micro_batch, gas, success):
