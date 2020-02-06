@@ -16,7 +16,7 @@ original Megatron-LM. Next, we proceed step-by-step in enabling this model to ru
 DeepSpeed. Finally, we demonstrate the **_performance gains_**, and **_memory footprint
 reduction_** from using DeepSpeed.
 
-## 1 Running GPT-2 Training with Original Megatron-LM
+## 1 Training GPT-2 with the Original Megatron-LM
 
 The original model code from
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM).  We've copied this repo
@@ -29,7 +29,7 @@ git submodule update --init --recursive
 
 ### 1.1 Training Data Setup
 * Follow Megatron's [instructions](https://github.com/NVIDIA/Megatron-LM#collecting-gpt2-webtext-data)
-* to download the webtext data and place a symbolic link under `DeepSpeedExamples/Megatron-LM/data`:
+  to download the webtext data and place a symbolic link under `DeepSpeedExamples/Megatron-LM/data`:
   * (*Microsoft*:) Raw and pre-processed data has already been downloaded on
      all DLTS clusters: `/data/Megatron-LM/data/`. You can simply execute
       `ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/`.
