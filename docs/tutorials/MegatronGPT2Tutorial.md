@@ -1,21 +1,20 @@
 # Tutorial: Megatron-LM GPT2 with DeepSpeed
 **TODO: these two links are broken (not yet implemented).**
-If you haven't already stepped through [DeepSpeed Model
-Training](../../Onboard/model_training/deepspeed_model_training.md) and
-[DeepSpeed Setup and Onboarding](../../Onboard/onboard/onboard.md) we advise
-you to read that over first.
+
+We advise you to first read through the guides for [Setup and
+Onboarding](../../Onboard/onboard/onboard.md) and [Model
+Training](../../Onboard/model_training/deepspeed_model_training.md).
 
 In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which
 is a large, powerful transformer. Megatron-LM supports model-parallel and multi-node
 training. Please see the corresponding paper for more details: [Megatron-LM:
 Training Multi-Billion Parameter Language Models Using Model
-Parallelism](https://arxiv.org/abs/1909.08053)
+Parallelism](https://arxiv.org/abs/1909.08053).
 
 First, we discuss data and environment setup and how to train the GPT-2 model with the
 original Megatron-LM. Next, we proceed step-by-step in enabling this model to run with
 DeepSpeed. Finally, we demonstrate the **_performance gains_**, and **_memory footprint
 reduction_** from using DeepSpeed.
-
 
 ## 1 Running GPT-2 Training with Original Megatron-LM
 
