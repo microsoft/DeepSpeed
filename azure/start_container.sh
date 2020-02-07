@@ -1,11 +1,11 @@
 #!/bin/bash
 
 name=${1-deepspeed}
-image=deepspeed.azurecr.io/deepspeed/0.1
+image=deepspeed/deepspeed:0.1
 echo "starting docker image named $name"
 docker run -d -t --name $name \
         --network host \
         -v ${HOME}/workdir:/home/deepspeed/workdir \
         -v ${HOME}/.ssh:/home/deepspeed/.ssh \
         -v /job/hostfile:/job/hostfile \
-        --gpus all $image bash
+        --gpus all $image 'sudo service ssh start && bash'
