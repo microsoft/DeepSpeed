@@ -346,7 +346,7 @@ Furthermore, less model parallelism also results in less communication between m
 parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
 of increasing the computational granularity as well as reducing communication, also
 resulting in better performance. Therefore, DeepSpeed combines ZeRO-powered data parallelism with 
-Megatron-LM model parallelism, which is
+Megatron-LM tensor-slicing model parallelism, which is
 significantly faster than using Megatron-LM alone.
 
 The observed performance improvements depend on several factors such as the memory per
