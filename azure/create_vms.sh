@@ -2,7 +2,12 @@
 
 azure_config=azure_config.json
 
-#TODO: make sure jq is installed
+# Make sure jq is installed
+command -v jq
+if [ $? != 0 ]; then
+    echo "Missing dependency of jq, please 'apt-get install jq'"
+    exit 1
+fi
 
 if [ ! -f ${azure_config} ]; then
     echo "Cannot find $azure_config"
