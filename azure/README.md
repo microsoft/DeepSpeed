@@ -12,11 +12,12 @@ To help with launching Azure instances we suggest using the [Azure CLI](https://
  ## Azure Config JSON
  Our helper scripts depend on the following a configuration JSON for deployment and setup. We have provided a simple example JSON (see: [azure_config.json](azure_config.json)) that sets up a basic environment with two VMs, see the example below.
  ```json
- {
+{
   "num_vms": 2,
-  "location": "soutcentralus",
+  "location": "southcentralus",
   "azure_sku": "Standard_NV6_Promo",
-  "ssh_private_key": "id_rsa"
+  "ssh_private_key": "id_rsa",
+  "docker_ssh_port": 2222
 }
  ```
  
