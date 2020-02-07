@@ -1,0 +1,3098 @@
+<!doctype html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+
+    <title>deepspeed.pt.deepspeed_config API documentation</title>
+    <meta name="description" content="Copyright (c) Microsoft Corporation
+Licensed under the MIT license." />
+
+  <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,300' rel='stylesheet' type='text/css'>
+
+  <style type="text/css">
+
+* {
+  box-sizing: border-box;
+}
+/*! normalize.css v1.1.1 | MIT License | git.io/normalize */
+
+/* ==========================================================================
+   HTML5 display definitions
+   ========================================================================== */
+
+/**
+ * Correct `block` display not defined in IE 6/7/8/9 and Firefox 3.
+ */
+
+article,
+aside,
+details,
+figcaption,
+figure,
+footer,
+header,
+hgroup,
+main,
+nav,
+section,
+summary {
+    display: block;
+}
+
+/**
+ * Correct `inline-block` display not defined in IE 6/7/8/9 and Firefox 3.
+ */
+
+audio,
+canvas,
+video {
+    display: inline-block;
+    *display: inline;
+    *zoom: 1;
+}
+
+/**
+ * Prevent modern browsers from displaying `audio` without controls.
+ * Remove excess height in iOS 5 devices.
+ */
+
+audio:not([controls]) {
+    display: none;
+    height: 0;
+}
+
+/**
+ * Address styling not present in IE 7/8/9, Firefox 3, and Safari 4.
+ * Known issue: no IE 6 support.
+ */
+
+[hidden] {
+    display: none;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+/**
+ * 1. Prevent system color scheme's background color being used in Firefox, IE,
+ *    and Opera.
+ * 2. Prevent system color scheme's text color being used in Firefox, IE, and
+ *    Opera.
+ * 3. Correct text resizing oddly in IE 6/7 when body `font-size` is set using
+ *    `em` units.
+ * 4. Prevent iOS text size adjust after orientation change, without disabling
+ *    user zoom.
+ */
+
+html {
+    background: #fff; /* 1 */
+    color: #000; /* 2 */
+    font-size: 100%; /* 3 */
+    -webkit-text-size-adjust: 100%; /* 4 */
+    -ms-text-size-adjust: 100%; /* 4 */
+}
+
+/**
+ * Address `font-family` inconsistency between `textarea` and other form
+ * elements.
+ */
+
+html,
+button,
+input,
+select,
+textarea {
+    font-family: sans-serif;
+}
+
+/**
+ * Address margins handled incorrectly in IE 6/7.
+ */
+
+body {
+    margin: 0;
+}
+
+/* ==========================================================================
+   Links
+   ========================================================================== */
+
+/**
+ * Address `outline` inconsistency between Chrome and other browsers.
+ */
+
+a:focus {
+    outline: thin dotted;
+}
+
+/**
+ * Improve readability when focused and also mouse hovered in all browsers.
+ */
+
+a:active,
+a:hover {
+    outline: 0;
+}
+
+/* ==========================================================================
+   Typography
+   ========================================================================== */
+
+/**
+ * Address font sizes and margins set differently in IE 6/7.
+ * Address font sizes within `section` and `article` in Firefox 4+, Safari 5,
+ * and Chrome.
+ */
+
+h1 {
+    font-size: 2em;
+    margin: 0.67em 0;
+}
+
+h2 {
+    font-size: 1.5em;
+    margin: 0.83em 0;
+}
+
+h3 {
+    font-size: 1.17em;
+    margin: 1em 0;
+}
+
+h4 {
+    font-size: 1em;
+    margin: 1.33em 0;
+}
+
+h5 {
+    font-size: 0.83em;
+    margin: 1.67em 0;
+}
+
+h6 {
+    font-size: 0.67em;
+    margin: 2.33em 0;
+}
+
+/**
+ * Address styling not present in IE 7/8/9, Safari 5, and Chrome.
+ */
+
+abbr[title] {
+    border-bottom: 1px dotted;
+}
+
+/**
+ * Address style set to `bolder` in Firefox 3+, Safari 4/5, and Chrome.
+ */
+
+b,
+strong {
+    font-weight: bold;
+}
+
+blockquote {
+    margin: 1em 40px;
+}
+
+/**
+ * Address styling not present in Safari 5 and Chrome.
+ */
+
+dfn {
+    font-style: italic;
+}
+
+/**
+ * Address differences between Firefox and other browsers.
+ * Known issue: no IE 6/7 normalization.
+ */
+
+hr {
+    -moz-box-sizing: content-box;
+    box-sizing: content-box;
+    height: 0;
+}
+
+/**
+ * Address styling not present in IE 6/7/8/9.
+ */
+
+mark {
+    background: #ff0;
+    color: #000;
+}
+
+/**
+ * Address margins set differently in IE 6/7.
+ */
+
+p,
+pre {
+    margin: 1em 0;
+}
+
+/**
+ * Correct font family set oddly in IE 6, Safari 4/5, and Chrome.
+ */
+
+code,
+kbd,
+pre,
+samp {
+    font-family: monospace, serif;
+    _font-family: 'courier new', monospace;
+    font-size: 1em;
+}
+
+/**
+ * Improve readability of pre-formatted text in all browsers.
+ */
+
+pre {
+    white-space: pre;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/**
+ * Address CSS quotes not supported in IE 6/7.
+ */
+
+q {
+    quotes: none;
+}
+
+/**
+ * Address `quotes` property not supported in Safari 4.
+ */
+
+q:before,
+q:after {
+    content: '';
+    content: none;
+}
+
+/**
+ * Address inconsistent and variable font size in all browsers.
+ */
+
+small {
+    font-size: 80%;
+}
+
+/**
+ * Prevent `sub` and `sup` affecting `line-height` in all browsers.
+ */
+
+sub,
+sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+}
+
+sup {
+    top: -0.5em;
+}
+
+sub {
+    bottom: -0.25em;
+}
+
+/* ==========================================================================
+   Lists
+   ========================================================================== */
+
+/**
+ * Address margins set differently in IE 6/7.
+ */
+
+dl,
+menu,
+ol,
+ul {
+    margin: 1em 0;
+}
+
+dd {
+    margin: 0 0 0 40px;
+}
+
+/**
+ * Address paddings set differently in IE 6/7.
+ */
+
+menu,
+ol,
+ul {
+    padding: 0 0 0 40px;
+}
+
+/**
+ * Correct list images handled incorrectly in IE 7.
+ */
+
+nav ul,
+nav ol {
+    list-style: none;
+    list-style-image: none;
+}
+
+/* ==========================================================================
+   Embedded content
+   ========================================================================== */
+
+/**
+ * 1. Remove border when inside `a` element in IE 6/7/8/9 and Firefox 3.
+ * 2. Improve image quality when scaled in IE 7.
+ */
+
+img {
+    border: 0; /* 1 */
+    -ms-interpolation-mode: bicubic; /* 2 */
+}
+
+/**
+ * Correct overflow displayed oddly in IE 9.
+ */
+
+svg:not(:root) {
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   Figures
+   ========================================================================== */
+
+/**
+ * Address margin not present in IE 6/7/8/9, Safari 5, and Opera 11.
+ */
+
+figure {
+    margin: 0;
+}
+
+/* ==========================================================================
+   Forms
+   ========================================================================== */
+
+/**
+ * Correct margin displayed oddly in IE 6/7.
+ */
+
+form {
+    margin: 0;
+}
+
+/**
+ * Define consistent border, margin, and padding.
+ */
+
+fieldset {
+    border: 1px solid #c0c0c0;
+    margin: 0 2px;
+    padding: 0.35em 0.625em 0.75em;
+}
+
+/**
+ * 1. Correct color not being inherited in IE 6/7/8/9.
+ * 2. Correct text not wrapping in Firefox 3.
+ * 3. Correct alignment displayed oddly in IE 6/7.
+ */
+
+legend {
+    border: 0; /* 1 */
+    padding: 0;
+    white-space: normal; /* 2 */
+    *margin-left: -7px; /* 3 */
+}
+
+/**
+ * 1. Correct font size not being inherited in all browsers.
+ * 2. Address margins set differently in IE 6/7, Firefox 3+, Safari 5,
+ *    and Chrome.
+ * 3. Improve appearance and consistency in all browsers.
+ */
+
+button,
+input,
+select,
+textarea {
+    font-size: 100%; /* 1 */
+    margin: 0; /* 2 */
+    vertical-align: baseline; /* 3 */
+    *vertical-align: middle; /* 3 */
+}
+
+/**
+ * Address Firefox 3+ setting `line-height` on `input` using `!important` in
+ * the UA stylesheet.
+ */
+
+button,
+input {
+    line-height: normal;
+}
+
+/**
+ * Address inconsistent `text-transform` inheritance for `button` and `select`.
+ * All other form control elements do not inherit `text-transform` values.
+ * Correct `button` style inheritance in Chrome, Safari 5+, and IE 6+.
+ * Correct `select` style inheritance in Firefox 4+ and Opera.
+ */
+
+button,
+select {
+    text-transform: none;
+}
+
+/**
+ * 1. Avoid the WebKit bug in Android 4.0.* where (2) destroys native `audio`
+ *    and `video` controls.
+ * 2. Correct inability to style clickable `input` types in iOS.
+ * 3. Improve usability and consistency of cursor style between image-type
+ *    `input` and others.
+ * 4. Remove inner spacing in IE 7 without affecting normal text inputs.
+ *    Known issue: inner spacing remains in IE 6.
+ */
+
+button,
+html input[type="button"], /* 1 */
+input[type="reset"],
+input[type="submit"] {
+    -webkit-appearance: button; /* 2 */
+    cursor: pointer; /* 3 */
+    *overflow: visible;  /* 4 */
+}
+
+/**
+ * Re-set default cursor for disabled elements.
+ */
+
+button[disabled],
+html input[disabled] {
+    cursor: default;
+}
+
+/**
+ * 1. Address box sizing set to content-box in IE 8/9.
+ * 2. Remove excess padding in IE 8/9.
+ * 3. Remove excess padding in IE 7.
+ *    Known issue: excess padding remains in IE 6.
+ */
+
+input[type="checkbox"],
+input[type="radio"] {
+    box-sizing: border-box; /* 1 */
+    padding: 0; /* 2 */
+    *height: 13px; /* 3 */
+    *width: 13px; /* 3 */
+}
+
+/**
+ * 1. Address `appearance` set to `searchfield` in Safari 5 and Chrome.
+ * 2. Address `box-sizing` set to `border-box` in Safari 5 and Chrome
+ *    (include `-moz` to future-proof).
+ */
+
+input[type="search"] {
+    -webkit-appearance: textfield; /* 1 */
+    -moz-box-sizing: content-box;
+    -webkit-box-sizing: content-box; /* 2 */
+    box-sizing: content-box;
+}
+
+/**
+ * Remove inner padding and search cancel button in Safari 5 and Chrome
+ * on OS X.
+ */
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+    -webkit-appearance: none;
+}
+
+/**
+ * Remove inner padding and border in Firefox 3+.
+ */
+
+button::-moz-focus-inner,
+input::-moz-focus-inner {
+    border: 0;
+    padding: 0;
+}
+
+/**
+ * 1. Remove default vertical scrollbar in IE 6/7/8/9.
+ * 2. Improve readability and alignment in all browsers.
+ */
+
+textarea {
+    overflow: auto; /* 1 */
+    vertical-align: top; /* 2 */
+}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+
+/**
+ * Remove most spacing between table cells.
+ */
+
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+  </style>
+
+  <style type="text/css">
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+  body {
+    background: #fff;
+    font-family: "Source Sans Pro", "Helvetica Neueue", Helvetica, sans;
+    font-weight: 300;
+    font-size: 16px;
+    line-height: 1.6em;
+  }
+  #content {
+    width: 70%;
+    max-width: 850px;
+    float: left;
+    padding: 30px 60px;
+    border-left: 1px solid #ddd;
+  }
+  #sidebar {
+    width: 25%;
+    float: left;
+    padding: 30px;
+    overflow: hidden;
+  }
+  #nav {
+    font-size: 130%;
+    margin: 0 0 15px 0;
+  }
+
+  #top {
+    display: block;
+    position: fixed;
+    bottom: 5px;
+    left: 5px;
+    font-size: .85em;
+    text-transform: uppercase;
+  }
+
+  #footer {
+    font-size: .75em;
+    padding: 5px 30px;
+    border-top: 1px solid #ddd;
+    text-align: right;
+  }
+    #footer p {
+      margin: 0 0 0 30px;
+      display: inline-block;
+    }
+
+  h1, h2, h3, h4, h5 {
+    font-weight: 300;
+  }
+  h1 {
+    font-size: 2.5em;
+    line-height: 1.1em;
+    margin: 0 0 .50em 0;
+  }
+
+  h2 {
+    font-size: 1.75em;
+    margin: 1em 0 .50em 0;
+  }
+
+  h3 {
+    margin: 25px 0 10px 0;
+  }
+
+  h4 {
+    margin: 0;
+    font-size: 105%;
+  }
+
+  a {
+    color: #058;
+    text-decoration: none;
+    transition: color .3s ease-in-out;
+  }
+
+  a:hover {
+    color: #e08524;
+    transition: color .3s ease-in-out;
+  }
+
+  pre, code, .mono, .name {
+    font-family: "Ubuntu Mono", "Cousine", "DejaVu Sans Mono", monospace;
+  }
+
+  .title .name {
+    font-weight: bold;
+  }
+  .section-title {
+    margin-top: 2em;
+  }
+  .ident {
+    color: #900;
+  }
+
+  code {
+    background: #f9f9f9;
+  }
+
+  pre {
+    background: #fefefe;
+    border: 1px solid #ddd;
+    box-shadow: 2px 2px 0 #f3f3f3;
+    margin: 0 30px;
+    padding: 15px 30px;
+  }
+
+  .codehilite {
+    margin: 0 30px 10px 30px;
+  }
+
+    .codehilite pre {
+      margin: 0;
+    }
+    .codehilite .err { background: #ff3300; color: #fff !important; }
+
+  table#module-list {
+    font-size: 110%;
+  }
+
+    table#module-list tr td:first-child {
+      padding-right: 10px;
+      white-space: nowrap;
+    }
+
+    table#module-list td {
+      vertical-align: top;
+      padding-bottom: 8px;
+    }
+
+      table#module-list td p {
+        margin: 0 0 7px 0;
+      }
+
+  .def {
+    display: table;
+  }
+
+    .def p {
+      display: table-cell;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .def p:first-child {
+      white-space: nowrap;
+    }
+
+    .def p:last-child {
+      width: 100%;
+    }
+
+
+  #index {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+  }
+    ul#index .class_name {
+      /* font-size: 110%; */
+      font-weight: bold;
+    }
+    #index ul {
+      margin: 0;
+    }
+
+  .item {
+    margin: 0 0 15px 0;
+  }
+
+    .item .class {
+      margin: 0 0 25px 30px;
+    }
+
+      .item .class ul.class_list {
+        margin: 0 0 20px 0;
+      }
+
+    .item .name {
+      background: #fafafa;
+      margin: 0;
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 3px;
+      display: inline-block;
+      min-width: 40%;
+    }
+      .item .name:hover {
+        background: #f6f6f6;
+      }
+
+    .item .empty_desc {
+      margin: 0 0 5px 0;
+      padding: 0;
+    }
+
+    .item .inheritance {
+      margin: 3px 0 0 30px;
+    }
+
+    .item .inherited {
+      color: #666;
+    }
+
+    .item .desc {
+      padding: 0 8px;
+      margin: 0;
+    }
+
+      .item .desc p {
+        margin: 0 0 10px 0;
+      }
+
+    .source_cont {
+      margin: 0;
+      padding: 0;
+    }
+
+    .source_link a {
+      background: #ffc300;
+      font-weight: 400;
+      font-size: .75em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 1px 1px 0 #f4b700;
+
+      padding: 3px 8px;
+      border-radius: 2px;
+      transition: background .3s ease-in-out;
+    }
+      .source_link a:hover {
+        background: #FF7200;
+        text-shadow: none;
+        transition: background .3s ease-in-out;
+      }
+
+    .source {
+      display: none;
+      max-height: 600px;
+      overflow-y: scroll;
+      margin-bottom: 15px;
+    }
+
+      .source .codehilite {
+        margin: 0;
+      }
+
+  .desc h1, .desc h2, .desc h3 {
+    font-size: 100% !important;
+  }
+  .clear {
+    clear: both;
+  }
+
+  @media all and (max-width: 950px) {
+    #sidebar {
+      width: 35%;
+    }
+    #content {
+      width: 65%;
+    }
+  }
+  @media all and (max-width: 650px) {
+    #top {
+      display: none;
+    }
+    #sidebar {
+      float: none;
+      width: auto;
+    }
+    #content {
+      float: none;
+      width: auto;
+      padding: 30px;
+    }
+
+    #index ul {
+      padding: 0;
+      margin-bottom: 15px;
+    }
+    #index ul li {
+      display: inline-block;
+      margin-right: 30px;
+    }
+    #footer {
+      text-align: left;
+    }
+    #footer p {
+      display: block;
+      margin: inherit;
+    }
+  }
+
+  /*****************************/
+
+  </style>
+
+  <style type="text/css">
+  .codehilite .hll { background-color: #ffffcc }
+.codehilite  { background: #f8f8f8; }
+.codehilite .c { color: #408080; font-style: italic } /* Comment */
+.codehilite .err { border: 1px solid #FF0000 } /* Error */
+.codehilite .k { color: #008000; font-weight: bold } /* Keyword */
+.codehilite .o { color: #666666 } /* Operator */
+.codehilite .ch { color: #408080; font-style: italic } /* Comment.Hashbang */
+.codehilite .cm { color: #408080; font-style: italic } /* Comment.Multiline */
+.codehilite .cp { color: #BC7A00 } /* Comment.Preproc */
+.codehilite .cpf { color: #408080; font-style: italic } /* Comment.PreprocFile */
+.codehilite .c1 { color: #408080; font-style: italic } /* Comment.Single */
+.codehilite .cs { color: #408080; font-style: italic } /* Comment.Special */
+.codehilite .gd { color: #A00000 } /* Generic.Deleted */
+.codehilite .ge { font-style: italic } /* Generic.Emph */
+.codehilite .gr { color: #FF0000 } /* Generic.Error */
+.codehilite .gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.codehilite .gi { color: #00A000 } /* Generic.Inserted */
+.codehilite .go { color: #888888 } /* Generic.Output */
+.codehilite .gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.codehilite .gs { font-weight: bold } /* Generic.Strong */
+.codehilite .gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.codehilite .gt { color: #0044DD } /* Generic.Traceback */
+.codehilite .kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.codehilite .kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.codehilite .kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.codehilite .kp { color: #008000 } /* Keyword.Pseudo */
+.codehilite .kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.codehilite .kt { color: #B00040 } /* Keyword.Type */
+.codehilite .m { color: #666666 } /* Literal.Number */
+.codehilite .s { color: #BA2121 } /* Literal.String */
+.codehilite .na { color: #7D9029 } /* Name.Attribute */
+.codehilite .nb { color: #008000 } /* Name.Builtin */
+.codehilite .nc { color: #0000FF; font-weight: bold } /* Name.Class */
+.codehilite .no { color: #880000 } /* Name.Constant */
+.codehilite .nd { color: #AA22FF } /* Name.Decorator */
+.codehilite .ni { color: #999999; font-weight: bold } /* Name.Entity */
+.codehilite .ne { color: #D2413A; font-weight: bold } /* Name.Exception */
+.codehilite .nf { color: #0000FF } /* Name.Function */
+.codehilite .nl { color: #A0A000 } /* Name.Label */
+.codehilite .nn { color: #0000FF; font-weight: bold } /* Name.Namespace */
+.codehilite .nt { color: #008000; font-weight: bold } /* Name.Tag */
+.codehilite .nv { color: #19177C } /* Name.Variable */
+.codehilite .ow { color: #AA22FF; font-weight: bold } /* Operator.Word */
+.codehilite .w { color: #bbbbbb } /* Text.Whitespace */
+.codehilite .mb { color: #666666 } /* Literal.Number.Bin */
+.codehilite .mf { color: #666666 } /* Literal.Number.Float */
+.codehilite .mh { color: #666666 } /* Literal.Number.Hex */
+.codehilite .mi { color: #666666 } /* Literal.Number.Integer */
+.codehilite .mo { color: #666666 } /* Literal.Number.Oct */
+.codehilite .sa { color: #BA2121 } /* Literal.String.Affix */
+.codehilite .sb { color: #BA2121 } /* Literal.String.Backtick */
+.codehilite .sc { color: #BA2121 } /* Literal.String.Char */
+.codehilite .dl { color: #BA2121 } /* Literal.String.Delimiter */
+.codehilite .sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.codehilite .s2 { color: #BA2121 } /* Literal.String.Double */
+.codehilite .se { color: #BB6622; font-weight: bold } /* Literal.String.Escape */
+.codehilite .sh { color: #BA2121 } /* Literal.String.Heredoc */
+.codehilite .si { color: #BB6688; font-weight: bold } /* Literal.String.Interpol */
+.codehilite .sx { color: #008000 } /* Literal.String.Other */
+.codehilite .sr { color: #BB6688 } /* Literal.String.Regex */
+.codehilite .s1 { color: #BA2121 } /* Literal.String.Single */
+.codehilite .ss { color: #19177C } /* Literal.String.Symbol */
+.codehilite .bp { color: #008000 } /* Name.Builtin.Pseudo */
+.codehilite .fm { color: #0000FF } /* Name.Function.Magic */
+.codehilite .vc { color: #19177C } /* Name.Variable.Class */
+.codehilite .vg { color: #19177C } /* Name.Variable.Global */
+.codehilite .vi { color: #19177C } /* Name.Variable.Instance */
+.codehilite .vm { color: #19177C } /* Name.Variable.Magic */
+.codehilite .il { color: #666666 } /* Literal.Number.Integer.Long */
+  </style>
+
+  <style type="text/css">
+
+/* ==========================================================================
+   EXAMPLE Media Queries for Responsive Design.
+   These examples override the primary ('mobile first') styles.
+   Modify as content requires.
+   ========================================================================== */
+
+@media only screen and (min-width: 35em) {
+    /* Style adjustments for viewports that meet the condition */
+}
+
+@media print,
+       (-o-min-device-pixel-ratio: 5/4),
+       (-webkit-min-device-pixel-ratio: 1.25),
+       (min-resolution: 120dpi) {
+    /* Style adjustments for high resolution devices */
+}
+
+/* ==========================================================================
+   Print styles.
+   Inlined to avoid required HTTP connection: h5bp.com/r
+   ========================================================================== */
+
+@media print {
+    * {
+        background: transparent !important;
+        color: #000 !important; /* Black prints faster: h5bp.com/s */
+        box-shadow: none !important;
+        text-shadow: none !important;
+    }
+
+    a,
+    a:visited {
+        text-decoration: underline;
+    }
+
+    a[href]:after {
+        content: " (" attr(href) ")";
+    }
+
+    abbr[title]:after {
+        content: " (" attr(title) ")";
+    }
+
+    /*
+     * Don't show links for images, or javascript/internal links
+     */
+
+    .ir a:after,
+    a[href^="javascript:"]:after,
+    a[href^="#"]:after {
+        content: "";
+    }
+
+    pre,
+    blockquote {
+        border: 1px solid #999;
+        page-break-inside: avoid;
+    }
+
+    thead {
+        display: table-header-group; /* h5bp.com/t */
+    }
+
+    tr,
+    img {
+        page-break-inside: avoid;
+    }
+
+    img {
+        max-width: 100% !important;
+    }
+
+    @page {
+        margin: 0.5cm;
+    }
+
+    p,
+    h2,
+    h3 {
+        orphans: 3;
+        widows: 3;
+    }
+
+    h2,
+    h3 {
+        page-break-after: avoid;
+    }
+}
+
+  </style>
+
+  <script type="text/javascript">
+  function toggle(id, $link) {
+    $node = document.getElementById(id);
+    if (!$node)
+    return;
+    if (!$node.style.display || $node.style.display == 'none') {
+    $node.style.display = 'block';
+    $link.innerHTML = 'Hide source &nequiv;';
+    } else {
+    $node.style.display = 'none';
+    $link.innerHTML = 'Show source &equiv;';
+    }
+  }
+  </script>
+</head>
+<body>
+<a href="#" id="top">Top</a>
+
+<div id="container">
+
+
+  <div id="sidebar">
+    <h1>Index</h1>
+    <ul id="index">
+    <li class="set"><h3><a href="#header-variables">Module variables</a></h3>
+
+  <ul>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ADAM_OPTIMIZER">ADAM_OPTIMIZER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ALLGATHER_SIZE">ALLGATHER_SIZE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ALLGATHER_SIZE_DEFAULT">ALLGATHER_SIZE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DEEPSPEED_OPTIMIZERS">DEEPSPEED_OPTIMIZERS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER">DISABLE_ALLGATHER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER_DEFAULT">DISABLE_ALLGATHER_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER_FORMAT">DISABLE_ALLGATHER_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DUMP_STATE">DUMP_STATE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DUMP_STATE_DEFAULT">DUMP_STATE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DUMP_STATE_FORMAT">DUMP_STATE_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16">FP16</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_ENABLED">FP16_ENABLED</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_ENABLED_DEFAULT">FP16_ENABLED_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_FORMAT">FP16_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_HYSTERESIS">FP16_HYSTERESIS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_HYSTERESIS_DEFAULT">FP16_HYSTERESIS_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_INITIAL_SCALE_POWER">FP16_INITIAL_SCALE_POWER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_INITIAL_SCALE_POWER_DEFAULT">FP16_INITIAL_SCALE_POWER_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE">FP16_LOSS_SCALE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_DEFAULT">FP16_LOSS_SCALE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_WINDOW">FP16_LOSS_SCALE_WINDOW</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_WINDOW_DEFAULT">FP16_LOSS_SCALE_WINDOW_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_MIN_LOSS_SCALE">FP16_MIN_LOSS_SCALE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP16_MIN_LOSS_SCALE_DEFAULT">FP16_MIN_LOSS_SCALE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP32_ALLREDUCE">FP32_ALLREDUCE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP32_ALLREDUCE_DEFAULT">FP32_ALLREDUCE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.FP32_ALLREDUCE_FORMAT">FP32_ALLREDUCE_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_FORMAT">GRADIENT_ACCUMULATION_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_STEPS">GRADIENT_ACCUMULATION_STEPS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_STEPS_DEFAULT">GRADIENT_ACCUMULATION_STEPS_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING">GRADIENT_CLIPPING</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING_DEFAULT">GRADIENT_CLIPPING_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING_FORMAT">GRADIENT_CLIPPING_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.LAMB_OPTIMIZER">LAMB_OPTIMIZER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.MAX_GRAD_NORM">MAX_GRAD_NORM</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.OPTIMIZER">OPTIMIZER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.OPTIMIZER_PARAMS">OPTIMIZER_PARAMS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.OPTIMIZER_TYPE_DEFAULT">OPTIMIZER_TYPE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS">PRESCALE_GRADIENTS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS_DEFAULT">PRESCALE_GRADIENTS_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS_FORMAT">PRESCALE_GRADIENTS_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ROUTE_ENCODE">ROUTE_ENCODE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ROUTE_EVAL">ROUTE_EVAL</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ROUTE_PREDICT">ROUTE_PREDICT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ROUTE_TRAIN">ROUTE_TRAIN</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.SCHEDULER">SCHEDULER</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.SCHEDULER_PARAMS">SCHEDULER_PARAMS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.SCHEDULER_TYPE_DEFAULT">SCHEDULER_TYPE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.SPARSE_GRADIENTS">SPARSE_GRADIENTS</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.SPARSE_GRADIENTS_DEFAULT">SPARSE_GRADIENTS_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.STEPS_PER_PRINT">STEPS_PER_PRINT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.STEPS_PER_PRINT_DEFAULT">STEPS_PER_PRINT_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD">TENSORBOARD</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_ENABLED">TENSORBOARD_ENABLED</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_ENABLED_DEFAULT">TENSORBOARD_ENABLED_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_FORMAT">TENSORBOARD_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_JOB_NAME">TENSORBOARD_JOB_NAME</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_JOB_NAME_DEFAULT">TENSORBOARD_JOB_NAME_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_OUTPUT_PATH">TENSORBOARD_OUTPUT_PATH</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSORBOARD_OUTPUT_PATH_DEFAULT">TENSORBOARD_OUTPUT_PATH_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TENSOR_CORE_ALIGN_SIZE">TENSOR_CORE_ALIGN_SIZE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TRAIN_BATCH_SIZE">TRAIN_BATCH_SIZE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TRAIN_BATCH_SIZE_DEFAULT">TRAIN_BATCH_SIZE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TRAIN_MICRO_BATCH_SIZE_PER_GPU">TRAIN_MICRO_BATCH_SIZE_PER_GPU</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT">TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.TYPE">TYPE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.VOCABULARY_SIZE">VOCABULARY_SIZE</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.VOCABULARY_SIZE_DEFAULT">VOCABULARY_SIZE_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.VOCABULARY_SIZE_FORMAT">VOCABULARY_SIZE_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN">WALL_CLOCK_BREAKDOWN</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN_DEFAULT">WALL_CLOCK_BREAKDOWN_DEFAULT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN_FORMAT">WALL_CLOCK_BREAKDOWN_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ZERO_FORMAT">ZERO_FORMAT</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ZERO_OPTIMIZATION">ZERO_OPTIMIZATION</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.ZERO_OPTIMIZATION_DEFAULT">ZERO_OPTIMIZATION_DEFAULT</a></li>
+  </ul>
+
+    </li>
+
+    <li class="set"><h3><a href="#header-functions">Functions</a></h3>
+
+  <ul>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_allgather_size">get_allgather_size</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_allreduce_always_fp32">get_allreduce_always_fp32</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_disable_allgather">get_disable_allgather</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_dump_state">get_dump_state</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_dynamic_loss_scale_args">get_dynamic_loss_scale_args</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_fp16_enabled">get_fp16_enabled</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_gradient_accumulation_steps">get_gradient_accumulation_steps</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_gradient_clipping">get_gradient_clipping</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_initial_dynamic_scale">get_initial_dynamic_scale</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_loss_scale">get_loss_scale</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_optimizer_gradient_clipping">get_optimizer_gradient_clipping</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_optimizer_name">get_optimizer_name</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_optimizer_params">get_optimizer_params</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_prescale_gradients">get_prescale_gradients</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_scalar_param">get_scalar_param</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_scheduler_name">get_scheduler_name</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_scheduler_params">get_scheduler_params</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_sparse_gradients_enabled">get_sparse_gradients_enabled</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_steps_per_print">get_steps_per_print</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_tensorboard_enabled">get_tensorboard_enabled</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_tensorboard_job_name">get_tensorboard_job_name</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_tensorboard_output_path">get_tensorboard_output_path</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_train_batch_size">get_train_batch_size</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_train_micro_batch_size_per_gpu">get_train_micro_batch_size_per_gpu</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_wall_clock_breakdown">get_wall_clock_breakdown</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.get_zero_enabled">get_zero_enabled</a></li>
+  </ul>
+
+    </li>
+
+    <li class="set"><h3><a href="#header-classes">Classes</a></h3>
+      <ul>
+        <li class="mono">
+        <span class="class_name"><a href="#deepspeed.pt.deepspeed_config.DeepSpeedConfig">DeepSpeedConfig</a></span>
+
+
+  <ul>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DeepSpeedConfig.__init__">__init__</a></li>
+    <li class="mono"><a href="#deepspeed.pt.deepspeed_config.DeepSpeedConfig.print">print</a></li>
+  </ul>
+
+        </li>
+      </ul>
+    </li>
+
+    </ul>
+  </div>
+
+    <article id="content">
+
+
+
+
+
+
+  <header id="section-intro">
+  <h1 class="title"><span class="name">deepspeed.pt.deepspeed_config</span> module</h1>
+  <p>Copyright (c) Microsoft Corporation
+Licensed under the MIT license.</p>
+
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config" class="source">
+    <div class="codehilite"><pre><span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Copyright (c) Microsoft Corporation</span>
+<span class="sd">Licensed under the MIT license.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">deepspeed.pt.deepspeed_constants</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">TENSOR_CORE_ALIGN_SIZE</span> <span class="o">=</span> <span class="mi">8</span>
+<span class="n">ADAM_OPTIMIZER</span> <span class="o">=</span> <span class="s1">&#39;adam&#39;</span>
+<span class="n">LAMB_OPTIMIZER</span> <span class="o">=</span> <span class="s1">&#39;lamb&#39;</span>
+<span class="n">DEEPSPEED_OPTIMIZERS</span> <span class="o">=</span> <span class="p">[</span><span class="n">ADAM_OPTIMIZER</span><span class="p">,</span> <span class="n">LAMB_OPTIMIZER</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_default_value</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">param_name</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">param_default_value</span>
+
+
+<span class="k">def</span> <span class="nf">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">FP16</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span> <span class="n">FP16_ENABLED</span><span class="p">,</span> <span class="n">FP16_ENABLED_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span> <span class="nf">get_loss_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span>
+                                <span class="n">FP16_LOSS_SCALE</span><span class="p">,</span>
+                                <span class="n">FP16_LOSS_SCALE_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">FP16_LOSS_SCALE_DEFAULT</span>
+
+
+<span class="k">def</span> <span class="nf">get_initial_dynamic_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="n">initial_scale_power</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span>
+                                               <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+                                               <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">initial_scale_power</span> <span class="o">=</span> <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span>
+
+    <span class="k">return</span> <span class="mi">2</span><span class="o">**</span><span class="n">initial_scale_power</span>
+
+
+<span class="k">def</span> <span class="nf">get_dynamic_loss_scale_args</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">loss_scale_args</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="n">fp16_dict</span> <span class="o">=</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">]</span>
+        <span class="n">dynamic_loss_args</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+            <span class="n">FP16_LOSS_SCALE_WINDOW</span><span class="p">,</span>
+            <span class="n">FP16_MIN_LOSS_SCALE</span><span class="p">,</span>
+            <span class="n">FP16_HYSTERESIS</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">arg</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">fp16_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">dynamic_loss_args</span><span class="p">):</span>
+            <span class="n">init_scale</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                          <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+                                          <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span><span class="p">)</span>
+            <span class="n">scale_window</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                            <span class="n">FP16_LOSS_SCALE_WINDOW</span><span class="p">,</span>
+                                            <span class="n">FP16_LOSS_SCALE_WINDOW_DEFAULT</span><span class="p">)</span>
+            <span class="n">delayed_shift</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                             <span class="n">FP16_HYSTERESIS</span><span class="p">,</span>
+                                             <span class="n">FP16_HYSTERESIS_DEFAULT</span><span class="p">)</span>
+            <span class="n">min_loss_scale</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                              <span class="n">FP16_MIN_LOSS_SCALE</span><span class="p">,</span>
+                                              <span class="n">FP16_MIN_LOSS_SCALE_DEFAULT</span><span class="p">)</span>
+            <span class="n">loss_scale_args</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;init_scale&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="o">**</span><span class="n">init_scale</span><span class="p">,</span>
+                <span class="s1">&#39;scale_window&#39;</span><span class="p">:</span> <span class="n">scale_window</span><span class="p">,</span>
+                <span class="s1">&#39;delayed_shift&#39;</span><span class="p">:</span> <span class="n">delayed_shift</span><span class="p">,</span>
+                <span class="s1">&#39;min_scale&#39;</span><span class="p">:</span> <span class="n">min_loss_scale</span>
+            <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">loss_scale_args</span>
+
+
+<span class="k">def</span> <span class="nf">get_gradient_accumulation_steps</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span>
+                            <span class="n">GRADIENT_ACCUMULATION_STEPS_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_sparse_gradients_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">SPARSE_GRADIENTS</span><span class="p">,</span> <span class="n">SPARSE_GRADIENTS_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_zero_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">ZERO_OPTIMIZATION</span><span class="p">,</span> <span class="n">ZERO_OPTIMIZATION_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_allgather_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">ALLGATHER_SIZE</span><span class="p">,</span>
+                            <span class="n">ALLGATHER_SIZE_DEFAULT</span><span class="p">)</span> <span class="k">if</span> <span class="n">get_scalar_param</span><span class="p">(</span>
+                                <span class="n">param_dict</span><span class="p">,</span>
+                                <span class="n">ALLGATHER_SIZE</span><span class="p">,</span>
+                                <span class="n">ALLGATHER_SIZE_DEFAULT</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">ALLGATHER_SIZE_DEFAULT</span>
+
+
+<span class="k">def</span> <span class="nf">get_allreduce_always_fp32</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">FP32_ALLREDUCE</span><span class="p">,</span> <span class="n">FP32_ALLREDUCE_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_prescale_gradients</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">PRESCALE_GRADIENTS</span><span class="p">,</span> <span class="n">PRESCALE_GRADIENTS_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_steps_per_print</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">STEPS_PER_PRINT</span><span class="p">,</span> <span class="n">STEPS_PER_PRINT_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_disable_allgather</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">DISABLE_ALLGATHER</span><span class="p">,</span> <span class="n">DISABLE_ALLGATHER_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_dump_state</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">DUMP_STATE</span><span class="p">,</span> <span class="n">DUMP_STATE_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">grad_clip</span> <span class="o">=</span> <span class="n">get_optimizer_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">grad_clip</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">grad_clip</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">GRADIENT_CLIPPING</span><span class="p">,</span> <span class="n">GRADIENT_CLIPPING_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">OPTIMIZER</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+            <span class="n">TYPE</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">][</span><span class="n">TYPE</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">OPTIMIZER_TYPE_DEFAULT</span>
+
+
+<span class="k">def</span> <span class="nf">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">OPTIMIZER_PARAMS</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">][</span><span class="n">OPTIMIZER_PARAMS</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span> <span class="nf">get_optimizer_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">optimizer_params</span> <span class="o">=</span> <span class="n">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">optimizer_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">MAX_GRAD_NORM</span> <span class="ow">in</span> <span class="n">optimizer_params</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span> <span class="nf">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">SCHEDULER</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+            <span class="n">TYPE</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">][</span><span class="n">TYPE</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">SCHEDULER_TYPE_DEFAULT</span>
+
+
+<span class="k">def</span> <span class="nf">get_scheduler_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">SCHEDULER_PARAMS</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">][</span><span class="n">SCHEDULER_PARAMS</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span> <span class="nf">get_train_batch_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_train_micro_batch_size_per_gpu</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span>
+                            <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_wall_clock_breakdown</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">WALL_CLOCK_BREAKDOWN</span><span class="p">,</span>
+                            <span class="n">WALL_CLOCK_BREAKDOWN_DEFAULT</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">TENSORBOARD</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_ENABLED</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_ENABLED_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span> <span class="nf">get_tensorboard_output_path</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_OUTPUT_PATH</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_OUTPUT_PATH_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">TENSORBOARD_OUTPUT_PATH_DEFAULT</span>
+
+
+<span class="k">def</span> <span class="nf">get_tensorboard_job_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_JOB_NAME</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_JOB_NAME_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">TENSORBOARD_JOB_NAME_DEFAULT</span>
+
+
+<span class="k">class</span> <span class="nc">DeepSpeedConfig</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">json_file</span><span class="p">,</span> <span class="n">mpu</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">DeepSpeedConfig</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_rank</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">mpu</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_world_size</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">mpu</span><span class="o">.</span><span class="n">get_data_parallel_world_size</span><span class="p">()</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize_params</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_configure_train_batch_size</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_sanity_check</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_initialize_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">param_dict</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">=</span> <span class="n">get_train_batch_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="n">get_train_micro_batch_size_per_gpu</span><span class="p">(</span>
+            <span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="n">get_gradient_accumulation_steps</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">steps_per_print</span> <span class="o">=</span> <span class="n">get_steps_per_print</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dump_state</span> <span class="o">=</span> <span class="n">get_dump_state</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_allgather</span> <span class="o">=</span> <span class="n">get_disable_allgather</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">allreduce_always_fp32</span> <span class="o">=</span> <span class="n">get_allreduce_always_fp32</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prescale_gradients</span> <span class="o">=</span> <span class="n">get_prescale_gradients</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sparse_gradients_enabled</span> <span class="o">=</span> <span class="n">get_sparse_gradients_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">allgather_size</span> <span class="o">=</span> <span class="n">get_allgather_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span> <span class="o">=</span> <span class="n">get_zero_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gradient_clipping</span> <span class="o">=</span> <span class="n">get_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span> <span class="o">=</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loss_scale</span> <span class="o">=</span> <span class="n">get_loss_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initial_dynamic_scale</span> <span class="o">=</span> <span class="n">get_initial_dynamic_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dynamic_loss_scale_args</span> <span class="o">=</span> <span class="n">get_dynamic_loss_scale_args</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="o">=</span> <span class="n">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">DEEPSPEED_OPTIMIZERS</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span> <span class="o">=</span> <span class="n">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_name</span> <span class="o">=</span> <span class="n">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_params</span> <span class="o">=</span> <span class="n">get_scheduler_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">wall_clock_breakdown</span> <span class="o">=</span> <span class="n">get_wall_clock_breakdown</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_enabled</span> <span class="o">=</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_output_path</span> <span class="o">=</span> <span class="n">get_tensorboard_output_path</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_job_name</span> <span class="o">=</span> <span class="n">get_tensorboard_job_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_batch_size_sanity_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">,</span> \
+            <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is smaller than device count </span><span class="si">{}</span><span class="s1">&#39;</span> \
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+            <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by device count </span><span class="si">{}</span><span class="s1">&#39;</span> \
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+        <span class="n">per_device_batch_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> and </span><span class="si">{}</span><span class="s1"> should not be defined together&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is greater than </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">per_device_batch_size</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">per_device_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                    <span class="s1">&#39;DeepSpeedConfig: Per device batch size </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">per_device_batch_size</span><span class="p">,</span> <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="n">per_device_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: Per device batch size </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">per_device_batch_size</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_configure_train_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_batch_size_sanity_check</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">per_device_batch_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">&gt;</span> <span class="n">per_device_batch_size</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="n">per_device_batch_size</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="n">per_device_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_sanity_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_error_check</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_warning_check</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">print</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">:&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">vars</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">arg</span> <span class="o">!=</span> <span class="s1">&#39;_param_dict&#39;</span><span class="p">:</span>
+                <span class="n">dots</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span> <span class="o">*</span> <span class="p">(</span><span class="mi">29</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">dots</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">)),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  json = </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">,</span>
+                       <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                       <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+                       <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">,</span>
+                                   <span class="s1">&#39;:&#39;</span><span class="p">))))</span>
+
+    <span class="k">def</span> <span class="nf">_do_error_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span><span class="p">,</span> <span class="s2">&quot;DeepSpeedConfig: ZeRO is only supported if fp16 is enabled&quot;</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">,</span> <span class="s2">&quot;DeepSpeedConfig: </span><span class="si">{}</span><span class="s2"> is not defined&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span> <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> is not defined&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_warning_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">fp16_enabled</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_clipping</span> <span class="o">&gt;</span> <span class="mf">0.</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">fp16_enabled</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s1">&#39;DeepSpeedConfig: gradient clipping enabled without FP16 enabled.&#39;</span><span class="p">)</span>
+
+        <span class="n">vocabulary_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">VOCABULARY_SIZE</span><span class="p">,</span> <span class="n">VOCABULARY_SIZE_DEFAULT</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">vocabulary_size</span> <span class="ow">and</span> <span class="n">vocabulary_size</span> <span class="o">%</span> <span class="n">TENSOR_CORE_ALIGN_SIZE</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;DeepSpeedConfig: vocabulary size </span><span class="si">{}</span><span class="s2"> is not aligned to </span><span class="si">{}</span><span class="s2">, may import tensor core utilization.&quot;</span>
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">vocabulary_size</span><span class="p">,</span>
+                        <span class="n">TENSOR_CORE_ALIGN_SIZE</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">MAX_GRAD_NORM</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fp16_enabled</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s1">&#39;DeepSpeedConfig: In FP16 mode, DeepSpeed will pass </span><span class="si">{}</span><span class="s1">:</span><span class="si">{}</span><span class="s1"> to FP16 wrapper&#39;</span>
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">MAX_GRAD_NORM</span><span class="p">,</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s1">&#39;DeepSpeedConfig: In FP32 mode, DeepSpeed does not permit MAX_GRAD_NORM (</span><span class="si">{}</span><span class="s1">) &gt; 0, setting to zero&#39;</span>
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+
+  </div>
+
+  </header>
+
+  <section id="section-items">
+    <h2 class="section-title" id="header-variables">Module variables</h2>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ADAM_OPTIMIZER" class="name">var <span class="ident">ADAM_OPTIMIZER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ALLGATHER_SIZE" class="name">var <span class="ident">ALLGATHER_SIZE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ALLGATHER_SIZE_DEFAULT" class="name">var <span class="ident">ALLGATHER_SIZE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DEEPSPEED_OPTIMIZERS" class="name">var <span class="ident">DEEPSPEED_OPTIMIZERS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER" class="name">var <span class="ident">DISABLE_ALLGATHER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER_DEFAULT" class="name">var <span class="ident">DISABLE_ALLGATHER_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DISABLE_ALLGATHER_FORMAT" class="name">var <span class="ident">DISABLE_ALLGATHER_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DUMP_STATE" class="name">var <span class="ident">DUMP_STATE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DUMP_STATE_DEFAULT" class="name">var <span class="ident">DUMP_STATE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DUMP_STATE_FORMAT" class="name">var <span class="ident">DUMP_STATE_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16" class="name">var <span class="ident">FP16</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_ENABLED" class="name">var <span class="ident">FP16_ENABLED</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_ENABLED_DEFAULT" class="name">var <span class="ident">FP16_ENABLED_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_FORMAT" class="name">var <span class="ident">FP16_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_HYSTERESIS" class="name">var <span class="ident">FP16_HYSTERESIS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_HYSTERESIS_DEFAULT" class="name">var <span class="ident">FP16_HYSTERESIS_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_INITIAL_SCALE_POWER" class="name">var <span class="ident">FP16_INITIAL_SCALE_POWER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_INITIAL_SCALE_POWER_DEFAULT" class="name">var <span class="ident">FP16_INITIAL_SCALE_POWER_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE" class="name">var <span class="ident">FP16_LOSS_SCALE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_DEFAULT" class="name">var <span class="ident">FP16_LOSS_SCALE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_WINDOW" class="name">var <span class="ident">FP16_LOSS_SCALE_WINDOW</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_LOSS_SCALE_WINDOW_DEFAULT" class="name">var <span class="ident">FP16_LOSS_SCALE_WINDOW_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_MIN_LOSS_SCALE" class="name">var <span class="ident">FP16_MIN_LOSS_SCALE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP16_MIN_LOSS_SCALE_DEFAULT" class="name">var <span class="ident">FP16_MIN_LOSS_SCALE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP32_ALLREDUCE" class="name">var <span class="ident">FP32_ALLREDUCE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP32_ALLREDUCE_DEFAULT" class="name">var <span class="ident">FP32_ALLREDUCE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.FP32_ALLREDUCE_FORMAT" class="name">var <span class="ident">FP32_ALLREDUCE_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_FORMAT" class="name">var <span class="ident">GRADIENT_ACCUMULATION_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_STEPS" class="name">var <span class="ident">GRADIENT_ACCUMULATION_STEPS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_ACCUMULATION_STEPS_DEFAULT" class="name">var <span class="ident">GRADIENT_ACCUMULATION_STEPS_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING" class="name">var <span class="ident">GRADIENT_CLIPPING</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING_DEFAULT" class="name">var <span class="ident">GRADIENT_CLIPPING_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.GRADIENT_CLIPPING_FORMAT" class="name">var <span class="ident">GRADIENT_CLIPPING_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.LAMB_OPTIMIZER" class="name">var <span class="ident">LAMB_OPTIMIZER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.MAX_GRAD_NORM" class="name">var <span class="ident">MAX_GRAD_NORM</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.OPTIMIZER" class="name">var <span class="ident">OPTIMIZER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.OPTIMIZER_PARAMS" class="name">var <span class="ident">OPTIMIZER_PARAMS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.OPTIMIZER_TYPE_DEFAULT" class="name">var <span class="ident">OPTIMIZER_TYPE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS" class="name">var <span class="ident">PRESCALE_GRADIENTS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS_DEFAULT" class="name">var <span class="ident">PRESCALE_GRADIENTS_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.PRESCALE_GRADIENTS_FORMAT" class="name">var <span class="ident">PRESCALE_GRADIENTS_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ROUTE_ENCODE" class="name">var <span class="ident">ROUTE_ENCODE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ROUTE_EVAL" class="name">var <span class="ident">ROUTE_EVAL</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ROUTE_PREDICT" class="name">var <span class="ident">ROUTE_PREDICT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ROUTE_TRAIN" class="name">var <span class="ident">ROUTE_TRAIN</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.SCHEDULER" class="name">var <span class="ident">SCHEDULER</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.SCHEDULER_PARAMS" class="name">var <span class="ident">SCHEDULER_PARAMS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.SCHEDULER_TYPE_DEFAULT" class="name">var <span class="ident">SCHEDULER_TYPE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.SPARSE_GRADIENTS" class="name">var <span class="ident">SPARSE_GRADIENTS</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.SPARSE_GRADIENTS_DEFAULT" class="name">var <span class="ident">SPARSE_GRADIENTS_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.STEPS_PER_PRINT" class="name">var <span class="ident">STEPS_PER_PRINT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.STEPS_PER_PRINT_DEFAULT" class="name">var <span class="ident">STEPS_PER_PRINT_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD" class="name">var <span class="ident">TENSORBOARD</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_ENABLED" class="name">var <span class="ident">TENSORBOARD_ENABLED</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_ENABLED_DEFAULT" class="name">var <span class="ident">TENSORBOARD_ENABLED_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_FORMAT" class="name">var <span class="ident">TENSORBOARD_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_JOB_NAME" class="name">var <span class="ident">TENSORBOARD_JOB_NAME</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_JOB_NAME_DEFAULT" class="name">var <span class="ident">TENSORBOARD_JOB_NAME_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_OUTPUT_PATH" class="name">var <span class="ident">TENSORBOARD_OUTPUT_PATH</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSORBOARD_OUTPUT_PATH_DEFAULT" class="name">var <span class="ident">TENSORBOARD_OUTPUT_PATH_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TENSOR_CORE_ALIGN_SIZE" class="name">var <span class="ident">TENSOR_CORE_ALIGN_SIZE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TRAIN_BATCH_SIZE" class="name">var <span class="ident">TRAIN_BATCH_SIZE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TRAIN_BATCH_SIZE_DEFAULT" class="name">var <span class="ident">TRAIN_BATCH_SIZE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TRAIN_MICRO_BATCH_SIZE_PER_GPU" class="name">var <span class="ident">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT" class="name">var <span class="ident">TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.TYPE" class="name">var <span class="ident">TYPE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.VOCABULARY_SIZE" class="name">var <span class="ident">VOCABULARY_SIZE</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.VOCABULARY_SIZE_DEFAULT" class="name">var <span class="ident">VOCABULARY_SIZE_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.VOCABULARY_SIZE_FORMAT" class="name">var <span class="ident">VOCABULARY_SIZE_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN" class="name">var <span class="ident">WALL_CLOCK_BREAKDOWN</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN_DEFAULT" class="name">var <span class="ident">WALL_CLOCK_BREAKDOWN_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.WALL_CLOCK_BREAKDOWN_FORMAT" class="name">var <span class="ident">WALL_CLOCK_BREAKDOWN_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ZERO_FORMAT" class="name">var <span class="ident">ZERO_FORMAT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ZERO_OPTIMIZATION" class="name">var <span class="ident">ZERO_OPTIMIZATION</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.ZERO_OPTIMIZATION_DEFAULT" class="name">var <span class="ident">ZERO_OPTIMIZATION_DEFAULT</span></p>
+
+
+  <div class="source_cont">
+</div>
+
+      </div>
+
+    <h2 class="section-title" id="header-functions">Functions</h2>
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_allgather_size">
+    <p>def <span class="ident">get_allgather_size</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_allgather_size', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_allgather_size" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_allgather_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">ALLGATHER_SIZE</span><span class="p">,</span>
+                            <span class="n">ALLGATHER_SIZE_DEFAULT</span><span class="p">)</span> <span class="k">if</span> <span class="n">get_scalar_param</span><span class="p">(</span>
+                                <span class="n">param_dict</span><span class="p">,</span>
+                                <span class="n">ALLGATHER_SIZE</span><span class="p">,</span>
+                                <span class="n">ALLGATHER_SIZE_DEFAULT</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">ALLGATHER_SIZE_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_allreduce_always_fp32">
+    <p>def <span class="ident">get_allreduce_always_fp32</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_allreduce_always_fp32', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_allreduce_always_fp32" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_allreduce_always_fp32</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">FP32_ALLREDUCE</span><span class="p">,</span> <span class="n">FP32_ALLREDUCE_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_disable_allgather">
+    <p>def <span class="ident">get_disable_allgather</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_disable_allgather', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_disable_allgather" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_disable_allgather</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">DISABLE_ALLGATHER</span><span class="p">,</span> <span class="n">DISABLE_ALLGATHER_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_dump_state">
+    <p>def <span class="ident">get_dump_state</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_dump_state', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_dump_state" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_dump_state</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">DUMP_STATE</span><span class="p">,</span> <span class="n">DUMP_STATE_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_dynamic_loss_scale_args">
+    <p>def <span class="ident">get_dynamic_loss_scale_args</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_dynamic_loss_scale_args', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_dynamic_loss_scale_args" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_dynamic_loss_scale_args</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">loss_scale_args</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="n">fp16_dict</span> <span class="o">=</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">]</span>
+        <span class="n">dynamic_loss_args</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+            <span class="n">FP16_LOSS_SCALE_WINDOW</span><span class="p">,</span>
+            <span class="n">FP16_MIN_LOSS_SCALE</span><span class="p">,</span>
+            <span class="n">FP16_HYSTERESIS</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">arg</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">fp16_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">dynamic_loss_args</span><span class="p">):</span>
+            <span class="n">init_scale</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                          <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+                                          <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span><span class="p">)</span>
+            <span class="n">scale_window</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                            <span class="n">FP16_LOSS_SCALE_WINDOW</span><span class="p">,</span>
+                                            <span class="n">FP16_LOSS_SCALE_WINDOW_DEFAULT</span><span class="p">)</span>
+            <span class="n">delayed_shift</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                             <span class="n">FP16_HYSTERESIS</span><span class="p">,</span>
+                                             <span class="n">FP16_HYSTERESIS_DEFAULT</span><span class="p">)</span>
+            <span class="n">min_loss_scale</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">fp16_dict</span><span class="p">,</span>
+                                              <span class="n">FP16_MIN_LOSS_SCALE</span><span class="p">,</span>
+                                              <span class="n">FP16_MIN_LOSS_SCALE_DEFAULT</span><span class="p">)</span>
+            <span class="n">loss_scale_args</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;init_scale&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="o">**</span><span class="n">init_scale</span><span class="p">,</span>
+                <span class="s1">&#39;scale_window&#39;</span><span class="p">:</span> <span class="n">scale_window</span><span class="p">,</span>
+                <span class="s1">&#39;delayed_shift&#39;</span><span class="p">:</span> <span class="n">delayed_shift</span><span class="p">,</span>
+                <span class="s1">&#39;min_scale&#39;</span><span class="p">:</span> <span class="n">min_loss_scale</span>
+            <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">loss_scale_args</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_fp16_enabled">
+    <p>def <span class="ident">get_fp16_enabled</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_fp16_enabled', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_fp16_enabled" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">FP16</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span> <span class="n">FP16_ENABLED</span><span class="p">,</span> <span class="n">FP16_ENABLED_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_gradient_accumulation_steps">
+    <p>def <span class="ident">get_gradient_accumulation_steps</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_gradient_accumulation_steps', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_gradient_accumulation_steps" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_gradient_accumulation_steps</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span>
+                            <span class="n">GRADIENT_ACCUMULATION_STEPS_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_gradient_clipping">
+    <p>def <span class="ident">get_gradient_clipping</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_gradient_clipping', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_gradient_clipping" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">grad_clip</span> <span class="o">=</span> <span class="n">get_optimizer_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">grad_clip</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">grad_clip</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">GRADIENT_CLIPPING</span><span class="p">,</span> <span class="n">GRADIENT_CLIPPING_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_initial_dynamic_scale">
+    <p>def <span class="ident">get_initial_dynamic_scale</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_initial_dynamic_scale', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_initial_dynamic_scale" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_initial_dynamic_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="n">initial_scale_power</span> <span class="o">=</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span>
+                                               <span class="n">FP16_INITIAL_SCALE_POWER</span><span class="p">,</span>
+                                               <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">initial_scale_power</span> <span class="o">=</span> <span class="n">FP16_INITIAL_SCALE_POWER_DEFAULT</span>
+
+    <span class="k">return</span> <span class="mi">2</span><span class="o">**</span><span class="n">initial_scale_power</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_loss_scale">
+    <p>def <span class="ident">get_loss_scale</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_loss_scale', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_loss_scale" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_loss_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">FP16</span><span class="p">],</span>
+                                <span class="n">FP16_LOSS_SCALE</span><span class="p">,</span>
+                                <span class="n">FP16_LOSS_SCALE_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">FP16_LOSS_SCALE_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_optimizer_gradient_clipping">
+    <p>def <span class="ident">get_optimizer_gradient_clipping</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_optimizer_gradient_clipping', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_optimizer_gradient_clipping" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_optimizer_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="n">optimizer_params</span> <span class="o">=</span> <span class="n">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">optimizer_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">MAX_GRAD_NORM</span> <span class="ow">in</span> <span class="n">optimizer_params</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_optimizer_name">
+    <p>def <span class="ident">get_optimizer_name</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_optimizer_name', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_optimizer_name" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">OPTIMIZER</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+            <span class="n">TYPE</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">][</span><span class="n">TYPE</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">OPTIMIZER_TYPE_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_optimizer_params">
+    <p>def <span class="ident">get_optimizer_params</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_optimizer_params', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_optimizer_params" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">OPTIMIZER_PARAMS</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">OPTIMIZER</span><span class="p">][</span><span class="n">OPTIMIZER_PARAMS</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_prescale_gradients">
+    <p>def <span class="ident">get_prescale_gradients</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_prescale_gradients', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_prescale_gradients" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_prescale_gradients</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">PRESCALE_GRADIENTS</span><span class="p">,</span> <span class="n">PRESCALE_GRADIENTS_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_scalar_param">
+    <p>def <span class="ident">get_scalar_param</span>(</p><p>param_dict, param_name, param_default_value)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_scalar_param', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_scalar_param" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">param_name</span><span class="p">,</span> <span class="n">param_default_value</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">param_name</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">param_name</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">param_default_value</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_scheduler_name">
+    <p>def <span class="ident">get_scheduler_name</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_scheduler_name', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_scheduler_name" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">SCHEDULER</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+            <span class="n">TYPE</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">][</span><span class="n">TYPE</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">SCHEDULER_TYPE_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_scheduler_params">
+    <p>def <span class="ident">get_scheduler_params</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_scheduler_params', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_scheduler_params" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_scheduler_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">SCHEDULER_PARAMS</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">param_dict</span><span class="p">[</span><span class="n">SCHEDULER</span><span class="p">][</span><span class="n">SCHEDULER_PARAMS</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_sparse_gradients_enabled">
+    <p>def <span class="ident">get_sparse_gradients_enabled</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_sparse_gradients_enabled', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_sparse_gradients_enabled" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_sparse_gradients_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">SPARSE_GRADIENTS</span><span class="p">,</span> <span class="n">SPARSE_GRADIENTS_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_steps_per_print">
+    <p>def <span class="ident">get_steps_per_print</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_steps_per_print', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_steps_per_print" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_steps_per_print</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">STEPS_PER_PRINT</span><span class="p">,</span> <span class="n">STEPS_PER_PRINT_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_tensorboard_enabled">
+    <p>def <span class="ident">get_tensorboard_enabled</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_tensorboard_enabled', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_tensorboard_enabled" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">TENSORBOARD</span> <span class="ow">in</span> <span class="n">param_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_ENABLED</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_ENABLED_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_tensorboard_job_name">
+    <p>def <span class="ident">get_tensorboard_job_name</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_tensorboard_job_name', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_tensorboard_job_name" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_tensorboard_job_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_JOB_NAME</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_JOB_NAME_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">TENSORBOARD_JOB_NAME_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_tensorboard_output_path">
+    <p>def <span class="ident">get_tensorboard_output_path</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_tensorboard_output_path', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_tensorboard_output_path" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_tensorboard_output_path</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">[</span><span class="n">TENSORBOARD</span><span class="p">],</span>
+                                <span class="n">TENSORBOARD_OUTPUT_PATH</span><span class="p">,</span>
+                                <span class="n">TENSORBOARD_OUTPUT_PATH_DEFAULT</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">TENSORBOARD_OUTPUT_PATH_DEFAULT</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_train_batch_size">
+    <p>def <span class="ident">get_train_batch_size</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_train_batch_size', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_train_batch_size" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_train_batch_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_train_micro_batch_size_per_gpu">
+    <p>def <span class="ident">get_train_micro_batch_size_per_gpu</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_train_micro_batch_size_per_gpu', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_train_micro_batch_size_per_gpu" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_train_micro_batch_size_per_gpu</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span>
+                            <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_wall_clock_breakdown">
+    <p>def <span class="ident">get_wall_clock_breakdown</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_wall_clock_breakdown', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_wall_clock_breakdown" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_wall_clock_breakdown</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span>
+                            <span class="n">WALL_CLOCK_BREAKDOWN</span><span class="p">,</span>
+                            <span class="n">WALL_CLOCK_BREAKDOWN_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.get_zero_enabled">
+    <p>def <span class="ident">get_zero_enabled</span>(</p><p>param_dict)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.get_zero_enabled', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.get_zero_enabled" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">get_zero_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">get_scalar_param</span><span class="p">(</span><span class="n">param_dict</span><span class="p">,</span> <span class="n">ZERO_OPTIMIZATION</span><span class="p">,</span> <span class="n">ZERO_OPTIMIZATION_DEFAULT</span><span class="p">)</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+    <h2 class="section-title" id="header-classes">Classes</h2>
+
+      <div class="item">
+      <p id="deepspeed.pt.deepspeed_config.DeepSpeedConfig" class="name">class <span class="ident">DeepSpeedConfig</span></p>
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.DeepSpeedConfig', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.DeepSpeedConfig" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">class</span> <span class="nc">DeepSpeedConfig</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">json_file</span><span class="p">,</span> <span class="n">mpu</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">DeepSpeedConfig</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_rank</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">mpu</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_world_size</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">mpu</span><span class="o">.</span><span class="n">get_data_parallel_world_size</span><span class="p">()</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize_params</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_configure_train_batch_size</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_sanity_check</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_initialize_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">param_dict</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">=</span> <span class="n">get_train_batch_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="n">get_train_micro_batch_size_per_gpu</span><span class="p">(</span>
+            <span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="n">get_gradient_accumulation_steps</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">steps_per_print</span> <span class="o">=</span> <span class="n">get_steps_per_print</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dump_state</span> <span class="o">=</span> <span class="n">get_dump_state</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_allgather</span> <span class="o">=</span> <span class="n">get_disable_allgather</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">allreduce_always_fp32</span> <span class="o">=</span> <span class="n">get_allreduce_always_fp32</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prescale_gradients</span> <span class="o">=</span> <span class="n">get_prescale_gradients</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sparse_gradients_enabled</span> <span class="o">=</span> <span class="n">get_sparse_gradients_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">allgather_size</span> <span class="o">=</span> <span class="n">get_allgather_size</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span> <span class="o">=</span> <span class="n">get_zero_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gradient_clipping</span> <span class="o">=</span> <span class="n">get_gradient_clipping</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span> <span class="o">=</span> <span class="n">get_fp16_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loss_scale</span> <span class="o">=</span> <span class="n">get_loss_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initial_dynamic_scale</span> <span class="o">=</span> <span class="n">get_initial_dynamic_scale</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dynamic_loss_scale_args</span> <span class="o">=</span> <span class="n">get_dynamic_loss_scale_args</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="o">=</span> <span class="n">get_optimizer_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">DEEPSPEED_OPTIMIZERS</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span> <span class="o">=</span> <span class="n">get_optimizer_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_name</span> <span class="o">=</span> <span class="n">get_scheduler_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scheduler_params</span> <span class="o">=</span> <span class="n">get_scheduler_params</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">wall_clock_breakdown</span> <span class="o">=</span> <span class="n">get_wall_clock_breakdown</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_enabled</span> <span class="o">=</span> <span class="n">get_tensorboard_enabled</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_output_path</span> <span class="o">=</span> <span class="n">get_tensorboard_output_path</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensorboard_job_name</span> <span class="o">=</span> <span class="n">get_tensorboard_job_name</span><span class="p">(</span><span class="n">param_dict</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_batch_size_sanity_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">,</span> \
+            <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is smaller than device count </span><span class="si">{}</span><span class="s1">&#39;</span> \
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+            <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by device count </span><span class="si">{}</span><span class="s1">&#39;</span> \
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+        <span class="n">per_device_batch_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> and </span><span class="si">{}</span><span class="s1"> should not be defined together&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is greater than </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">,</span> <span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">per_device_batch_size</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">per_device_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                    <span class="s1">&#39;DeepSpeedConfig: Per device batch size </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">per_device_batch_size</span><span class="p">,</span> <span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_BATCH_SIZE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="n">per_device_batch_size</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> \
+                <span class="s1">&#39;DeepSpeedConfig: Per device batch size </span><span class="si">{}</span><span class="s1"> is not divisible by </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span> \
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">per_device_batch_size</span><span class="p">,</span> <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_configure_train_batch_size</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_batch_size_sanity_check</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">per_device_batch_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">&gt;</span> <span class="n">per_device_batch_size</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="n">per_device_batch_size</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">=</span> <span class="n">per_device_batch_size</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span> <span class="o">//</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_sanity_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_error_check</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_do_warning_check</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">print</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">:&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">vars</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">arg</span> <span class="o">!=</span> <span class="s1">&#39;_param_dict&#39;</span><span class="p">:</span>
+                <span class="n">dots</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span> <span class="o">*</span> <span class="p">(</span><span class="mi">29</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">))</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">dots</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">)),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  json = </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">,</span>
+                       <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                       <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+                       <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">,</span>
+                                   <span class="s1">&#39;:&#39;</span><span class="p">))))</span>
+
+    <span class="k">def</span> <span class="nf">_do_error_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span><span class="p">,</span> <span class="s2">&quot;DeepSpeedConfig: ZeRO is only supported if fp16 is enabled&quot;</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">train_micro_batch_size_per_gpu</span><span class="p">,</span> <span class="s2">&quot;DeepSpeedConfig: </span><span class="si">{}</span><span class="s2"> is not defined&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">TRAIN_MICRO_BATCH_SIZE_PER_GPU</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span> <span class="s1">&#39;DeepSpeedConfig: </span><span class="si">{}</span><span class="s1"> is not defined&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">GRADIENT_ACCUMULATION_STEPS</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_do_warning_check</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">fp16_enabled</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fp16_enabled</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_enabled</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradient_clipping</span> <span class="o">&gt;</span> <span class="mf">0.</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">fp16_enabled</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s1">&#39;DeepSpeedConfig: gradient clipping enabled without FP16 enabled.&#39;</span><span class="p">)</span>
+
+        <span class="n">vocabulary_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">VOCABULARY_SIZE</span><span class="p">,</span> <span class="n">VOCABULARY_SIZE_DEFAULT</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">vocabulary_size</span> <span class="ow">and</span> <span class="n">vocabulary_size</span> <span class="o">%</span> <span class="n">TENSOR_CORE_ALIGN_SIZE</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;DeepSpeedConfig: vocabulary size </span><span class="si">{}</span><span class="s2"> is not aligned to </span><span class="si">{}</span><span class="s2">, may import tensor core utilization.&quot;</span>
+                <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">vocabulary_size</span><span class="p">,</span>
+                        <span class="n">TENSOR_CORE_ALIGN_SIZE</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> \
+            <span class="n">MAX_GRAD_NORM</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fp16_enabled</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s1">&#39;DeepSpeedConfig: In FP16 mode, DeepSpeed will pass </span><span class="si">{}</span><span class="s1">:</span><span class="si">{}</span><span class="s1"> to FP16 wrapper&#39;</span>
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">MAX_GRAD_NORM</span><span class="p">,</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s1">&#39;DeepSpeedConfig: In FP32 mode, DeepSpeed does not permit MAX_GRAD_NORM (</span><span class="si">{}</span><span class="s1">) &gt; 0, setting to zero&#39;</span>
+                    <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">optimizer_params</span><span class="p">[</span><span class="n">MAX_GRAD_NORM</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+</pre></div>
+
+  </div>
+</div>
+
+
+      <div class="class">
+          <h3>Ancestors (in MRO)</h3>
+          <ul class="class_list">
+          <li><a href="#deepspeed.pt.deepspeed_config.DeepSpeedConfig">DeepSpeedConfig</a></li>
+          <li>builtins.object</li>
+          </ul>
+          <h3>Static methods</h3>
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.DeepSpeedConfig.__init__">
+    <p>def <span class="ident">__init__</span>(</p><p>self, json_file, mpu=None)</p>
+    </div>
+
+
+
+
+    <div class="desc"><p>Initialize self.  See help(type(self)) for accurate signature.</p></div>
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.DeepSpeedConfig.__init__', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.DeepSpeedConfig.__init__" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">json_file</span><span class="p">,</span> <span class="n">mpu</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="nb">super</span><span class="p">(</span><span class="n">DeepSpeedConfig</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_rank</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mpu</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">get_world_size</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="n">mpu</span><span class="o">.</span><span class="n">get_data_parallel_world_size</span><span class="p">()</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">global_rank</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">world_size</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_initialize_params</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_configure_train_batch_size</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_do_sanity_check</span><span class="p">()</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+
+  <div class="item">
+    <div class="name def" id="deepspeed.pt.deepspeed_config.DeepSpeedConfig.print">
+    <p>def <span class="ident">print</span>(</p><p>self, name)</p>
+    </div>
+
+
+
+
+  <div class="source_cont">
+  <p class="source_link"><a href="javascript:void(0);" onclick="toggle('source-deepspeed.pt.deepspeed_config.DeepSpeedConfig.print', this);">Show source &equiv;</a></p>
+  <div id="source-deepspeed.pt.deepspeed_config.DeepSpeedConfig.print" class="source">
+    <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">print</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">:&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">vars</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">arg</span> <span class="o">!=</span> <span class="s1">&#39;_param_dict&#39;</span><span class="p">:</span>
+            <span class="n">dots</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span> <span class="o">*</span> <span class="p">(</span><span class="mi">29</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">arg</span><span class="p">))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1"> </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">dots</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">)),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;  json = </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_param_dict</span><span class="p">,</span>
+                   <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                   <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+                   <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">,</span>
+                               <span class="s1">&#39;:&#39;</span><span class="p">))))</span>
+</pre></div>
+
+  </div>
+</div>
+
+  </div>
+
+      </div>
+      </div>
+
+  </section>
+
+    </article>
+  <div class="clear"> </div>
+  <footer id="footer">
+    <p>
+      Documentation generated by
+      <a href="https://github.com/BurntSushi/pdoc">pdoc 0.3.2</a>
+    </p>
+
+    <p>pdoc is in the public domain with the
+      <a href="http://unlicense.org">UNLICENSE</a></p>
+
+    <p>Design by <a href="http://nadh.in">Kailash Nadh</a></p>
+  </footer>
+</div>
+</body>
+</html>
