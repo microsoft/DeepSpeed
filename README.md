@@ -128,9 +128,9 @@ combination. ZeRO boosts the scaling capability and efficiency further.
 * DeepSpeed provides system support to run models up to 100 billion parameters,
   10x larger than the state-of-art (8 billion NVIDIA GPT, 11 billion Google T5).
 * DeepSpeed can run large models more efficiently, up to 6x faster for models with
-  various sizes spanning 1.5B to 100B.  In particular, ZeRO-powered data parallelism 
+  various sizes spanning 1.5B to 100B.  More specifically, the data parallelism powered by ZeRO 
   is complementary and can be combined with different types of model parallelism.  It allows 
-  DeepSpeed to fit models with using lower degree of model parallelism and higher batch size, offering 
+  DeepSpeed to fit models using lower degree of model parallelism and higher batch size, offering 
   significant performance gains compared to using model parallelism alone.
 
   *Read more*: [technical report](https://arxiv.org/abs/1910.02054),
