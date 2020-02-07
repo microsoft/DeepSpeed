@@ -1,7 +1,7 @@
 #!/bin/bash
 
 name=${1-deepspeed}
-image=deepspeed/deepspeed:0.1
+image=deepspeed/deepspeed:latest
 echo "starting docker image named $name"
 docker run -d -t --name $name \
         --network host \
