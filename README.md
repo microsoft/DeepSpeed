@@ -115,8 +115,7 @@ DeepSpeed reduces the training memory footprint through a novel solution called 
 Redundancy Optimizer (ZeRO). Unlike basic data parallelism where memory states are
 replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
-4x relative to the state-of-art. You can read more about ZeRO in our [technical
-report](https://arxiv.org/abs/1910.02054).
+4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
 
 With this impressive memory reduction, early adopters of DeepSpeed have already
 produced  alanguage model (LM) with over 17B parameters called
