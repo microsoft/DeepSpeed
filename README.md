@@ -334,14 +334,14 @@ deepspeed --num_nodes=2 \
 	--deepspeed --deepspeed_config ds_config.json
 ```
 You can instead include or exclude specific resources using the `--include` and
-`--exclude` flags. For example, to use all available resources *except* GPU 0 on node
+`--exclude` flags. For example, to use all available resources **except** GPU 0 on node
 *worker-2* and GPUs 0 and 1 on *worker-3*:
 ```bash
 deepspeed --exclude="worker-2:0@worker-3:0,1" \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
-Similarly, you can use *only* GPUs 0 and 1 on *worker-2*:
+Similarly, you can use **only** GPUs 0 and 1 on *worker-2*:
 ```bash
 deepspeed --include="worker-2:0,1" \
 	<client_entry.py> <client args> \
