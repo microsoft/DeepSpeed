@@ -128,13 +128,16 @@ combination. ZeRO boosts the scaling capability and efficiency further.
 * DeepSpeed provides system support to run models up to 100 billion parameters,
   10x larger than the state-of-art (8 billion NVIDIA GPT, 11 billion Google T5).
 * DeepSpeed can run large models more efficiently, up to 6x faster for models with
-  various sizes spanning 1.5B to 100B.
+  various sizes spanning 1.5B to 100B.  In particular, ZeRO-powered data parallelism 
+  is complementary and can be combined with different types of model parallelism.  It allows 
+  DeepSpeed to fit models with using lower degree of model parallelism and higher batch size, offering 
+  significant performance gains compared to using model parallelism alone.
 
   *Read more*: [technical report](https://arxiv.org/abs/1910.02054),
   [GPT tutorial](../../Tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md),
   and [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md).
 
-![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png)
+![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png) *The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone. *
 
 
 ### Fast convergence for effectiveness
@@ -150,6 +153,9 @@ convergence to desired accuracy.
 [BERT tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md),
 [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md)
 -->
+
+### Good Usability
+Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custome model parallelisms, such as tensor slicing of Nvidia Megatron-LM.  
 
 ## Getting Started
 
