@@ -1,4 +1,3 @@
-# DeepSpeed
 [![Build Status](https://msdlserving.visualstudio.com/DeepScale/_apis/build/status/DeepSpeed%20GPU%20CI?branchName=master)](https://msdlserving.visualstudio.com/DeepScale/_build/latest?definitionId=36&branchName=master)
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
 
@@ -9,6 +8,7 @@ efficient, and effective.
 <p align="center"><i><b>5x Faster Training</b></i></p>
 <p align="center"><i><b>Minimal Code Change</b></i></p>
 
+DeepSpeed can train DL models with over a hundred billion parameters on current generation of GPU clusters, while achieving over 5x in system performance compared to the state-of-art. Early adopters of DeepSpeed have already produced language model (LM) with over 17B parameters establishing new SOTA in the LM category.
 
 Below we provide a brief feature list, see our detailed [feature
 overview](#deepspeed-feature-overview) for descriptions and usage guide.
@@ -91,7 +91,9 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
   | 256 V100 GPUs | NVIDIA    |                   3.9 |
   | 256 V100 GPUs | DeepSpeed |               **3.7** |
 
-  *Read more*: [BERT tutorial](../../Tutorials/bert_pretraining/deepspeed_bert_training.md)
+  <!---*Read more*: [BERT tutorial](../../Tutorials/bert_pretraining/deepspeed_bert_training.md)-->
+
+  *BERT Tutorial*: Coming Soon
 
 * DeepSpeed trains GPT2 (1.5 billion parameters) 3.75x faster than state-of-art, NVIDIA
   Megatron on Azure GPUs.
@@ -112,6 +114,8 @@ replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
 4x relative to the state-of-art. You can read more about ZeRO in our [technical
 report](https://arxiv.org/abs/1910.02054).
+
+With this impressive memory reduction, early adopters of DeepSpeed have already produced language model (LM) with over 17B parameters called [Turing-NLG](link-to-turing-blog) establishing new SOTA in the LM category.
 
 ### Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
@@ -134,10 +138,11 @@ optimizers such as [LAMB](https://arxiv.org/abs/1904.00962). These improve the
 effectiveness of model training and reduce the number of samples required to
 convergence to desired accuracy.
 
-*Read more*: [Tuning tutorial](../../Tutorials/1cycle/1Cycle.md), [BERT
-tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md), and [QANet
-tutorial](../../Tutorials/QANet/QANetTutorial.md)
-
+*Read more*: [Tuning tutorial](../../Tutorials/1cycle/1Cycle.md), [QANet
+tutorial](../../Tutorials/QANet/QANetTutorial.md) and *BERT Tutorial*: Coming Soon
+<!---[BERT
+tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md),
+-->
 
 ## Installation
 **TODO**
@@ -210,11 +215,12 @@ parallelism alone. When enabled, ZeRO allows training models with
 over 6 billion parameters without any model parallelism, and up to 100 billion
 parameter models with model parallelism on current generation hardware.
 
-For more details see the [ZeRO paper](https://arxiv.org/abs/1910.02054), [BERT
-tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md), and  [GPT
+For more details see the [ZeRO paper](https://arxiv.org/abs/1910.02054), [GPT
 tutorial](../../Tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md) on integration with
-DeepSpeed.
-
+DeepSpeed. Additional tutorals including *BERT Tutorial*: Coming Soon.
+<!---[BERT
+tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md),
+-->
 #### Constant Buffer Optimization (CBO)
 CBO enables high network and memory throughput while restricting memory usage to a
 constant size. For memory- and network-bound operations such as normalization or
