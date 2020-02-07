@@ -2,6 +2,8 @@
 
 azure_config=azure_config.json
 
+#TODO: make sure jq is installed
+
 if [ ! -f ${azure_config} ]; then
     echo "Cannot find $azure_config"
     exit 1
@@ -34,6 +36,7 @@ base_vm_name=deepspeed
 vm_image="nvidia:ngc_azure_17_11:ngc_gpu_cloud_19_11_3:19.11.3"
 
 az vm image terms accept --urn ${vm_image}
+
 for i in `seq 0 $(( num_vms - 1))`; do
     vm_name=${base_vm_name}_$i
     echo "creating $vm_name"
