@@ -1,8 +1,8 @@
 #!/bin/bash
 
+ssh_key=id_rsa
 docker_ssh_port=2222
 username=deepspeed
-ssh_key=~/.ssh/id_rsa
 
 num_vms=`az vm list | jq '. | length'`
 first_ip_addr=`az vm list-ip-addresses | jq .[0].virtualMachine.network.publicIpAddresses[0].ipAddress | sed 's/"//g'`
