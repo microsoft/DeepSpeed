@@ -298,28 +298,46 @@ We illustrate an example usage of DeepSpeed with the following assumptions:
 3. `client args` is the `argparse` command line arguments
 4. `ds_config.json` is the configuration file for DeepSpeed
 
-After installation, execute the following command and your PyTorch training job
-will be spread across all available nodes and GPUs specified in `myhostfile`:
+
+### Resource Configuration
+DeepSpeed configures compute resources with hostfiles that are compatible with
+[OpenMPI](https://www.open-mpi.org/) and [Horovod](https://github.com/horovod/horovod).
+A hostfile is a list of *hostnames*, which are machines accessible via passwordless
+SSH, and *slot counts*, which specify the number of GPUs available on the system. For
+example,
+```
+worker-1 slots=4
+worker-2 slots=4
+```
+specifies that two machines named *worker-1* and *worker-2* each have four GPUs to use
+for training.
+
+Hostfiles are specified with the `--hostfile` command line option. If no hostfile is
+specified, DeepSpeed searches for `/job/hostfile`. If no hostfile is specified or found,
+DeepSpeed queries the number of GPUs on the local machine.
+
+
+The following command launches a PyTorch training job across all available nodes and GPUs
+specified in `myhostfile`:
 ```bash
 deepspeed <client_entry.py> <client args> \
   --deepspeed --deepspeed_config ds_config.json --hostfile=myhostfile
 ```
 
-Alternatively, DeepSpeed allows you to restrict distributed training of your
-model to a subset of the available nodes and GPUs.  This feature is enabled
-through two command line arguments: `--num_nodes` and `--num_gpus`.  For
-example, distributed training can be restricted to use only two nodes with the
-following command:
+Alternatively, DeepSpeed allows you to restrict distributed training of your model to a
+subset of the available nodes and GPUs. This feature is enabled through two command line
+arguments: `--num_nodes` and `--num_gpus`. For example, distributed training can be
+restricted to use only two nodes with the following command:
 ```bash
 deepspeed --num_nodes=2 \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
-You can also include or exclude specific resources using the `--include` and `--exclude`
-flags. For example, to use all available resources *except* GPU 1 on nodes *worker-2*
-and *worker-3*:
+You can instead include or exclude specific resources using the `--include` and
+`--exclude` flags. For example, to use all available resources *except* GPU 0 on node
+*worker-2* and GPUs 0 and 1 on *worker-3*:
 ```bash
-deepspeed --exclude="worker-2:1@worker-3:1" \
+deepspeed --exclude="worker-2:0@worker-3:0,1" \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
