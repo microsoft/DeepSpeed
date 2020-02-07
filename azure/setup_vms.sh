@@ -40,6 +40,6 @@ for node_id in `seq 0 $((num_vms - 1))`; do
     scp $args ${ssh_config} ${addr}:.ssh/
     ssh $args ${addr} "sudo mkdir -p /job/; sudo chmod -R 777 /job; mkdir -p workdir"
     scp $args ${hostfile} ${addr}:/job/
-    ssh $args ${addr} 'GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone git@github.com:microsoft/DeepSpeed.git workdir/DeepSpeed'
+    ssh $args ${addr} 'git clone https://github.com/microsoft/DeepSpeed.git workdir/DeepSpeed'
 done
 rm $hostfile $ssh_config
