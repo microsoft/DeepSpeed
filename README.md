@@ -14,36 +14,6 @@ compared to the state-of-art. Early adopters of DeepSpeed have already produced
 a language model (LM) with over 17B parameters establishing a new SOTA in the LM
 category.
 
-Below we provide a brief feature list, see our detailed [feature
-overview](./docs/features.md) for descriptions and usage.
-
-* [Distributed Training with Mixed Precision](./docs/features.md#distributed-training-with-mixed-precision)
-    * 16-bit mixed precision
-    * Single-GPU/Multi-GPU/Multi-Node
-* [Model Parallelism](./docs/features.md#model-parallelism)
-    * Support for Custom Model Parallelism
-    * Integration with Megatron-LM
-* [Memory and Bandwidth Optimizations](./docs/features.md#memory-and-bandwidth-optimizations)
-    * The Zero Redundancy Optimizer (ZeRO)
-    * Constant Buffer Optimization (CBO)
-    * Smart Gradient Accumulation
-* [Training Features](./docs/features.md#training-features)
-    * Simplified training API
-    * Gradient Clipping
-    * Automatic loss scaling with mixed precision
-* [Training Optimizers](./docs/features.md#training-optimizers)
-    * Fused Adam optimizer and arbitrary `torch.optim.Optimizer`
-    * Memory bandwidth optimized FP16 Optimizer
-    * Large Batch Training with LAMB Optimizer
-    * Memory efficient Training with ZeRO Optimizer
-* [Training Agnostic Checkpointing](./docs/features.md#training-agnostic-checkpointing)
-* [Advanced Parameter Search](./docs/features.md#advanced-parameter-search)
-    * Learning Rate Range Test
-    * 1Cycle Learning Rate Schedule
-* [Simplified Data Loader](./docs/features.md#simplified-data-loader)
-* [Performance Analysis and Debugging](./docs/features.md#performance-analysis-and-debugging)
-
-
 
 ## Table of Contents
 
@@ -136,7 +106,9 @@ combination. ZeRO boosts the scaling capability and efficiency further.
   and [GPT tutorial](./docs/tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md).
   <!-- and [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md). -->
 
-![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png) *The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone. *
+![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png) 
+
+*The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone.*
 
 
 ### Fast convergence for effectiveness
@@ -156,7 +128,41 @@ convergence to desired accuracy.
 ### Good Usability
 Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custome model parallelisms, such as tensor slicing of Nvidia Megatron-LM.  
 
+
+### Features
+
+Below we provide a brief feature list, see our detailed [feature
+overview](./docs/features.md) for descriptions and usage.
+
+* [Distributed Training with Mixed Precision](./docs/features.md#distributed-training-with-mixed-precision)
+    * 16-bit mixed precision
+    * Single-GPU/Multi-GPU/Multi-Node
+* [Model Parallelism](./docs/features.md#model-parallelism)
+    * Support for Custom Model Parallelism
+    * Integration with Megatron-LM
+* [Memory and Bandwidth Optimizations](./docs/features.md#memory-and-bandwidth-optimizations)
+    * The Zero Redundancy Optimizer (ZeRO)
+    * Constant Buffer Optimization (CBO)
+    * Smart Gradient Accumulation
+* [Training Features](./docs/features.md#training-features)
+    * Simplified training API
+    * Gradient Clipping
+    * Automatic loss scaling with mixed precision
+* [Training Optimizers](./docs/features.md#training-optimizers)
+    * Fused Adam optimizer and arbitrary `torch.optim.Optimizer`
+    * Memory bandwidth optimized FP16 Optimizer
+    * Large Batch Training with LAMB Optimizer
+    * Memory efficient Training with ZeRO Optimizer
+* [Training Agnostic Checkpointing](./docs/features.md#training-agnostic-checkpointing)
+* [Advanced Parameter Search](./docs/features.md#advanced-parameter-search)
+    * Learning Rate Range Test
+    * 1Cycle Learning Rate Schedule
+* [Simplified Data Loader](./docs/features.md#simplified-data-loader)
+* [Performance Analysis and Debugging](./docs/features.md#performance-analysis-and-debugging)
+
+
 ## Getting Started
+
 
 ### Installation
 **TODO**
