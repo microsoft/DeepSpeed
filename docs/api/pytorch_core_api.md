@@ -17,3 +17,10 @@
 
 [save\_checkpoint](../htmlfiles/api/full/pt/deepspeed_light.html#deepspeed.pt.deepspeed_light.DeepSpeedLight.save_checkpoint)<br />
 [load\_checkpoint](../htmlfiles/api/full/pt/deepspeed_light.html#deepspeed.pt.deepspeed_light.DeepSpeedLight.load_checkpoint)<br />
+
+
+
+### Versioning
+
+[git\_branch](../htmlfiles/api/full/version_info.m.html#deepspeed.version_info.git_branch)<br />
+[git\_hash](../htmlfiles/api/full/version_info.m.html#deepspeed.version_info.git_hash)<br />
