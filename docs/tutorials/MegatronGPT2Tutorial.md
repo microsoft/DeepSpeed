@@ -351,18 +351,18 @@ significantly faster than using Megatron without DeepSpeed.
 The observed performance improvements depend on several factors such as the memory per
 GPU, the local GPU interconnect (i.e., PCI-E vs NVLINK vs NVSwitch), the model size,
 inter node network interconnect, etc. Below, we show some of the performance improvements
-from using DeepSpeed over Megatron on a 16 GPU Azure cluster and a 400 GPU DGX-2 cluster.
+from using DeepSpeed over Megatron on a 16 GPU Low Bandwidth (40 Gbps) cluster and a 400 GPU DGX-2 High Bandwidth (800 Gbps) cluster.
 For details please see the [ZeRO Paper](https://arxiv.org/abs/1910.02054v2). We also
 present performance improvement on a 64 GPU cluster along with detailed configuration
 analysis to show where the improvements come from.
 
 ![DeepSpeed-vs-Megatron](../figures/DeepSpeed-vs-Megatron.png)
 
-### 3.1 On Azure GPU Cluster
+### 3.1 On Low Bandwidth GPU Cluster
 The figure above shows that training 1.5B parameter model with DeepSpeed is
 nearly 4x faster than without DeepSpeed on a cluster with 4 nodes, 4 GPU per
 node, and 16 GPUs total. These GPUs have 16GB of memory each, and PCI-E
-interconnects GPUs within a node.
+interconnects GPUs within a node, and 40 Gbps infiniband across nodes.
 
 The performance improvement comes from lower model parallelism degree and
 larger batch size as discussed earlier. Training 1.5B parameter model with
@@ -373,9 +373,9 @@ effective batch size of 128 without running out of memory, resulting in
 significantly higher performance.
 
 
-### 3.2 On DGX-2 GPU Cluster with Infiniband
+### 3.2 On High bandwidth DGX-2 GPU Cluster
 Each GPU on the DGX-2 cluster has 32 GB of memory, and GPUs inside a box is connected via
-the high-bandwidth NVSwitch. As such, running a 1.5B model on DGX-2 requires less model
+the high-bandwidth NVSwitch. DGX-2 nodes are connected to each other via 800 Gbps (8 x 100Gbps) infiniband interconnect. As such, running a 1.5B model on DGX-2 requires less model
 parallelism, and the performance improvement from DeepSpeed for this model size is not
 significant. However, at larger model sizes, Megatron still requires significantly larger
 model parallelism degree, and can only run much smaller batch sizes than DeepSpeed.
@@ -390,7 +390,6 @@ improvements, we also present the configuration table for both Megatron and
 DeepSpeed. It shows the smallest model parallelism degree and the largest batch
 size that can be used to train these models without running out of memory. As
 discussed above, the tables demonstrate that DeepSpeed can run with smaller
-model parallelism and larger batch size than Megatron, allowing DeepSpeed to
 achieve better performance than Megatron.
 
 ![DeepSpeed Performance SpeedUp](../figures/megatron-gpt2-perf-test.png)
