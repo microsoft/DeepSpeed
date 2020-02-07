@@ -8,4 +8,4 @@ docker run -d -t --name $name \
         -v ${HOME}/workdir:/home/deepspeed/workdir \
         -v ${HOME}/.ssh:/home/deepspeed/.ssh \
         -v /job/hostfile:/job/hostfile \
-        --gpus all $image 'sudo service ssh start && bash'
+        --gpus all $image "/bin/bash -c 'sudo service ssh start && sleep infinity'"
