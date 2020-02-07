@@ -101,7 +101,7 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
 * DeepSpeed trains GPT2 (1.5 billion parameters) 3.75x faster than state-of-art, NVIDIA
   Megatron on Azure GPUs.
 
-  *Read more*: [GPT tutorial](../../Tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md)
+  *Read more*: [GPT tutorial](./docs/tutorials/MegatronGPT2Tutorial.md)
 
 
 
@@ -127,14 +127,14 @@ combination. ZeRO boosts the scaling capability and efficiency further.
 * DeepSpeed provides system support to run models up to 100 billion parameters,
   10x larger than the state-of-art (8 billion NVIDIA GPT, 11 billion Google T5).
 * DeepSpeed can run large models more efficiently, up to 6x faster for models with
-  various sizes spanning 1.5B to 100B.  More specifically, the data parallelism powered by ZeRO 
-  is complementary and can be combined with different types of model parallelism.  It allows 
-  DeepSpeed to fit models using lower degree of model parallelism and higher batch size, offering 
+  various sizes spanning 1.5B to 100B.  More specifically, the data parallelism powered by ZeRO
+  is complementary and can be combined with different types of model parallelism.  It allows
+  DeepSpeed to fit models using lower degree of model parallelism and higher batch size, offering
   significant performance gains compared to using model parallelism alone.
 
   *Read more*: [technical report](https://arxiv.org/abs/1910.02054),
-  [GPT tutorial](../../Tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md),
-  and [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md).
+  and [GPT tutorial](./docs/tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md).
+  <!-- and [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md). -->
 
 ![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png) *The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone. *
 
