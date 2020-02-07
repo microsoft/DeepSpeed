@@ -33,7 +33,7 @@ az group create --name ${resource_group} --location $location
 base_vm_name=deepspeed
 vm_image="nvidia:ngc_azure_17_11:ngc_gpu_cloud_19_11_3:19.11.3"
 
-#az vm image terms accept --urn ${vm_image}
+az vm image terms accept --urn ${vm_image}
 for i in `seq 0 $(( num_vms - 1))`; do
     vm_name=${base_vm_name}_$i
     echo "creating $vm_name"
