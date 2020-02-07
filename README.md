@@ -201,8 +201,7 @@ mpu.get_data_parallel_world_size()
 #### Integration with Megatron-LM
 **TODO: port tutorial to its own page**
 DeepSpeed is fully compatible with [Megatron](https://github.com/NVIDIA/Megatron-LM).
-Please see the Megatron-LM
-[tutorial](../../Tutorials/Megatron_GPT2/MegatronGPT2Tutorial.md) for details.
+Please see the [Megatron-LM tutorial](docs/tutorials/MegatronGPT2Tutorial.md) for details.
 
 
 
