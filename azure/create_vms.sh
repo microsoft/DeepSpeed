@@ -21,7 +21,7 @@ for i in `seq 0 $(( num_vms - 1))`; do
       --resource-group ${resource_group} \
       --name ${vm_name} \
       --image ${vm_image} \
-      --admin-username azureuser \
+      --admin-username deepspeed \
       --size ${azure_sku} \
       --ssh-key-values ${ssh_key}
 done
