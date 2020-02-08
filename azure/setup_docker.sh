@@ -21,6 +21,15 @@ if [ $num_vms == "null" ]; then echo 'missing num_vms in config'; exit 1; fi
 args="-i ${ssh_key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 username=deepspeed
 
+update_script="
+docker pull deepspeed/deepspeed:latest;
+ln -s workdir/DeepSpeed/azure/attach.sh attach.sh;
+cd workdir/DeepSpeed;
+git pull;
+git submodule update --init --recursive;
+bash azure/start_container.sh;
+"
+
 if [ $parallel == true ]; then
     echo "parallel docker pull"
     hosts=""
@@ -28,14 +37,12 @@ if [ $parallel == true ]; then
         addr=`az vm list-ip-addresses | jq .[${node_id}].virtualMachine.network.publicIpAddresses[0].ipAddress | sed 's/"//g'`
         hosts="${addr},${hosts}"
     done
-    PDSH_SSH_ARGS_APPEND=${args} pdsh -w $hosts -l ${username} "docker pull deepspeed/deepspeed:latest"
-    PDSH_SSH_ARGS_APPEND=${args} pdsh -w $hosts -l ${username} "cd workdir/DeepSpeed; git pull; git submodule update --init --recursive; bash azure/start_container.sh"
+    PDSH_SSH_ARGS_APPEND=${args} pdsh -w $hosts -l ${username} $update_script
 else
     echo "sequential docker pull"
     for node_id in `seq 0 $((num_vms - 1))`; do
         ip_addr=`az vm list-ip-addresses | jq .[${node_id}].virtualMachine.network.publicIpAddresses[0].ipAddress | sed 's/"//g'`
         addr=${username}@${ip_addr}
-        ssh ${args} $addr "docker pull deepspeed/deepspeed:latest"
-        ssh ${args} $addr "cd workdir/DeepSpeed; git pull; git submodule update --init --recursive; bash azure/start_container.sh"
+        ssh ${args} $addr $update_script
     done
 fi
