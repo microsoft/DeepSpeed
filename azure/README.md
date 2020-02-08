@@ -40,3 +40,6 @@ Everything should be up and running at this point, let's access the running Deep
  * Change directories into the azure folder of this repo via: `cd ~/workdir/DeepSpeed/azure`
  * Attach the running docker container via: `./attach.sh`
  * You should now be able to ssh into any other docker container, the containers can be accessed via their SSH alias of 'worker-N' where N is the VM number between [0, num_vms). In this example we should be able to successfully run `ssh worker-1 hostname`.
+
+## Run Cifar example model
+TODO
