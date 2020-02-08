@@ -1,14 +1,14 @@
 #!/bin/bash
 
-config_file=azure_config.json 
-while getopts 'c:' flag; do 
-  case "${flag}" in 
-    c) config_file="${OPTARG}" ;; 
-    *) error "Unexpected option ${flag}" ;; 
-  esac 
-done 
-shift $(expr $OPTIND - 1) 
-echo "Using $config_file" 
+config_file=azure_config.json
+while getopts 'c:' flag; do
+  case "${flag}" in
+    c) config_file="${OPTARG}" ;;
+    *) error "Unexpected option ${flag}" ;;
+  esac
+done
+shift $(expr $OPTIND - 1)
+echo "Using $config_file"
 
 nodeid=$1
 cmds=${@:2}
