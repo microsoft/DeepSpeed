@@ -29,3 +29,8 @@ To help with launching Azure instances we suggest using the [Azure CLI](https://
 
  ## Start the DeepSpeed docker container
  [./setup_docker.sh](setup_docker.sh) will pull the DeepSpeed docker image on all VMs and start a container instance in the background.
+
+ ## Access VMs
+ [./azure_ssh.sh](azure_ssh.sh) will let you SSH into any of your VMs with this syntax: `./azure_ssh.sh <node-id> [command]`, the node-id is a number between [0, num_vms). This script will find the public IP address of your VM and use the SSH key you provided in the azure config JSON.
+ 
+ 
