@@ -1,1 +1,1 @@
-docs/azure.md
+../docs/azure.md
