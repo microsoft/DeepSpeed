@@ -12,7 +12,7 @@ several helper scripts to get you quickly started using DeepSpeed with Azure.
  * Alternatively you can use the Azure in-browser shell: https://shell.azure.com/
 
 ## Create an SSH key
-Generate a SSH key that will be used across this tutorial to SSH into your VMs and
+Generate an SSH key that will be used across this tutorial to SSH into your VMs and
 between Docker containers. `ssh-keygen` is the recommended way of doing this. Our scripts
 assume your key is located inside the same directory as the Azure scripts.
 
