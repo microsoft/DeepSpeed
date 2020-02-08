@@ -29,6 +29,7 @@ for node_id in `seq 0 $((num_vms - 1))`; do
     echo "Host worker-${node_id}
     HostName ${private_ip_addr}
     Port ${docker_ssh_port}
+    StrictHostKeyChecking no
     " >> ${ssh_config}
 done
 
