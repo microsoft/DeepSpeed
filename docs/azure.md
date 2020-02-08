@@ -41,8 +41,13 @@ Everything should be up and running at this point, let's access the running Deep
  * Attach the running docker container via: `./attach.sh`
  * You should now be able to ssh into any other docker container, the containers can be accessed via their SSH alias of 'worker-N' where N is the VM number between [0, num_vms). In this example we should be able to successfully run `ssh worker-1 hostname`. You can also use `ds_ssh` to parallel ssh into all your worker containers.
 
-## Run Cifar example model
-As a simple example to make sure everything is setup okay we will run the DeepSpeed cifar model example.
- * First we must install the python dependencies necessary to run our cifar example model. You can do this across your cluster via: `ds_ssh pip install -r ~/workdir/DeepSpeed/DeepSpeedExamples/cifar/requirements.txt`.
+## Run CIFAR-10 example model
+As a simple example to make sure everything is setup okay we will run the DeepSpeed CIFAR-10 model example.
+ * First we must install the python dependencies necessary to run our CIFAR-10 example model. You can do this across your cluster via: `ds_ssh pip install -r ~/workdir/DeepSpeed/DeepSpeedExamples/cifar/requirements.txt`.
  *  Now we can run the model, let's change directories to `cd ~/workdir/DeepSpeed/DeepSpeedExamples/cifar`.
  * Launch training across your entire cluster via: `deepspeed cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json` or `./run_ds.sh`.
+ * This should run the CIFAR-10 example model, the accuracy that you will achieve will be dependent on the number of GPUs you are training with, we are using this example simply to demonstrate that everything is setup correctly and less on training a suitable CIFAR-10 model.
+
+## Megatron-LM GPT2
+DeepSpeed includes an example model using Megatron-LM's GPT2, please refer to the [full Megatron tutorial](tutorials/MegatronGPT2Tutorial.md) for more details.
+ * In order to fully train GPT2 with DeepSpeed and ZeRO we recommend using 8 instances of Azure's Standard_ND40rs_v2 SKU for a total of 64 V100 GPUs. With this setup you should be able to train 153.6M samples in less than 2 weeks of training.
