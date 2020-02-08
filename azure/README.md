@@ -32,3 +32,11 @@ To help with launching Azure instances we suggest using the [Azure CLI](https://
 
  ## Access VMs
  [./azure_ssh.sh](azure_ssh.sh) will let you SSH into any of your VMs with this syntax: `./azure_ssh.sh <node-id> [command]`, the node-id is a number between [0, num_vms). This script will find the public IP address of your VM and use the SSH key you provided in the azure config JSON.
+
+## Access DeepSpeed container
+Everything should be up and running at this point, let's access the running DeepSpeed container on the first VM and make sure we can talk to the other containers in our setup. Let's complete the following steps:
+
+ * SSH into the first VM via: `./azure_ssh.sh 0`
+ * Change directories into the azure folder of this repo via: `cd ~/workdir/DeepSpeed/azure`
+ * Attach the running docker container via: `./attach.sh`
+ * You should now be able to ssh into any other docker container, the containers can be accessed via their SSH alias of 'worker-N' where N is the VM number between [0, num_vms).
