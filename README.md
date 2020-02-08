@@ -167,7 +167,7 @@ overview](./docs/features.md) for descriptions and usage.
 
 ### Installation
 
-Please see our [Azure tutorial](azure/README.md) to get started with DeepSpeed on Azure!
+Please see our [Azure tutorial](docs/azure.md) to get started with DeepSpeed on Azure!
 
 
 ### Writing DeepSpeed Models
