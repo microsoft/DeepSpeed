@@ -39,7 +39,10 @@ Everything should be up and running at this point, let's access the running Deep
  * SSH into the first VM via: `./azure_ssh.sh 0`
  * Change directories into the azure folder of this repo via: `cd ~/workdir/DeepSpeed/azure`
  * Attach the running docker container via: `./attach.sh`
- * You should now be able to ssh into any other docker container, the containers can be accessed via their SSH alias of 'worker-N' where N is the VM number between [0, num_vms). In this example we should be able to successfully run `ssh worker-1 hostname`.
+ * You should now be able to ssh into any other docker container, the containers can be accessed via their SSH alias of 'worker-N' where N is the VM number between [0, num_vms). In this example we should be able to successfully run `ssh worker-1 hostname`. You can also use `ds_ssh` to parallel ssh into all your worker containers.
 
 ## Run Cifar example model
-TODO
+As a simple example to make sure everything is setup okay we will run the DeepSpeed cifar model example.
+ * First we must install the python dependencies necessary to run our cifar example model. You can do this across your cluster via: `ds_ssh pip install -r ~/workdir/DeepSpeed/DeepSpeedExamples/cifar/requirements.txt`.
+ *  Now we can run the model, let's change directories to `cd ~/workdir/DeepSpeed/DeepSpeedExamples/cifar`.
+ * Launch training across your entire cluster via: `deepspeed cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json` or `./run_ds.sh`.
