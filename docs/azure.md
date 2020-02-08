@@ -18,8 +18,8 @@ assume your key is located inside the same directory as the Azure scripts.
 
 ## Azure Config JSON
 Our helper scripts depend on the following a configuration JSON for deployment and setup.
-We have provided a simple example JSON (see: [azure_config.json](azure_config.json)) that
-sets up a basic environment with two VMs. See the example below:
+We have provided a simple example JSON in `azure_config.json` that sets up a basic
+environment with two VMs. See the example below:
  ```json
 {
   "num_vms": 2,
@@ -33,7 +33,7 @@ sets up a basic environment with two VMs. See the example below:
 ## Create Azure VMs
 We first need to allocate the VMs. We provide a script
 ```bash
-$ ./create_vms.sh
+./create_vms.sh
 ```
 to create VMs with the Azure SKU in the region specified in `azure_config.json`. Feel
 free to customize your JSON to your desired region/SKU. This step will take a few minutes
@@ -76,7 +76,7 @@ Let's complete the following steps:
  * Change directories into the azure folder of this repo via: `cd ~/workdir/DeepSpeed/azure`
  * Attach the running docker container via: `./attach.sh`
  * You should now be able to `ssh` into any other docker container, the containers can be
-   accessed via their SSH alias of 'worker-N' where N is the VM number between `0`
+   accessed via their SSH alias of `worker-N`, where `N` is the VM number between `0`
    and `num_vms-1`. In this example we should be able to successfully run `ssh worker-1
    hostname`. You can also use `ds_ssh` to execute a command in parallel on all of your
    worker containers.
