@@ -9,7 +9,7 @@ method for discovering the largest learning rate values that can be used to
 train a model without divergence. Data scientists are often interested in this
 information because  large learning rates lead to faster model convergence than
 a small learning rates.  Moreover, large learning rates are crucial in learning
-rate schedules, such as [CLR](https://arxiv.org/abs/1506.01186)  and
+rate schedules such as [CLR](https://arxiv.org/abs/1506.01186)  and
 [1Cycle](https://arxiv.org/abs/1803.09820), which are used to train effectively
 with large batch sizes. DeepSpeed provides LRRT for model training in PyTorch
 frameworks.
@@ -19,7 +19,7 @@ frameworks.
 To use DeepSpeed's LRRT, you must satisfy the following two conditions:
 
 1. Integrate DeepSpeed into your training script using this
-[guide](#../../README.md#getting-started).
+[guide](../../README.md#getting-started).
 2. Add the parameters to configure LRRT to the parameters of your model. The
 LRRT parameters are defined below.
 
