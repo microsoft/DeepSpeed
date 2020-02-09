@@ -21,8 +21,8 @@ assume your key is located inside the same directory as the Azure scripts.
 ## Azure Config JSON
 Our helper scripts depend on the following a configuration JSON for deployment and setup.
 We have provided a simple example JSON in `azure_config.json` that sets up a basic
-environment with two VMs. This config uses the NV6_Promo instance type which 
-has x1 NVIDIA Tesla M60 GPU per VM, you can see more details (along with pricing) on the 
+environment with two VMs. This config uses the NV6_Promo instance type which
+has x1 NVIDIA Tesla M60 GPU per VM, you can see more details (along with pricing) on the
 [Linux Virtual Machines Pricing](https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/) page.
 
 See the example below:
@@ -88,13 +88,13 @@ container on the first VM and make sure we can talk to the other containers in o
  * You should now be able to `ssh` into any other docker container, the containers can be
    accessed via their SSH alias of `worker-N`, where `N` is the VM number between `0`
    and `num_vms-1`. In this example we should be able to successfully run `ssh worker-1
-   hostname` which will return the hostname of worker-1. 
- 
+   hostname` which will return the hostname of worker-1.
+
 ## Parallel SSH across containers
- DeepSpeed comes installed with a helper script `ds_ssh` which is a wrapper around 
- the [pdsh](https://linux.die.net/man/1/pdsh) command that lets you issue commands 
- to groups of hosts (via SSH) in parallel. This wrapper simply connects with the 
- hostfile that defines all the containers in your deployment. For example if you run 
+ DeepSpeed comes installed with a helper script `ds_ssh` which is a wrapper around
+ the [pdsh](https://linux.die.net/man/1/pdsh) command that lets you issue commands
+ to groups of hosts (via SSH) in parallel. This wrapper simply connects with the
+ hostfile that defines all the containers in your deployment. For example if you run
  `ds_ssh hostname` you should see a list of all the hostnames in your deployment.
 
 ## Run CIFAR-10 example model
