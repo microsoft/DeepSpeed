@@ -122,6 +122,6 @@ the first DeepSpeed container:
 DeepSpeed includes an example model using Megatron-LM's GPT2. Please refer to the full
 [Megatron tutorial](tutorials/MegatronGPT2Tutorial.md) for more details.
  * In order to fully train GPT2 with DeepSpeed and ZeRO we recommend using 8 instances of
-   Azure's Standard_ND40rs_v2 SKU for a total of 64 NVIDIA V100 GPUs. With this setup and 
-   a batch size of 1536 you should be able to complete 100k training steps (153.6 million 
+   Azure's Standard_ND40rs_v2 SKU for a total of 64 NVIDIA V100 GPUs. With this setup and
+   a batch size of 1536 you should be able to complete 100k training steps (153.6 million
    samples) in less than 2 weeks of training.
