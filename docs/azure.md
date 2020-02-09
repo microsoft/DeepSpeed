@@ -30,6 +30,11 @@ environment with two VMs. See the example below:
 }
 ```
 
+## Dependencies
+The scripts in this tutorial require [jq](https://stedolan.github.io/jq/) to help with
+parsing JSON from the command line. Also it is recommended to install
+[pdsh](https://linux.die.net/man/1/pdsh) to help launch ssh connections in parallel.
+
 ## Create Azure VMs
 We first need to allocate the VMs. We provide a script
 ```bash
