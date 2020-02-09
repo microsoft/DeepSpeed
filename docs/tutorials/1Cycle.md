@@ -28,7 +28,7 @@ number of training steps. In the decay phase, the learning rate decays starting
 from the minimum value of the cycle phase. An example of 1-cycle learning rate
 schedule during model training is illustrated below.
 
-![1cycle_lr](1cycle_lr.png)
+![1cycle_lr](../figures/1cycle_lr.png)
 
 ### 1-Cycle Parameters
 
@@ -123,7 +123,8 @@ these learning rate schedules:
 2. **LinearScale**: using a fixed learning rate that is 8X of **Fixed**.
 3. **1Cycle**: using 1-Cycle schedule.
 
-![model_convergence](model_convergence.png)
+![model_convergence](../figures/model_convergence.png)
+
 With **1Cycle**, the model converges faster than the other schedules to the
 target AUC . In fact, **1Cycle** converges as fast as the optimal 1-GPU
 training (not shown). For **Fixed**,  convergence is about 5X slower (needs 5X
@@ -131,7 +132,8 @@ more data samples). With **LinearScale**, the model diverges because the
 learning rate is too high. The plot below illustrates the schedules by
 reporting the learning rate values during 8-GPU training.
 
-![lr_schedule](lr_schedule.png)
+![lr_schedule](../figures/lr_schedule.png)
+
 We see that the learning rate for **1Cycle** is always larger than **Fixed**
 and is briefly larger than **LinearScale** to achieve faster convergence. Also
 **1Cycle** lowers the learning rate later during training to avoid model
