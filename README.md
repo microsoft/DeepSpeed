@@ -321,7 +321,7 @@ for training.
 
 Hostfiles are specified with the `--hostfile` command line option. If no hostfile is
 specified, DeepSpeed searches for `/job/hostfile`. If no hostfile is specified or found,
-DeepSpeed queries the number of GPUs on the local machine to discover the number of local 
+DeepSpeed queries the number of GPUs on the local machine to discover the number of local
 slots available.
 
 
@@ -357,10 +357,10 @@ deepspeed --include="worker-2:0,1" \
 ```
 
 ### Resource Configuration (single-node)
-In the case that we are only running on a single node (with one or more GPUs) DeepSpeed 
+In the case that we are only running on a single node (with one or more GPUs) DeepSpeed
 *does not* require a hostfile as described above. If a hostfile is not detected or passed in
-then DeepSpeed will query the number of GPUs on the local machine to discover the number of 
-slots available. The --include/--exclude arguments work as normal in this case but the user 
+then DeepSpeed will query the number of GPUs on the local machine to discover the number of
+slots available. The --include/--exclude arguments work as normal in this case but the user
 should specify 'localhost' as the hostname.
 
 
