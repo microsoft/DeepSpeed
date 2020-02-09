@@ -1,9 +1,9 @@
 # DeepSpeed with Azure
 
 This tutorial will help you get started running DeepSpeed on [Azure virtual
-machines](https://azure.microsoft.com/en-us/services/virtual-machines/). 
-Looking forward, we will be integrating these techniques and additional enhancements 
-into the [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/) platform to 
+machines](https://azure.microsoft.com/en-us/services/virtual-machines/).
+Looking forward, we will be integrating these techniques and additional enhancements
+into the [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/) platform to
 benefit all your large model training jobs.
 
 If you don't already have an Azure account please see more details here: [https://azure.microsoft.com/](https://azure.microsoft.com/).
