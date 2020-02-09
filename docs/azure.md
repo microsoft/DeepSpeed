@@ -20,11 +20,13 @@ between Docker containers. `ssh-keygen` is the recommended way of doing this. Ou
 assume your key is located inside the same directory as the Azure scripts.
 
 ## Azure Config JSON
-Our helper scripts depend on the following a configuration JSON for deployment and setup.
-We have provided a simple example JSON in `azure_config.json` that sets up a basic
-environment with two VMs. This config uses the NV6_Promo instance type which
-has x1 NVIDIA Tesla M60 GPU per VM, you can see more details (along with pricing) on the
-[Linux Virtual Machines Pricing](https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/) page.
+Our helper scripts depend on the following a configuration JSON for deployment
+and setup.  We have provided a simple example JSON in `azure_config.json` that
+sets up a basic environment with two VMs. This config uses the NV6_Promo
+instance type which has one NVIDIA Tesla M60 GPU per VM. You can read more
+details about the VM on the [Linux Virtual Machines
+Pricing](https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/)
+page.
 
 See the example below:
  ```json

@@ -357,11 +357,12 @@ deepspeed --include="worker-2:0,1" \
 ```
 
 ### Resource Configuration (single-node)
-In the case that we are only running on a single node (with one or more GPUs) DeepSpeed
-*does not* require a hostfile as described above. If a hostfile is not detected or passed in
-then DeepSpeed will query the number of GPUs on the local machine to discover the number of
-slots available. The `--include/--exclude` arguments work as normal in this case but the user
-should specify 'localhost' as the hostname.
+In the case that we are only running on a single node (with one or more GPUs)
+DeepSpeed *does not* require a hostfile as described above. If a hostfile is
+not detected or passed in then DeepSpeed will query the number of GPUs on the
+local machine to discover the number of slots available. The `--include` and
+`--exclude` arguments work as normal, but the user should specify 'localhost'
+as the hostname.
 
 
 ## Further Reading
