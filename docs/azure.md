@@ -5,6 +5,8 @@ machines](https://azure.microsoft.com/en-us/services/virtual-machines/). Support
 [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/) will be coming
 soon!
 
+If you don't already have an Azure account please see more details here: [https://azure.microsoft.com/](https://azure.microsoft.com/).
+
 To help with launching Azure instances we suggest using the [Azure
 CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest). We have created
 several helper scripts to get you quickly started using DeepSpeed with Azure.
@@ -19,7 +21,11 @@ assume your key is located inside the same directory as the Azure scripts.
 ## Azure Config JSON
 Our helper scripts depend on the following a configuration JSON for deployment and setup.
 We have provided a simple example JSON in `azure_config.json` that sets up a basic
-environment with two VMs. See the example below:
+environment with two VMs. This config uses the NV6_Promo instance type which 
+has x1 NVIDIA Tesla M60 GPU per VM, you can see more details (along with pricing) on the 
+[Linux Virtual Machines Pricing](https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/) page.
+
+See the example below:
  ```json
 {
   "num_vms": 2,
@@ -73,9 +79,8 @@ public IP address of your VM and use the SSH key provided in the Azure configura
 JSON.
 
 ## Access DeepSpeed container
-Everything should be up and running at this point. Set's access the running DeepSpeed
-container on the first VM and make sure we can talk to the other containers in our setup.
-Let's complete the following steps:
+Everything should be up and running at this point. Let's access the running DeepSpeed
+container on the first VM and make sure we can talk to the other containers in our deployment.
 
  * SSH into the first VM via: `./azure_ssh.sh 0`
  * Change directories into the azure folder of this repo via: `cd ~/workdir/DeepSpeed/azure`
@@ -83,8 +88,14 @@ Let's complete the following steps:
  * You should now be able to `ssh` into any other docker container, the containers can be
    accessed via their SSH alias of `worker-N`, where `N` is the VM number between `0`
    and `num_vms-1`. In this example we should be able to successfully run `ssh worker-1
-   hostname`. You can also use `ds_ssh` to execute a command in parallel on all of your
-   worker containers.
+   hostname` which will return the hostname of worker-1. 
+ 
+## Parallel SSH across containers
+ DeepSpeed comes installed with a helper script `ds_ssh` which is a wrapper around 
+ the [pdsh](https://linux.die.net/man/1/pdsh) command that lets you issue commands 
+ to groups of hosts (via SSH) in parallel. This wrapper simply connects with the 
+ hostfile that defines all the containers in your deployment. For example if you run 
+ `ds_ssh hostname` you should see a list of all the hostnames in your deployment.
 
 ## Run CIFAR-10 example model
 We will now run the DeepSpeed CIFAR-10 model example to test the VM setup. From inside
@@ -105,13 +116,6 @@ the first DeepSpeed container:
   ```bash
   deepspeed cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
   ```
-  Alternatively, we provide a helper script `./run_ds.sh`.
-
-This will train a simple CIFAR-10 example model. The accuracy that you will achieve will
-be dependent on the number of GPUs you are training with, we are using this example
-simply to demonstrate that everything is setup correctly and less on training a suitable
-CIFAR-10 model.
-
 
 ## Megatron-LM GPT2
 DeepSpeed includes an example model using Megatron-LM's GPT2. Please refer to the full
