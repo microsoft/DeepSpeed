@@ -10,10 +10,7 @@ efficient, and effective.
 
 DeepSpeed can train DL models with over a hundred billion parameters on current
 generation of GPU clusters, while achieving over 5x in system performance
-compared to the state-of-art. Early adopters of DeepSpeed have already produced
-a language model (LM) with over 17B parameters establishing a new SOTA in the LM
-category.
-
+compared to the state-of-art.
 
 ## Table of Contents
 
@@ -86,10 +83,6 @@ Redundancy Optimizer (ZeRO). Unlike basic data parallelism where memory states a
 replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
 4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
-
-With this impressive memory reduction, early adopters of DeepSpeed have already
-produced  alanguage model (LM) with over 17B parameters called
-[Turing-NLG](link-to-turing-blog), establishing a new SOTA in the LM category.
 
 ### Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
