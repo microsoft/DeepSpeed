@@ -59,8 +59,7 @@ The local parameters for the hyperparameters are:
 
 Although appropriate values `cycle_min_lr` and `cycle_max_lr` values can be
 selected based on experience or expertise,  we recommend using [learning rate
-range test](lrrt.md) feature of DeepSpeed to configure
-them.
+range test](lrrt.md) feature of DeepSpeed to configure them.
 
 **Momentum**
 1. `cycle_min_mom`: minimum momentum in cycle phase
