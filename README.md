@@ -18,7 +18,7 @@ compared to the state-of-art.
 | --------------------------------------- | ------------------------------------------- |
 | [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
 | [Getting Started](#getting-started)     |  DeepSpeed first steps                      |
-| [Further Reading](#further-reading)     |  Additional DeepSpeed documentation         |
+| [Further Reading](#further-reading)     |  DeepSpeed features, tutorials, etc.        |
 | [Testing](#testing)                     |  Instructions for testing DeepSpeed         |
 | [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
 
