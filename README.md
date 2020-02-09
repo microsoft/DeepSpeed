@@ -1,4 +1,4 @@
-[![Build Status](https://msdlserving.visualstudio.com/DeepScale/_apis/build/status/DeepSpeed%20GPU%20CI?branchName=master)](https://msdlserving.visualstudio.com/DeepScale/_build/latest?definitionId=36&branchName=master)
+[![Build Status](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_apis/build/status/microsoft.DeepSpeed?branchName=master)](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_build/latest?definitionId=1&branchName=master)
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
 
 DeepSpeed is a deep learning optimization library that makes distributed training easy,
@@ -10,10 +10,7 @@ efficient, and effective.
 
 DeepSpeed can train DL models with over a hundred billion parameters on current
 generation of GPU clusters, while achieving over 5x in system performance
-compared to the state-of-art. Early adopters of DeepSpeed have already produced
-a language model (LM) with over 17B parameters establishing a new SOTA in the LM
-category.
-
+compared to the state-of-art.
 
 ## Table of Contents
 
@@ -21,7 +18,7 @@ category.
 | --------------------------------------- | ------------------------------------------- |
 | [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
 | [Getting Started](#getting-started)     |  DeepSpeed first steps                      |
-| [Further Reading](#further-reading)     |  Additional DeepSpeed documentation         |
+| [Further Reading](#further-reading)     |  DeepSpeed features, tutorials, etc.        |
 | [Testing](#testing)                     |  Instructions for testing DeepSpeed         |
 | [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
 
@@ -86,10 +83,6 @@ Redundancy Optimizer (ZeRO). Unlike basic data parallelism where memory states a
 replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
 4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
-
-With this impressive memory reduction, early adopters of DeepSpeed have already
-produced  alanguage model (LM) with over 17B parameters called
-[Turing-NLG](link-to-turing-blog), establishing a new SOTA in the LM category.
 
 ### Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
@@ -167,8 +160,9 @@ overview](./docs/features.md) for descriptions and usage.
 
 ### Installation
 
-Please see our [Azure tutorial](azure/README.md) to get started with DeepSpeed on Azure!
-
+* Please see our [Azure tutorial](docs/azure.md) to get started with DeepSpeed on Azure!
+* If you're not on Azure we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
+* If you want to install DeepSpeed manually we provide an install script [install.sh](install.sh) to help install on a local machine or across an entire cluster.
 
 ### Writing DeepSpeed Models
 DeepSpeed model training is accomplished using the DeepSpeed engine. The engine
@@ -312,10 +306,10 @@ We illustrate an example usage of DeepSpeed with the following assumptions:
 4. `ds_config.json` is the configuration file for DeepSpeed
 
 
-### Resource Configuration
-DeepSpeed configures compute resources with hostfiles that are compatible with
+### Resource Configuration (multi-node)
+DeepSpeed configures multi-node compute resources with hostfiles that are compatible with
 [OpenMPI](https://www.open-mpi.org/) and [Horovod](https://github.com/horovod/horovod).
-A hostfile is a list of *hostnames*, which are machines accessible via passwordless
+A hostfile is a list of *hostnames* (or SSH aliases), which are machines accessible via passwordless
 SSH, and *slot counts*, which specify the number of GPUs available on the system. For
 example,
 ```
@@ -327,7 +321,8 @@ for training.
 
 Hostfiles are specified with the `--hostfile` command line option. If no hostfile is
 specified, DeepSpeed searches for `/job/hostfile`. If no hostfile is specified or found,
-DeepSpeed queries the number of GPUs on the local machine.
+DeepSpeed queries the number of GPUs on the local machine to discover the number of local
+slots available.
 
 
 The following command launches a PyTorch training job across all available nodes and GPUs
@@ -360,6 +355,14 @@ deepspeed --include="worker-2:0,1" \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
+
+### Resource Configuration (single-node)
+In the case that we are only running on a single node (with one or more GPUs)
+DeepSpeed *does not* require a hostfile as described above. If a hostfile is
+not detected or passed in then DeepSpeed will query the number of GPUs on the
+local machine to discover the number of slots available. The `--include` and
+`--exclude` arguments work as normal, but the user should specify 'localhost'
+as the hostname.
 
 
 ## Further Reading
