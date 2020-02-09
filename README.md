@@ -19,7 +19,6 @@ compared to the state-of-art.
 | [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
 | [Getting Started](#getting-started)     |  DeepSpeed first steps                      |
 | [Further Reading](#further-reading)     |  DeepSpeed features, tutorials, etc.        |
-| [Testing](#testing)                     |  Instructions for testing DeepSpeed         |
 | [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
 
 
@@ -161,8 +160,8 @@ overview](./docs/features.md) for descriptions and usage.
 ## Installation
 
 * Please see our [Azure tutorial](docs/azure.md) to get started with DeepSpeed on Azure!
-* If you're not on Azure we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
-* If you want to install DeepSpeed manually we provide an install script [install.sh](install.sh) to help install on a local machine or across an entire cluster.
+* If you're not on Azure, we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
+* If you want to install DeepSpeed manually, we provide an install script [install.sh](install.sh) to help install on a local machine or across an entire cluster.
 
 ## Writing DeepSpeed Models
 DeepSpeed model training is accomplished using the DeepSpeed engine. The engine
@@ -376,36 +375,6 @@ as the hostname.
 
 
 
-# Testing
-
-DeepSpeed tracks two types of tests: unit tests and more costly model convergence tests.
-The model convergence tests train
-[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) and measure
-end-to-end convergence and related metrics. Unit tests are found in `tests/unit/` and
-the model convergence tests are found in `tests/model/`.
-
-## Unit Tests
-[PyTest](https://docs.pytest.org/en/latest/) is used to execute tests. PyTest can be
-installed from PyPI via `pip install pytest`. Simply invoke `pytest --forked` to run the
-unit tests:
-```bash
-pytest --forked tests/unit/
-```
-You can also provide the `-v` flag to `pytest` to see additional information about the
-tests. Note that [pytest-forked](https://github.com/pytest-dev/pytest-forked) and the
-`--forked` flag are required to test CUDA functionality in distributed tests.
-
-## Model Tests
-To execute model tests, first [install DeepSpeed](#installation). The
-[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) repository is cloned
-as part of this process. Next, execute the model test driver:
-```bash
-cd tests/model/
-pytest run_sanity_check.py
-```
-Note that the `--forked` flag is not necessary for the model tests.
-
-
 # Contributing
 DeepSpeed welcomes your contributions!
 
@@ -427,6 +396,36 @@ pre-commit run --all-files
 If a formatting test fails, it will fix the modified code in place and abort
 the `git commit`. After looking over the changes, you can `git add <modified files>`
 and then repeat the previous `git commit` command.
+
+
+## Testing
+DeepSpeed tracks two types of tests: unit tests and more costly model convergence tests.
+The model convergence tests train
+[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) and measure
+end-to-end convergence and related metrics. Unit tests are found in `tests/unit/` and
+the model convergence tests are found in `tests/model/`.
+
+### Unit Tests
+[PyTest](https://docs.pytest.org/en/latest/) is used to execute tests. PyTest can be
+installed from PyPI via `pip install pytest`. Simply invoke `pytest --forked` to run the
+unit tests:
+```bash
+pytest --forked tests/unit/
+```
+You can also provide the `-v` flag to `pytest` to see additional information about the
+tests. Note that [pytest-forked](https://github.com/pytest-dev/pytest-forked) and the
+`--forked` flag are required to test CUDA functionality in distributed tests.
+
+### Model Tests
+To execute model tests, first [install DeepSpeed](#installation). The
+[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) repository is cloned
+as part of this process. Next, execute the model test driver:
+```bash
+cd tests/model/
+pytest run_sanity_check.py
+```
+Note that the `--forked` flag is not necessary for the model tests.
+
 
 ## Contributor License Agreement
 This project welcomes contributions and suggestions. Most contributions require you to
