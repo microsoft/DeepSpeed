@@ -180,10 +180,10 @@ DeepSpeed supports multiple Learning Rate Schedules to enable faster convergence
 large batch scaling.
 
 ### Learning Rate Range Test
-Please refer to [Learning Rate Range Test](tutorials/lrrt/lrrt.md).
+Please refer to the [Learning Rate Range Test](tutorials/lrrt.md) tutorial.
 
 ### 1Cycle Learning Rate Schedule
-Please refer to [1Cycle Learning Rate Schedule](tutorials/1cycle/1Cycle.md).
+Please refer to the [1Cycle Learning Rate Schedule](tutorials/1Cycle.md) tutorial.
 
 
 ## Simplified Data Loader
