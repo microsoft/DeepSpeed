@@ -89,7 +89,7 @@ parameter models with model parallelism on current generation hardware.
 
 For more details see the [ZeRO paper](https://arxiv.org/abs/1910.02054), [GPT
 tutorial](tutorials/MegatronGPT2Tutorial.md) on integration with
-DeepSpeed. Additional tutorals including *BERT Tutorial*: Coming Soon.
+DeepSpeed. Additional tutorials including *BERT Tutorial*: Coming Soon.
 <!---[BERT
 tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md),
 -->
