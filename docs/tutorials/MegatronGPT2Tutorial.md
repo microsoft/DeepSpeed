@@ -1,7 +1,7 @@
 # Tutorial: Megatron-LM GPT2 with DeepSpeed
 
 If you haven't already, we advise you to first read through the [Getting
-Started](../READM.md#getting-started) guide before stepping through this
+Started](../README.md#getting-started) guide before stepping through this
 tutorial.
 
  in the guides for [Setup and
