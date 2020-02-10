@@ -30,7 +30,7 @@ predefined intervals. Thus, LRRT is a form of learning rate schedule because it
 defines how and when the learning rate should change during model training.  To
 configure LRRT, you will need to set these parameters:
 
-1. `lr_range_test_min_lr` : The initial learning rate for training `(integer)`
+1. `lr_range_test_min_lr` : The initial learning rate for training `(float)`
 2. `lr_range_test_step_size`: The interval for scaling up learning rate,
 defined in training steps `(integer)`
 3. `lr_range_test_step_rate`: The scaling factor for increasing learning rate
