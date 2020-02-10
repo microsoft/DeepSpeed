@@ -7,12 +7,20 @@ from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 
 try:
-    from deepspeed.version_info import git_hash, git_branch
+    from deepspeed.git_version_info import git_hash, git_branch
 except ImportError:
     git_hash = None
     git_branch = None
 
-__version__ = 0.1
+__VERSION_MAJOR__ = 0
+__VERSION_MINOR__ = 1
+__VERSION_PATCH__ = 0
+
+__version__ = '.'.join(
+    map(str,
+        [__VERSION_MAJOR__,
+         __VERSION_MINOR__,
+         __VERSION_PATCH__]))
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
