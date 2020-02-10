@@ -10,21 +10,25 @@ efficient, and effective.
 
 DeepSpeed can train DL models with over a hundred billion parameters on current
 generation of GPU clusters, while achieving over 5x in system performance
-compared to the state-of-art.
+compared to the state-of-art. Early adopters of DeepSpeed have already produced
+a language model (LM) with over 17B parameters called
+[Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
+establishing a new SOTA in the LM category.
 
-## Table of Contents
+
+# Table of Contents
 
 | Section                                 | Description                                 |
 | --------------------------------------- | ------------------------------------------- |
 | [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
 | [Getting Started](#getting-started)     |  DeepSpeed first steps                      |
 | [Further Reading](#further-reading)     |  DeepSpeed features, tutorials, etc.        |
-| [Testing](#testing)                     |  Instructions for testing DeepSpeed         |
 | [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
+| [Publications](#publications)           |  DeepSpeed publications                     |
 
 
 
-## Why DeepSpeed?
+# Why DeepSpeed?
 Training advanced deep learning models is challenging. Beyond model design,
 model scientists also need to set up the state-of-the-art training techniques
 such as distributed training, mixed precision, gradient accumulation, and
@@ -34,7 +38,7 @@ a large model easily runs out of memory with pure data paralelism and it is
 difficult to use model parallelism. DeepSpeed addresses these challenges to
 accelerate model development *and* training.
 
-### Distributed, Effective, and Efficient Training with Ease
+## Distributed, Effective, and Efficient Training with Ease
 The DeepSpeed API is a lightweight wrapper on [PyTorch](https://pytorch.org/). This
 means that you can use everything you love in PyTorch and without learning a new
 platform. In addition, DeepSpeed manages all of the boilerplate state-of-the-art
@@ -44,7 +48,7 @@ importantly, you can leverage the distinctive efficiency and effectiveness benef
 DeepSpeed to boost speed and scale with just a few lines of code changes to your PyTorch
 models.
 
-### Speed
+## Speed
 DeepSpeed achieves high performance and fast convergence through a combination of
 efficiency optimizations on compute/communication/memory/IO and effectiveness
 optimizations on advanced hyperparameter tuning and optimizers. For example:
@@ -72,7 +76,7 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
 
 
 
-### Memory efficiency
+## Memory efficiency
 DeepSpeed provides memory-efficient data parallelism and enables training models without
 model parallelism. For example, DeepSpeed can train models with up to 6 billion parameters on
 NVIDIA V100 GPUs with 32GB of device memory. In comparison, existing frameworks (e.g.,
@@ -84,7 +88,13 @@ replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
 4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
 
-### Scalability
+With this impressive memory reduction, early adopters of DeepSpeed have already
+produced  alanguage model (LM) with over 17B parameters called
+[Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
+establishing a new SOTA in the LM category.
+
+
+## Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
 combination. ZeRO boosts the scaling capability and efficiency further.
 * DeepSpeed provides system support to run models up to 100 billion parameters,
@@ -101,11 +111,11 @@ combination. ZeRO boosts the scaling capability and efficiency further.
 
 ![DeepSpeed-vs-Megatron](./docs/figures/DeepSpeed-vs-Megatron.png)
 <p align="center">
-<em>The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone.</em>
+<em>The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of NVIDIA Megatron-LM) over using Megatron-LM alone.</em>
 </p>
 
 
-### Fast convergence for effectiveness
+## Fast convergence for effectiveness
 DeepSpeed supports advanced hyperparameter tuning and large batch size
 optimizers such as [LAMB](https://arxiv.org/abs/1904.00962). These improve the
 effectiveness of model training and reduce the number of samples required to
@@ -119,11 +129,12 @@ convergence to desired accuracy.
 [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md)
 -->
 
-### Good Usability
-Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custome model parallelisms, such as tensor slicing of Nvidia Megatron-LM.
+
+## Good Usability
+Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custom model parallelisms, such as tensor slicing of NVIDIA's Megatron-LM.
 
 
-### Features
+## Features
 
 Below we provide a brief feature list, see our detailed [feature
 overview](./docs/features.md) for descriptions and usage.
@@ -155,16 +166,16 @@ overview](./docs/features.md) for descriptions and usage.
 * [Performance Analysis and Debugging](./docs/features.md#performance-analysis-and-debugging)
 
 
-## Getting Started
+# Getting Started
 
 
-### Installation
+## Installation
 
 * Please see our [Azure tutorial](docs/azure.md) to get started with DeepSpeed on Azure!
-* If you're not on Azure we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
-* If you want to install DeepSpeed manually we provide an install script [install.sh](install.sh) to help install on a local machine or across an entire cluster.
+* If you're not on Azure, we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
+* If you want to install DeepSpeed manually, we provide an install script [install.sh](install.sh) to help install on a local machine or across an entire cluster.
 
-### Writing DeepSpeed Models
+## Writing DeepSpeed Models
 DeepSpeed model training is accomplished using the DeepSpeed engine. The engine
 can wrap any arbitrary model of type `torch.nn.module` and has a minimal set of APIs
 for training and checkpointing the model. Please see the tutorials for detailed
@@ -185,7 +196,7 @@ scheduler based on the parameters passed to `deepspeed.initialze` and the
 DeepSpeed [configuration file](#deepspeed-configuration).
 
 
-#### Training
+### Training
 
 Once the DeepSpeed engine has been initialized, it can be used to train the
 model using three simple APIs for forward propagation (`()`), backward
@@ -222,7 +233,7 @@ pre-defined learning rate schedule:
 
 
 
-#### Model Checkpointing
+### Model Checkpointing
 Saving and loading the training state is handled via the `save_checkpoint` and
 `load_checkpoint` API in DeepSpeed which takes two arguments to uniquely
 identify a checkpoint:
@@ -265,8 +276,8 @@ retrieved from `load_checkpoint` as a return argument. In the example above,
 the `step` value is stored as part of the `client_sd`.
 
 
-### DeepSpeed Configuration
-DeepSpeed featureds can be enabled, disabled, or configured using a config JSON
+## DeepSpeed Configuration
+DeepSpeed features can be enabled, disabled, or configured using a config JSON
 file that should be specified as `args.deepspeed_config`. A sample config file
 is shown below. For a full set of features see [core API
 doc](https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html).
@@ -296,7 +307,7 @@ doc](https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html).
 }
 ```
 
-## Launching DeepSpeed Training
+# Launching DeepSpeed Training
 DeepSpeed installs the entry point `deepspeed` to launch distributed training.
 We illustrate an example usage of DeepSpeed with the following assumptions:
 
@@ -306,7 +317,7 @@ We illustrate an example usage of DeepSpeed with the following assumptions:
 4. `ds_config.json` is the configuration file for DeepSpeed
 
 
-### Resource Configuration (multi-node)
+## Resource Configuration (multi-node)
 DeepSpeed configures multi-node compute resources with hostfiles that are compatible with
 [OpenMPI](https://www.open-mpi.org/) and [Horovod](https://github.com/horovod/horovod).
 A hostfile is a list of *hostnames* (or SSH aliases), which are machines accessible via passwordless
@@ -356,7 +367,7 @@ deepspeed --include="worker-2:0,1" \
 	--deepspeed --deepspeed_config ds_config.json
 ```
 
-### Resource Configuration (single-node)
+## Resource Configuration (single-node)
 In the case that we are only running on a single node (with one or more GPUs)
 DeepSpeed *does not* require a hostfile as described above. If a hostfile is
 not detected or passed in then DeepSpeed will query the number of GPUs on the
@@ -365,71 +376,25 @@ local machine to discover the number of slots available. The `--include` and
 as the hostname.
 
 
-## Further Reading
+# Further Reading
 
 | Article                                                                                        | Description                                  |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | [DeepSpeed Features](./docs/features.md)                                                       |  DeepSpeed features                          |
+| [DeepSpeed JSON Configuration](./docs/config_json.md)                                          |  Configuring DeepSpeed                       |
+| [API Documentation]( https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html) |  Generated DeepSpeed API documentation       |
 | [CIFAR-10 Tutorial](./docs/tutorials/CIFAR-10.md)                                              |  Getting started with CIFAR-10 and DeepSpeed |
 | [Megatron-LM Tutorial](./docs/tutorials/MegatronGPT2Tutorial.md)                               |  Train GPT2 with DeepSpeed and Megatron-LM   |
 | [1Cycle Tutorial](./docs/tutorials/1Cycle.md)                                                  |  SOTA learning schedule in DeepSpeed         |
-| [API Documentation]( https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html) |  Generated DeepSpeed API documentation       |
 
 
 
-## Testing
+# Contributing
+DeepSpeed welcomes your contributions! Please see our
+[contributing](CONTRIBUTING.md) guide for more details on formatting, testing,
+etc.
 
-DeepSpeed tracks two types of tests: unit tests and more costly model convergence tests.
-The model convergence tests train
-[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) and measure
-end-to-end convergence and related metrics. Unit tests are found in `tests/unit/` and
-the model convergence tests are found in `tests/model/`.
-
-### Unit Tests
-[PyTest](https://docs.pytest.org/en/latest/) is used to execute tests. PyTest can be
-installed from PyPI via `pip install pytest`. Simply invoke `pytest --forked` to run the
-unit tests:
-```bash
-pytest --forked tests/unit/
-```
-You can also provide the `-v` flag to `pytest` to see additional information about the
-tests. Note that [pytest-forked](https://github.com/pytest-dev/pytest-forked) and the
-`--forked` flag are required to test CUDA functionality in distributed tests.
-
-### Model Tests
-To execute model tests, first [install DeepSpeed](#installation). The
-[DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/) repository is cloned
-as part of this process. Next, execute the model test driver:
-```bash
-cd tests/model/
-pytest run_sanity_check.py
-```
-Note that the `--forked` flag is not necessary for the model tests.
-
-
-## Contributing
-DeepSpeed welcomes your contributions!
-
-
-### Prerequisites
-DeepSpeed uses [pre-commit](https://pre-commit.com/) to ensure that formatting is
-consistent across DeepSpeed. First, ensure that `pre-commit` is installed from either
-installing DeepSpeed or `pip install pre-commit`. Next, the pre-commit hooks must be
-installed once before commits can be made:
-```bash
-pre-commit install
-```
-
-Afterwards, our suite of formatting tests run automatically before each `git commit`. You
-can also run these manually:
-```bash
-pre-commit run --all-files
-```
-If a formatting test fails, it will fix the modified code in place and abort
-the `git commit`. After looking over the changes, you can `git add <modified files>`
-and then repeat the previous `git commit` command.
-
-### Contributor License Agreement
+## Contributor License Agreement
 This project welcomes contributions and suggestions. Most contributions require you to
 agree to a Contributor License Agreement (CLA) declaring that you have the right to, and
 actually do, grant us the rights to use your contribution. For details, visit
@@ -440,9 +405,12 @@ to provide a CLA and decorate the PR appropriately (e.g., status check, comment)
 follow the instructions provided by the bot. You will only need to do this once across
 all repos using our CLA.
 
-### Code of Conduct
+## Code of Conduct
 This project has adopted the [Microsoft Open Source Code of
 Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the
 [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact
 [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or
 comments.
+
+# Publications
+1. Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase, Yuxiong He. (2019) ZeRO: Memory Optimization Towards Training A Trillion Parameter Models. [ArXiv:1910.02054](https://arxiv.org/abs/1910.02054)
