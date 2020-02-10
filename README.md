@@ -378,7 +378,7 @@ as the hostname.
 
 # Contributing
 DeepSpeed welcomes your contributions! Please see our
-[contributions](CONTRIBUTIONS.md) page for more details on formatting, testing,
+[contributing](CONTRIBUTING.md) guide for more details on formatting, testing,
 etc.
 
 ## Contributor License Agreement
