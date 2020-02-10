@@ -12,15 +12,15 @@ except ImportError:
     git_hash = None
     git_branch = None
 
-__VERSION_MAJOR__ = 0
-__VERSION_MINOR__ = 1
-__VERSION_PATCH__ = 0
-
+# Export version information
+__version_major__ = 0
+__version_minor__ = 1
+__version_patch__ = 0
 __version__ = '.'.join(
     map(str,
-        [__VERSION_MAJOR__,
-         __VERSION_MINOR__,
-         __VERSION_PATCH__]))
+        [__version_major__,
+         __version_minor__,
+         __version_patch__]))
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
