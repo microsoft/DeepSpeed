@@ -4,10 +4,6 @@ If you haven't already, we advise you to first read through the [Getting
 Started](../../README.md#getting-started) guide before stepping through this
 tutorial.
 
- in the guides for [Setup and
-Onboarding](../../Onboard/onboard/onboard.md) and [Model
-Training](../../Onboard/model_training/deepspeed_model_training.md).
-
 In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which
 is a large, powerful transformer. Megatron-LM supports model-parallel and multi-node
 training. Please see the corresponding paper for more details: [Megatron-LM:
@@ -33,9 +29,6 @@ git submodule update --init --recursive
 ### 1.1 Training Data Setup
 * Follow Megatron's [instructions](https://github.com/NVIDIA/Megatron-LM#collecting-gpt2-webtext-data)
   to download the webtext data and place a symbolic link under `DeepSpeedExamples/Megatron-LM/data`:
-  * (*Microsoft*:) Raw and pre-processed data has already been downloaded on
-     all DLTS clusters: `/data/Megatron-LM/data/`. You can simply execute
-      `ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/`.
 
 ### 1.2 Running Unmodified Megatron-LM GPT2 model
 
