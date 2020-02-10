@@ -1,7 +1,10 @@
 # Tutorial: Megatron-LM GPT2 with DeepSpeed
-**TODO: these two links are broken (not yet implemented).**
 
-We advise you to first read through the guides for [Setup and
+If you haven't already, we advise you to first read through the [Getting
+Started](../READM.md#getting-started) guide before stepping through this
+tutorial.
+
+ in the guides for [Setup and
 Onboarding](../../Onboard/onboard/onboard.md) and [Model
 Training](../../Onboard/model_training/deepspeed_model_training.md).
 
