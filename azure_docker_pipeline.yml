@@ -1,0 +1,18 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- bash: |
+    git clone https://github.com/microsoft/DeepSpeed.git
+    docker build -t deepspeed:latest -f Dockerfile .
+    docker tag deepspeed:latest deepspeed/deepspeed:latest
+    docker login --username deepspeed --password $token
+    docker push deepspeed/deepspeed:latest
