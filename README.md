@@ -10,7 +10,11 @@ efficient, and effective.
 
 DeepSpeed can train DL models with over a hundred billion parameters on current
 generation of GPU clusters, while achieving over 5x in system performance
-compared to the state-of-art.
+compared to the state-of-art. Early adopters of DeepSpeed have already produced
+a language model (LM) with over 17B parameters called
+[Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
+establishing a new SOTA in the LM category.
+
 
 # Table of Contents
 
@@ -20,6 +24,7 @@ compared to the state-of-art.
 | [Getting Started](#getting-started)     |  DeepSpeed first steps                      |
 | [Further Reading](#further-reading)     |  DeepSpeed features, tutorials, etc.        |
 | [Contributing](#contributing)           |  Instructions for contributing to DeepSpeed |
+| [Publications](#publications)           |  DeepSpeed publications                     |
 
 
 
@@ -83,6 +88,12 @@ replicated across data-parallel processes, ZeRO partitions model states to save
 significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
 4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
 
+With this impressive memory reduction, early adopters of DeepSpeed have already
+produced  a language model (LM) with over 17B parameters called
+[Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
+establishing a new SOTA in the LM category.
+
+
 ## Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
 combination. ZeRO boosts the scaling capability and efficiency further.
@@ -110,13 +121,14 @@ optimizers such as [LAMB](https://arxiv.org/abs/1904.00962). These improve the
 effectiveness of model training and reduce the number of samples required to
 convergence to desired accuracy.
 
+*Read more*: [Tuning tutorial](./docs/tutorials/1Cycle.md),
 <!---
-*Read more*: [Tuning tutorial](../../Tutorials/1cycle/1Cycle.md),
  and *BERT Tutorial*: Coming Soon.
 
 [BERT tutorial](../../Tutorials/BingBertSquad/BingBertSquadTutorial.md),
 [QANet tutorial](../../Tutorials/QANet/QANetTutorial.md)
 -->
+
 
 ## Good Usability
 Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custom model parallelisms, such as tensor slicing of NVIDIA's Megatron-LM.
@@ -369,10 +381,12 @@ as the hostname.
 | Article                                                                                        | Description                                  |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | [DeepSpeed Features](./docs/features.md)                                                       |  DeepSpeed features                          |
-| [CIFAR-10 Tutorial](./docs/tutorials/CIFAR-10.md)                                              |  Getting started with CIFAR-10 and DeepSpeed |
-| [Megatron-LM Tutorial](./docs/tutorials/MegatronGPT2Tutorial.md)                               |  Train GPT2 with DeepSpeed and Megatron-LM   |
 | [DeepSpeed JSON Configuration](./docs/config_json.md)                                          |  Configuring DeepSpeed                       |
 | [API Documentation]( https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html) |  Generated DeepSpeed API documentation       |
+| [CIFAR-10 Tutorial](./docs/tutorials/CIFAR-10.md)                                              |  Getting started with CIFAR-10 and DeepSpeed |
+| [Megatron-LM Tutorial](./docs/tutorials/MegatronGPT2Tutorial.md)                               |  Train GPT2 with DeepSpeed and Megatron-LM   |
+| [Learning Rate Range Test Tutorial](./docs/tutorials/lrrt.md)                                  |  Faster training with large learning rates   |
+| [1Cycle Tutorial](./docs/tutorials/1Cycle.md)                                                  |  SOTA learning schedule in DeepSpeed         |
 
 
 
@@ -399,5 +413,5 @@ Conduct](https://opensource.microsoft.com/codeofconduct/). For more information 
 [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or
 comments.
 
-## Publications
+# Publications
 1. Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase, Yuxiong He. (2019) ZeRO: Memory Optimization Towards Training A Trillion Parameter Models. [ArXiv:1910.02054](https://arxiv.org/abs/1910.02054)
