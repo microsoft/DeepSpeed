@@ -107,7 +107,7 @@ validate_folder ${SQUAD_DIR} "SQUAD_DIR"
 
 # Set output path
 if [ -z "${OUTPUT_DIR+x}" ]; then
-  export OUTPUT_DIR=~/Output
+  export OUTPUT_DIR=/tmp/BingBertSquad-Output
   echo "OUTPUT_DIR environment variable not set; trying default: ${OUTPUT_DIR}"
 fi
 remove_folder ${OUTPUT_DIR} "OUTPUT_DIR"
