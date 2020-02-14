@@ -162,7 +162,12 @@ class FP16_UnfusedOptimizer(object):
 
             # copying gradients to fp32 to work with fp32 parameters
             for fp32_param, fp16_param in zip(self.fp32_groups[i], self.fp16_groups[i]):
-                fp32_param.grad = fp16_param.grad.to(fp32_param.dtype)
+                if fp16_param.grad is None:
+                    fp32_param.grad = torch.zeros(fp16_param.size(),
+                                                  dtype=fp16_param.dtype,
+                                                  device=fp16_param.device)
+                else:
+                    fp32_param.grad = fp16_param.grad.to(fp32_param.dtype)
 
         self.unscale_and_clip_grads(norm_groups)
 
