@@ -25,11 +25,12 @@ stages:
       inputs:
         command: login
         containerRegistry: DeepSpeedDocker
-    # - task: Docker@2
-    #   displayName: Build and Push
-    #   inputs:
-    #     command: buildAndPush
-    #     dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
-    #     repository: deepspeed/deepspeed
-    #     tags: |
-    #       $(tag)
+    - task: Docker@2
+      displayName: Build and Push
+      inputs:
+        command: buildAndPush
+        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        repository: deepspeed/deepspeed
+        tags: |
+          $(tag)
+          latest
