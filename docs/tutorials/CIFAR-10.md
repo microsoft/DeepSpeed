@@ -18,7 +18,7 @@ Original model code from [CIFAR-10 Tutorial](https://github.com/pytorch/tutorial
 git submodule update --init --recursive
 ```
 
-To install requirements for cifar 10:
+To install requirements for CIFAR-10:
 ```
 cd DeepSpeedExamples/cifar
 pip install -r requirements.txt
