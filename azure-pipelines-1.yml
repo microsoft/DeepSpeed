@@ -10,7 +10,6 @@ resources:
 
 variables:
   tag: '$(Build.BuildId)'
-  imageName: 'deepspeed/deepspeed'
 
 stages:
 - stage: Build
@@ -22,18 +21,15 @@ stages:
       vmImage: 'ubuntu-latest'
     steps:
     - task: Docker@2
-      displayName: Build an image
+      displayName: Login to Docker Hub
       inputs:
-        command: build
-        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
-        tags: |
-          $(tag)
+        command: login
+        containerRegistry: dockerRegistryServiceConnection2
     - task: Docker@2
-      displayName: Push image
+      displayName: Build and Push
       inputs:
-        containerRegistry: |
-          $(DeepSpeedDocker)
-        repository: $(imageName)
-        command: push
+        command: buildAndPush
+        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        repository: deepspeed/deepspeed
         tags: |
           $(tag)
