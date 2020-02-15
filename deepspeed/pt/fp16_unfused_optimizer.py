@@ -116,10 +116,11 @@ class FP16_UnfusedOptimizer(object):
         grads_groups = []
         norm_groups = []
         for i, group in enumerate(self.fp16_groups):
-            grads = [torch.zeros(p.size(),
-                                dtype=p.dtype,
-                                device=p.device) if p.grad is None else p.grad
-                    for p in group]
+            grads = [
+                torch.zeros(p.size(),
+                            dtype=p.dtype,
+                            device=p.device) if p.grad is None else p.grad for p in group
+            ]
             grads_groups.append(grads)
             grads_groups_flat.append(_flatten_dense_tensors(grads))
             norm_groups.append(get_weight_norm(grads_groups_flat[i], mpu=self.mpu))
