@@ -322,7 +322,7 @@ class DeepSpeedLight(Module):
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
-        if args.deepscale_config is not None:
+        if hasattr(args, 'deepscale_config') and args.deepscale_config is not None:
             logging.warning(
                 "************ --deepscale_config is deprecated, please use --deepspeed_config ************"
             )
