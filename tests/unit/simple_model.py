@@ -15,7 +15,7 @@ class SimpleModel(torch.nn.Module):
         return self.cross_entropy_loss(hidden_dim, y)
 
 
-def random_data_loader(model, total_samples, hidden_dim, device):
+def random_dataloader(model, total_samples, hidden_dim, device):
     batch_size = model.train_micro_batch_size_per_gpu()
     train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=torch.half)
     train_label = torch.empty(total_samples,
