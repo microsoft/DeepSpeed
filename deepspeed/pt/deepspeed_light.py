@@ -326,7 +326,8 @@ class DeepSpeedLight(Module):
             logging.warning(
                 "************ --deepscale_config is deprecated, please use --deepspeed_config ************"
             )
-            assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
+            if hasattr(args, 'deepspeed_config'):
+                assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
         assert hasattr(args, 'local_rank') and type(args.local_rank) == int, \
