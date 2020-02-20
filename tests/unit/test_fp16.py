@@ -8,15 +8,6 @@ from common import distributed_test
 from simple_model import SimpleModel, random_dataloader, args_from_dict
 
 
-def test_temp_config_json(tmpdir):
-    config_dict = {
-        "train_batch_size": 1,
-    }
-    config_path = create_config_from_dict(tmpdir, config_dict)
-    config_json = json.load(open(config_path, 'r'))
-    assert 'train_batch_size' in config_json
-
-
 def test_lamb_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,

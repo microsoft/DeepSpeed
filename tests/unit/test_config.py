@@ -103,6 +103,15 @@ def test_batch_config(num_ranks, batch, micro_batch, gas, success):
     _test_batch_config(num_ranks, batch, micro_batch, gas, success)
 
 
+def test_temp_config_json(tmpdir):
+    config_dict = {
+        "train_batch_size": 1,
+    }
+    config_path = create_config_from_dict(tmpdir, config_dict)
+    config_json = json.load(open(config_path, 'r'))
+    assert 'train_batch_size' in config_json
+
+
 def test_deprecated_deepscale_config(tmpdir):
     config_dict = {
         "train_batch_size": 1,
