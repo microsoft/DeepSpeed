@@ -1,6 +1,8 @@
 # A test on its own
 import torch
 import pytest
+import json
+import argparse
 from common import distributed_test
 from simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
@@ -118,10 +120,14 @@ def test_deprecated_deepscale_config(tmpdir):
         "optimizer": {
             "type": "Adam",
             "params": {
-                "lr": 0.1
+                "lr": 0.00015
             }
+        },
+        "fp16": {
+            "enabled": True
         }
     }
+
     config_path = create_config_from_dict(tmpdir, config_dict)
     parser = argparse.ArgumentParser()
     args = parser.parse_args(args='')
