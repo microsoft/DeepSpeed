@@ -54,7 +54,7 @@ def initialize(args,
             step(), state_dict(), and load_state_dict() methods
 
         mpu: Optional: A model parallelism unit object that implements
-            get_model/data_parallel_group/rank/size()
+            get_{model,data}_parallel_{rank,group,world_size}()
 
         dist_init_required: Optional: Initializes torch.distributed
 
@@ -128,6 +128,10 @@ def _add_core_arguments(parser):
                        type=str,
                        help='DeepSpeed json configuration file.')
 
+    group.add_argument('--deepscale_config',
+                       default=None,
+                       type=str,
+                       help='Deprecated DeepSpeed json configuration file.')
     return parser
 
 

@@ -15,6 +15,7 @@ import collections
 from copy import deepcopy
 
 DLTS_HOSTFILE = "/job/hostfile"
+EXPORT_ENVS = ["NCCL", "PYTHONPATH"]
 
 
 def parse_args(args=None):
@@ -305,13 +306,18 @@ def main(args=None):
         num_gpus_per_node = None
 
         curr_path = os.path.abspath('.')
+        if 'PYTHONPATH' in env:
+            env['PYTHONPATH'] = curr_path + ":" + env['PYTHONPATH']
+        else:
+            env['PYTHONPATH'] = curr_path
 
-        nccl_export = ""
-        for nccl_var in filter(lambda x: "NCCL_" in x, env.keys()):
-            nccl_export += "export {}={}; ".format(nccl_var, env[nccl_var])
+        exports = ""
+        for var in env.keys():
+            if any(map(lambda name: name in var, EXPORT_ENVS)):
+                exports += "export {}={}; ".format(var, env[var])
 
         deepspeed_launch = [
-            nccl_export,
+            exports,
             "cd {};".format(curr_path),
             sys.executable,
             "-u",
