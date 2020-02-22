@@ -3,10 +3,8 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import torch
-import logging
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm
 
 
 class DeepSpeedDataLoader(object):
