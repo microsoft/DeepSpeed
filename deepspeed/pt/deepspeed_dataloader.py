@@ -9,22 +9,6 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 
-class DeepSpeedDataSource(object):
-    def __init__(self, filenames):
-        all_lines = []
-        for filename in filenames:
-            logging.info("Start reading file %s" % filename)
-            with open(filename, "r") as f:
-                for i, line in enumerate(tqdm(f)):
-                    all_lines.append(line.strip())
-
-        self.all_lines = all_lines
-        self.len = len(self.all_lines)
-
-    def __len__(self):
-        return self.len
-
-
 class DeepSpeedDataLoader(object):
     def __init__(self,
                  dataset,
