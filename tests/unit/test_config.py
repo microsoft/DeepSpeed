@@ -142,8 +142,7 @@ def test_deprecated_deepscale_config(tmpdir):
     def _test_deprecated_deepscale_config(args, model, hidden_dim):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
-                                             model_parameters=model.parameters(),
-                                             dist_init_required=False)
+                                             model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=hidden_dim,
