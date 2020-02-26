@@ -187,20 +187,24 @@ class DeepSpeedLight(Module):
                 print_configuration(self, 'DeepSpeedLight')
 
     def _open_mpi_check(self, args):
-        # If OMPI exists in evironment variables assume we are running inside mpirun
+        # If OMPI exists in evironment assume we are running inside mpirun
         if 'OMPI_COMM_WORLD_SIZE' in os.environ:
-            logging.info(
-                "Discovered we are probably running inside mpirun, attempting to detect world..."
-            )
+            logging.info("Discovered we are probably running inside mpirun, "
+                         "attempting to detect world...")
             os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
             os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
             args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
             os.environ['MASTER_PORT'] = "29500"
-            assert 'OMPI_MCA_orte_parent_uri' in os.environ, 'Unable to determine master node IP address'
-            # format: OMPI_MCA_orte_parent_uri=1022885888.0;tcp://192.168.0.186,172.16.1.8
-            os.environ['MASTER_ADDR'] = os.environ['OMPI_MCA_orte_parent_uri'].split(
-                ";")[1].split(',')[0].replace('tcp://',
-                                              '')
+
+            master_addr = None
+            if hasattr(args, 'master_addr'):
+                os.environ['MASTER_ADDR'] = args.master_addr
+            else:
+                assert 'OMPI_MCA_orte_parent_uri' in os.environ, 'Unable to determine master node IP address'
+                # format: OMPI_MCA_orte_parent_uri=1022885888.0;tcp://192.168.0.186,172.16.1.8
+                os.environ['MASTER_ADDR'] = os.environ['OMPI_MCA_orte_parent_uri'].split(
+                    ";")[1].split(',')[0].replace('tcp://',
+                                                  '')
             logging.info(
                 "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
                 .format(os.environ['RANK'],
