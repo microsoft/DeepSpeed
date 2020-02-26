@@ -123,10 +123,14 @@ class DeepSpeedLight(Module):
             dist_init_required = not dist.is_initialized()
 
         self.dist_backend = "nccl"
-        if dist_init_required:
+        if dist_init_required and not dist.is_initialized():
             logging.info("Initializing torch distributed with backend: {}".format(
                 self.dist_backend))
             dist.init_process_group(backend=self.dist_backend)
+        elif dist.is_initialized():
+            logging.warning(
+                "Was given dist_init_required=True but detected that torch"
+                "distributed was already initialized, cannot initialize twice.")
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
