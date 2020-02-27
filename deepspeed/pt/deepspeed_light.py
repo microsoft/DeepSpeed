@@ -119,7 +119,7 @@ class DeepSpeedLight(Module):
         self.gradient_average = True
         self.warn_unscaled_loss = True
 
-        self._open_mpi_check(args)
+        self._mpi_check(args)
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -186,25 +186,31 @@ class DeepSpeedLight(Module):
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
 
-    def _open_mpi_check(self, args):
-        # If OMPI exists in evironment assume we are running inside mpirun
-        if 'OMPI_COMM_WORLD_SIZE' in os.environ:
-            logging.info("Discovered we are probably running inside mpirun, "
-                         "attempting to detect world...")
-            os.environ['RANK'] = os.environ['OMPI_COMM_WORLD_RANK']
-            os.environ['WORLD_SIZE'] = os.environ['OMPI_COMM_WORLD_SIZE']
-            args.local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
-            os.environ['MASTER_PORT'] = "29500"
+    def _mpi_check(self, args):
+        if args.deepspeed_mpi:
+            from mpi4py import MPI
+            import subprocess
+            comm = MPI.COMM_WORLD
+            rank = comm.Get_rank()
+            world_size = comm.Get_size()
 
             master_addr = None
-            if hasattr(args, 'master_addr'):
-                os.environ['MASTER_ADDR'] = args.master_addr
-            else:
-                assert 'OMPI_MCA_orte_parent_uri' in os.environ, 'Unable to determine master node IP address'
-                # format: OMPI_MCA_orte_parent_uri=1022885888.0;tcp://192.168.0.186,172.16.1.8
-                os.environ['MASTER_ADDR'] = os.environ['OMPI_MCA_orte_parent_uri'].split(
-                    ";")[1].split(',')[0].replace('tcp://',
-                                                  '')
+            if rank == 0:
+                hostname_cmd = ["hostname -I"]
+                result = subprocess.check_output(hostname_cmd, shell=True)
+                master_addr = result.decode('utf-8').split()[0]
+            master_addr = comm.bcast(master_addr, root=0)
+
+            proc_name = MPI.Get_processor_name()
+            all_procs = comm.allgather(proc_name)
+            local_rank = sum([i == proc_name for i in all_procs[:rank]])
+
+            os.environ['RANK'] = str(rank)
+            os.environ['WORLD_SIZE'] = str(world_size)
+            args.local_rank = local_rank
+            os.environ['MASTER_ADDR'] = master_addr
+            os.environ['MASTER_PORT'] = "29500"
+
             logging.info(
                 "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
                 .format(os.environ['RANK'],
