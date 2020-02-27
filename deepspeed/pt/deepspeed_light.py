@@ -187,7 +187,7 @@ class DeepSpeedLight(Module):
                 print_configuration(self, 'DeepSpeedLight')
 
     def _mpi_check(self, args):
-        if args.deepspeed_mpi:
+        if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
             from mpi4py import MPI
             import subprocess
             comm = MPI.COMM_WORLD
