@@ -384,6 +384,9 @@ mpirun <mpi-args> python \
 	--deepspeed_mpi --deepspeed --deepspeed_config ds_config.json
 ```
 
+If you want to use this feature of DeepSpeed, please ensure that mpi4py is
+installed via `pip install mpi4py`.
+
 ## Resource Configuration (single-node)
 In the case that we are only running on a single node (with one or more GPUs)
 DeepSpeed *does not* require a hostfile as described above. If a hostfile is

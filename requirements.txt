@@ -9,4 +9,3 @@ nvidia-ml-py3
 pytest
 pytest-forked
 pre-commit
-mpi4py
