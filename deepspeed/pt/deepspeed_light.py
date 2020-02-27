@@ -21,7 +21,7 @@ from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
 
 from deepspeed.pt.deepspeed_dataloader import DeepSpeedDataLoader
 from deepspeed.pt.deepspeed_constants import ROUTE_TRAIN, ROUTE_PREDICT, \
-    ROUTE_EVAL
+    ROUTE_EVAL, TORCH_DISTRIBUTED_DEFAULT_PORT
 
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
@@ -201,6 +201,7 @@ class DeepSpeedLight(Module):
                 master_addr = result.decode('utf-8').split()[0]
             master_addr = comm.bcast(master_addr, root=0)
 
+            # Determine local rank by assuming hostnames are unique
             proc_name = MPI.Get_processor_name()
             all_procs = comm.allgather(proc_name)
             local_rank = sum([i == proc_name for i in all_procs[:rank]])
@@ -209,7 +210,7 @@ class DeepSpeedLight(Module):
             os.environ['WORLD_SIZE'] = str(world_size)
             args.local_rank = local_rank
             os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = "29500"
+            os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
 
             logging.info(
                 "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
