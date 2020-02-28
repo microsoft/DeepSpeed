@@ -19,6 +19,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -t, --third_party_only  Install only third party dependencies and not deepspeed
     -l, --local_only        Installs only on local machine
     -u, --no_sudo           Do not invoke sudo
+    -m, --pip_mirror        Use the specified pip mirror
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
     -h, --help              This help text
   """
@@ -32,6 +33,7 @@ local_only=0
 no_sudo=0
 entire_dlts_job=1
 hostfile=/job/hostfile
+pip_mirror=""
 
 while [[ $# -gt 0 ]]
 do
@@ -55,6 +57,11 @@ case $key in
     ;;
     -u|--no_sudo)
     no_sudo=1;
+    shift
+    ;;
+    -m|--pip_mirror)
+    pip_mirror=$2;
+    shift
     shift
     ;;
     -H|--hostfile)
@@ -96,8 +103,15 @@ else
   SUDO="sudo -H"
 fi
 
+if [ "$pip_mirror" != "" ]; then
+  PIP_INSTALL="pip install -i $pip_mirror"
+else
+  PIP_INSTALL="pip install"
+fi
 
-install_apex="$SUDO"'pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" third_party/apex'
+
+
+install_apex="$SUDO"" $PIP_INSTALL "'-v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" third_party/apex'
 
 if [ ! -f $hostfile ]; then
         echo "No hostfile exists at $hostfile, installing locally"
@@ -105,7 +119,7 @@ if [ ! -f $hostfile ]; then
 fi
 
 # Ensure dependencies are installed locally
-$SUDO pip install -r requirements.txt
+$SUDO $PIP_INSTALL -r requirements.txt
 
 # Build wheels
 if [ "$third_party_install" == "1" ]; then
@@ -119,7 +133,7 @@ if [ "$third_party_install" == "1" ]; then
 
     echo "Installing apex locally so that deepspeed will build"
     $SUDO pip uninstall -y apex
-    $SUDO pip install third_party/apex/dist/apex*.whl
+    $SUDO $PIP_INSTALL third_party/apex/dist/apex*.whl
 fi
 if [ "$deepspeed_install" == "1" ]; then
     echo "Building deepspeed wheel"
@@ -130,7 +144,7 @@ if [ "$local_only" == "1" ]; then
     if [ "$deepspeed_install" == "1" ]; then
         echo "Installing deepspeed"
         $SUDO pip uninstall -y deepspeed
-        $SUDO pip install dist/deepspeed*.whl
+        $SUDO $PIP_INSTALL dist/deepspeed*.whl
         python -c 'import deepspeed; print("deepspeed info:", deepspeed.__version__, deepspeed.__git_branch__, deepspeed.__git_hash__)'
         echo "Installation is successful"
     fi
@@ -147,18 +161,18 @@ else
 
     pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*.whl; else mkdir -pv $tmp_wheel_path; fi"
     pdcp -w $hosts requirements.txt ${tmp_wheel_path}/
-    pdsh -w $hosts "$SUDO pip install -r ${tmp_wheel_path}/requirements.txt"
+    pdsh -w $hosts "$SUDO $PIP_INSTALL -r ${tmp_wheel_path}/requirements.txt"
     if [ "$third_party_install" == "1" ]; then
         pdsh -w $hosts "$SUDO pip uninstall -y apex"
         pdcp -w $hosts third_party/apex/dist/apex*.whl $tmp_wheel_path/
-        pdsh -w $hosts "$SUDO pip install $tmp_wheel_path/apex*.whl"
+        pdsh -w $hosts "$SUDO $PIP_INSTALL $tmp_wheel_path/apex*.whl"
         pdsh -w $hosts 'python -c "import apex"'
     fi
     if [ "$deepspeed_install" == "1" ]; then
         echo "Installing deepspeed"
         pdsh -w $hosts "$SUDO pip uninstall -y deepspeed"
         pdcp -w $hosts dist/deepspeed*.whl $tmp_wheel_path/
-        pdsh -w $hosts "$SUDO pip install $tmp_wheel_path/deepspeed*.whl"
+        pdsh -w $hosts "$SUDO $PIP_INSTALL $tmp_wheel_path/deepspeed*.whl"
         pdsh -w $hosts "python -c 'import deepspeed; print(\"deepspeed info:\", deepspeed.__version__, deepspeed.__git_branch__, deepspeed.__git_hash__)'"
         echo "Installation is successful"
     fi
