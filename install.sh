@@ -17,7 +17,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
 [optional]
     -d, --deepspeed_only    Install only deepspeed and no third party dependencies
     -t, --third_party_only  Install only third party dependencies and not deepspeed
-    -l, --local_only        Installs only on local machine
+    -l, --local_only        Install only on local machine
     -s, --pip_sudo          Run pip with sudo (default: no sudo)
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
