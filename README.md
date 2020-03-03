@@ -293,9 +293,8 @@ doc](https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/index.html).
     }
   },
   "fp16": {
-    "enabled": true,
-    "loss_scale": 0,
-  }
+    "enabled": true
+  },
   "zero_optimization": true
 }
 ```
