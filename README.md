@@ -306,9 +306,19 @@ When training across multiple nodes we have found it useful to support
 propagating user-defined environment variables. By default DeepSpeed will
 propagate all NCCL and PYTHON related environment variables that are set. If
 you would like to propagate additional variables you can specify them in a
-dot-file named `.deepspeed_env` that contains a new-line seperated list of
+dot-file named `.deepspeed_env` that contains a new-line separated list of
 `VAR=VAL` entries. The DeepSpeed launcher will look in the local path you are
 executing from and also in your home directory (`~/`).
+
+As a concrete example, some clusters require special NCCL variables to set
+prior to training. The user can simply add these variables to a
+`.deepspeed_env` file in their home directory that looks like this:
+```
+NCCL_IB_DISABLE=1
+NCCL_SOCKET_IFNAME=eth0
+```
+DeepSpeed will then make sure that these environment variables are set when
+launching each process on every node across their training job.
 
 # Launching DeepSpeed Training
 DeepSpeed installs the entry point `deepspeed` to launch distributed training.
