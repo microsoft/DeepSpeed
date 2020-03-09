@@ -283,6 +283,8 @@ Only optimizers that are subclass of torch.optim.Optimizer are supported. So che
 optimizer to see if requirement is satisfied.
 TODO: Looking under the hood to examine the wrapped optimizer is a hack that requires a better long-term fix.
 """
+
+
 def get_torch_optimizer(optimizer):
     if isinstance(optimizer, Optimizer):
         return optimizer
@@ -290,7 +292,8 @@ def get_torch_optimizer(optimizer):
     if hasattr(optimizer, 'optimizer') and isinstance(optimizer.optimizer, Optimizer):
         return optimizer.optimizer
 
-    raise TypeError('{} is not a subclass of torch.optim.Optimizer'.format(type(optimizer).__name__))
+    raise TypeError('{} is not a subclass of torch.optim.Optimizer'.format(
+        type(optimizer).__name__))
 
 
 class LRRangeTest(object):
@@ -331,7 +334,6 @@ class LRRangeTest(object):
         _A disciplined approach to neural network hyper-parameters: Part 1 -- learning rate, batch size, momentum, and weight decay:
         https://arxiv.org/abs/1803.09820
 """
-
     def __init__(self,
                  optimizer: Optimizer,
                  lr_range_test_min_lr: float = 1e-3,
@@ -462,7 +464,6 @@ class OneCycle(object):
 
     .. _A disciplined approach to neural network hyper-parameters: Part 1 -- learning rate, batch size, momentum, and weight decay: https://arxiv.org/abs/1803.09820
     """
-
     def __init__(self,
                  optimizer,
                  cycle_min_lr,
@@ -509,7 +510,12 @@ class OneCycle(object):
 
     # Configure cycle shape
 
-    def _initialize_cycle(self, cycle_first_step_size, cycle_second_step_size, cycle_first_stair_count, cycle_second_stair_count, decay_step_size):
+    def _initialize_cycle(self,
+                          cycle_first_step_size,
+                          cycle_second_step_size,
+                          cycle_first_stair_count,
+                          cycle_second_stair_count,
+                          decay_step_size):
         cycle_first_step_size = float(cycle_first_step_size)
         cycle_second_step_size = float(
             cycle_second_step_size
@@ -522,7 +528,12 @@ class OneCycle(object):
         self.decay_step_size = decay_step_size
 
     # Configure lr schedule
-    def _initialize_lr(self, optimizer, cycle_min_lr, cycle_max_lr, decay_lr_rate, last_batch_iteration):
+    def _initialize_lr(self,
+                       optimizer,
+                       cycle_min_lr,
+                       cycle_max_lr,
+                       decay_lr_rate,
+                       last_batch_iteration):
         self.min_lrs = [cycle_min_lr] * len(optimizer.param_groups)
         if last_batch_iteration == -1:
             for lr, group in zip(self.min_lrs, optimizer.param_groups):
@@ -532,11 +543,17 @@ class OneCycle(object):
         self.decay_lr_rate = decay_lr_rate
 
     # Configure momentum schedule
-    def _initialize_momentum(self, optimizer, cycle_min_mom, cycle_max_mom, decay_mom_rate, last_batch_iteration):
+    def _initialize_momentum(self,
+                             optimizer,
+                             cycle_min_mom,
+                             cycle_max_mom,
+                             decay_mom_rate,
+                             last_batch_iteration):
         if 'betas' not in optimizer.defaults:
             optimizer_name = type(optimizer).__name__
             logging.warn(
-                f"cycle_momentum is disabled because optimizer {optimizer_name} does not support momentum, no betas attribute in defaults")
+                f"cycle_momentum is disabled because optimizer {optimizer_name} does not support momentum, no betas attribute in defaults"
+            )
             self.cycle_momentum = False
             return
 
@@ -644,7 +661,6 @@ class WarmupLR(object):
             >>>         scheduler.step()
 
     """
-
     def __init__(self,
                  optimizer: Optimizer,
                  warmup_min_lr: float = 0.0,
