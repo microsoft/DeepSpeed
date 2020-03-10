@@ -948,7 +948,9 @@ class DeepSpeedLight(Module):
         load_path, client_states = self._load_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
 
         if self.zero_optimization() and load_path is not None:
-            self._load_zero_checkpoint(load_dir, tag, load_optimizer_states=load_optimizer_states)
+            self._load_zero_checkpoint(load_dir,
+                                       tag,
+                                       load_optimizer_states=load_optimizer_states)
 
         return load_path, client_states
 
@@ -967,7 +969,8 @@ class DeepSpeedLight(Module):
 
         self.load_module_state_dict(checkpoint['module'])
         if not self.zero_optimization():
-            self.optimizer.load_state_dict(checkpoint['optimizer'], load_optimizer_states=load_optimizer_states)
+            self.optimizer.load_state_dict(checkpoint['optimizer'],
+                                           load_optimizer_states=load_optimizer_states)
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
@@ -1000,7 +1003,8 @@ class DeepSpeedLight(Module):
             return None
 
         zero_sd = torch.load(zero_checkpoint_name, map_location='cpu')
-        self.optimizer.load_state_dict(zero_sd['optimizer_state_dict'], load_optimizer_states=load_optimizer_states)
+        self.optimizer.load_state_dict(zero_sd['optimizer_state_dict'],
+                                       load_optimizer_states=load_optimizer_states)
         logging.info('loading zero checkpoint {}'.format(zero_checkpoint_name))
 
     def save_checkpoint(self, save_dir, tag, client_state={}):
