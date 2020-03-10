@@ -8,7 +8,7 @@ import subprocess
 import os
 import time
 import re
-from test_common import BaseTestCase
+from .test_common import BaseTestCase
 
 
 def grep_loss_from_file(file_name):
