@@ -144,7 +144,7 @@ def test_adamw_fp16_empty_grad(tmpdir):
     _test_adamw_fp16_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
 
 
-def test_adam_fp16_onecycle(tmpdir):
+def test_adam_fp16_onecycle_compatibility(tmpdir):
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -179,7 +179,7 @@ def test_adam_fp16_onecycle(tmpdir):
     model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[1])
-    def _test_adam_fp16_onecycle(args, model, hidden_dim):
+    def _test_adam_fp16_onecycle_compatibility(args, model, hidden_dim):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
@@ -192,10 +192,10 @@ def test_adam_fp16_onecycle(tmpdir):
             model.backward(loss)
             model.step()
 
-    _test_adam_fp16_onecycle(args=args, model=model, hidden_dim=hidden_dim)
+    _test_adam_fp16_onecycle_compatibility(args=args, model=model, hidden_dim=hidden_dim)
 
 
-def test_adam_fp16_zero_onecycle(tmpdir):
+def test_adam_fp16_zero_onecycle_compatibility(tmpdir):
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -230,7 +230,7 @@ def test_adam_fp16_zero_onecycle(tmpdir):
     model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[1])
-    def _test_adam_fp16_zero_onecycle(args, model, hidden_dim):
+    def _test_adam_fp16_zero_onecycle_compatibility(args, model, hidden_dim):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
@@ -243,4 +243,6 @@ def test_adam_fp16_zero_onecycle(tmpdir):
             model.backward(loss)
             model.step()
 
-    _test_adam_fp16_zero_onecycle(args=args, model=model, hidden_dim=hidden_dim)
+    _test_adam_fp16_zero_onecycle_compatibility(args=args,
+                                                model=model,
+                                                hidden_dim=hidden_dim)
