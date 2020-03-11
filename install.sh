@@ -21,6 +21,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -s, --pip_sudo          Run pip with sudo (default: no sudo)
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
+    -p, --python_only       Install locally without apex or any cpp/cuda code (sometimes useful for local development)
     -h, --help              This help text
   """
 }
@@ -34,6 +35,7 @@ pip_sudo=0
 entire_dlts_job=1
 hostfile=/job/hostfile
 pip_mirror=""
+python_only=0
 
 while [[ $# -gt 0 ]]
 do
@@ -62,6 +64,10 @@ case $key in
     -m|--pip_mirror)
     pip_mirror=$2;
     shift
+    shift
+    ;;
+    -p|--python_only)
+    python_only=1
     shift
     ;;
     -H|--hostfile)
@@ -112,6 +118,12 @@ fi
 if [ ! -f $hostfile ]; then
         echo "No hostfile exists at $hostfile, installing locally"
         local_only=1
+fi
+
+if [ "$python_only" == "1" ]; then
+    $PIP_SUDO python setup.py --python_only install
+    python -c 'import deepspeed; print("deepspeed info:", deepspeed.__version__, deepspeed.__git_branch__, deepspeed.__git_hash__)'
+    exit 0
 fi
 
 # Ensure dependencies are installed locally
