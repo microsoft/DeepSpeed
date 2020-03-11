@@ -135,6 +135,7 @@ if [ "$third_party_install" == "1" ]; then
 
     if [ "$apex_commit" != "" ]; then
         echo "Installing a non-standard version of apex at commit: $apex_commit"
+        git fetch
         git checkout $apex_commit
     fi
 
