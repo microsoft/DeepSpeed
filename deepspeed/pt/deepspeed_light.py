@@ -45,9 +45,10 @@ except ImportError:
     try:
         _ = warned_flatten
     except NameError:
-        print(
-            "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
+        if apex_installed:
+            print(
+                "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+            )
         warned_flatten = True
     from torch._utils import _flatten_dense_tensors as flatten
     from torch._utils import _unflatten_dense_tensors as unflatten
