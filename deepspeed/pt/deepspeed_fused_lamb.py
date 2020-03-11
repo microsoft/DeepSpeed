@@ -61,8 +61,9 @@ class FusedLamb(torch.optim.Optimizer):
         try:
             fused_lamb_cuda = importlib.import_module("fused_lamb_cuda")
         except ImportError:
-            raise RuntimeError("[ERROR] unable to import FusedLamb, if you built DeepSpeed with "
-                               "--python_only this is not supported")
+            raise RuntimeError(
+                "[ERROR] unable to import FusedLamb, if you built DeepSpeed with "
+                "--python_only this is not supported")
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
