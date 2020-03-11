@@ -23,6 +23,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
     -a, --apex_commit       Install a specific commit hash of apex, instead of the one deepspeed points to
     -k, --skip_requirements Skip installing DeepSpeed requirements
+    -p, --python_only       Install locally without apex or any cpp/cuda code (sometimes useful for local development)
     -h, --help              This help text
   """
 }
@@ -38,6 +39,7 @@ hostfile=/job/hostfile
 pip_mirror=""
 apex_commit=""
 skip_requirements=0
+python_only=0
 
 while [[ $# -gt 0 ]]
 do
@@ -75,6 +77,8 @@ case $key in
     ;;
     -k|--skip_requirements)
     skip_requirements=1;
+    -p|--python_only)
+    python_only=1
     shift
     ;;
     -H|--hostfile)
@@ -132,6 +136,13 @@ if [ "$skip_requirements" == "0" ]; then
     # Ensure dependencies are installed locally
     $PIP_SUDO $PIP_INSTALL -r requirements.txt
 fi
+
+if [ "$python_only" == "1" ]; then
+    $PIP_SUDO python setup.py --python_only install
+    python -c 'import deepspeed; print("deepspeed info:", deepspeed.__version__, deepspeed.__git_branch__, deepspeed.__git_hash__)'
+    exit 0
+fi
+
 
 # Build wheels
 if [ "$third_party_install" == "1" ]; then
