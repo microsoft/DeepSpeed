@@ -44,6 +44,7 @@ version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
 if "--python_only" in sys.argv:
     print("[WARNING] Building DeepSpeed without cpp/cuda support!")
+    sys.argv.remove("--python_only")
 else:
     print("Building cpp/cuda components...")
     cmdclass['build_ext'] = BuildExtension

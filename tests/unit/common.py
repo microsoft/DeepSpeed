@@ -11,7 +11,7 @@ import pytest
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 10
 
 
-def distributed_test(world_size=2, backend='nccl'):
+def distributed_test(world_size=2, backend=None):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.
     This decorator manages the spawning and joining of processes, initialization of
     torch.distributed, and catching of errors.
@@ -27,6 +27,12 @@ def distributed_test(world_size=2, backend='nccl'):
         world_size (int or list): number of ranks to spawn. Can be a list to spawn
         multiple tests.
     """
+
+    if backend is None:
+        backend = 'gloo'
+        if torch.cuda.is_available():
+            backend = 'nccl'
+
     def dist_wrap(run_func):
         """Second-level decorator for dist_test. This actually wraps the function. """
         def dist_init(local_rank, num_procs, *func_args, **func_kwargs):
