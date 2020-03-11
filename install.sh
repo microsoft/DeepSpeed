@@ -109,10 +109,6 @@ else
   PIP_INSTALL="pip install"
 fi
 
-
-
-install_apex="$PIP_SUDO"" $PIP_INSTALL "'-v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" third_party/apex'
-
 if [ ! -f $hostfile ]; then
         echo "No hostfile exists at $hostfile, installing locally"
         local_only=1
