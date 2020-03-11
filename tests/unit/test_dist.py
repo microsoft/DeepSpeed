@@ -6,6 +6,11 @@ from common import distributed_test
 import pytest
 
 
+device = 'cpu'
+if torch.cuda.is_available():
+  device = 'cuda'
+
+
 @distributed_test(world_size=3)
 def test_init():
     assert dist.is_initialized()
@@ -31,8 +36,8 @@ def test_dist_args(number, color):
 
 @distributed_test(world_size=[1, 2, 4])
 def test_dist_allreduce():
-    x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
+    x = torch.ones(1, 3).to(device) * (dist.get_rank() + 1)
     sum_of_ranks = (dist.get_world_size() * (dist.get_world_size() + 1)) // 2
-    result = torch.ones(1, 3).cuda() * sum_of_ranks
+    result = torch.ones(1, 3).to(device) * sum_of_ranks
     dist.all_reduce(x)
     assert torch.all(x == result)

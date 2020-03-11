@@ -19,6 +19,7 @@ ext_modules = []
 
 if "--python_only" in sys.argv:
     print("[WARNING] Building DeepSpeed without cpp/cuda support!")
+    sys.argv.remove("--python_only")
 else:
     print("Building cpp/cuda components...")
     cmdclass['build_ext'] = BuildExtension

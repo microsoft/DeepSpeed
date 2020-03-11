@@ -26,8 +26,14 @@ from deepspeed.pt.deepspeed_constants import ROUTE_TRAIN, ROUTE_PREDICT, \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
-from apex import amp
-from apex.optimizers.fused_adam import FusedAdam
+
+apex_installed = True
+try:
+    from apex.optimizers.fused_adam import FusedAdam
+except ImportError:
+    print("[WARNING] Apex is not installed, therefore certain features will not be available")
+    apex_installed = False
+
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -119,12 +125,18 @@ class DeepSpeedLight(Module):
         self.gradient_average = True
         self.warn_unscaled_loss = True
 
+        self.cpu_only = not torch.cuda.is_available()
+
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
         self._mpi_check(args, dist_init_required)
 
-        self.dist_backend = "nccl"
+        if self.cpu_only:
+            self.dist_backend = "gloo"
+        else:
+            self.dist_backend = "nccl"
+
         if dist_init_required:
             if not dist.is_initialized():
                 logging.info("Initializing torch distributed with backend: {}".format(
@@ -143,7 +155,7 @@ class DeepSpeedLight(Module):
         if self.tensorboard_enabled():
             self.summary_writer = self.get_summary_writer()
 
-        self._init_distributed(dist_init_required)
+        self._init_distributed()
 
         # Throughput timer
         self.tput_timer = ThroughputTimer(
@@ -170,6 +182,8 @@ class DeepSpeedLight(Module):
 
         # Bookkeeping for csr support
         self.csr_tensor_module_names = set()
+        if self.cpu_only and self.sparse_gradients_enabled():
+            raise RuntimeError("Sparse gradients are currently not supported in CPU only mode")
         if self.sparse_gradients_enabled():
             for name, module in self.module.named_modules():
                 if isinstance(module, torch.nn.Embedding):
@@ -356,10 +370,14 @@ class DeepSpeedLight(Module):
         else:
             return None
 
-    def _init_distributed(self, dist_init_required):
+    def _init_distributed(self):
         if self.local_rank >= 0:
-            torch.cuda.set_device(self.local_rank)
-            self.device = torch.device("cuda", self.local_rank)
+            if self.cpu_only:
+                self.device = "cpu"
+            else:
+                torch.cuda.set_device(self.local_rank)
+                self.device = torch.device("cuda", self.local_rank)
+
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
             logging.info("Set device to local rank {} within node.".format(
@@ -458,7 +476,11 @@ class DeepSpeedLight(Module):
         if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
             optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            if apex_installed:
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            else:
+                print("[WARNING] Unable to instantiate FusedAdam optimizer since Apex is not installed")
+                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:

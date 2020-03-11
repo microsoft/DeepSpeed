@@ -25,18 +25,23 @@ class SynchronizedWallClockTimer:
             self.elapsed_ = 0.0
             self.started_ = False
             self.start_time = time.time()
+            self.cuda_available = torch.cuda.is_available()
+
+        def sync(self):
+            if self.cuda_available:
+                torch.cuda.synchronize()
 
         def start(self):
             """Start the timer."""
             assert not self.started_, 'timer has already been started'
-            torch.cuda.synchronize()
+            self.sync()
             self.start_time = time.time()
             self.started_ = True
 
         def stop(self):
             """Stop the timer."""
             assert self.started_, 'timer is not started'
-            torch.cuda.synchronize()
+            self.sync()
             self.elapsed_ += (time.time() - self.start_time)
             self.started_ = False
 
@@ -105,6 +110,11 @@ class ThroughputTimer():
         if self.logging is None:
             self.logging = logging.info
         self.initialized = False
+        self.cuda_available = torch.cuda.is_available()
+
+    def sync(self):
+        if self.cuda_available:
+            torch.cuda.synchronize()
 
     def update_epoch_count(self):
         self.epoch_count += 1
@@ -117,7 +127,7 @@ class ThroughputTimer():
         self._init_timer()
         self.started = True
         if self.total_step_count >= self.start_step:
-            torch.cuda.synchronize()
+            self.sync()
             self.start_time = time.time()
 
     def stop(self, report_speed=True):
@@ -127,7 +137,7 @@ class ThroughputTimer():
         self.total_step_count += 1
         self.local_step_count += 1
         if self.total_step_count > self.start_step:
-            torch.cuda.synchronize()
+            self.sync()
             self.end_time = time.time()
             duration = self.end_time - self.start_time
             self.total_elapsed_time += duration
