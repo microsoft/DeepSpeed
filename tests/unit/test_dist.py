@@ -5,10 +5,9 @@ from common import distributed_test
 
 import pytest
 
-
 device = 'cpu'
 if torch.cuda.is_available():
-  device = 'cuda'
+    device = 'cuda'
 
 
 @distributed_test(world_size=3)

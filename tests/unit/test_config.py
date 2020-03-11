@@ -11,7 +11,6 @@ import torch.distributed as dist
 import deepspeed
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
-
 #def test_cuda():
 #    assert (torch.cuda.is_available())
 

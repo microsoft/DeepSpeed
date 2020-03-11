@@ -26,14 +26,14 @@ from deepspeed.pt.deepspeed_constants import ROUTE_TRAIN, ROUTE_PREDICT, \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
-
 apex_installed = True
 try:
     from apex.optimizers.fused_adam import FusedAdam
 except ImportError:
-    print("[WARNING] Apex is not installed, therefore certain features will not be available")
+    print(
+        "[WARNING] Apex is not installed, therefore certain features will not be available"
+    )
     apex_installed = False
-
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -183,7 +183,8 @@ class DeepSpeedLight(Module):
         # Bookkeeping for csr support
         self.csr_tensor_module_names = set()
         if self.cpu_only and self.sparse_gradients_enabled():
-            raise RuntimeError("Sparse gradients are currently not supported in CPU only mode")
+            raise RuntimeError(
+                "Sparse gradients are currently not supported in CPU only mode")
         if self.sparse_gradients_enabled():
             for name, module in self.module.named_modules():
                 if isinstance(module, torch.nn.Embedding):
@@ -479,7 +480,9 @@ class DeepSpeedLight(Module):
             if apex_installed:
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
             else:
-                print("[WARNING] Unable to instantiate FusedAdam optimizer since Apex is not installed")
+                print(
+                    "[WARNING] Unable to instantiate FusedAdam optimizer since Apex is not installed"
+                )
                 optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
