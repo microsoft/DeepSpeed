@@ -22,6 +22,8 @@ cmdclass['build_ext'] = BuildExtension
 # and
 # https://github.com/NVIDIA/apex/issues/456
 # https://github.com/pytorch/pytorch/commit/eb7b39e02f7d75c26d8a795ea8c7fd911334da7e#diff-4632522f237f1e4e728cb824300403ac
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
 version_ge_1_1 = []
 if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
     version_ge_1_1 = ['-DVERSION_GE_1_1']
