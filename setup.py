@@ -18,27 +18,19 @@ cmdclass = {}
 ext_modules = []
 cmdclass['build_ext'] = BuildExtension
 
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
+
 if not torch.cuda.is_available():
-    # https://github.com/NVIDIA/apex/issues/486
-    # Extension builds after https://github.com/pytorch/pytorch/pull/23408 attempt to query torch.cuda.get_device_capability(),
-    # which will fail if you are compiling in an environment without visible GPUs (e.g. during an nvidia-docker build command).
+    # Fix to allow docker buils, similar to https://github.com/NVIDIA/apex/issues/486
     print(
-        '\nWarning: Torch did not find available GPUs on this system.\n',
-        'If your intention is to cross-compile, this is not an error.\n'
-        'By default, Apex will cross-compile for Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
-        'Volta (compute capability 7.0), and Turing (compute capability 7.5).\n'
-        'If you wish to cross-compile for a single specific architecture,\n'
-        'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n')
+        "[WARNING] Torch did not find cuda available, if cross-compling or running with cpu only "
+        "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
+        "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
         os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;6.1;6.2;7.0;7.5"
 
-# Set up macros for forward/backward compatibility hack around
-# https://github.com/pytorch/pytorch/commit/4404762d7dd955383acee92e6f06b48144a0742e
-# and
-# https://github.com/NVIDIA/apex/issues/456
-# https://github.com/pytorch/pytorch/commit/eb7b39e02f7d75c26d8a795ea8c7fd911334da7e#diff-4632522f237f1e4e728cb824300403ac
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
+# Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
 version_ge_1_1 = []
 if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
     version_ge_1_1 = ['-DVERSION_GE_1_1']
