@@ -8,6 +8,7 @@ Create a new wheel via the following command: python setup.py bdist_wheel
 The wheel will be located at: dist/*.whl
 """
 
+import os
 import torch
 from deepspeed import __version__ as ds_version
 from setuptools import setup, find_packages
@@ -16,6 +17,20 @@ from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 cmdclass = {}
 ext_modules = []
 cmdclass['build_ext'] = BuildExtension
+
+if not torch.cuda.is_available():
+    # https://github.com/NVIDIA/apex/issues/486
+    # Extension builds after https://github.com/pytorch/pytorch/pull/23408 attempt to query torch.cuda.get_device_capability(),
+    # which will fail if you are compiling in an environment without visible GPUs (e.g. during an nvidia-docker build command).
+    print(
+        '\nWarning: Torch did not find available GPUs on this system.\n',
+        'If your intention is to cross-compile, this is not an error.\n'
+        'By default, Apex will cross-compile for Pascal (compute capabilities 6.0, 6.1, 6.2),\n'
+        'Volta (compute capability 7.0), and Turing (compute capability 7.5).\n'
+        'If you wish to cross-compile for a single specific architecture,\n'
+        'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n')
+    if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
+        os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;6.1;6.2;7.0;7.5"
 
 # Set up macros for forward/backward compatibility hack around
 # https://github.com/pytorch/pytorch/commit/4404762d7dd955383acee92e6f06b48144a0742e
