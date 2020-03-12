@@ -17,6 +17,22 @@ cmdclass = {}
 ext_modules = []
 cmdclass['build_ext'] = BuildExtension
 
+# Set up macros for forward/backward compatibility hack around
+# https://github.com/pytorch/pytorch/commit/4404762d7dd955383acee92e6f06b48144a0742e
+# and
+# https://github.com/NVIDIA/apex/issues/456
+# https://github.com/pytorch/pytorch/commit/eb7b39e02f7d75c26d8a795ea8c7fd911334da7e#diff-4632522f237f1e4e728cb824300403ac
+version_ge_1_1 = []
+if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
+    version_ge_1_1 = ['-DVERSION_GE_1_1']
+version_ge_1_3 = []
+if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 2):
+    version_ge_1_3 = ['-DVERSION_GE_1_3']
+version_ge_1_5 = []
+if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
+    version_ge_1_5 = ['-DVERSION_GE_1_5']
+version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
+
 ext_modules.append(
     CUDAExtension(name='fused_lamb_cuda',
                   sources=['csrc/fused_lamb_cuda.cpp',
@@ -24,9 +40,9 @@ ext_modules.append(
                   extra_compile_args={
                       'cxx': [
                           '-O3',
-                      ],
+                      ] + version_dependent_macros,
                       'nvcc': ['-O3',
-                               '--use_fast_math']
+                               '--use_fast_math'] + version_dependent_macros
                   }))
 
 setup(name='deepspeed',
