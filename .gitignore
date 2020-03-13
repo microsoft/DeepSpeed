@@ -2,7 +2,7 @@
 .idea/
 *~
 *.swp
-deepspeed/git_version_info.py
+deepspeed/install_config.py
 
 # Build + installation data
 build/

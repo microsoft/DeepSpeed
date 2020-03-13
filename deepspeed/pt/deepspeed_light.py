@@ -30,9 +30,10 @@ apex_installed = True
 try:
     from apex.optimizers.fused_adam import FusedAdam
 except ImportError:
-    print(
-        "[WARNING] Apex is not installed, therefore certain features will not be available"
-    )
+
+    if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
+        logging.warning("Apex is not installed. Certain features will not be available.")
+
     apex_installed = False
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
@@ -45,9 +46,10 @@ except ImportError:
     try:
         _ = warned_flatten
     except NameError:
-        if apex_installed:
-            print(
-                "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+
+        if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
+            logging.warning(
+                "Apex was installed without --cpp_ext. Falling back to Python flatten and unflatten."
             )
         warned_flatten = True
     from torch._utils import _flatten_dense_tensors as flatten
@@ -126,7 +128,7 @@ class DeepSpeedLight(Module):
         self.gradient_average = True
         self.warn_unscaled_loss = True
 
-        self.cpu_only = not torch.cuda.is_available()
+        self.cpu_only = deepspeed.__cpu_only__ or not torch.cuda.is_available()
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -342,7 +344,6 @@ class DeepSpeedLight(Module):
         logging.info(f'DeepSpeed LR Scheduler = {self.lr_scheduler}')
 
     def _configure_checkpointing(self, dist_init_required):
-
         dp_rank = torch.distributed.get_rank(
         ) if self.mpu is None else self.mpu.get_data_parallel_rank()
 
@@ -985,7 +986,7 @@ class DeepSpeedLight(Module):
         load_path = self._get_ckpt_name(load_dir, tag)
 
         if not os.path.exists(load_path):
-            logging.warn(
+            logging.warning(
                 'Client provided checkpoint load path: {} does not exist ... skip checkpoint load'
                 .format(load_path))
             return None, None
@@ -1023,7 +1024,7 @@ class DeepSpeedLight(Module):
         zero_checkpoint_name = self._get_zero_ckpt_name(load_dir, tag)
 
         if not os.path.exists(zero_checkpoint_name):
-            logging.warn(
+            logging.warning(
                 'Client provided checkpoint load path: {} does not exist ... skip checkpoint load'
                 .format(zero_checkpoint_name))
             return None

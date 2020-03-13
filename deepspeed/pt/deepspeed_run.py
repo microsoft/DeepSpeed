@@ -232,9 +232,13 @@ def main(args=None):
     resource_pool = fetch_hostfile(args.hostfile)
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
-        if device_count == 0:
-            raise RuntimeError("Unable to proceed, no GPU resources available")
+        if deepspeed.CPU_ONLY:
+            device_count = 4
+        else:
+            device_count = torch.cuda.device_count()
+            if device_count == 0:
+                raise RuntimeError('No CUDA-enabled devices available. '
+                                   'Install deepspeed-cpu to train using CPUs.')
         resource_pool['localhost'] = device_count
         args.master_addr = "127.0.0.1"
         multi_node_exec = False

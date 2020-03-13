@@ -21,6 +21,8 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -s, --pip_sudo          Run pip with sudo (default: no sudo)
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
+    -a, --apex_commit       Install a specific commit hash of apex, instead of the one deepspeed points to
+    -k, --skip_requirements Skip installing DeepSpeed requirements
     -p, --python_only       Install locally without apex or any cpp/cuda code (sometimes useful for local development)
     -h, --help              This help text
   """
@@ -35,6 +37,9 @@ pip_sudo=0
 entire_dlts_job=1
 hostfile=/job/hostfile
 pip_mirror=""
+apex_commit=""
+skip_requirements=0
+
 python_only=0
 
 while [[ $# -gt 0 ]]
@@ -64,6 +69,15 @@ case $key in
     -m|--pip_mirror)
     pip_mirror=$2;
     shift
+    shift
+    ;;
+    -a|--apex_commit)
+    apex_commit=$2;
+    shift
+    shift
+    ;;
+    -k|--skip_requirements)
+    skip_requirements=1;
     shift
     ;;
     -p|--python_only)
@@ -98,10 +112,13 @@ if [ "$ds_only" == "1" ] && [ "$tp_only" == "1" ]; then
     exit 1
 fi
 
-echo "Updating git hash/branch info"
-echo "git_hash = '$(git rev-parse --short HEAD)'" > deepspeed/git_version_info.py
-echo "git_branch = '$(git rev-parse --abbrev-ref HEAD)'" >> deepspeed/git_version_info.py
-cat deepspeed/git_version_info.py
+CONFIG_FILE=deepspeed/install_config.py
+echo "Generating configuration."
+echo "# This is an machine generated file." > $CONFIG_FILE
+echo "git_hash = '$(git rev-parse --short HEAD)'" >> $CONFIG_FILE
+echo "git_branch = '$(git rev-parse --abbrev-ref HEAD)'" >> $CONFIG_FILE
+echo "python_only = ${python_only}" >> $CONFIG_FILE
+cat $CONFIG_FILE
 
 if [ "$pip_sudo" == "1" ]; then
   PIP_SUDO="sudo -H"
@@ -115,9 +132,16 @@ else
   PIP_INSTALL="pip install"
 fi
 
+
 if [ ! -f $hostfile ]; then
         echo "No hostfile exists at $hostfile, installing locally"
         local_only=1
+fi
+
+
+if [ "$skip_requirements" == "0" ]; then
+    # Ensure dependencies are installed locally
+    $PIP_SUDO $PIP_INSTALL -r requirements.txt
 fi
 
 if [ "$python_only" == "1" ]; then
@@ -126,8 +150,6 @@ if [ "$python_only" == "1" ]; then
     exit 0
 fi
 
-# Ensure dependencies are installed locally
-$PIP_SUDO $PIP_INSTALL -r requirements.txt
 
 # Build wheels
 if [ "$third_party_install" == "1" ]; then
@@ -136,6 +158,13 @@ if [ "$third_party_install" == "1" ]; then
 
     echo "Building apex wheel"
     cd third_party/apex
+
+    if [ "$apex_commit" != "" ]; then
+        echo "Installing a non-standard version of apex at commit: $apex_commit"
+        git fetch
+        git checkout $apex_commit
+    fi
+
     python setup.py --cpp_ext --cuda_ext bdist_wheel
     cd -
 
@@ -169,7 +198,9 @@ else
 
     pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*.whl; else mkdir -pv $tmp_wheel_path; fi"
     pdcp -w $hosts requirements.txt ${tmp_wheel_path}/
-    pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL -r ${tmp_wheel_path}/requirements.txt"
+    if [ "$skip_requirements" == "0" ]; then
+        pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL -r ${tmp_wheel_path}/requirements.txt"
+    fi
     if [ "$third_party_install" == "1" ]; then
         pdsh -w $hosts "$PIP_SUDO pip uninstall -y apex"
         pdcp -w $hosts third_party/apex/dist/apex*.whl $tmp_wheel_path/

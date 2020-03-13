@@ -5,11 +5,15 @@
 
 import sys
 import unittest
+import pytest
 
 sys.path.append('../DeepSpeedExamples/Megatron_GPT2')
 sys.path.append('../DeepSpeedExamples/BingBertSquad')
 
 import os
+
+if deepspeed.__cpu_only__:
+    pytest.skip("Skipping model tests in CPU-only mode.", allow_module_level=True)
 
 # Import the test cases here.
 import Megatron_GPT2
