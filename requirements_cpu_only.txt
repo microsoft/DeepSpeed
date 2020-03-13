@@ -1,10 +1,8 @@
-torch==1.2.0+cpu
-torchvision==0.4.0+cpu
-pillow==6.2.2
+pillow
 tqdm
 psutil
 tensorboardX==1.8
-tensorflow==1.15.2
+tensorflow
 pytest
 pytest-forked
 pre-commit

@@ -7,6 +7,9 @@ import os
 from common import distributed_test
 from simple_model import SimpleModel, random_dataloader, args_from_dict
 
+if deepspeed.__cpu_only__:
+    pytest.skip("Skipping FP16 tests in CPU-only mode.", allow_module_level=True)
+
 
 def test_lamb_fp16_basic(tmpdir):
     config_dict = {

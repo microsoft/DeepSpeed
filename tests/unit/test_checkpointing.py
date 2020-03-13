@@ -84,6 +84,7 @@ def checkpoint_correctness_verification(args,
         compare_model_states(trained_model, loaded_model)
 
 
+@pytest.mark.skipif(deepspeed.__cpu_only__, reason='FP16 disabled in CPU-only mode')
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -125,6 +126,7 @@ def test_checkpoint_unfused_optimizer(tmpdir):
                                        load_optimizer_states=False)
 
 
+@pytest.mark.skipif(deepspeed.__cpu_only__, reason='FP16 disabled in CPU-only mode')
 def test_checkpoint_fused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -166,6 +168,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
+@pytest.mark.skipif(deepspeed.__cpu_only__, reason='FP16 disabled in CPU-only mode')
 def test_checkpoint_zero_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,

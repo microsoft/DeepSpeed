@@ -109,10 +109,13 @@ if [ "$ds_only" == "1" ] && [ "$tp_only" == "1" ]; then
     exit 1
 fi
 
-echo "Updating git hash/branch info"
-echo "git_hash = '$(git rev-parse --short HEAD)'" > deepspeed/git_version_info.py
-echo "git_branch = '$(git rev-parse --abbrev-ref HEAD)'" >> deepspeed/git_version_info.py
-cat deepspeed/git_version_info.py
+CONFIG_FILE=deepspeed/install_config.py
+echo "Generating configuration."
+echo "# This is an machine generated file." > $CONFIG_FILE
+echo "git_hash = '$(git rev-parse --short HEAD)'" >> $CONFIG_FILE
+echo "git_branch = '$(git rev-parse --abbrev-ref HEAD)'" >> $CONFIG_FILE
+echo "python_only = ${python_only}" >> $CONFIG_FILE
+cat $CONFIG_FILE
 
 if [ "$pip_sudo" == "1" ]; then
   PIP_SUDO="sudo -H"
