@@ -30,8 +30,10 @@ apex_installed = True
 try:
     from apex.optimizers.fused_adam import FusedAdam
 except ImportError:
+
     if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
         logging.warning("Apex is not installed. Certain features will not be available.")
+
     apex_installed = False
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
@@ -44,6 +46,7 @@ except ImportError:
     try:
         _ = warned_flatten
     except NameError:
+
         if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
             logging.warning(
                 "Apex was installed without --cpp_ext. Falling back to Python flatten and unflatten."
@@ -479,7 +482,6 @@ class DeepSpeedLight(Module):
             if apex_installed:
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
             else:
-
                 print(
                     "[WARNING] Unable to instantiate FusedAdam optimizer since Apex is not installed"
                 )

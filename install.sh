@@ -39,6 +39,7 @@ hostfile=/job/hostfile
 pip_mirror=""
 apex_commit=""
 skip_requirements=0
+
 python_only=0
 
 while [[ $# -gt 0 ]]
@@ -77,6 +78,8 @@ case $key in
     ;;
     -k|--skip_requirements)
     skip_requirements=1;
+    shift
+    ;;
     -p|--python_only)
     python_only=1
     shift
@@ -134,6 +137,7 @@ if [ ! -f $hostfile ]; then
         echo "No hostfile exists at $hostfile, installing locally"
         local_only=1
 fi
+
 
 if [ "$skip_requirements" == "0" ]; then
     # Ensure dependencies are installed locally
