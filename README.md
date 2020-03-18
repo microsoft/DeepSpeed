@@ -72,7 +72,7 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
 * DeepSpeed trains GPT2 (1.5 billion parameters) 3.75x faster than state-of-art, NVIDIA
   Megatron on Azure GPUs.
 
-  *Read more*: [GPT tutorial](https://www.deepspeed.ai/tutorials/megatron.md)
+  *Read more*: [GPT tutorial](https://www.deepspeed.ai/tutorials/megatron/)
 
 
 
