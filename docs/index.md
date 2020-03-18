@@ -18,6 +18,16 @@ a language model (LM) with over 17B parameters called
 [Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
 establishing a new SOTA in the LM category.
 
+# What's New?
+{% assign news = site.posts | where: "sneak_preview", "false" %}
+{% for post in news limit:5 %}
+  {% if post.link %}
+  * [{{ post.title }}]({{ post.link }})
+  {% else %}
+  * [{{ post.title }}]({{ post.url }})
+  {% endif %}
+{% endfor %}
+
 
 # Why DeepSpeed?
 Training advanced deep learning models is challenging. Beyond model design,
