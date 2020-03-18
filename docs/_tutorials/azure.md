@@ -1,4 +1,6 @@
-# DeepSpeed with Azure
+---
+title: "Getting Started with DeepSpeed on Azure"
+---
 
 This tutorial will help you get started running DeepSpeed on [Azure virtual
 machines](https://azure.microsoft.com/en-us/services/virtual-machines/).
@@ -58,7 +60,7 @@ Next, we need to configure the VM environment for DeepSpeed. We provide a script
 ```bash
 ./setup_vms.sh
 ```
-to generate a [hostfile](../README.md#resource-configuration) and SSH
+to generate a [hostfile](/getting-started/#resource-configuration-multi-node) and SSH
 configuration on all of the VMs. This configuration will be used by the DeepSpeed
 Docker containers in the next step.
 
@@ -72,7 +74,7 @@ background. This will take several minutes since it needs to pull the entire Doc
 image.
 
 ## Access VMs
-The tool [azure_ssh.sh](azure_ssh.sh) will let you SSH into any of the VMs with this
+The tool `azure_ssh.sh` will let you SSH into any of the VMs with this
 syntax:
 ```bash
 ./azure_ssh.sh <node-id> [command]
@@ -122,7 +124,7 @@ the first DeepSpeed container:
 
 ## Megatron-LM GPT2
 DeepSpeed includes an example model using Megatron-LM's GPT2. Please refer to the full
-[Megatron tutorial](../docs/tutorials/MegatronGPT2Tutorial.md) for more details.
+[Megatron tutorial](/tutorials/megatron/) for more details.
  * In order to fully train GPT2 with DeepSpeed and ZeRO we recommend using 8 instances of
    Azure's Standard_ND40rs_v2 SKU for a total of 64 NVIDIA V100 GPUs. With this setup and
    a batch size of 1536 you should be able to complete 100k training steps (153.6 million

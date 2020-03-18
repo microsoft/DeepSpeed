@@ -29,6 +29,8 @@ lnav:
   - title: "Tutorials"
     url: /tutorials/
     children:
+      - title: "Getting Started on Azure"
+        url: /tutorials/azure/
       - title: "CIFAR-10"
         url: /tutorials/cifar-10/
       - title: "Megatron-LM GPT2"
