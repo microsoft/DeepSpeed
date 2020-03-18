@@ -158,7 +158,6 @@ overview](features) for descriptions and usage.
 * [Performance Analysis and Debugging](features.md#performance-analysis-and-debugging)
 
 
-
 # Contributing
 DeepSpeed welcomes your contributions! Please see our
 [contributing](/contributing/) guide for more details on formatting, testing,

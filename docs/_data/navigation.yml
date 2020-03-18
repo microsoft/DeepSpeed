@@ -18,8 +18,14 @@ lnav:
     children:
       - title: "Installation"
         url: /getting-started/#installation
-      - title: "Configuration"
-        url: /getting-started/#deepspeed-configuration
+      - title: "Writing Models"
+        url: /getting-started/#writing-deepspeed-models
+      - title: "Training"
+        url: /getting-started/#training
+      - title: "Launching"
+        url: /getting-started/#launching-deepspeed-training
+  - title: "Configuration"
+    url: /docs/config_json/
   - title: "Tutorials"
     url: /tutorials/
     children:
