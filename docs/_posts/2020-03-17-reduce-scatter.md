@@ -1,6 +1,6 @@
 ---
 title: "ZeRO stage 1 with reduced communication"
-date:   2020-03-13
+sneak_preview: true
 excerpt: "Partition-aware ZeRO with up to 2x reduction in communication time!"
 ---
 

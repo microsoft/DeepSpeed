@@ -1,0 +1,32 @@
+---
+layout: archive
+---
+
+{{ content }}
+
+
+{% if paginator %}
+  {% assign posts = paginator.posts %}
+{% else %}
+  {% assign posts = site.posts %}
+{% endif %}
+
+
+<h2>Features Coming Soon</h2>
+{% assign soon = posts | where: "sneak_preview", "true" %}
+<ul>
+{% for post in soon %}
+  <li>
+    <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
+    {% if post.excerpt %}<p class="archive__item-excerpt" itemprop="description">{{ post.excerpt | markdownify | strip_html | truncate: 160 }}</p>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+
+<h2>{{ site.data.ui-text[site.locale].recent_posts | default: "Recent Posts" }}</h2>
+{% assign news = posts | where: "sneak_preview", "false" %}
+{% for post in news %}
+  {% include archive-single.html %}
+{% endfor %}
+
+{% include paginator.html %}
