@@ -25,7 +25,7 @@ lnav:
       - title: "Launching"
         url: /getting-started/#launching-deepspeed-training
   - title: "Configuration"
-    url: /docs/config_json/
+    url: /docs/config-json/
   - title: "Tutorials"
     url: /tutorials/
     children:
