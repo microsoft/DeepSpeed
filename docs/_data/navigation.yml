@@ -11,7 +11,8 @@ main:
     url: https://github.com/microsoft/DeepSpeed
 
 lnav:
-  - title: "DeepSpeed Documentation"
+  - title: "Feature Overview"
+    url: /features/
   - title: "Getting Started"
     url: /getting-started/
     children:
@@ -19,5 +20,16 @@ lnav:
         url: /getting-started/#installation
       - title: "Configuration"
         url: /getting-started/#deepspeed-configuration
-  - title: "DeepSpeed Features"
-    url: /features/
+  - title: "Tutorials"
+    url: /tutorials/
+    children:
+      - title: "CIFAR-10"
+        url: /tutorials/cifar-10/
+      - title: "Megatron-LM GPT2"
+        url: /tutorials/megatron/
+      - title: "1-Cycle Schedule"
+        url: /tutorials/1Cycle/
+      - title: "Learning Rate Range Test"
+        url: /tutorials/lrrt/
+  - title: "Contributing"
+    url: /contributing/
