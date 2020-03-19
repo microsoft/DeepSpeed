@@ -8,7 +8,6 @@ Create a new wheel via the following command: python setup.py bdist_wheel
 The wheel will be located at: dist/*.whl
 """
 
-
 import os
 import sys
 import torch
@@ -18,6 +17,7 @@ from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 
 cmdclass = {}
 ext_modules = []
+cmdclass['build_ext'] = BuildExtension
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -50,17 +50,17 @@ else:
     print("Building cpp/cuda components...")
     cmdclass['build_ext'] = BuildExtension
     ext_modules.append(
-        CUDAExtension(name='fused_lamb_cuda',
-                      sources=['csrc/fused_lamb_cuda.cpp',
-                               'csrc/fused_lamb_cuda_kernel.cu'],
-                      extra_compile_args={
-                          'cxx': [
-                              '-O3',
-                          ] + version_dependent_macros,
-                          'nvcc': ['-O3',
-                                   '--use_fast_math'] + version_dependent_macros
-                      }))
-
+        CUDAExtension(
+            name='fused_lamb_cuda',
+            sources=['csrc/fused_lamb_cuda.cpp',
+                     'csrc/fused_lamb_cuda_kernel.cu'],
+            extra_compile_args={
+                'cxx': [
+                    '-O3',
+                ] + version_dependent_macros,
+                'nvcc': ['-O3',
+                         '--use_fast_math'] + version_dependent_macros
+            }))
 
 setup(name='deepspeed',
       version=ds_version,

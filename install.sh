@@ -138,7 +138,6 @@ if [ ! -f $hostfile ]; then
         local_only=1
 fi
 
-
 if [ "$skip_requirements" == "0" ]; then
     # Ensure dependencies are installed locally
     $PIP_SUDO $PIP_INSTALL -r requirements.txt

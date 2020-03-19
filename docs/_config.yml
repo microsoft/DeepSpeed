@@ -1,0 +1,60 @@
+title: DeepSpeed
+email: deepspeed@microsoft.com
+description: >-
+  DeepSpeed is a deep learning optimization library that makes distributed
+  training easy, efficient, and effective.
+
+locale : "en-US"
+
+repository: microsoft/DeepSpeed
+baseurl: "/" # the subpath of your site, e.g. /blog
+url: "https://www.deepspeed.ai" # the base hostname & protocol for your site, e.g. http://example.com
+
+# Build settings
+remote_theme: "mmistakes/minimal-mistakes@4.19.0"
+minimal_mistakes_skin : "air"
+
+plugins:
+  - jekyll-feed
+  - jekyll-include-cache
+  - jekyll-paginate
+
+#paginate: 10
+#paginate_path: /blog/page:num
+
+include: ["_pages"]
+exclude: ["code-docs"]
+
+collections:
+  tutorials:
+    output: true
+    permalink: /:collection/:path/
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: single
+      author_profile: false
+      read_time: false
+      comments: false
+      share: false
+      related: false
+      sneak_preview: false
+      toc: true
+      toc_label: "Contents"
+      sidebar:
+        nav: "lnav"
+  - scope:
+      path: "_pages"
+    values:
+      permalink: /docs/:basename/
+  - scope:
+      path: ""
+      type: posts
+    values:
+      layout: single
+      share: true
+
+timezone: America/Los_Angeles
+breadcrumbs: true

@@ -26,34 +26,22 @@ from deepspeed.pt.deepspeed_constants import ROUTE_TRAIN, ROUTE_PREDICT, \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
-apex_installed = True
-try:
-    from apex.optimizers.fused_adam import FusedAdam
-except ImportError:
-
-    if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
-        logging.warning("Apex is not installed. Certain features will not be available.")
-
-    apex_installed = False
-
-MEMORY_OPT_ALLREDUCE_SIZE = 500000000
-SUMMARY_WRITER_DIR_NAME = "JobId"
-
-try:
-    from apex_C import flatten
-    from apex_C import unflatten
-except ImportError:
+if deepspeed.__cpu_only__ or deepspeed.__python_only__:
+    from torch._utils import _flatten_dense_tensors as flatten
+    from torch._utils import _unflatten_dense_tensors as unflatten
     try:
         _ = warned_flatten
     except NameError:
-
-        if not deepspeed.__cpu_only__ or not deepspeed.__python_only__:
-            logging.warning(
-                "Apex was installed without --cpp_ext. Falling back to Python flatten and unflatten."
-            )
+        logging.warning("Apex was installed without --cpp_ext. "
+                        "Falling back to Python flatten and unflatten.")
         warned_flatten = True
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
+else:
+    from apex.optimizers.fused_adam import FusedAdam
+    from apex_C import flatten
+    from apex_C import unflatten
+
+MEMORY_OPT_ALLREDUCE_SIZE = 500000000
+SUMMARY_WRITER_DIR_NAME = "JobId"
 
 
 def split_half_float_double_csr(tensors):
@@ -479,12 +467,11 @@ class DeepSpeedLight(Module):
         if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
             optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            if apex_installed:
+            if not deepspeed.__cpu_only__ and not deepspeed.__python_only__:
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
             else:
-                print(
-                    "[WARNING] Unable to instantiate FusedAdam optimizer since Apex is not installed"
-                )
+                logging.warning("Unable to use FusedAdam optimizer due to "
+                                "__cpu_only__ or __python_only__.")
                 optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)

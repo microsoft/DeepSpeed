@@ -1,6 +1,11 @@
-# PyTorch DeepSpeed Config JSON Documentation
+---
+title: "DeepSpeed Configuration JSON"
+---
 
-## REQUIRED DeepSpeed Config JSON Parameters
+### Batch Size Related Parameters
+
+**Note:** configuring ***train\_batch\_size*** is required.
+{: .notice--warning}
 
 ***train\_batch\_size***: [integer]
 
@@ -8,9 +13,6 @@
 | ------------------------------------------------------------ | ------- |
 | The effective training batch size. This is the amount of data samples that leads to one step of model update. ***train\_batch\_size*** is aggregated by the batch size that a single GPU processes in one forward/backward pass (a.k.a., ***train\_step\_batch\_size***),  the gradient accumulation steps (a.k.a., ***gradient\_accumulation\_steps***), and the number of GPUs. | `32`      |
 
-## OPTIONAL DeepSpeed Config JSON Parameters
-
-### Batch Size Related Parameters
 
 ***train\_micro\_batch\_size\_per\_gpu***: [integer]
 
@@ -58,7 +60,7 @@
 
 | Fields | Value                                                        | Example                        |
 | ------ | ------------------------------------------------------------ | ------------------------------ |
-| type   | The scheduler name. See [here](https://microsoft.github.io/DeepSpeed/docs/htmlfiles/api/full/pt/deepspeed_lr_schedules.m.html) for list of support schedulers. | `"1Cycle"`                      |
+| type   | The scheduler name. See [here](https://deepspeed.readthedocs.io/en/latest/deepspeed.pt.html) for list of support schedulers. | `"1Cycle"`                      |
 | params | Dictionary of parameters to instantiate scheduler. The parameter names should match scheduler constructor signature. | `{"lr": 0.001, "eps": 1e-8}` |
 
 Example of ***scheduler***

@@ -1,4 +1,7 @@
-# Tutorial: 1-Cycle Schedule
+---
+title: "1-Cycle Schedule"
+---
+
 This tutorial shows how to implement 1Cycle schedules for learning rate and
 momentum in PyTorch.
 
@@ -14,8 +17,8 @@ effectively use larger batch sizes to train their models in PyTorch.
 
 To use 1-cycle schedule for model training, you should satisfy these two requirements:
 
-1. Integrate DeepSpeed into your training script using this
-[guide](../..//README.md#getting-started).
+1. Integrate DeepSpeed into your training script using the [Getting
+Started](/getting-started/) guide.
 2. Add the parameters to configure a 1-Cycle schedule to the parameters of your
 model. We will define the 1-Cycle parameters below.
 
@@ -28,7 +31,7 @@ number of training steps. In the decay phase, the learning rate decays starting
 from the minimum value of the cycle phase. An example of 1-cycle learning rate
 schedule during model training is illustrated below.
 
-![1cycle_lr](../figures/1cycle_lr.png)
+![1cycle_lr](/assets/images/1cycle_lr.png)
 
 ### 1-Cycle Parameters
 
@@ -59,7 +62,7 @@ The local parameters for the hyperparameters are:
 
 Although appropriate values `cycle_min_lr` and `cycle_max_lr` values can be
 selected based on experience or expertise,  we recommend using [learning rate
-range test](lrrt.md) feature of DeepSpeed to configure them.
+range test](/tutorials/lrrt/) feature of DeepSpeed to configure them.
 
 **Momentum**
 1. `cycle_min_mom`: minimum momentum in cycle phase
@@ -122,7 +125,7 @@ these learning rate schedules:
 2. **LinearScale**: using a fixed learning rate that is 8X of **Fixed**.
 3. **1Cycle**: using 1-Cycle schedule.
 
-![model_convergence](../figures/model_convergence.png)
+![model_convergence](/assets/images/model_convergence.png)
 
 With **1Cycle**, the model converges faster than the other schedules to the
 target AUC . In fact, **1Cycle** converges as fast as the optimal 1-GPU
@@ -131,7 +134,7 @@ more data samples). With **LinearScale**, the model diverges because the
 learning rate is too high. The plot below illustrates the schedules by
 reporting the learning rate values during 8-GPU training.
 
-![lr_schedule](../figures/lr_schedule.png)
+![lr_schedule](/assets/images/lr_schedule.png)
 
 We see that the learning rate for **1Cycle** is always larger than **Fixed**
 and is briefly larger than **LinearScale** to achieve faster convergence. Also

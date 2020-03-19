@@ -1,8 +1,9 @@
-# Tutorial: Megatron-LM GPT2 with DeepSpeed
+---
+title: "Megatron-LM GPT2"
+---
 
 If you haven't already, we advise you to first read through the [Getting
-Started](../../README.md#getting-started) guide before stepping through this
-tutorial.
+Started](/getting-started/) guide before stepping through this tutorial.
 
 In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which
 is a large, powerful transformer. Megatron-LM supports model-parallel and multi-node
@@ -15,7 +16,7 @@ original Megatron-LM. Next, we proceed step-by-step in enabling this model to ru
 DeepSpeed. Finally, we demonstrate the **_performance gains_**, and **_memory footprint
 reduction_** from using DeepSpeed.
 
-## 1 Training GPT-2 with the Original Megatron-LM
+## Training GPT-2 with the Original Megatron-LM
 
 The original model code from
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM).  We've copied this repo
@@ -26,11 +27,11 @@ and made it available as a submodule. To download, execute:
 git submodule update --init --recursive
 ```
 
-### 1.1 Training Data Setup
+### Training Data Setup
 * Follow Megatron's [instructions](https://github.com/NVIDIA/Megatron-LM#collecting-gpt2-webtext-data)
   to download the webtext data and place a symbolic link under `DeepSpeedExamples/Megatron-LM/data`:
 
-### 1.2 Running Unmodified Megatron-LM GPT2 model
+### Running Unmodified Megatron-LM GPT2 model
 
 * For a single GPU run:
     - change `scripts/pretrain_gpt2.sh`, set its `--train-data` argument as `"webtext"`.
@@ -45,7 +46,7 @@ git submodule update --init --recursive
     - run `bash scripts/pretrain_gpt2_model_parallel.sh`
 
 
-## 2 Enabling DeepSpeed
+## Enabling DeepSpeed
 
 To use DeepSpeed we will modify three files :
 
@@ -54,7 +55,7 @@ To use DeepSpeed we will modify three files :
 * `utils.py` : Checkpoints saving and loading utilities
 
 
-### 2.1 Argument Parsing
+### Argument Parsing
 The first step is to apply DeepSpeed is adding DeepSpeed arguments to
 Megatron-LM GPT2 model, using `deepspeed.add_config_arguments()` in
 `arguments.py`.
@@ -77,10 +78,10 @@ def get_args():
 
 
 
-### 2.2 Initialization and Training
+### Initialization and Training
 We modify `pretrain.py` to enable training with DeepSpeed.
 
-#### 2.2.1 Initialization
+#### Initialization
 We use `deepspeed.initialize` to create `model_engine`, `optimizer` and LR
 `scheduler`. Below is its definition:
 ```python
@@ -141,7 +142,7 @@ def get_optimizer(model, args):
         return optimizer
 ```
 
-#### 2.2.2 Using the Training API
+#### Using the Training API
 The `model` returned by `deepspeed.initialize` is the _DeepSpeed Model Engine_
 that we will use to train the model using the forward, backward and step API.
 
@@ -249,7 +250,7 @@ the logging string.
 ```
 
 
-### 2.3 Checkpoints Saving & Loading
+### Checkpoints Saving & Loading
 
 DeepSpeed engine has flexible APIs for checkpoint saving and loading, to handle
 the states from both the client model and its own internal.
@@ -319,7 +320,7 @@ and return the states for the client model.
 
 ```
 
-### 2.4 Train  scripts
+### Train  scripts
 Assume webtext data was prepared in previous step, to start training
 Megatron-LM GPT2 model with DeepSpeed applied, execute the following command to
 start training.
@@ -331,7 +332,7 @@ start training.
 
 
 
-## 3 Performance Improvements
+## Performance Improvements
 DeepSpeed enables training very large models effectively via the advanced [ZeRO
 optimizer](https://arxiv.org/abs/1910.02054v2). ZeRO significantly reduces the memory
 footprint for training large models which means large models can be trained with i) less
@@ -353,13 +354,13 @@ For details please see the [ZeRO Paper](https://arxiv.org/abs/1910.02054v2). We 
 present performance improvement on a 64 GPU cluster along with detailed configuration
 analysis to show where the improvements come from.
 
-![DeepSpeed-vs-Megatron](../figures/DeepSpeed-vs-Megatron.png)
+![DeepSpeed-vs-Megatron](/assets/images/DeepSpeed-vs-Megatron.png)
 <p align="center">
 <em>The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone.</em>
 </p>
 
 
-### 3.1 On Low Bandwidth GPU Cluster
+### On Low Bandwidth GPU Cluster
 The figure above shows that training 1.5B parameter model with DeepSpeed is
 nearly 4x faster than without DeepSpeed on a cluster with 4 nodes, 4 GPU per
 node, and 16 GPUs total. These GPUs have 16GB of memory each, and PCI-E
@@ -374,7 +375,7 @@ effective batch size of 128 without running out of memory, resulting in
 significantly higher performance.
 
 
-### 3.2 On High bandwidth DGX-2 GPU Cluster
+### On High bandwidth DGX-2 GPU Cluster
 Each GPU on the DGX-2 cluster has 32 GB of memory, and GPUs inside a box is connected via
 the high-bandwidth NVSwitch. DGX-2 nodes are connected to each other via 800 Gbps (8 x 100Gbps) infiniband interconnect. As such, running a 1.5B model on DGX-2 requires less model
 parallelism, and the performance improvement from DeepSpeed for this model size is less
@@ -384,7 +385,7 @@ Therefore, as the model sizes get larger, DeepSpeed, by coming ZeRO with Megatro
 using Megatron-LM alone.
 
 
-### 3.3 Performance Improvements with Configuration Details
+### Performance Improvements with Configuration Details
 The figure below compares DeepSpeed with Megatron on a 64 GPU cluster with 4
 DGX-2 nodes. To give the readers a clear idea of source of the performance
 improvements, we also present the configuration table for both Megatron and
@@ -393,7 +394,7 @@ size that can be used to train these models without running out of memory. As
 discussed above, the tables demonstrate that DeepSpeed runs with smaller model parallelism degree
 and achieves better performance.
 
-![DeepSpeed Performance SpeedUp](../figures/megatron-gpt2-perf-test.png)
+![DeepSpeed Performance SpeedUp](/assets/images/megatron-gpt2-perf-test.png)
 <p align="center">
 <em>The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of Nvidia Megatron-LM) over using Megatron-LM alone.</em>
 </p>
