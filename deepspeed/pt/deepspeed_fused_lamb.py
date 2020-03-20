@@ -39,7 +39,7 @@ class FusedLamb(torch.optim.Optimizer):
             evaluating square root instead of adding it to the square root of
             second moment estimate as in the original paper. (default: False)
 
-    .. _Adam\: A Method for Stochastic Optimization:
+    .. _Adam: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
