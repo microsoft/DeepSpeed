@@ -10,6 +10,7 @@ from torch.nn.modules import Module
 
 from tensorboardX import SummaryWriter
 
+from deepspeed.install_config import __cpu_only__, __python_only__
 from deepspeed.pt.deepspeed_timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
 
@@ -26,19 +27,24 @@ from deepspeed.pt.deepspeed_constants import ROUTE_TRAIN, ROUTE_PREDICT, \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
-if deepspeed.__cpu_only__ or deepspeed.__python_only__:
+from deepspeed.install_config import __cpu_only__, __python_only__
+
+if __cpu_only__ or __python_only__:
     from torch._utils import _flatten_dense_tensors as flatten
     from torch._utils import _unflatten_dense_tensors as unflatten
-    try:
-        _ = warned_flatten
-    except NameError:
-        logging.warning("Apex was installed without --cpp_ext. "
-                        "Falling back to Python flatten and unflatten.")
-        warned_flatten = True
 else:
-    from apex.optimizers.fused_adam import FusedAdam
-    from apex_C import flatten
-    from apex_C import unflatten
+    try:
+        from apex.optimizers.fused_adam import FusedAdam
+        from apex_C import flatten
+        from apex_C import unflatten
+    except ImportError:
+        try:
+            _ = warned_flatten
+        except NameError:
+            logging.warning("Apex was installed without --cpp_ext. "
+                            "Falling back to Python flatten and unflatten.")
+            from torch._utils import _flatten_dense_tensors as flatten
+            from torch._utils import _unflatten_dense_tensors as unflatten
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -116,7 +122,7 @@ class DeepSpeedLight(Module):
         self.gradient_average = True
         self.warn_unscaled_loss = True
 
-        self.cpu_only = deepspeed.__cpu_only__ or not torch.cuda.is_available()
+        self.cpu_only = __cpu_only__ or not torch.cuda.is_available()
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -467,7 +473,7 @@ class DeepSpeedLight(Module):
         if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
             optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            if not deepspeed.__cpu_only__ and not deepspeed.__python_only__:
+            if not __cpu_only__ and not __python_only__:
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
             else:
                 logging.warning("Unable to use FusedAdam optimizer due to "

@@ -7,12 +7,12 @@ from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 
 try:
-    from deepspeed.install_config import git_hash, git_branch, cpu_only, python_only
+    from deepspeed.install_config import __git_hash__, __git_branch__, __cpu_only__, __python_only__
 except ImportError:
-    git_hash = None
-    git_branch = None
-    cpu_only = False
-    python_only = False
+    __git_hash__ = None
+    __git_branch__ = None
+    __cpu_only__ = False
+    __python_only__ = False
 
 # Export version information
 __version_major__ = 0
@@ -23,10 +23,6 @@ __version__ = '.'.join(
         [__version_major__,
          __version_minor__,
          __version_patch__]))
-__git_hash__ = git_hash
-__git_branch__ = git_branch
-__cpu_only__ = python_only  # TODO
-__python_only__ = python_only
 
 
 def initialize(args,

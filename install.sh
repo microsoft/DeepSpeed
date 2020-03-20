@@ -21,9 +21,10 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -s, --pip_sudo          Run pip with sudo (default: no sudo)
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
-    -a, --apex_commit       Install a specific commit hash of apex, instead of the one deepspeed points to
     -k, --skip_requirements Skip installing DeepSpeed requirements
-    -p, --python_only       Install locally without apex or any cpp/cuda code (sometimes useful for local development)
+    -c, --cpu_only          Install locally without GPU support. Also enables --python_only
+    -p, --python_only       Install locally without Apex or C++/CUDA code
+    -a, --apex_commit       Install a specific commit hash of apex, instead of the one deepspeed points to
     -h, --help              This help text
   """
 }
@@ -41,6 +42,7 @@ apex_commit=""
 skip_requirements=0
 
 python_only=0
+cpu_only=0
 
 while [[ $# -gt 0 ]]
 do
@@ -80,6 +82,11 @@ case $key in
     skip_requirements=1;
     shift
     ;;
+    -c|--cpu_only)
+    python_only=1
+    cpu_only=1
+    shift
+    ;;
     -p|--python_only)
     python_only=1
     shift
@@ -115,9 +122,10 @@ fi
 CONFIG_FILE=deepspeed/install_config.py
 echo "Generating configuration."
 echo "# This is an machine generated file." > $CONFIG_FILE
-echo "git_hash = '$(git rev-parse --short HEAD)'" >> $CONFIG_FILE
-echo "git_branch = '$(git rev-parse --abbrev-ref HEAD)'" >> $CONFIG_FILE
-echo "python_only = ${python_only}" >> $CONFIG_FILE
+echo "__git_hash__ = '$(git rev-parse --short HEAD)'" >> $CONFIG_FILE
+echo "__git_branch__ = '$(git rev-parse --abbrev-ref HEAD)'" >> $CONFIG_FILE
+echo "__cpu_only__ = ${cpu_only}" >> $CONFIG_FILE
+echo "__python_only__ = ${python_only}" >> $CONFIG_FILE
 cat $CONFIG_FILE
 
 if [ "$pip_sudo" == "1" ]; then
@@ -138,9 +146,14 @@ if [ ! -f $hostfile ]; then
         local_only=1
 fi
 
+
+# Ensure dependencies are installed locally
 if [ "$skip_requirements" == "0" ]; then
-    # Ensure dependencies are installed locally
-    $PIP_SUDO $PIP_INSTALL -r requirements.txt
+    if [ "$python_only" == "0" ]; then
+      $PIP_SUDO $PIP_INSTALL -r requirements.txt
+    else
+      $PIP_SUDO $PIP_INSTALL -r requirements_cpu_only.txt
+    fi
 fi
 
 if [ "$python_only" == "1" ]; then
