@@ -3,6 +3,7 @@
 *~
 *.swp
 deepspeed/install_config.py
+.vscode/
 
 # Build + installation data
 build/
