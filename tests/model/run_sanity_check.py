@@ -12,7 +12,8 @@ sys.path.append('../DeepSpeedExamples/BingBertSquad')
 
 import os
 
-if deepspeed.__cpu_only__:
+from deepspeed import __cpu_only__
+if __cpu_only__:
     pytest.skip("Skipping model tests in CPU-only mode.", allow_module_level=True)
 
 # Import the test cases here.
