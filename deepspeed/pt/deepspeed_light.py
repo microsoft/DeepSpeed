@@ -625,7 +625,7 @@ class DeepSpeedLight(Module):
                                   self.gradient_accumulation_steps())
             self.summary_events = [
                 (f'Train/Samples/train_loss',
-                 loss.mean().item() * self.gradient_accumulation_steps(),
+                 loss.mean().item(),
                  self.sample_count)
             ]
             for event in self.summary_events:  # write_summary_events
