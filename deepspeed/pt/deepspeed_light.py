@@ -564,20 +564,25 @@ class DeepSpeedLight(Module):
         self.warn_unscaled_loss = True
         self.module.train(False)
 
-    def _scale_loss(self, loss):
-        if isinstance(loss, torch.Tensor):
-            loss = loss / self.gradient_accumulation_steps()
-        elif isinstance(loss, tuple) and isinstance(loss[0], torch.Tensor):
-            loss = (l / self.gradient_accumulation_steps() for l in loss)
-        elif isinstance(loss, list) and isinstance(loss[0], torch.Tensor):
-            loss = [l / self.gradient_accumulation_steps() for l in loss]
+    def _scale_loss(self, prescaled_loss):
+        if isinstance(prescaled_loss, torch.Tensor):
+            scaled_loss = prescaled_loss / self.gradient_accumulation_steps()
+        elif isinstance(prescaled_loss, tuple) or isinstance(prescaled_loss, list):
+            scaled_loss = []
+            for l in prescaled_loss:
+                if isinstance(l, torch.Tensor):
+                    scaled_loss.append(l / self.gradient_accumulation_steps())
+                else:
+                    scaled_loss.append(l)
         else:
+            scaled_loss = prescaled_loss
             if self.warn_unscaled_loss:
                 logging.warning(
-                    f'DeepSpeed unable to scale loss because of type: {type(loss)}')
+                    f'DeepSpeed unable to scale loss because of type: {type(prescaled_loss)}'
+                )
                 self.warn_unscaled_loss = False
 
-        return loss
+        return scaled_loss
 
     def forward(self, *inputs, **kwargs):
         r"""Execute forward propagation
