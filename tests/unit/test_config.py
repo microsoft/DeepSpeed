@@ -11,13 +11,11 @@ import torch.distributed as dist
 import deepspeed
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
-#def test_cuda():
-#    assert (torch.cuda.is_available())
-
-
-def test_check_version():
+def test_check_install_config():
     assert hasattr(deepspeed, "__git_hash__")
     assert hasattr(deepspeed, "__git_branch__")
+    assert hasattr(deepspeed, "__python_only__")
+    assert hasattr(deepspeed, "__cpu_only__")
     assert hasattr(deepspeed, "__version__")
     assert hasattr(deepspeed, "__version_major__")
     assert hasattr(deepspeed, "__version_minor__")
