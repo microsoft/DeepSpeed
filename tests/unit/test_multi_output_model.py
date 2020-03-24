@@ -137,3 +137,4 @@ def test_three_output_model(tmpdir):
             model.step()
 
     _test_three_output_model(args=args, model=model, hidden_dim=hidden_dim)
+
