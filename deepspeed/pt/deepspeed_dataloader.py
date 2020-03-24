@@ -2,6 +2,7 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
+import math
 import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -40,7 +41,7 @@ class DeepSpeedDataLoader(object):
         self.device_count = device_count
         self.batch_size = batch_size
         self.pin_memory = pin_memory
-        self.len = len(self.data_sampler)
+        self.len = int(math.ceil(len(self.data_sampler) * 1.0 / self.batch_size))
         self.data = None
 
     def __iter__(self):
