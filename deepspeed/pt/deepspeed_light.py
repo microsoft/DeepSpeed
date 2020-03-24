@@ -604,10 +604,6 @@ class DeepSpeedLight(Module):
             self.tput_timer.start()
         loss = self.module(*inputs, **kwargs)
 
-        # scale loss w.r.t. gradient accumulation if needed
-        if self.gradient_accumulation_steps() > 1:
-            loss = self._scale_loss(loss)
-
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
             self.timers('forward_microstep').stop()
@@ -625,6 +621,10 @@ class DeepSpeedLight(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
+
+        # scale loss w.r.t. gradient accumulation if needed
+        if self.gradient_accumulation_steps() > 1:
+            loss = self._scale_loss(loss)
 
         if self.is_gradient_accumulation_boundary() and self.tensorboard_enabled(
         ) and torch.distributed.get_rank(
@@ -679,6 +679,8 @@ class DeepSpeedLight(Module):
             self.timers('backward_allreduce_microstep').stop()
             self.timers('backward').stop()
             self.timers('backward_microstep').stop()
+
+        return loss
 
     def is_gradient_accumulation_boundary(self):
         return (self.micro_steps + 1) % \
