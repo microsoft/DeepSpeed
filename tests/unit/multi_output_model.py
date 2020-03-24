@@ -20,17 +20,13 @@ class MultiOutputModel(torch.nn.Module):
         return tuple(losses)
 
 
-def multi_output_dataloader(model,
-                            total_samples,
-                            hidden_dim,
-                            device,
-                            inputs,
-                            targets):
+def multi_output_dataloader(model, total_samples, hidden_dim, device, inputs, targets):
     assert len(inputs) == len(targets)
     batch_size = model.train_micro_batch_size_per_gpu()
 
     train_data = [
-        torch.full(size=(total_samples, hidden_dim),
+        torch.full(size=(total_samples,
+                         hidden_dim),
                    fill_value=x,
                    device=device,
                    dtype=torch.half,
@@ -39,11 +35,10 @@ def multi_output_dataloader(model,
 
     train_label = [
         torch.empty(total_samples,
-                   device=device,
-                   dtype=torch.long).fill_(y) for y in targets
+                    device=device,
+                    dtype=torch.long).fill_(y) for y in targets
     ]
 
     train_dataset = torch.utils.data.TensorDataset(*train_data, *train_label)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
     return train_loader
-
