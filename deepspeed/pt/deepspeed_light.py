@@ -142,17 +142,17 @@ class DeepSpeedLight(Module):
 
         self._init_distributed(dist_init_required)
 
+        # Configure distributed model
+        self._configure_distributed_model(model)
+
         # Throughput timer
         self.tput_timer = ThroughputTimer(
             batch_size=self.train_micro_batch_size_per_gpu(),
-            num_workers=self.world_size,
+            num_workers=self.dp_world_size,
             monitor_memory=False)
 
         self.training_dataloader = self.deepspeed_io(
             training_data) if training_data else None
-
-        # Configure distributed model
-        self._configure_distributed_model(model)
 
         # Configure optimizer and scheduler
         self.optimizer = None
