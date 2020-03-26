@@ -630,8 +630,7 @@ class DeepSpeedLight(Module):
             self.summary_events = [
                 (f'Train/Samples/train_loss',
                  loss.mean().item(),
-                 self.sample_count)
-            ]
+                 self.sample_count)]            
             for event in self.summary_events:  # write_summary_events
                 self.summary_writer.add_scalar(event[0], event[1], event[2])
             self.summary_writer.flush()
