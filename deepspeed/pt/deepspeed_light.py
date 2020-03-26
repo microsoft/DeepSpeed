@@ -271,6 +271,9 @@ class DeepSpeedLight(Module):
     def zero_optimization(self):
         return self._config.zero_enabled
 
+    def zero_allow_untested_optimizer(self):
+        return self._config.zero_allow_untested_optimizer
+
     def allgather_size(self):
         return self._config.allgather_size
 
@@ -443,6 +446,9 @@ class DeepSpeedLight(Module):
 
         if self.zero_optimization():
             if self.optimizer_name != ADAM_OPTIMIZER:
+                assert self.zero_allow_untested_optimizer(), \
+                '{} is not a tested ZeRO Optimizer. To use it you need to add `"zero_allow_untested_optimizer": true` in the DeepSpeed json configuration file.'.format(self.optimizer_name())
+
                 logging.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                 )
