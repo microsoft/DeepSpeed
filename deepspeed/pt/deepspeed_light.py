@@ -447,7 +447,7 @@ class DeepSpeedLight(Module):
         if self.zero_optimization():
             if self.optimizer_name != ADAM_OPTIMIZER:
                 assert self.zero_allow_untested_optimizer(), \
-                'You are using an untested ZeRO Optimizer. Please add `"zero_allow_untested_optimizer": true` in the configuration file to use it.'
+                'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
                 logging.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
