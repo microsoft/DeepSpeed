@@ -306,8 +306,8 @@ def test_zero_allow_untested_optimizer(tmpdir):
     @distributed_test(world_size=[1])
     def _test_zero_allow_untested_optimizer(args):
         hidden_dim = 10
-        optimizer = SimpleOptimizer()
         model = SimpleModel(hidden_dim, empty_grad=True)
+        optimizer = SimpleOptimizer(model.parameters())
         with pytest.raises(AssertionError):
             model, optim, _,_ = deepspeed.initialize(args=args,
                                                     model=model,

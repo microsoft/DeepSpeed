@@ -19,9 +19,9 @@ class SimpleModel(torch.nn.Module):
 
 
 class SimpleOptimizer(torch.optim.Optimizer):
-    def __init__(self, lr=0.11072018):
+    def __init__(self, params, lr=0.11072018):
         defaults = dict(lr=lr)
-        super(SimpleOptimizer, self).__init__(defaults)
+        super(SimpleOptimizer, self).__init__(params, defaults)
 
     def __setstate__(self, state):
         super(SimpleOptimizer, self).__setstate__(state)
