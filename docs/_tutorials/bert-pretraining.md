@@ -17,23 +17,23 @@ memory usage reduction from using DeepSpeed.
 
 ## Pre-training Bing BERT without DeepSpeed
 
-We work from a adaptations of
+We work from adaptations of
 [huggingface/transformers](https://github.com/huggingface/transformers) and
-NVIDIA. We have forked this repo under
+[NVIDIA/DeepLearningExamples](https://github.com/NVIDIA/DeepLearningExamples).
+We have forked this repo under
 [DeepSpeedExamples/bing_bert](https://github.com/microsoft/DeepSpeedExamples/tree/master/bing_bert)
 and made several modifications in their script:
   * We adopted the modeling code from NVIDIA's BERT under `bing_bert/nvidia/`.
   * We extended the data pipeline from [Project Turing](https://msturing.org/)
     under `bing_bert/turing/`.
 
-Before using DeepSpeed, it is recommended to first go over the pre-requisites
-from the original model README, such as the overview of the model's structure
-and how to run the model.
 
 ### Training Data Setup
 
+**Note:** *Downloading and pre-processing instructions are coming soon.*
+
 Download the Wikipedia and BookCorpus datasets and specify their paths in the
-model config file `DeepSpeedExamples/bing_bert/bert\_large\_adam\_seq128.json`:
+model config file `DeepSpeedExamples/bing_bert/bert_large_adam_seq128.json`:
 
 ```json
 {
@@ -294,7 +294,7 @@ for more details in
 | Min Lamb coefficient     | 0.08                      | 0.08                      |
 | Max Lamb coefficient     | 0.5                       | 0.5                       |
 | Learning rate scheduler  | `warmup_linear_decay_exp` | `warmup_linear_decay_exp` |
-| Warmup ratio             | 0.02                      | 0.01                      |
+| Warmup proportion        | 0.02                      | 0.01                      |
 | Decay rate               | 0.90                      | 0.70                      |
 | Decay step               | 1000                      | 1000                      |
 | Max Training steps       | 187000                    | 18700                     |
