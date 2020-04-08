@@ -701,8 +701,7 @@ class WarmupLR(object):
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
             return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
-        else:
-            return 1.0
+        return 1.0
 
     def _format_param(self, optimizer, param_value, param_name):
         if isinstance(param_value, list) or isinstance(param_value, tuple):
