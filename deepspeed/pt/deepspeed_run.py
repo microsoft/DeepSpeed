@@ -180,9 +180,10 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
                 raise ValueError("Hostname '{}' not found in hostfile".format(hostname))
 
             if include_str:
-                filtered_hosts[hostname] = host_info[hostname]
+                h = host_info[hostname]
             elif exclude_str:
-                filtered_hosts[hostname] = []
+                h = []
+            filtered_hosts[hostname] = h
 
     # Post-processing to remove duplicates and empty nodes
     del_keys = []
