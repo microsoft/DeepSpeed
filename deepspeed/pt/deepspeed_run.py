@@ -299,10 +299,9 @@ def main(args=None):
         num_gpus_per_node = None
 
         curr_path = os.path.abspath('.')
+        env['PYTHONPATH'] = curr_path
         if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] = curr_path + ":" + env['PYTHONPATH']
-        else:
-            env['PYTHONPATH'] = curr_path
+            env['PYTHONPATH'] += ":" + env['PYTHONPATH']
 
         exports = ""
         for var in env.keys():
