@@ -80,8 +80,9 @@ class FP16_Optimizer(object):
         self.clip_grad = clip_grad
         self.norm_type = 2
 
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
+        torch_version = torch.__version__.split('.')
+        TORCH_MAJOR = int(torch_version[0])
+        TORCH_MINOR = int(torch_version[1])
         if TORCH_MAJOR == 0 and TORCH_MINOR <= 4:
             self.clip_grad_norm = torch.nn.utils.clip_grad_norm
         else:
