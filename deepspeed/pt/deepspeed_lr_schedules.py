@@ -711,5 +711,4 @@ class WarmupLR(object):
                     param_name,
                     FileNotFoundError(param_value)))
             return list(param_value)
-        else:
-            return [param_value] * len(optimizer.param_groups)
+        return [param_value] * len(optimizer.param_groups)
