@@ -17,15 +17,13 @@ DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER]
 def get_scalar_param(param_dict, param_name, param_default_value):
     if param_name in param_dict.keys():
         return param_dict[param_name]
-    else:
-        return param_default_value
+    return param_default_value
 
 
 def get_fp16_enabled(param_dict):
     if FP16 in param_dict.keys():
         return get_scalar_param(param_dict[FP16], FP16_ENABLED, FP16_ENABLED_DEFAULT)
-    else:
-        return False
+    return False
 
 
 def get_loss_scale(param_dict):
@@ -33,8 +31,7 @@ def get_loss_scale(param_dict):
         return get_scalar_param(param_dict[FP16],
                                 FP16_LOSS_SCALE,
                                 FP16_LOSS_SCALE_DEFAULT)
-    else:
-        return FP16_LOSS_SCALE_DEFAULT
+    return FP16_LOSS_SCALE_DEFAULT
 
 
 def get_initial_dynamic_scale(param_dict):
@@ -128,24 +125,21 @@ def get_gradient_clipping(param_dict):
     grad_clip = get_optimizer_gradient_clipping(param_dict)
     if grad_clip is not None:
         return grad_clip
-    else:
-        return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
+    return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
 
 
 def get_optimizer_name(param_dict):
     if OPTIMIZER in param_dict.keys() and \
             TYPE in param_dict[OPTIMIZER].keys():
         return param_dict[OPTIMIZER][TYPE]
-    else:
-        return OPTIMIZER_TYPE_DEFAULT
+    return OPTIMIZER_TYPE_DEFAULT
 
 
 def get_optimizer_params(param_dict):
     if get_optimizer_name(param_dict) is not None and \
             OPTIMIZER_PARAMS in param_dict[OPTIMIZER].keys():
         return param_dict[OPTIMIZER][OPTIMIZER_PARAMS]
-    else:
-        return None
+    return None
 
 
 def get_optimizer_gradient_clipping(param_dict):
@@ -153,16 +147,14 @@ def get_optimizer_gradient_clipping(param_dict):
     if optimizer_params is not None and \
             MAX_GRAD_NORM in optimizer_params.keys():
         return optimizer_params[MAX_GRAD_NORM]
-    else:
-        return None
+    return None
 
 
 def get_optimizer_legacy_fusion(param_dict):
     if OPTIMIZER in param_dict.keys() and \
         LEGACY_FUSION in param_dict[OPTIMIZER].keys():
         return param_dict[OPTIMIZER][LEGACY_FUSION]
-    else:
-        return LEGACY_FUSION_DEFAULT
+    return LEGACY_FUSION_DEFAULT
 
 
 def get_zero_allow_untested_optimizer(param_dict):
@@ -175,16 +167,14 @@ def get_scheduler_name(param_dict):
     if SCHEDULER in param_dict.keys() and \
             TYPE in param_dict[SCHEDULER].keys():
         return param_dict[SCHEDULER][TYPE]
-    else:
-        return SCHEDULER_TYPE_DEFAULT
+    return SCHEDULER_TYPE_DEFAULT
 
 
 def get_scheduler_params(param_dict):
     if get_scheduler_name(param_dict) is not None and \
             SCHEDULER_PARAMS in param_dict[SCHEDULER].keys():
         return param_dict[SCHEDULER][SCHEDULER_PARAMS]
-    else:
-        return None
+    return None
 
 
 def get_train_batch_size(param_dict):
@@ -208,8 +198,7 @@ def get_tensorboard_enabled(param_dict):
         return get_scalar_param(param_dict[TENSORBOARD],
                                 TENSORBOARD_ENABLED,
                                 TENSORBOARD_ENABLED_DEFAULT)
-    else:
-        return False
+    return False
 
 
 def get_tensorboard_output_path(param_dict):
@@ -217,8 +206,7 @@ def get_tensorboard_output_path(param_dict):
         return get_scalar_param(param_dict[TENSORBOARD],
                                 TENSORBOARD_OUTPUT_PATH,
                                 TENSORBOARD_OUTPUT_PATH_DEFAULT)
-    else:
-        return TENSORBOARD_OUTPUT_PATH_DEFAULT
+    return TENSORBOARD_OUTPUT_PATH_DEFAULT
 
 
 def get_tensorboard_job_name(param_dict):
@@ -226,8 +214,7 @@ def get_tensorboard_job_name(param_dict):
         return get_scalar_param(param_dict[TENSORBOARD],
                                 TENSORBOARD_JOB_NAME,
                                 TENSORBOARD_JOB_NAME_DEFAULT)
-    else:
-        return TENSORBOARD_JOB_NAME_DEFAULT
+    return TENSORBOARD_JOB_NAME_DEFAULT
 
 
 class DeepSpeedConfig(object):
