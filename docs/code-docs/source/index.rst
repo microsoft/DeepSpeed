@@ -6,7 +6,6 @@ DeepSpeed
    :caption: Contents:
 
    initialize
-   modules
 
 
 Indices and tables
