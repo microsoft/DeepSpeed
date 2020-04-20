@@ -623,8 +623,7 @@ class OneCycle(object):
         """
         if self.last_batch_iteration <= self.total_size:
             return self._get_cycle_lr()
-        else:
-            return self._get_decay_lr(self.last_batch_iteration - self.total_size)
+        return self._get_decay_lr(self.last_batch_iteration - self.total_size)
 
     def step(self, batch_iteration=None):
         if batch_iteration is None:
