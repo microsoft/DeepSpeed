@@ -8,7 +8,7 @@ Example usage:
 .. code-block:: python
 
     model_engine, optimizer, _, _ = deepspeed.initialize(args=cmd_args,
-                                                                   model=net,
-                                                                   model_parameters=net.parameters())
+                                                         model=net,
+                                                         model_parameters=net.parameters())
 
 .. autofunction:: deepspeed.initialize
