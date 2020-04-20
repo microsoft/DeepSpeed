@@ -7,7 +7,7 @@ Example usage:
 
 .. code-block:: python
 
-    model_engine, optimizer, trainloader, _ = deepspeed.initialize(args=cmd_args,
+    model_engine, optimizer, _, _ = deepspeed.initialize(args=cmd_args,
                                                                    model=net,
                                                                    model_parameters=net.parameters())
 
