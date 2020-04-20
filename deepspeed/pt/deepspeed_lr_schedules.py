@@ -271,11 +271,10 @@ def get_lr_from_config(config):
 
     if lr_schedule == LR_RANGE_TEST:
         return lr_params[LR_RANGE_TEST_MIN_LR], ''
-    elif lr_schedule == ONE_CYCLE:
+    if lr_schedule == ONE_CYCLE:
         return lr_params[CYCLE_MAX_LR], ''
-    else:
-        # Warmup LR
-        return lr_params[WARMUP_MAX_LR], ''
+    # Warmup LR
+    return lr_params[WARMUP_MAX_LR], ''
 
 
 """
