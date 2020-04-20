@@ -16,8 +16,8 @@ import sys
 # -- Project information -----------------------------------------------------
 
 project = 'DeepSpeed'
-copyright = '2020, Microsoft AI & Research'
-author = 'Microsoft AI & Research'
+copyright = '2020, Microsoft'
+author = 'Microsoft'
 
 # The full version, including alpha/beta/rc tags
 release = '0.1.0'
