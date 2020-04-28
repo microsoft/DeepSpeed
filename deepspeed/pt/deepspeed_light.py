@@ -260,7 +260,19 @@ class DeepSpeedLight(Module):
         return self._config.optimizer_params
 
     def optimizer_legacy_fusion(self):
-        return self._config.optimizer_legacy_fusion
+        if self._config.optimizer_legacy_fusion is None:
+            torch_major_version = int(torch.__version__.split('.')[0])
+            torch_minor_version = int(torch.__version__.split('.')[1])
+            logging.info("Setting optimizer fusion style based on torch version")
+            assert torch_major_version >= 1, "DeepSpeed requires PyTorch version >= 1.x"
+            if torch_minor_version <= 2:
+                logging.info("Use legacy optimizer fusion style, legacy_fusion=True")
+                return True
+            else:
+                logging.info("Use latest optimizer fusion style, legacy_fusion=False")
+                return False
+        else:
+            return self._config.optimizer_legacy_fusion
 
     def scheduler_name(self):
         return self._config.scheduler_name
