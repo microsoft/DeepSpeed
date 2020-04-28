@@ -12,7 +12,7 @@ import torch.distributed as dist
 import math
 from torch._six import inf
 
-from deepspeed.pt.loss_scaler import DynamicLossScaler
+from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import get_grad_norm, CheckOverflow
 
 
@@ -175,15 +175,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if dynamic_loss_scale:
+            self.dynamic_loss_scale = True
             if dynamic_loss_args is None:
                 self.loss_scaler = DynamicLossScaler()
             else:
                 self.loss_scaler = DynamicLossScaler(**dynamic_loss_args)
-
-            self.dynamic_loss_scale = True
-
         else:
             self.dynamic_loss_scale = False
+            self.loss_scaler = LossScaler(scale=static_loss_scale)
             self.cur_iter = 0
 
         self.mpu = mpu
@@ -264,6 +263,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def get_flat_partition(self, tensor_list, first_offset, partition_size, dtype=None):
         flat_tensor_list = []
         current_size = 0
+
+        if not tensor_list:
+            flat_tensor_list.append(
+                torch.zeros(int(partition_size),
+                            dtype=dtype,
+                            device=torch.cuda.current_device()))
+            return _flatten_dense_tensors(flat_tensor_list)
 
         if dtype is None:
             dtype = tensor_list[0].dtype
@@ -385,9 +391,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for group in self.single_partition_of_fp32_groups:
             group.grad = None
 
-        for i in range(len(norm_groups)):
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+            fp16_partitions[partition_id].data.copy_(fp32_partition.data)
 
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
         #gather the updated weights from everyone
@@ -532,3 +537,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         for current, saved in zip(self.single_partition_of_fp32_groups, state_dict['single_partition_of_fp32_groups']):
             current.data.copy_(saved.data)
+
+    def __repr__(self):
+        return repr(self.optimizer)

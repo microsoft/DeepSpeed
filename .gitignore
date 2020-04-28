@@ -12,7 +12,11 @@ deepspeed.egg-info/
 
 # Website
 docs/_site/
+docs/build
+docs/code-docs/_build
 docs/code-docs/build
 .sass-cache/
 .jekyll-cache/
 .jekyll-metadata
+
+tests/unit/saved_checkpoint/
