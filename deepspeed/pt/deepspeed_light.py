@@ -700,8 +700,8 @@ class DeepSpeedLight(Module):
         Zero parameter grads.
         """
         for param_name, param in self.module.named_parameters():
-            param.grad=None
-            
+            param.grad = None
+
     def step(self):
         r"""Execute the weight update step after forward and backward propagation on effective_train_batch
         """
@@ -715,7 +715,7 @@ class DeepSpeedLight(Module):
 
         if self.is_gradient_accumulation_boundary():
             self.optimizer.step()
-            
+
             #zero grad in basic optimizer could be unreliable and may not exhibit
             #the behaviour that we want
             if not self.zero_optimization() and not self.fp16_enabled():
