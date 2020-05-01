@@ -214,7 +214,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-def test_checkpoint_zero_optimizer(tmpdir):
+def test_checkpoint_zero_stage_1_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -231,7 +231,48 @@ def test_checkpoint_zero_optimizer(tmpdir):
         "fp16": {
             "enabled": True
         },
-        "zero_optimization": True
+        "zero_optimization": 1
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[2])
+    def _test_checkpoint_zero_optimizer(args, model, hidden_dim, load_optimizer_states):
+        checkpoint_correctness_verification(args,
+                                            model,
+                                            hidden_dim,
+                                            load_optimizer_states=load_optimizer_states)
+
+    _test_checkpoint_zero_optimizer(args=args,
+                                    model=model,
+                                    hidden_dim=hidden_dim,
+                                    load_optimizer_states=True)
+    _test_checkpoint_zero_optimizer(args=args,
+                                    model=model,
+                                    hidden_dim=hidden_dim,
+                                    load_optimizer_states=False)
+
+
+def test_checkpoint_zero_stage_2_optimizer(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015,
+                "betas": [0.8,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7
+            }
+        },
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": 2
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10

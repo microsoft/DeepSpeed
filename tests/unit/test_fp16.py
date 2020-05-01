@@ -171,7 +171,7 @@ def test_adam_fp16_onecycle_compatibility(tmpdir):
         "fp16": {
             "enabled": True
         },
-        "zero_optimization": False
+        "zero_optimization": 0
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -195,7 +195,7 @@ def test_adam_fp16_onecycle_compatibility(tmpdir):
     _test_adam_fp16_onecycle_compatibility(args=args, model=model, hidden_dim=hidden_dim)
 
 
-def test_adam_fp16_zero_onecycle_compatibility(tmpdir):
+def test_adam_fp16_zero_stage_1_onecycle_compatibility(tmpdir):
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -222,7 +222,7 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir):
         "fp16": {
             "enabled": True
         },
-        "zero_optimization": True
+        "zero_optimization": 1
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -247,6 +247,58 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir):
                                                 model=model,
                                                 hidden_dim=hidden_dim)
 
+
+def test_adam_fp16_zero_stage_2_onecycle_compatibility(tmpdir):
+    config_dict = {
+        "train_batch_size": 1,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "scheduler": {
+            "type": "OneCycle",
+            "params": {
+                "cycle_first_step_size": 16000,
+                "cycle_first_stair_count": 8000,
+                "decay_step_size": 16000,
+                "cycle_min_lr": 1e-06,
+                "cycle_max_lr": 3e-05,
+                "decay_lr_rate": 1e-07,
+                "cycle_min_mom": 0.85,
+                "cycle_max_mom": 0.99,
+                "decay_mom_rate": 0.0
+            }
+        },
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": 2
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=True)
+
+    @distributed_test(world_size=[1])
+    def _test_adam_fp16_zero_onecycle_compatibility(args, model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_adam_fp16_zero_onecycle_compatibility(args=args,
+                                                model=model,
+                                                hidden_dim=hidden_dim)
 
 def test_zero_static_scale(tmpdir):
     config_dict = {

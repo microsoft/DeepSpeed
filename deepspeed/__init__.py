@@ -33,7 +33,8 @@ def initialize(args,
                lr_scheduler=None,
                mpu=None,
                dist_init_required=None,
-               collate_fn=None):
+               collate_fn=None,
+               config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
@@ -91,7 +92,8 @@ def initialize(args,
                             lr_scheduler=lr_scheduler,
                             mpu=mpu,
                             dist_init_required=dist_init_required,
-                            collate_fn=collate_fn)
+                            collate_fn=collate_fn,
+                            config_params=config_params)
 
     return_items = [
         engine,
