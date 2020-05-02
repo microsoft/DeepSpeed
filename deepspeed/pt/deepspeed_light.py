@@ -151,7 +151,7 @@ class DeepSpeedLight(Module):
 
         # Configure distributed model
         self._configure_distributed_model(model)
-        
+
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
 
@@ -283,7 +283,7 @@ class DeepSpeedLight(Module):
 
     def zero_allow_untested_optimizer(self):
         return self._config.zero_allow_untested_optimizer
-        
+
     def zero_reduce_scatter(self):
         return self._config.zero_config.reduce_scatter
 
@@ -830,8 +830,8 @@ class DeepSpeedLight(Module):
                 'backward_allreduce_microstep',
                 'step_microstep'
             ],
-            memory_breakdown=self.memory_breakdown())
-            
+                            memory_breakdown=self.memory_breakdown())
+
             if self.is_gradient_accumulation_boundary():
                 if self.tensorboard_enabled() and torch.distributed.get_rank(
                 ) == 0:  # this is done before the log because log resets timers

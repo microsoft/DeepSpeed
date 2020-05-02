@@ -300,6 +300,7 @@ def test_adam_fp16_zero_stage_2_onecycle_compatibility(tmpdir):
                                                 model=model,
                                                 hidden_dim=hidden_dim)
 
+
 def test_zero_static_scale(tmpdir):
     config_dict = {
         "train_batch_size": 4,

@@ -53,9 +53,11 @@ def split_half_float_double(tensors):
 def isclose(a, b, rtol=1e-09, atol=0.0):
     return abs(a - b) <= max(rtol * max(abs(a), abs(b)), atol)
 
+
 def lcm(x, y):
-    from fractions import gcd # or can import gcd from `math` in Python 3
+    from fractions import gcd  # or can import gcd from `math` in Python 3
     return x * y // gcd(x, y)
+
 
 #create a flat tensor aligned at the alignment boundary
 def flatten_dense_tensors_aligned(tensor_list, alignment, pg):
@@ -139,7 +141,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.model_parallel_rank = mpu.get_model_parallel_rank()
 
         self.overflow = False
-        self.clip_grad=clip_grad
+        self.clip_grad = clip_grad
 
         # param flattened by groups
         self.fp16_groups = []
@@ -337,23 +339,24 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.grads_in_partition_offset = 0
 
     def initialize_optimizer_states(self):
-        
+
         for i, group in enumerate(self.fp16_groups):
-            single_grad_partition = torch.zeros(int(self.partition_size[i]),
-                                                dtype=self.single_partition_of_fp32_groups[i].dtype).cuda()
+            single_grad_partition = torch.zeros(
+                int(self.partition_size[i]),
+                dtype=self.single_partition_of_fp32_groups[i].dtype).cuda()
             self.single_partition_of_fp32_groups[i].grad = single_grad_partition
 
         self.optimizer.step()
-        
+
         for group in self.single_partition_of_fp32_groups:
-            group.grad=None
-        
+            group.grad = None
+
         return
 
     #########################################################################
     #########################ZeRO Partition Gradients########################
     #########################################################################
-    
+
     def get_first_param_index(self, group_id, param_group, partition_id):
         for index, param in enumerate(param_group):
             param_id = self.get_param_id(param)
@@ -447,7 +450,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for param in param_group:
 
             param_size = param.numel()
-            param_id = self.get_param_id(param)  
+            param_id = self.get_param_id(param)
 
             if (current_index >= start_index and current_index < end_index):
                 set_key_value_list(self.param_to_partition_ids[i],
@@ -480,7 +483,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def overlapping_partition_gradients_reduce_epilogue(self):
         self.independent_gradient_partition_epilogue()
-    
+
     def create_reduce_and_remove_grad_hooks(self):
         self.grad_accs = []
         for i, param_group in enumerate(self.fp16_groups):
@@ -548,7 +551,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if not self.reduce_scatter:
             tensor.div_(dist.get_world_size(group=self.dp_process_group))
             dist.all_reduce(tensor, group=self.dp_process_group)
-            return 
+            return
 
         # Accumulate destination ranks and bucket offsets for each gradient slice.
         # Note: potential future optimization, record access pattern of parameters
@@ -556,7 +559,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # bucket is guaranteed to be contiguous w.r.t. ranks
         rank_and_offsets = []
         curr_size = 0
-        prev_id=-1
+        prev_id = -1
         for i, param, param_id in self.params_in_ipg_bucket:
             partition_ids = self.param_to_partition_ids[i][param_id]
             partition_size = self.partition_size[i]
@@ -577,8 +580,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     numel = param.numel() - offset
                 else:
                     # Set numel to next partition's offset
-                    numel = partition_ids_w_offsets[idx + 1][1]-offset
-
+                    numel = partition_ids_w_offsets[idx + 1][1] - offset
 
                 # Merge bucket ranges if they belong to the same rank
                 if partition_id == prev_id:
@@ -651,7 +653,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
-        
+
     def zero_reduced_gradients(self, partition_id, i):
         def are_all_related_partitions_reduced(params_id):
             for partition_id in self.param_to_partition_ids[i][params_id]:
@@ -1015,7 +1017,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             norm_groups.append(
                 self.get_grad_norm_direct(self.averaged_gradients[i],
-                                            self.params_in_partition[i]))
+                                          self.params_in_partition[i]))
 
             #free gradients for all the prameters that are not updated by this process
             self.free_grad_in_param_list(self.params_not_in_partition[i])
@@ -1026,23 +1028,25 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 single_grad_partition = flatten_dense_tensors_aligned(
                     self.averaged_gradients[i],
                     int(self.partition_size[i]),
-                    self.dp_process_group).to(self.single_partition_of_fp32_groups[i].dtype)
+                    self.dp_process_group).to(
+                        self.single_partition_of_fp32_groups[i].dtype)
             else:
                 single_grad_partition = _flatten_dense_tensors(
-                    self.averaged_gradients[i]).to(self.single_partition_of_fp32_groups[i].dtype)
+                    self.averaged_gradients[i]).to(
+                        self.single_partition_of_fp32_groups[i].dtype)
             assert single_grad_partition.numel() == self.partition_size[i], \
                 "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
-            self.single_partition_of_fp32_groups[i].grad = single_grad_partition            
+            self.single_partition_of_fp32_groups[i].grad = single_grad_partition
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(self.params_in_partition[i])
-            
+
             self.averaged_gradients[i] = None
 
             single_partition_grad_groups.append(single_grad_partition)
-        
+
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
-        
+
         timers('optimizer_step').start()
         self.optimizer.step()
         #get rid of the fp32 gradients. Not needed anymore
@@ -1071,19 +1075,19 @@ class FP16_DeepSpeedZeroOptimizer(object):
             else:
                 shard_size = partitioned_params[partition_id].numel() // num_shards
                 num_elements = shard_size
-                
+
                 for shard_id in range(num_shards):
 
                     #boundary condition
                     #TODO: Check correctness of boundary condition
-                    if shard_id == (num_shards-1):
+                    if shard_id == (num_shards - 1):
                         if shard_size * num_shards >= partitioned_params[
                                 partition_id].numel():
                             break
                         else:
                             num_elements = partitioned_params[partition_id].numel(
                             ) - shard_id * shard_size
-            
+
                     shard_list = []
                     for dp_id in range(dp_world_size):
                         curr_shard = partitioned_params[dp_id].narrow(
