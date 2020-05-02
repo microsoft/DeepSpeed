@@ -574,6 +574,7 @@ class DeepSpeedLight(Module):
                 timers=self.timers,
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
+                clip_grad=self.gradient_clipping(),
                 contigious_gradients=self.zero_contigious_gradients(),
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
