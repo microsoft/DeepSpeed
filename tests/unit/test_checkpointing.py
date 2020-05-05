@@ -16,7 +16,6 @@ from simple_model import SimpleModel, random_dataloader, args_from_dict
 def compare_deepspeed_states(saved_model, loaded_model):
     # These are compared in more depth in other places
     assert hasattr(loaded_model, 'module')
-    assert hasattr(loaded_model, 'optimizer')
 
     assert saved_model.csr_tensor_module_names == loaded_model.csr_tensor_module_names
     assert saved_model.skipped_steps == loaded_model.skipped_steps
@@ -63,6 +62,8 @@ def compare_model_states(saved_model, loaded_model):
 
 def compare_optimizer_states(saved_model, loaded_model, hidden_dim):
     compare_model_states(saved_model, loaded_model)
+
+    assert hasattr(loaded_model, 'optimizer')
 
     for state0, state1 in zip(saved_model.optimizer.optimizer.state.values(),
                               loaded_model.optimizer.optimizer.state.values()):
