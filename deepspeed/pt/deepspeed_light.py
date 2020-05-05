@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import logging
 import torch
 import os
+import warnings
 import torch.distributed as dist
 from torch.nn.modules import Module
 
@@ -465,6 +466,9 @@ class DeepSpeedLight(Module):
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
         if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
+            warnings.warn(
+                "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
+            )
             optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
             from apex.optimizers.fused_adam import FusedAdam
@@ -862,9 +866,8 @@ class DeepSpeedLight(Module):
         for param_name, param in self.module.named_parameters():
             if param.grad is not None:
                 grad_data = param.grad.data
-                param_name_root = param_name.split('.', 1)[0]
                 if self.sparse_gradients_enabled(
-                ) and param_name_root in self.csr_tensor_module_names:
+                ) and param_name in self.csr_tensor_module_names:
                     grads.append(CSRTensor(grad_data))
                 else:
                     grads.append(grad_data)
