@@ -30,7 +30,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
 ds_only=0
 tp_only=0
 deepspeed_install=1
-third_party_install=1
+third_party_install=0
 local_only=0
 pip_sudo=0
 entire_dlts_job=1
@@ -162,7 +162,7 @@ fi
 if [ "$local_only" == "1" ]; then
     if [ "$deepspeed_install" == "1" ]; then
         echo "Installing deepspeed"
-        $PIP_SUDO pip uninstall -y deepspeed
+#        $PIP_SUDO pip uninstall -y deepspeed
         $PIP_SUDO $PIP_INSTALL dist/deepspeed*.whl
         python basic_install_test.py
         if [ $? == 0 ]; then
