@@ -23,4 +23,3 @@ try:
     print("using old-style apex")
 except ImportError:
     print("using new-style apex")
-
