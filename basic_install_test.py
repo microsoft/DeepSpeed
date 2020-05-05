@@ -1,6 +1,11 @@
 import torch
 import importlib
-import deepspeed as ds
+
+try:
+    import deepspeed as ds
+    print("deepspeed successfully imported")
+except ImportError as err:
+    raise err
 
 print(f"torch version: {torch.__version__}")
 

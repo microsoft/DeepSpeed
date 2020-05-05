@@ -199,7 +199,6 @@ else
         pdcp -w $hosts dist/deepspeed*.whl $tmp_wheel_path/
         pdcp -w $hosts basic_install_test.py $tmp_wheel_path/
         pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL $tmp_wheel_path/deepspeed*.whl"
-        pdsh -w $hosts "python -c 'import deepspeed; print(\"deepspeed info:\", deepspeed.__version__, deepspeed.__git_branch__, deepspeed.__git_hash__)'"
         pdsh -w $hosts "python $tmp_wheel_path/basic_install_test.py"
         echo "Installation is successful"
     fi
