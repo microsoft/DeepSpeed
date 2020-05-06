@@ -8,6 +8,7 @@ Also implements CPU checkpointing and contigious memory checkpointing
 Reduces memory consumption and memory fragmentation
 
 Code for rng checkpointing taken from NVIDIA Megatron-LM mpu/random.py
+b886b7bb972afe72bac0f5de4f42a4a7bae8ebef
 '''
 
 # Parts of the code here are adapted from PyTorch
@@ -291,7 +292,7 @@ class CheckpointFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_function, *args):
         global mpu, timers, SYNCHRONIZE, PROFILE_TIME
-        
+
         if SYNCHRONIZE:
             torch.cuda.synchronize()
         
