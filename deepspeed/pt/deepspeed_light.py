@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import logging
 import torch
 import os
+import warnings
 import torch.distributed as dist
 from torch.nn.modules import Module
 
@@ -170,7 +171,7 @@ class DeepSpeedLight(Module):
         if self.sparse_gradients_enabled():
             for name, module in self.module.named_modules():
                 if isinstance(module, torch.nn.Embedding):
-                    self.csr_tensor_module_names.add(name)
+                    self.csr_tensor_module_names.add(name + ".weight")
                     logging.info("Will convert {} to sparse (csr) "
                                  "tensor during training".format(name))
 
@@ -465,6 +466,9 @@ class DeepSpeedLight(Module):
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
         if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
+            warnings.warn(
+                "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
+            )
             optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
             from apex.optimizers.fused_adam import FusedAdam
@@ -695,6 +699,13 @@ class DeepSpeedLight(Module):
         return (self.micro_steps + 1) % \
             self.gradient_accumulation_steps() == 0
 
+    def zero_grad(self):
+        """
+        Zero parameter grads.
+        """
+        for param_name, param in self.module.named_parameters():
+            param.grad = None
+
     def step(self):
         r"""Execute the weight update step after forward and backward propagation on effective_train_batch
         """
@@ -708,7 +719,13 @@ class DeepSpeedLight(Module):
 
         if self.is_gradient_accumulation_boundary():
             self.optimizer.step()
-            self.optimizer.zero_grad()
+
+            #zero grad in basic optimizer could be unreliable and may not exhibit
+            #the behaviour that we want
+            if not self.zero_optimization() and not self.fp16_enabled():
+                self.zero_grad()
+            else:
+                self.optimizer.zero_grad()
 
             # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
             overflow = False
@@ -849,9 +866,8 @@ class DeepSpeedLight(Module):
         for param_name, param in self.module.named_parameters():
             if param.grad is not None:
                 grad_data = param.grad.data
-                param_name_root = param_name.split('.', 1)[0]
                 if self.sparse_gradients_enabled(
-                ) and param_name_root in self.csr_tensor_module_names:
+                ) and param_name in self.csr_tensor_module_names:
                     grads.append(CSRTensor(grad_data))
                 else:
                     grads.append(grad_data)
