@@ -1,50 +1,60 @@
 
 jobs:
-- job: Default
+- job: DeepSpeed_Tests
   timeoutInMinutes: 360
   pool:
-    name: 'GPU_testing'
+    name: 'DS_testing'
 
   strategy:
     matrix:
-      Python36:
+      PyTorch12:
         python.version: '3.6'
-      #Python35:
-      #  python.version: '3.5'
-      #Python37:
-      #  python.version: '3.7'
-      #Python38:
-      #  python.version: '3.8'
+        cuda.version: '10.0'
+        pytorch.version: '1.2'
+        runmodeltests: false
+      PyTorch13:
+        python.version: '3.7'
+        cuda.version: '10.1'
+        pytorch.version: '1.3'
+        runmodeltests: false
+      PyTorch15:
+        python.version: '3.7'
+        cuda.version: '10.1'
+        pytorch.version: '1.5'
+        runmodeltests: true
 
+  variables:
+    conda_root: '/home/deepspeed/miniconda3'
+    conda_env: 'ds_test_py$(python.version)_cuda$(cuda.version)_pytorch$(pytorch.version)'
+    conda_env_path: '$(conda_root)/envs/$(conda_env)'
 
   steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '$(python.version)'
-      addToPath: true
-      architecture: 'x64'
-    displayName: 'Use Python $(python.version)'
+    # Unfortunately nvidia's nvcc_linux-64=<version> seems to install 10.1 regardless?
+    # Most of this complexity is a workaround to get the compiler toolchain to match the
+    # cudatoolkit runtime
+  - script: |
+      conda create --force --yes -n $(conda_env) python=$(python.version) cudatoolkit=$(cuda.version)
+      source $(conda_root)/bin/activate $(conda_env_path)
+      conda install --yes conda
+      conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version)
+      conda install --yes gxx_linux-64
+      conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
+    displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
   - script: |
-      python -m pip install --upgrade pip
-      pip install --user -r requirements.txt
-      ./install.sh --pip_sudo
-    displayName: 'Install dependencies'
+      source $(conda_root)/bin/activate $(conda_env_path)
+      ./install.sh
+    env:
+      CUDA_HOME: $(conda_env_path)/pkgs/cudatoolkit-dev
+    displayName: 'Install DeepSpeed'
 
   - script: |
-      pre-commit run --all-files
-    displayName: 'Formatting checks'
-
-  - script: |
-      pip install --user pylint
-      pylint --exit-zero deepspeed/
-    displayName: 'Code linter'
-
-  - script: |
+      source $(conda_root)/bin/activate $(conda_env_path)
       pytest --forked --verbose tests/unit/
     displayName: 'Unit tests'
 
   - script: |
+      source $(conda_root)/bin/activate $(conda_env_path)
       ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/
       pip install --user -r DeepSpeedExamples/Megatron-LM/requirements.txt
       cd tests/model/
@@ -59,33 +69,27 @@ jobs:
     displayName: 'BingBertSquad log uploads'
     condition: always()
 
-  # Megatron test logs
-  #- task: PublishPipelineArtifact@1
-  #  inputs:
-  #    targetPath: '$(Build.SourcesDirectory)/tests/model/Megatron_GPT2/test/'
-  #    artifactName: Megatron_GPT2_logs
-  #  displayName: 'Megatron GPT2 log uploads'
-  #  condition: always()
 
-  #- task: PublishPipelineArtifact@1
-  #  inputs:
-  #    targetPath: '$(Build.SourcesDirectory)/tests/model/Megatron_GPT2/checkpoint_test_logs/'
-  #    artifactName: Megatron_GPT2_checkpoint_logs
-  #  displayName: 'Megatron GPT2 checkpoint log uploads'
-  #  condition: always()
+- job: Code_Checks
+  variables:
+    conda_root: '/home/deepspeed/miniconda3'
+    conda_env: 'ds_codetest'
+    conda_env_path: '$(conda_root)/envs/$(conda_env)'
 
+  steps:
+  - script: |
+      conda create --force --yes -n $(conda_env) python=3.7
+      source $(conda_root)/bin/activate $(conda_env_path)
+    displayName: 'Create code test environment'
 
-  #BingBert logs
-  #- task: PublishPipelineArtifact@1
-  #  inputs:
-  #    targetPath: '$(Build.SourcesDirectory)/tests/model/bing_bert/pretrain_test/'
-  #    artifactName: BingBert_pretrain_logs
-  #  displayName: 'BingBert pretrain logs'
-  #  condition: always()
+  - script: |
+      source $(conda_root)/bin/activate $(conda_env_path)
+      pip install pre-commit
+      pre-commit run --all-files
+    displayName: 'Formatting checks'
 
-  #- task: PublishPipelineArtifact@1
-  #  inputs:
-  #    targetPath: '$(Build.SourcesDirectory)/tests/model/bing_bert/checkpoint_test_logs/'
-  #    artifactName: BingBert_checkpoint_logs
-  #  displayName: 'BingBert checkpoint logs'
-  #  condition: always()
+  - script: |
+      source $(conda_root)/bin/activate $(conda_env_path)
+      pip install pylint
+      pylint --exit-zero deepspeed/
+    displayName: 'Code linter'
