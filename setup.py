@@ -13,6 +13,7 @@ import torch
 from deepspeed import __version__ as ds_version
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+from torch.utils.hipify import hipify_python
 
 cmdclass = {}
 ext_modules = []
@@ -42,7 +43,21 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-ext_modules.append(
+is_rocm_pytorch = False
+if torch.__version__ >= '1.5':
+    from torch.utils.cpp_extension import ROCM_HOME
+    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
+
+if is_rocm_pytorch:
+    import shutil
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+#    with hipify_python.GeneratedFileCleaner(keep_intermediates=True) as clean_ctx:
+    hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
+                                show_detailed=True, is_pytorch_extension=True) #, clean_ctx=clean_ctx)
+    shutil.copy("csrc/type_shim.h", "csrc/hip/type_shim.h")
+
+if not is_rocm_pytorch:
+  ext_modules.append(
     CUDAExtension(name='fused_lamb_cuda',
                   sources=['csrc/fused_lamb_cuda.cpp',
                            'csrc/fused_lamb_cuda_kernel.cu'],
@@ -53,6 +68,18 @@ ext_modules.append(
                       'nvcc': ['-O3',
                                '--use_fast_math'] + version_dependent_macros
                   }))
+else:
+  ext_modules.append(
+    CUDAExtension(name='fused_lamb_cuda',
+                  sources=['csrc/fused_lamb_cuda.cpp',
+                           'csrc/hip/fused_lamb_hip_kernel.hip'],
+                  extra_compile_args={
+                      'cxx': [
+                          '-O3',
+                      ] + version_dependent_macros,
+                      'nvcc': []
+                  }))
+
 
 setup(name='deepspeed',
       version=ds_version,
