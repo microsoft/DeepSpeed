@@ -35,10 +35,10 @@ jobs:
   - script: |
       conda create --force --yes -n $(conda_env) python=$(python.version) cudatoolkit=$(cuda.version)
       source $(conda_root)/bin/activate $(conda_env_path)
-      conda install --yes conda
-      conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version)
-      conda install --yes gxx_linux-64
       conda install --yes -c pytorch pytorch=$(pytorch.version) cudatoolkit=$(cuda.version)
+      conda install --yes conda
+      conda install --yes gxx_linux-64
+      conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version)
     displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
   - script: |
@@ -51,8 +51,8 @@ jobs:
   - script: |
       source $(conda_root)/bin/activate $(conda_env_path)
       ./install.sh
-    env:
-      CUDA_HOME: $(conda_env_path)/pkgs/cudatoolkit-dev
+    #env:
+    #  #CUDA_HOME: $(conda_env_path)/pkgs/cudatoolkit-dev
     displayName: 'Install DeepSpeed'
 
   - script: |
@@ -75,7 +75,7 @@ jobs:
       targetPath: '$(Build.SourcesDirectory)/tests/model/BingBertSquad/test/'
       artifactName: BingBertSquad_logs
     displayName: 'BingBertSquad log uploads'
-    condition: always()
+    condition: eq(variables['runmodeltests'], true)
 
 
 - job: Code_Checks
