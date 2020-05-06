@@ -700,7 +700,7 @@ class DeepSpeedLight(Module):
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
-            loss = self._scale_loss(loss)
+            loss = self._scale_loss(loss.float())
 
         # Log training Loss
         if self.tensorboard_enabled():

@@ -6,6 +6,8 @@ from deepspeed.pt.deepspeed_light import DeepSpeedLight
 from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 
+import deepspeed.pt.deepspeed_checkpointing as checkpointing
+
 try:
     from deepspeed.git_version_info import git_hash, git_branch
 except ImportError:
