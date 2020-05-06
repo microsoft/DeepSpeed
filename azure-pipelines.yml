@@ -71,6 +71,8 @@ jobs:
 
 
 - job: Code_Checks
+  pool:
+    name: 'DS_testing'
   variables:
     conda_root: '/home/deepspeed/miniconda3'
     conda_env: 'ds_codetest'
