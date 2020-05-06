@@ -21,7 +21,7 @@ jobs:
         python.version: '3.7'
         cuda.version: '10.1'
         pytorch.version: '1.5'
-        runmodeltests: true
+        runmodeltests: false
 
   variables:
     conda_root: '/home/deepspeed/miniconda3'
@@ -43,6 +43,7 @@ jobs:
 
   - script: |
       source $(conda_root)/bin/activate $(conda_env_path)
+      python --version
       which nvcc
       nvcc --version
       python -c "import torch; print(torch.__version__)"
@@ -50,6 +51,10 @@ jobs:
 
   - script: |
       source $(conda_root)/bin/activate $(conda_env_path)
+      rm -rf third_party/apex/build/
+      rm -rf third_party/apex/dist/
+      rm -rf build/
+      rm -rf dist/
       ./install.sh
     #env:
     #  #CUDA_HOME: $(conda_env_path)/pkgs/cudatoolkit-dev
