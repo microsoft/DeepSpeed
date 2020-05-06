@@ -15,10 +15,7 @@
 
 //#include <helper_functions.h>
 #include <cuda_runtime_api.h>
-#include <cooperative_groups.h>
 #include <stdio.h>
-
-namespace cg = cooperative_groups;
 
 // Utility class used to avoid linker errors with extern
 // unsized shared memory arrays with templated type
@@ -72,16 +69,13 @@ template <typename T, int blockSize>
 __device__ void
 reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 {
-    // Handle to thread block group
-    cg::thread_block cta = cg::this_thread_block();
-
     // perform block reduction in shared memory,
-    unsigned int tid = cta.thread_rank();
+    unsigned int tid = threadIdx.x + blockDim.x * threadIdx.y;
 
     T a_sum = s_a[tid];
     T b_sum = s_b[tid];
 
-    cg::sync(cta);
+    __syncthreads();
 
     // do reduction in shared mem
     if ((blockSize >= 512) && (tid < 256))
@@ -91,7 +85,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 256) && (tid < 128))
     {
@@ -100,7 +94,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 128) && (tid < 64))
     {
@@ -109,13 +103,19 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
-#if (__CUDA_ARCH__ >= 300 )
+#if defined(__HIP_PLATFORM_HCC__)
+    // Reduce final warp using shuffle
+    for (int offset = warpSize/2; offset > 0; offset /= 2)
+    {
+         a_sum += __shfl_down(a_sum, offset);
+         b_sum += __shfl_down(b_sum, offset);
+
+    }
+#elif (__CUDA_ARCH__ >= 300 )
     if ( tid < 32 )
     {
-        cg::coalesced_group active = cg::coalesced_threads();
-
         // Fetch final intermediate sum from 2nd warp
         if (blockSize >=  64)
         {
@@ -126,8 +126,8 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
         // Reduce final warp using shuffle
         for (int offset = warpSize/2; offset > 0; offset /= 2)
         {
-             a_sum += active.shfl_down(a_sum, offset);
-             b_sum += active.shfl_down(b_sum, offset);
+             a_sum += __shfl_down(a_sum, offset);
+             b_sum += __shfl_down(b_sum, offset);
 
         }
     }
@@ -139,7 +139,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 32) && (tid < 16))
     {
@@ -148,7 +148,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 16) && (tid < 8))
     {
@@ -157,7 +157,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 8) && (tid < 4))
     {
@@ -166,7 +166,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 4) && (tid < 2))
     {
@@ -175,7 +175,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
     if ((blockSize >= 2) && (tid < 1))
     {
@@ -184,7 +184,7 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 
     }
 
-    cg::sync(cta);
+    __syncthreads();
 
 #endif
 
@@ -198,10 +198,10 @@ reduce_block_in_shared_memory(T *s_a, T *s_b, T* g_a, T* g_b)
 template <typename T, int blockSize>
 __device__ void reduce_two_vectors_in_register(T a, T b, T* g_a, T* g_b){
 
-    const int threadIdInBlock = cg::this_thread_block().thread_rank();
+    const int threadIdInBlock = threadIdx.x + blockDim.x * threadIdx.y;
 
     T *s_a = SharedMemory<T>();
-    T *s_b = SharedMemory<T>() + cg::this_thread_block().size();
+    T *s_b = SharedMemory<T>() + (blockDim.x * blockDim.y);
 
     s_a[threadIdInBlock] = a;
     s_b[threadIdInBlock] = b;
@@ -232,7 +232,7 @@ __global__ void lamb_cuda_kernel_part1(
         //Assuming 2D grids and 2D blocks
         const int blockId = gridDim.x * blockIdx.y + blockIdx.x;
         const int threadsPerBlock = blockDim.x * blockDim.y;
-        const int threadIdInBlock = cg::this_thread_block().thread_rank();
+        const int threadIdInBlock = threadIdx.x + blockDim.x * threadIdx.y;
         const int i = (blockId * threadsPerBlock + threadIdInBlock);
         const int totThreads = gridDim.x*gridDim.y*threadsPerBlock;
 
@@ -268,9 +268,9 @@ __global__ void lamb_cuda_kernel_part2(
 {
 
     T *s_a = SharedMemory<T>() ;
-    T *s_b = SharedMemory<T>() + cg::this_thread_block().size();
+    T *s_b = SharedMemory<T>() + (blockDim.x * blockDim.y);
 
-    const int threadIdInBlock = cg::this_thread_block().thread_rank();
+    const int threadIdInBlock = threadIdx.x + blockDim.x * threadIdx.y;
 
     s_a[threadIdInBlock] = g_a[threadIdInBlock];
     s_b[threadIdInBlock] = g_b[threadIdInBlock];
@@ -309,7 +309,7 @@ __global__ void lamb_cuda_kernel_part2(
         //Assuming 2D grids and 2D blocks
         const int blockId = gridDim.x * blockIdx.y + blockIdx.x;
         const int threadsPerBlock = blockDim.x * blockDim.y;
-        const int threadIdInBlock = cg::this_thread_block().thread_rank();
+        const int threadIdInBlock = threadIdx.x + blockDim.x * threadIdx.y;
         const int i = (blockId * threadsPerBlock + threadIdInBlock);
         const int totThreads = gridDim.x*gridDim.y*threadsPerBlock;
 
