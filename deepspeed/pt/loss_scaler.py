@@ -18,10 +18,10 @@
 
 import torch
 
-INITIAL_LOSS_SCALE = 'initial_loss_scale'
+INITIAL_LOSS_SCALE = 'init_scale'
 SCALE_WINDOW = 'scale_window'
 DELAYED_SHIFT = 'delayed_shift'
-MIN_LOSS_SCALE = 'min_loss_scale'
+MIN_LOSS_SCALE = 'min_scale'
 
 
 # item() is a recent addition, so this helps with backward compatibility.
