@@ -762,7 +762,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         state_dict['overflow'] = self.overflow
         state_dict['optimizer_state_dict'] = self.optimizer.state_dict()
         state_dict[
-            'single_partition_of_fp32_groups'] = self.single_partition_of_fp32_groups
+            'local_sub_partitions_of_fp32_groups'] = self.local_sub_partitions_of_fp32_groups
         return state_dict
 
     def load_state_dict(self, state_dict, load_optimizer_states=True):
@@ -788,5 +788,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         if load_optimizer_states:
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
 
-        for current, saved in zip(self.single_partition_of_fp32_groups, state_dict['single_partition_of_fp32_groups']):
-            current.data.copy_(saved.data)
+        for curr_group, saved_group in zip(self.local_sub_partitions_of_fp32_groups, state_dict['local_sub_partitions_of_fp32_groups']):
+            for curr_param, saved_param in zip(curr_group, saved_group):
+                curr_param.data.copy_(saved_param.data)

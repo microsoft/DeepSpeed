@@ -1124,19 +1124,15 @@ class DeepSpeedLight(Module):
         #There seems to be issue creating them in parallel
         self._create_checkpoint_files(save_dir, tag)
 
-        try:
-            if self.save_non_zero_checkpoint:
-                self._save_checkpoint(save_dir, tag, client_state=client_state)
+        if self.save_non_zero_checkpoint:
+            self._save_checkpoint(save_dir, tag, client_state=client_state)
 
-            if self.save_zero_checkpoint:
-                self._save_zero_checkpoint(save_dir, tag)
-        except:
-            logging.error(f'Failed Saving model checkpoint to {save_dir} with tag {tag}')
-            return False
+        if self.save_zero_checkpoint:
+            self._save_zero_checkpoint(save_dir, tag)
+
         return True
 
     def _create_checkpoint_files(self, save_dir, tag):
-
         #checkpoint files are created sequentially
         for rank in range(self.world_size):
             if rank == self.global_rank:
@@ -1180,14 +1176,8 @@ class DeepSpeedLight(Module):
         torch.save(state, save_path)
 
     def _save_zero_checkpoint(self, save_path, tag):
-        try:
-            zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
-            #self._ensure_directory_exists(zero_checkpoint_name)
-
-        except:
-            logging.error(
-                f'Failed Saving Zero model checkpoint to {save_path} with tag {tag}')
-
+        zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
+        #self._ensure_directory_exists(zero_checkpoint_name)
         zero_sd = {'optimizer_state_dict': self.optimizer.state_dict()}
         torch.save(zero_sd, zero_checkpoint_name)
         logging.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
