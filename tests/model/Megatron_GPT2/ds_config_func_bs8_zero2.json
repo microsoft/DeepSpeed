@@ -19,5 +19,11 @@
     "loss_scale_window": 1000,
     "hysteresis": 2,
     "min_loss_scale": 1
+  },
+  "activation_checkpointing": {
+    "partition_activations":true,
+    "contiguous_memory_optimization":true,
+    "number_checkpoints":12
   }
+
 }

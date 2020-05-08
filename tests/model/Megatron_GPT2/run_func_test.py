@@ -97,9 +97,6 @@ class GPT2FuncTestCase(BaseTestCase):
         succ = self.run_test(test_config, 0.01)
         self.assertTrue(succ)
 
-        succ = self.run_partition_activations_test(test_config, 0.01)
-        self.assertTrue(succ)
-
     def test_mp4_gpu4_node1_zero1(self):
         test_config = {
             "mp": 4,
@@ -116,9 +113,6 @@ class GPT2FuncTestCase(BaseTestCase):
         }
 
         succ = self.run_test(test_config, 0.01)
-        self.assertTrue(succ)
-
-        succ = self.run_partition_activations_test(test_config, 0.01)
         self.assertTrue(succ)
 
     def test_mp1_gpu1_node1_zero2(self):
@@ -222,11 +216,12 @@ class GPT2FuncTestCase(BaseTestCase):
         print("\n")
         print("{0}: starting......".format(self.id()))
 
+        baseline_prefix = "gpt2_func_"
         prefix = "gpt2_partition_activation_"
 
         # baseline run...
         test_config["deepspeed"] = False
-        base_file = self.gen_output_name(test_config, prefix)
+        base_file = self.gen_output_name(test_config, baseline_prefix)
 
         # skip baseline run if it exists.
         if not self.has_loss_data(base_file):
@@ -237,7 +232,7 @@ class GPT2FuncTestCase(BaseTestCase):
 
         # DeepSpeed run...
         test_config["deepspeed"] = True
-        test_config["other_args"] = "--partition-activations"
+        test_config["other_args"] = "--deepspeed-activation-checkpointing"
         print("{0}: DeepSpeed run.".format(self.id()))
         test_file = self.gen_output_name(test_config, prefix)
         self.run_gpt2_test(test_config, test_file)
