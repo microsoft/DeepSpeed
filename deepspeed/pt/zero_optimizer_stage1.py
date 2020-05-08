@@ -26,6 +26,14 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
     sub_partition_size = int(max_elements_per_comm // dp)
 
     alignment = sub_partition_size
+
+    # if alignment == 0:
+    #     # number of elements not divisible by dp, outside range and small model must pad with zeroes
+    #     pad_tensor = torch.zeros(max_elements_per_comm,
+    #                              device=tensor_list[0].device,
+    #                              dtype=tensor_list[0].dtype)
+    #     return _flatten_dense_tensors(pad_tensor)
+
     remaining = int(num_elements % alignment)
 
     # ensure we have equal sized sub-partitions
