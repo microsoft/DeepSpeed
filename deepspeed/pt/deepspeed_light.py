@@ -560,6 +560,7 @@ class DeepSpeedLight(Module):
             logging.info('Creating fp16 ZeRO Optimizer Stage 1')
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
+                static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
@@ -573,6 +574,7 @@ class DeepSpeedLight(Module):
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=self.timers,
+                static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),

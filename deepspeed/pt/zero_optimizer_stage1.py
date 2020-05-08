@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from deepspeed.pt.zero_utils import _initialize_parameter_parallel_groups, \
     pprint
-from deepspeed.pt.loss_scaler import DynamicLossScaler
+from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import get_grad_norm, CheckOverflow
 
 
@@ -122,6 +122,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     """
     def __init__(self,
                  init_optimizer,
+                 static_loss_scale=1.0,
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
                  verbose=True,
@@ -271,6 +272,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         else:
             self.dynamic_loss_scale = False
+            self.loss_scaler = LossScaler(scale=static_loss_scale)
             self.cur_iter = 0
 
         self.mpu = mpu

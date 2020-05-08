@@ -10,7 +10,7 @@ import math
 from torch._six import inf
 from torch.autograd import Variable
 
-from deepspeed.pt.loss_scaler import DynamicLossScaler
+from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import see_memory_usage, is_model_parallel_parameter
 
 #Toggle this to true to enable correctness test
@@ -100,6 +100,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def __init__(self,
                  init_optimizer,
                  timers,
+                 static_loss_scale=1.0,
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
                  verbose=True,
@@ -319,6 +320,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         else:
             self.dynamic_loss_scale = False
+            self.loss_scaler = LossScaler(scale=static_loss_scale)
             self.cur_iter = 0
 
         see_memory_usage("Before initializing optimizer states")
