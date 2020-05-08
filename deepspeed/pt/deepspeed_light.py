@@ -15,6 +15,7 @@ from tensorboardX import SummaryWriter
 from deepspeed.pt.deepspeed_timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
 from deepspeed.pt.zero_optimizer_stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
+import deepspeed.pt.deepspeed_checkpointing as deepspeed_activation_checkpointing
 
 from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
@@ -185,10 +186,23 @@ class DeepSpeedLight(Module):
         self.save_zero_checkpoint = False
         self._configure_checkpointing(dist_init_required)
 
+        self._configure_activation_checkpointing()
+
         if self.global_rank == 0:
             self._config.print('DeepSpeedLight configuration')
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
+
+    def _configure_activation_checkpointing(self):
+        config = self._config.activation_checkpointing_config
+        deepspeed_activation_checkpointing.configure(
+            self.mpu,
+            partition_activations=config.partition_activations,
+            contiguous_checkpointing=config.contiguous_memory_optimization,
+            nlayers=config.number_checkpoints,
+            checkpoint_in_cpu=config.cpu_checkpointing,
+            synchronize=config.synchronize_checkpoint_boundary,
+            profile_backward=config.profile_backward)
 
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:

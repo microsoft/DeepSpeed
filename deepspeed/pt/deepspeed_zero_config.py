@@ -23,24 +23,6 @@ ZeRO optimization should be enabled as:
     }
 }
 '''
-# "session_params": {
-#   "zero_optimization": [0|1|2],
-#   "zero_all_gather_size": 200
-# }
-# "session_params": {
-#   "zero_optimization": {
-#     "stage": [0|1|2],
-#     "stage_1": {
-#       "allgather_partitions": True,
-#       "allgather_size": 500000000
-#     },
-#     "stage_2": {
-#       "bucket_size": 500000000,
-#       "independent_p_g_buckets": False
-#     }
-#   }
-# }
-#'''
 
 ZERO_OPTIMIZATION = 'zero_optimization'
 ZERO_OPTIMIZATION_DISABLED = 0
@@ -82,18 +64,6 @@ ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE:
     ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT
 }
-# ZERO_OPTIMIZATION_DEFAULT = {
-#     ZERO_OPTIMIZATION_STAGE: ZERO_OPTIMIZATION_STAGE_DEFAULT,
-#     ZERO_OPTIMIZATION_REDUCE_SCATTER: ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT,
-#     ZERO_OPTIMIZATION_STAGE_1: {
-#         ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE: ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT,
-#         ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE: ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT
-#     },
-#     ZERO_OPTIMIZATION_STAGE_2: {
-#         ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE: ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT,
-#         ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE: ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT
-#     }
-# }
 
 
 class DeepSpeedZeroConfig(object):
@@ -149,33 +119,3 @@ class DeepSpeedZeroConfig(object):
             zero_config_dict,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT)
-
-        # if ZERO_OPTIMIZATION_STAGE_1 in zero_config_dict.keys():
-        #     stage_1_dict = zero_config_dict[ZERO_OPTIMIZATION_STAGE_1]
-        # else:
-        #     stage_1_dict = ZERO_OPTIMIZATION_DEFAULT[ZERO_OPTIMIZATION_STAGE_1]
-        # self._initialize_stage_1(stage_1_dict)
-
-        # if ZERO_OPTIMIZATION_STAGE_2 in zero_config_dict.keys():
-        #     stage_2_dict = zero_config_dict[ZERO_OPTIMIZATION_STAGE_2]
-        # else:
-        #     stage_2_dict = ZERO_OPTIMIZATION_DEFAULT[ZERO_OPTIMIZATION_STAGE_2]
-        # self._initialize_stage_2(stage_2_dict)
-
-    # def _initialize_stage_1(self, stage_1_dict):
-    #     self.allgather_partitions = get_scalar_param(stage_1_dict,
-    #                                                  ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS,
-    #                                                  ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS_DEFAULT)
-
-    #     self.allgather_bucket_size = get_scalar_param(stage_1_dict,
-    #                                            ZERO_OPTIMIZATION_ALLGATHER_SIZE,
-    #                                            ZERO_OPTIMIZATION_ALLGATHER_SIZE_DEFAULT)
-
-    # def _initialize_stage_2(self, stage_2_dict):
-    #     self.reduce_bucket_size = get_scalar_param(stage_2_dict,
-    #                                         ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE,
-    #                                         ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT)
-
-    #     self.allgather_bucket_size = get_scalar_param(stage_2_dict,
-    #                                         ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE,
-    #                                         ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT)
