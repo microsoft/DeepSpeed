@@ -91,7 +91,7 @@ gpt_options=" \
        ${zero_opt} \
 "
 
-work_dir="../../../DeepSpeedExamples/Megatron-LM/"
+work_dir="../../../DeepSpeedExamples-internal/Megatron-LM/"
 run_cmd="(cd ${work_dir} && deepspeed --num_nodes $nodes --num_gpus $gpus pretrain_gpt2.py ${gpt_options})"
 echo ${run_cmd}
 eval ${run_cmd}

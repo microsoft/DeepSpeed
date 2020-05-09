@@ -18,7 +18,7 @@ Activation Checkpointing should be configured as:
     "number_checkpoints": 100,
     "contigious_memory_optimization": [true|false],
     "cpu_checkpointing": [true|false]
-    "profile_backward": [true|false],
+    "profile": [true|false],
     "synchronize_checkpoint_boundary": [true|false],
     }
 }
@@ -36,8 +36,8 @@ ACT_CHKPT_CONTIGUOUS_MEMORY_OPTIMIZATION_DEFAULT = False
 ACT_CHKPT_SYNCHRONIZE_CHECKPOINT_BOUNDARY = 'synchronize_checkpoint_boundary'
 ACT_CHKPT_SYNCHRONIZE_CHECKPOINT_BOUNDARY_DEFAULT = False
 
-ACT_CHKPT_PROFILE_BACKWARD = 'profile_backward'
-ACT_CHKPT_PROFILE_BACKWARD_DEFAULT = False
+ACT_CHKPT_PROFILE = 'profile'
+ACT_CHKPT_PROFILE_DEFAULT = False
 
 ACT_CHKPT_CPU_CHECKPOINTING = 'cpu_checkpointing'
 ACT_CHKPT_CPU_CHECKPOINTING_DEFAULT = False
@@ -51,7 +51,7 @@ ACT_CHKPT_DEFAULT = {
     ACT_CHKPT_CONTIGUOUS_MEMORY_OPTIMIZATION_DEFAULT,
     ACT_CHKPT_SYNCHRONIZE_CHECKPOINT_BOUNDARY:
     ACT_CHKPT_SYNCHRONIZE_CHECKPOINT_BOUNDARY_DEFAULT,
-    ACT_CHKPT_PROFILE_BACKWARD: ACT_CHKPT_PROFILE_BACKWARD_DEFAULT,
+    ACT_CHKPT_PROFILE: ACT_CHKPT_PROFILE_DEFAULT,
     ACT_CHKPT_CPU_CHECKPOINTING: ACT_CHKPT_CPU_CHECKPOINTING_DEFAULT
 }
 
@@ -65,7 +65,7 @@ class DeepSpeedActivationCheckpointingConfig(object):
         self.cpu_checkpointing = None
         self.number_checkpoints = None
         self.synchronize_checkpoint_boundary = None
-        self.profile_backward = None
+        self.profile = None
 
         if ACT_CHKPT in param_dict.keys():
             act_chkpt_config_dict = param_dict[ACT_CHKPT]
@@ -100,9 +100,9 @@ class DeepSpeedActivationCheckpointingConfig(object):
                                                    ACT_CHKPT_NUMBER_CHECKPOINTS,
                                                    ACT_CHKPT_NUMBER_CHECKPOINTS_DEFAULT)
 
-        self.profile_backward = get_scalar_param(act_chkpt_config_dict,
-                                                 ACT_CHKPT_PROFILE_BACKWARD,
-                                                 ACT_CHKPT_PROFILE_BACKWARD_DEFAULT)
+        self.profile = get_scalar_param(act_chkpt_config_dict,
+                                        ACT_CHKPT_PROFILE,
+                                        ACT_CHKPT_PROFILE_DEFAULT)
 
         self.synchronize_checkpoint_boundary = get_scalar_param(
             act_chkpt_config_dict,

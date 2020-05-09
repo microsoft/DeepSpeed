@@ -20,6 +20,7 @@ from torch import _C
 from torch.cuda import _lazy_call, device as device_ctx_manager
 from deepspeed.pt.deepspeed_timer import SynchronizedWallClockTimer as Timers
 import torch.distributed as dist
+from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
 #DeepSpeed Checkpointing Enabled or Disabled
 deepspeed_checkpointing_enabled = False
@@ -584,15 +585,49 @@ def reset():
         size_offsets = []
 
 
+def _configure_using_config_file(deepspeed_config):
+    global num_layers, PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
+            PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
+
+    config = DeepSpeedConfig(deepspeed_config).activation_checkpointing_config
+    print(config.repr())
+    PARTITION_ACTIVATIONS = config.partition_activations
+    CONTIGUOUS_CHECKPOINTING = config.contiguous_memory_optimization
+    num_layers = config.number_checkpoints
+    PA_TO_CPU = config.cpu_checkpointing
+    SYNCHRONIZE = config.synchronize_checkpoint_boundary
+    PROFILE_TIME = config.profile
+
+
+def _configure_defaults():
+
+    global mpu, num_layers, deepspeed_checkpointing_enabled
+
+    global PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
+            PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
+
+    PARTITION_ACTIVATIONS = False
+    CONTIGUOUS_CHECKPOINTING = False
+    num_layers = False
+    PA_TO_CPU = False
+    SYNCHRONIZE = False
+    PROFILE_TIME = False
+    deepspeed_checkpointing_enabled = True
+
+
+'''the parameters from the deepspeed_config file will be overwritten
+by the parameters passed directly to this configure function'''
+
+
 def configure(
     mpu_,
-    enabled=False,
-    partition_activations=False,
-    contiguous_checkpointing=False,
-    nlayers=None,
-    checkpoint_in_cpu=False,
-    synchronize=False,
-    profile_backward=False,
+    deepspeed_config=None,
+    partition_activations=None,
+    contiguous_checkpointing=None,
+    num_checkpoints=None,
+    checkpoint_in_cpu=None,
+    synchronize=None,
+    profile=None,
 ):
 
     global mpu, num_layers, deepspeed_checkpointing_enabled
@@ -600,20 +635,36 @@ def configure(
     global PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
             PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
-    deepspeed_checkpointing_enabled = enabled
+    _configure_defaults()
 
-    num_layers = nlayers
-    if checkpoint_in_cpu or contiguous_checkpointing:
-        assert partition_activations, "CPU Checkpointing/Contiguous Checkpointing is only availble with partitioned activations. Set partitioned activations to true in deepspeed config"
-    if contiguous_checkpointing:
+    if deepspeed_config is not None:
+        _configure_using_config_file(deepspeed_config)
+
+    if mpu_ is not None:
+        mpu = mpu_
+
+    if partition_activations is not None:
+        PARTITION_ACTIVATIONS = partition_activations
+
+    if contiguous_checkpointing is not None:
+        CONTIGUOUS_CHECKPOINTING = contiguous_checkpointing
+
+    if num_checkpoints is not None:
+        num_layers = num_checkpoints
+
+    if checkpoint_in_cpu is not None:
+        PA_TO_CPU = checkpoint_in_cpu
+
+    if synchronize is not None:
+        SYNCHRONIZE = synchronize
+
+    if profile is not None:
+        PROFILE_TIME = profile
+
+    if PA_TO_CPU or CONTIGUOUS_CHECKPOINTING:
+        assert PARTITION_ACTIVATIONS, "CPU Checkpointing/Contiguous Checkpointing is only availble with partitioned activations. Set partitioned activations to true in deepspeed config"
+    if CONTIGUOUS_CHECKPOINTING:
         assert num_layers is not None, "Must specify the number of layers with contiguous memory checkpointing"
-
-    mpu = mpu_
-    PARTITION_ACTIVATIONS = partition_activations
-    CONTIGUOUS_CHECKPOINTING = contiguous_checkpointing
-    PA_TO_CPU = checkpoint_in_cpu
-    SYNCHRONIZE = synchronize
-    PROFILE_TIME = profile_backward
 
 
 def is_configured():
