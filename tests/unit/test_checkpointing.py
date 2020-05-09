@@ -76,6 +76,7 @@ def compare_optimizer_states(saved_model, loaded_model, hidden_dim):
             else:
                 assert s0 == s1
 
+
 def compare_lr_scheduler_states(saved_model, loaded_model):
     assert hasattr(saved_model, 'lr_scheduler')
     assert hasattr(loaded_model, 'lr_scheduler')
@@ -99,15 +100,12 @@ def compare_lr_scheduler_states(saved_model, loaded_model):
             assert state0 == state1
 
 
-
-def checkpoint_correctness_verification(
-    args,
-    model,
-    hidden_dim,
-    tmpdir,
-    load_optimizer_states=False,
-    load_lr_scheduler_states=False
-):
+def checkpoint_correctness_verification(args,
+                                        model,
+                                        hidden_dim,
+                                        tmpdir,
+                                        load_optimizer_states=False,
+                                        load_lr_scheduler_states=False):
 
     ds_model, _, _,_ = deepspeed.initialize(args=args,
                                             model=model,
@@ -320,7 +318,10 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
     model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[2])
-    def _test_checkpoint_zero_no_optimizer(args, model, hidden_dim, load_optimizer_states):
+    def _test_checkpoint_zero_no_optimizer(args,
+                                           model,
+                                           hidden_dim,
+                                           load_optimizer_states):
         checkpoint_correctness_verification(args,
                                             model,
                                             hidden_dim,
@@ -328,10 +329,9 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_zero_no_optimizer(args=args,
-                                    model=model,
-                                    hidden_dim=hidden_dim,
-                                    load_optimizer_states=False)
-
+                                       model=model,
+                                       hidden_dim=hidden_dim,
+                                       load_optimizer_states=False)
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
@@ -371,22 +371,23 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_lr_scheduler(args,
-                                           model,
-                                           hidden_dim,
-                                           load_optimizer_states,
-                                           load_lr_scheduler_states):
-        checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
-                                            load_optimizer_states=load_optimizer_states,
-                                            load_lr_scheduler_states=load_lr_scheduler_states)
+                                      model,
+                                      hidden_dim,
+                                      load_optimizer_states,
+                                      load_lr_scheduler_states):
+        checkpoint_correctness_verification(
+            args,
+            model,
+            hidden_dim,
+            tmpdir,
+            load_optimizer_states=load_optimizer_states,
+            load_lr_scheduler_states=load_lr_scheduler_states)
 
     _test_checkpoint_lr_scheduler(args=args,
-                                    model=model,
-                                    hidden_dim=hidden_dim,
-                                    load_optimizer_states=False,
-                                    load_lr_scheduler_states=True)
+                                  model=model,
+                                  hidden_dim=hidden_dim,
+                                  load_optimizer_states=False,
+                                  load_lr_scheduler_states=True)
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1, 2])
@@ -422,19 +423,20 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_no_lr_scheduler(args,
-                                              model,
-                                              hidden_dim,
-                                              load_optimizer_states,
-                                              load_lr_scheduler_states):
-        checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
-                                            load_optimizer_states=load_optimizer_states,
-                                            load_lr_scheduler_states=load_lr_scheduler_states)
+                                         model,
+                                         hidden_dim,
+                                         load_optimizer_states,
+                                         load_lr_scheduler_states):
+        checkpoint_correctness_verification(
+            args,
+            model,
+            hidden_dim,
+            tmpdir,
+            load_optimizer_states=load_optimizer_states,
+            load_lr_scheduler_states=load_lr_scheduler_states)
 
     _test_checkpoint_no_lr_scheduler(args=args,
-                                       model=model,
-                                       hidden_dim=hidden_dim,
-                                       load_optimizer_states=False,
-                                       load_lr_scheduler_states=False)
+                                     model=model,
+                                     hidden_dim=hidden_dim,
+                                     load_optimizer_states=False,
+                                     load_lr_scheduler_states=False)

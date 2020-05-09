@@ -1069,7 +1069,11 @@ class DeepSpeedLight(Module):
 
         return load_path, client_states
 
-    def _load_checkpoint(self, load_dir, tag, load_optimizer_states=True, load_lr_scheduler_states=True):
+    def _load_checkpoint(self,
+                         load_dir,
+                         tag,
+                         load_optimizer_states=True,
+                         load_lr_scheduler_states=True):
 
         load_path = self._get_ckpt_name(load_dir, tag)
 
