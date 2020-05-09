@@ -10,6 +10,7 @@ import argparse
 import pytest
 import json
 import os
+import numbers
 from common import distributed_test
 from simple_model import SimpleModel, random_dataloader, args_from_dict
 
@@ -67,10 +68,6 @@ def compare_model_states(saved_model, loaded_model):
 
 
 def compare_optimizer_states(saved_model, loaded_model, hidden_dim):
-    compare_model_states(saved_model, loaded_model)
-
-    assert hasattr(loaded_model, 'optimizer')
-
     for state0, state1 in zip(saved_model.optimizer.optimizer.state.values(),
                               loaded_model.optimizer.optimizer.state.values()):
         for s0, s1 in zip(state0.values(), state1.values()):
@@ -79,13 +76,37 @@ def compare_optimizer_states(saved_model, loaded_model, hidden_dim):
             else:
                 assert s0 == s1
 
+def compare_lr_scheduler_states(saved_model, loaded_model):
+    assert hasattr(saved_model, 'lr_scheduler')
+    assert hasattr(loaded_model, 'lr_scheduler')
+
+    saved_scheduler = saved_model.lr_scheduler
+    loaded_scheduler = loaded_model.lr_scheduler
+
+    assert hasattr(saved_scheduler, 'state_dict')
+    assert hasattr(loaded_scheduler, 'state_dict')
+
+    saved_sd = saved_scheduler.state_dict()
+    loaded_sd = loaded_scheduler.state_dict()
+
+    print(f"saved_sd = {saved_sd}")
+    print(f"loaded_sd = {loaded_sd}")
+
+    assert saved_sd.keys() == loaded_sd.keys()
+
+    for state0, state1 in zip(saved_sd.values(), loaded_sd.values()):
+        if isinstance(state0, numbers.Number) and isinstance(state1, numbers.Number):
+            assert state0 == state1
+
+
 
 def checkpoint_correctness_verification(
     args,
     model,
     hidden_dim,
     tmpdir,
-    load_optimizer_states=True,
+    load_optimizer_states=False,
+    load_lr_scheduler_states=False
 ):
 
     ds_model, _, _,_ = deepspeed.initialize(args=args,
@@ -113,14 +134,18 @@ def checkpoint_correctness_verification(
 
     loaded_model.load_checkpoint(save_folder,
                                  save_tag,
-                                 load_optimizer_states=load_optimizer_states)
+                                 load_optimizer_states=load_optimizer_states,
+                                 load_lr_scheduler_states=load_lr_scheduler_states)
+
+    compare_model_states(trained_model, loaded_model)
 
     compare_lr_scheduler_states(trained_model, loaded_model)
 
     if load_optimizer_states:
         compare_optimizer_states(trained_model, loaded_model, hidden_dim)
-    else:
-        compare_model_states(trained_model, loaded_model)
+
+    if load_lr_scheduler_states:
+        compare_lr_scheduler_states(trained_model, loaded_model)
 
 
 def test_checkpoint_unfused_optimizer(tmpdir):
@@ -295,14 +320,121 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
     model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[2])
-    def _test_checkpoint_zero_optimizer(args, model, hidden_dim, load_optimizer_states):
+    def _test_checkpoint_zero_no_optimizer(args, model, hidden_dim, load_optimizer_states):
         checkpoint_correctness_verification(args,
                                             model,
                                             hidden_dim,
                                             tmpdir,
                                             load_optimizer_states=load_optimizer_states)
 
-    _test_checkpoint_zero_optimizer(args=args,
+    _test_checkpoint_zero_no_optimizer(args=args,
                                     model=model,
                                     hidden_dim=hidden_dim,
                                     load_optimizer_states=False)
+
+
+
+@pytest.mark.parametrize("zero_stage", [0, 1, 2])
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015,
+                "betas": [0.8,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7
+            }
+        },
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        },
+        "scheduler": {
+            "type": "WarmupLR",
+            "params": {
+                "warmup_min_lr": 0,
+                "warmup_max_lr": 0.001,
+                "warmup_num_steps": 1000
+            }
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[2])
+    def _test_checkpoint_lr_scheduler(args,
+                                           model,
+                                           hidden_dim,
+                                           load_optimizer_states,
+                                           load_lr_scheduler_states):
+        checkpoint_correctness_verification(args,
+                                            model,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=load_optimizer_states,
+                                            load_lr_scheduler_states=load_lr_scheduler_states)
+
+    _test_checkpoint_lr_scheduler(args=args,
+                                    model=model,
+                                    hidden_dim=hidden_dim,
+                                    load_optimizer_states=False,
+                                    load_lr_scheduler_states=True)
+
+
+@pytest.mark.parametrize("zero_stage", [0, 1, 2])
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 1e-5
+            }
+        },
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        },
+        "scheduler": {
+            "type": "WarmupLR",
+            "params": {
+                "warmup_min_lr": 0,
+                "warmup_max_lr": 0.001,
+                "warmup_num_steps": 1000
+            }
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[2])
+    def _test_checkpoint_no_lr_scheduler(args,
+                                              model,
+                                              hidden_dim,
+                                              load_optimizer_states,
+                                              load_lr_scheduler_states):
+        checkpoint_correctness_verification(args,
+                                            model,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=load_optimizer_states,
+                                            load_lr_scheduler_states=load_lr_scheduler_states)
+
+    _test_checkpoint_no_lr_scheduler(args=args,
+                                       model=model,
+                                       hidden_dim=hidden_dim,
+                                       load_optimizer_states=False,
+                                       load_lr_scheduler_states=False)
