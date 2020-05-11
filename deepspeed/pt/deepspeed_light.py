@@ -1043,6 +1043,7 @@ class DeepSpeedLight(Module):
     def load_checkpoint(self,
                         load_dir,
                         tag,
+                        load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True):
         r"""Load training checkpoint
@@ -1050,6 +1051,7 @@ class DeepSpeedLight(Module):
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
             tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
         Return:
@@ -1059,6 +1061,7 @@ class DeepSpeedLight(Module):
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
+                                                         load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states)
 
@@ -1072,6 +1075,7 @@ class DeepSpeedLight(Module):
     def _load_checkpoint(self,
                          load_dir,
                          tag,
+                         load_module_strict=True,
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True):
 
@@ -1086,7 +1090,8 @@ class DeepSpeedLight(Module):
         logging.info('Loading checkpoint: {}'.format(load_path))
         checkpoint = torch.load(load_path, map_location=lambda storage, loc: storage)
 
-        self.load_module_state_dict(checkpoint['module'])
+        self.load_module_state_dict(state_dict=checkpoint['module'],
+                                    strict=load_module_strict)
         if not self.zero_optimization():
             self.optimizer.load_state_dict(checkpoint['optimizer'],
                                            load_optimizer_states=load_optimizer_states)
