@@ -134,6 +134,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.dp_process_group = dp_process_group
 
+        self.partition_count = dist.get_world_size(group=self.dp_process_group)
+
         if mpu is None:
             self.model_parallel_group = None
             self.model_parallel_rank = 0
@@ -1268,6 +1270,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict[
             'single_partition_of_fp32_groups'] = self.single_partition_of_fp32_groups
 
+        state_dict['partition_count'] = self.partition_count
+
         return state_dict
 
     def load_state_dict(self, state_dict, load_optimizer_states=True):
@@ -1301,15 +1305,25 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # 1:  Refresh the master params from the model's fp16 params.
         # This requires less storage but incurs precision loss.
         # 2:  Save and restore the fp32 master copies separately.
-        # We choose option 2.
+        # We choose option 1 if changing DP degree and option 2 otherwise.
         #
         # Pytorch Optimizer.load_state_dict casts saved buffers (e.g. momentum) to the type and device
         # of their associated parameters, because it's possible those buffers might not exist yet in
         # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
         # constructed in the same way as the one whose state_dict we are loading, the same master params
         # are guaranteed to exist, so we can just copy_() from the saved master params.
-        for current, saved in zip(self.single_partition_of_fp32_groups, state_dict['single_partition_of_fp32_groups']):
-            current.data.copy_(saved.data)
+
+        saved_partition_count = state_dict[
+            'partition_count'] if 'partition_count' in state_dict else self.partition_count
+        if saved_partition_count != self.partition_count:
+            # Use option 1
+            partition_id = dist.get_rank(group=self.dp_process_group)
+            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                fp32_partition.data.copy_(fp16_partitions[partition_id].data)
+        else:
+            # Use option 2
+            for current, saved in zip(self.single_partition_of_fp32_groups, state_dict['single_partition_of_fp32_groups']):
+                current.data.copy_(saved.data)
 
 
 def _handle_overflow(cpu_sum, x, i):
