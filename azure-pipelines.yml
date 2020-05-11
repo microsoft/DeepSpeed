@@ -63,6 +63,8 @@ jobs:
       ln -s /data/Megatron-LM/data DeepSpeedExamples/Megatron-LM/
       pip install -r DeepSpeedExamples/Megatron-LM/requirements.txt
       cd tests/model/
+      rm -rf BingBertSquad/baseline
+      rm -rf Megatron_GPT2/baseline
       pytest -s run_sanity_check.py
     condition: eq(variables['runmodeltests'], true)
     displayName: 'Model tests'
