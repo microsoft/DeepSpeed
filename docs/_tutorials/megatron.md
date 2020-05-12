@@ -349,7 +349,7 @@ b) Replace in `mpu/transformer.py`:
 ```python
 if deepspeed.checkpointing.is_configured():
             global get_cuda_rng_tracker, checkpoint
-            get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
+            get_cuda_rng_tracker = deepspeed.checkpoint.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
 ```
@@ -378,7 +378,8 @@ multiplication where performance is directly related to the size of the matrices
 Furthermore, less model parallelism also results in less communication between model
 parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
 of increasing the computational granularity as well as reducing communication, also
-resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron, we elevate the model scale and speed to an entirely new level.
+resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron, 
+we elevate the model scale and speed to an entirely new level compared to Megatron alone..
 
 ![DeepSpeed-vs-Megatron](../assets/images/zero-full.png)
 <p align="center">
