@@ -320,6 +320,39 @@ and return the states for the client model.
 
 ```
 
+### DeepSpeed Activation Checkpoints (Optional)
+
+DeepSpeed can reduce the activation memory during model parallel training by partitioning activation checkpoints across model parallel GPUs, or offloading them to CPU. These optimization is optional, and can be skipped unless activation memory becomes a memory bottlenck. To enable partition activation, we use the `deepspeed.checkpointing` API to replace Megatron's activation checkpointing and random state tracker API's in `pretrain_gpt2.py`.
+
+ ```python
+    # Optional DeepSpeed Activation Checkpointing Features
+    #
+    if args.deepspeed and args.deepspeed_activation_checkpointing:
+        set_deepspeed_activation_checkpointing(args)
+
+def set_deepspeed_activation_checkpointing(args):
+
+    deepspeed.checkpointing.configure(mpu,
+                            deepspeed_config=args.deepspeed_config,
+                            partition_activation=True)
+
+    mpu.checkpoint = deepspeed.checkpointing.checkpoint
+    mpu.get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
+    mpu.model_parallel_cuda_manual_seed = deepspeed.checkpointing.model_parallel_cuda_manual_seed
+```
+This must be done before the first invocation of any of the above mpu methods. It is also important that all invocations of these mpu methods are replaced. In Megatron, some of these invocations are also present in `mpu/transformer.py`. Those needs to be replaced as well:
+
+```python
+if deepspeed.checkpointing.is_configured():
+            global get_cuda_rng_tracker, checkpoint
+            get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
+            checkpoint = deepspeed.checkpointing.checkpoint
+
+```
+
+With these replacements, various DeepSpeed activation checkpointing optimizations such as activation partitioning, contiguous checkpointing, CPU checkpointing, etc can be specified with either `deepspeed.checkpoinintg.configure` or in the `deepspeed_config` file.
+
+
 ### Train  scripts
 Assume webtext data was prepared in previous step, to start training
 Megatron-LM GPT2 model with DeepSpeed applied, execute the following command to
