@@ -367,7 +367,7 @@ start training.
 - Multiple GPUs/Nodes run
   - run `bash scripts/ds_zero2_pretrain_gpt2_model_parallel.sh`
 
-## Perforamnce Evaluation
+## DeepSpeed Evaluation using GPT-2
 
 DeepSpeed enables training very large models effectively via the advanced [ZeRO
 optimizer](https://arxiv.org/abs/1910.02054v2) version 2 that we refer to as ZeRO-2.  ZeRO-2 significantly reduces the memory
@@ -378,16 +378,14 @@ multiplication where performance is directly related to the size of the matrices
 Furthermore, less model parallelism also results in less communication between model
 parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
 of increasing the computational granularity as well as reducing communication, also
-resulting in better performance. Therefore, DeepSpeed combines ZeRO-powered data parallelism with
-Megatron-LM tensor-slicing model parallelism, which is
-significantly faster than using Megatron-LM alone.
+resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron, we elevate the model scale and speed to an entirely new level.
 
 ![DeepSpeed-vs-Megatron](../assets/images/zero-full.png)
 <p align="center">
 <em>Figure 2: ZeRO-2 scales to 170 billion parameters, has up to 10x higher throughput, obtains super linear speedup, and improves usability by avoiding the need for code refactoring for models up to 13 billion parameters.</em>
 </p>
 
-ZeRO-2 excels in four aspects (as visualized in Figure 2), supporting an order-of-magnitude bigger models, up to 10x faster, with super linear scalability, and improved usability to democratize large model training. These four aspects are detailed below.
+More concretely, DeepSpeed and ZeRO-2 excels in four aspects (as visualized in Figure 2), supporting an order-of-magnitude bigger models, up to 10x faster, with super linear scalability, and improved usability to democratize large model training. These four aspects are detailed below.
 
 
 Figure 2: ZeRO-2 scales to 170 billion parameters, has up to 10x higher throughput, obtains super linear speedup, and improves usability by avoiding the need for code refactoring for models up to 13 billion parameters.

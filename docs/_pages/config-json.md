@@ -172,6 +172,8 @@ Example of ***scheduler***
 | ----------------------------------- | ------- |
 | Enable gradient clipping with value | `0`      |
 
+
+
 ### Logging
 
 ***steps\_per\_print***: [integer]
@@ -191,3 +193,52 @@ Example of ***scheduler***
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
 | Print out state information of DeepSpeed object after initialization | `false`   |
+
+### Activation Checkpointing
+```json
+  "activation_checkpointing": {
+    "partition_activations": false,
+    "cpu_checkpointing": false,
+    "contigious_memory_optimization": false,
+    "number_checkpoints": None,
+    "synchronize_checkpoint_boundary": false,
+    "profile": false
+    }
+```
+***partition\_activations***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Enables partition activation when used with model parallelism | `false`   |
+
+***cpu\_checkpointing***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Offloads partitioned activations to CPU if partition_activations is enabled| `false`   |
+
+
+***contiguous\_memory\_optimization***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Copies partitioned activations so that they are contiguous in memory | `false`   |
+
+***number_checkpoints***: [integer]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Total number of activation checkpoints used to allocate memory buffer for contiguous_memoty_optimization | `None`   |
+
+***synchronize\_checkpoint\_boundary***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Inserts torch.cuda.synchronize() at each checkpoint boundary. | `false`   |
+
+
+***profile***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Logs the forward and backward time for each checkpoint function | `false`   |
