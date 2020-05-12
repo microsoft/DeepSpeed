@@ -155,6 +155,9 @@ class DeepSpeedLight(Module):
         self.training_dataloader = self.deepspeed_io(
             training_data) if training_data else None
 
+        # Configure wall clock timer
+        self.timers = SynchronizedWallClockTimer()
+
         # Configure optimizer and scheduler
         self.optimizer = None
         self.lr_scheduler = None
@@ -163,8 +166,6 @@ class DeepSpeedLight(Module):
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
 
-        # Configure wall clock timer
-        self.timers = SynchronizedWallClockTimer()
 
         # Bookkeeping for csr support
         self.csr_tensor_module_names = set()
@@ -494,7 +495,8 @@ class DeepSpeedLight(Module):
                     dynamic_loss_args=dynamic_loss_args,
                     mpu=self.mpu,
                     clip_grad=clip_grad,
-                    fused_adam_legacy=self.optimizer_legacy_fusion())
+                    fused_adam_legacy=self.optimizer_legacy_fusion(),
+                    timers=self.timers)
             else:
                 logging.info('Creating fp16 optimizer with static loss scale: {}'.format(
                     self.loss_scale()))
@@ -767,8 +769,8 @@ class DeepSpeedLight(Module):
                 'step_microstep'
             ])
             # Log timing
-            if self.tensorboard_enabled():
-                if self.is_gradient_accumulation_boundary():
+            if self.is_gradient_accumulation_boundary():
+                if self.tensorboard_enabled():
                     if self.global_rank == 0:
                         self.summary_events = [(f'Train/Samples/elapsed_time_ms_forward', self.timers('forward').elapsed(reset=False) * 1000.0, self.sample_count), \
                                                 (f'Train/Samples/elapsed_time_ms_backward', self.timers('backward').elapsed(reset=False) * 1000.0, self.sample_count), \
@@ -779,6 +781,8 @@ class DeepSpeedLight(Module):
                         for event in self.summary_events:  # write_summary_events
                             self.summary_writer.add_scalar(event[0], event[1], event[2])
                         self.summary_writer.flush()
+
+            if self.wall_clock_breakdown():
                     self.timers.log([
                         'forward',
                         'backward',
@@ -808,7 +812,11 @@ class DeepSpeedLight(Module):
 
     def _report_progress(self, step):
         lr = self.get_lr()
+        if type(lr) == list:
+            lr = lr[0]
         mom = self.get_mom()
+        if type(mom) == list:
+            mom = mom[0]
         logging.info('rank:{} step={}, skipped={}, lr={}, mom={}'.format(
             self.global_rank,
             step,

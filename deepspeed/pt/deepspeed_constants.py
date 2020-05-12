@@ -15,7 +15,7 @@ ROUTE_ENCODE = "encode"
 # Batch size
 #############################################
 TRAIN_BATCH_SIZE = "train_batch_size"
-TRAIN_BATCH_SIZE_DEFAULT = 1
+TRAIN_BATCH_SIZE_DEFAULT = None
 
 #############################################
 # Optimizer and lr scheduler
