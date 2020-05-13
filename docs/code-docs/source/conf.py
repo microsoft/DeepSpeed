@@ -90,6 +90,7 @@ MOCK_MODULES = [
     'torch.distributed',
     'torch.distributed.distributed_c10d',
     'torch.optim',
-    'torch._six'
+    'torch._six',
+    'torch.autograd',
 ]
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)

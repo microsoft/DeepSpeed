@@ -21,6 +21,6 @@ Please see the enabling DeepSpeed for Megatron-LM tutorial for usage details.
 
 .. autofunction:: deepspeed.checkpointing.model_parallel_cuda_manual_seed
 
-.. autoclass:: deepspeed.checkpinting.CudaRNGStatesTracker
+.. autoclass:: deepspeed.checkpointing.CudaRNGStatesTracker
 
 .. autoclass:: deepspeed.checkpointing.CheckpointFunction
