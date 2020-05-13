@@ -288,6 +288,9 @@ class DeepSpeedLight(Module):
     def zero_reduce_scatter(self):
         return self._config.zero_config.reduce_scatter
 
+    def zero_overlap_comm(self):
+        return self._config.zero_config.overlap_comm
+
     def zero_max_elements_per_comm(self):
         return self._config.zero_max_elements_per_comm
 
@@ -584,6 +587,7 @@ class DeepSpeedLight(Module):
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,
                 reduce_scatter=self.zero_reduce_scatter(),
+                overlap_comm=self.zero_overlap_comm(),
                 mpu=self.mpu)
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))

@@ -19,8 +19,9 @@ ZeRO optimization should be enabled as:
     "allgather_partitions": [true|false],
     "allgather_bucket_size": 500000000,
     "reduce_scatter": [true|false],
-    "reduce_bucket_size": 500000000,
     "contiguous_gradients" : [true|false]
+    "overlap_comm": [true|false],
+    "reduce_bucket_size": 500000000
     }
 }
 '''
@@ -45,7 +46,10 @@ ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS_DEFAULT = True
 ZERO_OPTIMIZATION_REDUCE_SCATTER = 'reduce_scatter'
 ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT = True
 
-ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS = 'contiguous_gradients'
+ZERO_OPTIMIZATION_OVERLAP_COMM = 'overlap_comm'
+ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT = False
+
+ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS = 'contigious_gradients'
 ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS_DEFAULT = True
 
 ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE = 'reduce_bucket_size'
@@ -77,6 +81,7 @@ class DeepSpeedZeroConfig(object):
         self.reduce_bucket_size = None
         self.allgather_partitions = None
         self.allgather_bucket_size = None
+        self.overlap_comm = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -110,6 +115,10 @@ class DeepSpeedZeroConfig(object):
         self.reduce_scatter = get_scalar_param(zero_config_dict,
                                                ZERO_OPTIMIZATION_REDUCE_SCATTER,
                                                ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT)
+
+        self.overlap_comm = get_scalar_param(zero_config_dict,
+                                             ZERO_OPTIMIZATION_OVERLAP_COMM,
+                                             ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT)
 
         self.allgather_partitions = get_scalar_param(
             zero_config_dict,

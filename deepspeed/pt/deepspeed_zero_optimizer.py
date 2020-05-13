@@ -109,6 +109,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  allgather_bucket_size=5000000000,
                  dp_process_group=None,
                  reduce_scatter=True,
+                 overlap_comm=False,
                  mpu=None,
                  clip_grad=0.0):
 
@@ -131,6 +132,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.timers = timers
 
         self.reduce_scatter = reduce_scatter
+
+        self.overlap_comm = overlap_comm
 
         self.dp_process_group = dp_process_group
 
@@ -254,6 +257,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.elements_in_ipg_bucket = 0
         self.params_already_reduced = []
         self._release_ipg_buffers()
+        self.previous_reduced_grads = None
 
         #simplified param id
         self.param_id = {}
@@ -405,6 +409,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
 
+        if self.overlap_comm:
+            torch.cuda.synchronize()
+
         for i, _ in enumerate(self.fp16_groups):
             self.averaged_gradients[i] = self.get_flat_partition(
                 self.params_in_partition[i],
@@ -523,6 +530,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
                                          param.numel())
             self.reduce_ipg_grads()
+            if self.contigious_gradients and self.overlap_comm:
+                # Swap ipg_index between 0 and 1
+                self.ipg_index = 1 - self.ipg_index
             self.report_ipg_memory_usage("In ipg_remove_grads after reduce_ipg_grads",
                                          param.numel())
 
@@ -535,7 +545,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #keeping the gradients contigious to prevent memory fragmentation, and avoid flattening
         if self.contigious_gradients:
-            new_grad_tensor = self.ipg_buffer.narrow(0,
+            new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(0,
                                                      self.elements_in_ipg_bucket,
                                                      param.numel())
             new_grad_tensor.copy_(param.grad.view(-1))
@@ -633,7 +643,19 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def reduce_ipg_grads(self):
         if self.contigious_gradients:
-            self.average_tensor(self.ipg_buffer)
+            if self.overlap_comm:
+                torch.cuda.synchronize()
+                stream = self.reduction_stream
+            else:
+                stream = torch.cuda.current_stream()
+
+            with torch.cuda.stream(stream):
+                self.average_tensor(self.ipg_buffer[self.ipg_index])
+
+                params_in_ipg_bucket = self.params_in_ipg_bucket
+                for _, param, param_id in params_in_ipg_bucket:
+                    if self.is_param_in_current_partition[param_id]:
+                        self.copy_grads_in_partition(param)
         else:
             self.buffered_reduce_fallback(
                 None,
@@ -646,9 +668,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             param_ids.append(param_id)
 
             if not self.is_param_in_current_partition[param_id]:
-                param.grad = None
-            elif self.contigious_gradients:
-                self.copy_grads_in_partition(param)
+                if self.overlap_comm:
+                    if self.previous_reduced_grads is None:
+                        self.previous_reduced_grads = []
+                    self.previous_reduced_grads.append(param)
+                else:
+                    param.grad = None
 
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
@@ -755,11 +780,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
-        allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
+        if self.overlap_comm:
+            torch.cuda.synchronize()
+            if self.previous_reduced_grads is not None:
+                for param in self.previous_reduced_grads:
+                    param.grad = None
+                self.previous_reduced_grads = None
+            stream = self.reduction_stream
+        else:
+            stream = torch.cuda.current_stream()
 
-        if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-            for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
-                buf.copy_(synced)
+        with torch.cuda.stream(stream):
+            allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
+            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
+                for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
+                    buf.copy_(synced)
 
     def allreduce_no_retain(self,
                             bucket,
@@ -987,7 +1022,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         Not supporting closure.
         """
-
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow
@@ -1212,8 +1246,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         if self.contigious_gradients:
-            self.ipg_buffer = torch.empty(self.reduce_bucket_size,
-                                          dtype=torch.half).cuda()
+            self.ipg_buffer = []
+            buf_0 = torch.empty(self.reduce_bucket_size, dtype=torch.half).cuda()
+            self.ipg_buffer.append(buf_0)
+
+            # Use double buffers to avoid data access conflict when overlap_comm is enabled.
+            if self.overlap_comm:
+                buf_1 = torch.empty(self.reduce_bucket_size, dtype=torch.half).cuda()
+                self.ipg_buffer.append(buf_1)
+            self.ipg_index = 0
+
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
     def check_overflow(self, partition_gradients=True):
