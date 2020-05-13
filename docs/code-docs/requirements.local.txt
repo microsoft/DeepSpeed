@@ -1,3 +1,4 @@
 sphinx
+sphinx-build
 recommonmark
 sphinx-rtd-theme
