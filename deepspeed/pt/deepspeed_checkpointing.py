@@ -313,6 +313,9 @@ class CheckpointFunction(torch.autograd.Function):
            1) torch.cuda.set_rng_state is replaced with `_set_cuda_rng_state`
            2) the states in the model parallel tracker are also properly
               tracked/set/reset.
+           3) Performance activation partitioning, contiguous memory optimization
+           4) CPU Checkpointing
+           5) Profile forward and backward functions
     """
     @staticmethod
     def forward(ctx, run_function, *args):
@@ -570,6 +573,16 @@ def set_num_layers(nlayers):
 
 
 def reset():
+    """Resets memory buffers related to contiguous memory optimizations.
+    Should be called during eval when multiple forward propagations are
+    computed without any backward propagation that usually clears these
+    buffers.
+    Arguments:
+        None
+
+    Return:
+        None
+    """
     if CONTIGUOUS_CHECKPOINTING:
         global data_offsets, size_offsets
         global contiguous_data_buffers, contiguous_size_buffers
@@ -615,10 +628,6 @@ def _configure_defaults():
     deepspeed_checkpointing_enabled = True
 
 
-'''the parameters from the deepspeed_config file will be overwritten
-by the parameters passed directly to this configure function'''
-
-
 def configure(
     mpu_,
     deepspeed_config=None,
@@ -629,7 +638,41 @@ def configure(
     synchronize=None,
     profile=None,
 ):
+    """Configure DeepSpeed Activation Checkpointing.
 
+    Arguments:
+        mpu_: Optional: An object that implements the following methods
+            get_model_parallel_rank/group/world_size, and get_data_parallel_rank/group/world_size
+
+        deepspeed_config: Optional: DeepSpeed Config json file when provided will be used to
+            configure DeepSpeed Activation Checkpointing
+
+        partition_activations: Optional: Partitions activation checkpoint across model parallel
+            GPUs when enabled. By default False. Will overwrite deepspeed_config if provided
+
+        contiguous_checkpointing: Optional: Copies activation checkpoints to a contiguous memory
+            buffer. Works only with homogeneous checkpoints when partition_activations is enabled.
+            Must provide num_checkpoints. By default False. Will overwrite deepspeed_config if
+            provided
+
+        num_checkpoints: Optional: Number of activation checkpoints stored during the forward
+            propagation of the model. Used to calculate the buffer size for contiguous_checkpointing
+            Will overwrite deepspeed_config if provided
+
+        checkpoint_in_cpu: Optional: Moves the activation checkpoint to CPU. Only works with
+            partition_activation. Default is false. Will overwrite deepspeed_config if provided
+
+        synchronize: Optional: Performs torch.cuda.synchronize() at the beginning and end of
+            each call to deepspeed.checkpointing.checkpoint for both forward and backward pass.
+            By default false. Will overwrite deepspeed_config if provided
+
+        profile: Optional: Logs the forward and backward time for each
+            deepspeed.checkpointing.checkpoint invocation. Will overwrite deepspeed_config
+            if provided
+
+    Returns:
+        None
+    """
     global mpu, num_layers, deepspeed_checkpointing_enabled
 
     global PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
@@ -668,5 +711,14 @@ def configure(
 
 
 def is_configured():
+    """Returns true if deepspeed activation checkpointing has been configured
+        by calling deepspeed.checkpointing.configure, else returns false
+
+    Arguments:
+        None
+
+    Return:
+        True of configured, else False
+    """
     global deepspeed_checkpointing_enabled
     return deepspeed_checkpointing_enabled

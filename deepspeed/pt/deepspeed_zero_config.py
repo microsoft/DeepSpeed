@@ -19,7 +19,8 @@ ZeRO optimization should be enabled as:
     "allgather_partitions": [true|false],
     "allgather_bucket_size": 500000000,
     "reduce_scatter": [true|false],
-    "reduce_bucket_size": 500000000
+    "reduce_bucket_size": 500000000,
+    "contiguous_gradients" : [true|false]
     }
 }
 '''
@@ -44,7 +45,7 @@ ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS_DEFAULT = True
 ZERO_OPTIMIZATION_REDUCE_SCATTER = 'reduce_scatter'
 ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT = True
 
-ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS = 'contigious_gradients'
+ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS = 'contiguous_gradients'
 ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS_DEFAULT = True
 
 ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE = 'reduce_bucket_size'

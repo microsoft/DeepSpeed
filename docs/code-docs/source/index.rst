@@ -6,6 +6,7 @@ DeepSpeed
    :caption: Contents:
 
    initialize
+   checkpointing
 
 
 Indices and tables
