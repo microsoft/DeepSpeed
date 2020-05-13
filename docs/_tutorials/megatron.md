@@ -378,7 +378,7 @@ multiplication where performance is directly related to the size of the matrices
 Furthermore, less model parallelism also results in less communication between model
 parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
 of increasing the computational granularity as well as reducing communication, also
-resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron, 
+resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron,
 we elevate the model scale and speed to an entirely new level compared to Megatron alone..
 
 ![DeepSpeed-vs-Megatron](../assets/images/zero-full.png)
