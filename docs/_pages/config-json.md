@@ -191,13 +191,13 @@ Enabling and configure ZeRO memory optimizations
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| Choses different stages of ZeRO Optimizer. Stage 0, 1 and 2 refers to disable, enable optimizer state partitioning and optimizer+gradient state partitiong, respectively. | `0`   |
+| Chooses different stages of ZeRO Optimizer. Stage 0, 1, and 2 refer to disabled, optimizer state partitioning, and optimizer+gradient state partitiong, respectively. | `0`   |
 
 ***allgather_partitions***: [boolean]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| Choses between allgather collective or a series of broadcast collectives to gather updated parameters from all the GPUs at the end of each step  | `true`   |
+| Chooses between allgather collective or a series of broadcast collectives to gather updated parameters from all the GPUs at the end of each step  | `true`   |
 
 ***allgather_bucket_size***: [boolean]
 
@@ -217,7 +217,7 @@ Enabling and configure ZeRO memory optimizations
 | ------------------------------------------------------------ | ------- |
 | Number of elements reduced/allreduced at a time. Limits the memory required for the allgather for large model sizes   | `500000000`   |
 
-***contiguous_gradinets***: [boolean]
+***contiguous_gradients***: [boolean]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
@@ -251,7 +251,7 @@ Enabling and configure ZeRO memory optimizations
     "partition_activations": false,
     "cpu_checkpointing": false,
     "contiguous_memory_optimization": false,
-    "number_checkpoints": None,
+    "number_checkpoints": null,
     "synchronize_checkpoint_boundary": false,
     "profile": false
     }

@@ -556,7 +556,7 @@ class CheckpointFunction(torch.autograd.Function):
 
 def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
-    This has been directly copied from torch.utils.checkpoint."""
+    This has been directly copied from torch.utils.checkpoint. """
     return CheckpointFunction.apply(function, *args)
 
 
@@ -711,7 +711,7 @@ def configure(
 
 
 def is_configured():
-    """Returns true if deepspeed activation checkpointing has been configured
+    """True if deepspeed activation checkpointing has been configured
         by calling deepspeed.checkpointing.configure, else returns false
 
     Arguments:

@@ -354,7 +354,7 @@ if deepspeed.checkpointing.is_configured():
 
 ```
 
-With these replacements, various DeepSpeed activation checkpointing optimizations such as activation partitioning, contiguous checkpointing, CPU checkpointing, etc can be specified with either `deepspeed.checkpoinintg.configure` or in the `deepspeed_config` file.
+With these replacements, various DeepSpeed activation checkpointing optimizations such as activation partitioning, contiguous checkpointing, and CPU checkpointing, can be specified with either `deepspeed.checkpointing.configure` or in the `deepspeed_config` file.
 
 
 ### Train  scripts
@@ -370,7 +370,13 @@ start training.
 ## DeepSpeed Evaluation using GPT-2
 
 DeepSpeed enables training very large models effectively via the advanced [ZeRO
-optimizer](https://arxiv.org/abs/1910.02054v2) version 2 that we refer to as ZeRO-2.  ZeRO-2 significantly reduces the memory
+optimizer](https://arxiv.org/abs/1910.02054v2). In February, we released a sub-set
+of optimizations from ZeRO in DeepSpeed that performs optimizer state partitioning.
+We refer to them as ZeRO-1. In May, 2020 we extended ZeRO-1 in DeepSpeed to include
+additional optimizations from ZeRO including gradient and activation partitioning,
+as well as contiguous memory optimizations. We refer to this release as ZeRO-2.  
+
+ZeRO-2 significantly reduces the memory
 footprint for training large models which means large models can be trained with i) less
 model parallelism and ii) larger batch sizes. A lower model parallelism degree improves
 training efficiency by increasing the granularity of the computation such as the matrix
@@ -379,14 +385,14 @@ Furthermore, less model parallelism also results in less communication between m
 parallel GPUs, which further boosts performance.  Larger batch size has a similar effect
 of increasing the computational granularity as well as reducing communication, also
 resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron,
-we elevate the model scale and speed to an entirely new level compared to Megatron alone..
+we elevate the model scale and speed to an entirely new level compared to Megatron alone.
 
 ![DeepSpeed-vs-Megatron](../assets/images/zero-full.png)
 <p align="center">
 <em>Figure 2: ZeRO-2 scales to 170 billion parameters, has up to 10x higher throughput, obtains super linear speedup, and improves usability by avoiding the need for code refactoring for models up to 13 billion parameters.</em>
 </p>
 
-More concretely, DeepSpeed and ZeRO-2 excels in four aspects (as visualized in Figure 2), supporting an order-of-magnitude bigger models, up to 10x faster, with super linear scalability, and improved usability to democratize large model training. These four aspects are detailed below.
+More concretely, DeepSpeed and ZeRO-2 excel in four aspects (as visualized in Figure 2), supporting an order-of-magnitude bigger models, up to 10x faster, with superlinear scalability, and improved usability to democratize large model training. These four aspects are detailed below.
 
 
 Figure 2: ZeRO-2 scales to 170 billion parameters, has up to 10x higher throughput, obtains super linear speedup, and improves usability by avoiding the need for code refactoring for models up to 13 billion parameters.
@@ -395,6 +401,6 @@ Model size: State-of-the-art large models such as OpenAI GPT-2, NVIDIA Megatron-
 
 Speed: Improved memory efficiency powers higher throughput and faster training. Figure 2 (bottom left) shows system throughput of ZeRO-2 and ZeRO-1 (both combining ZeRO-powered data parallelism with NVIDIA Megatron-LM model parallelism) as well as using the state-of-the-art model parallelism approach Megatron-LM alone (baseline in Figure 2, bottom left). ZeRO-2 runs 100-billion-parameter models on a 400 NVIDIA V100 GPU cluster with over 38 teraflops per GPU and aggregated performance over 15 petaflops. For models of the same size, ZeRO-2 is 10x faster in training speed when compared with using Megatron-LM alone and 5x faster when compared with ZeRO-1.
 
-Scalability: We observe super linear speedup scalability (Figure 2, top right), where the performance more than doubles when the number of GPUs are doubled. ZeRO-2 reduces the memory footprint of the model states as we increase the data parallelism degree, allowing us to fit larger batch sizes per GPU and resulting in better performance.
+Scalability: We observe superlinear speedup (Figure 2, top right), where the performance more than doubles when the number of GPUs are doubled. ZeRO-2 reduces the memory footprint of the model states as we increase the data parallelism degree, allowing us to fit larger batch sizes per GPU and resulting in better performance.
 
 Democratizing large model training: ZeRO-2 empowers model scientists to train models up to 13 billion parameters efficiently without any model parallelism that typically requires model refactoring (Figure 2, bottom right). 13 billion parameters is larger than most of the largest state-of-the-art models (such as Google T5, with 11 billion parameters). Model scientists can therefore experiment freely with large models without worrying about model parallelism. In comparison, the implementations of classic data-parallelism approaches (such as PyTorch Distributed Data Parallel) run out of memory with 1.4-billion-parameter models, while ZeRO-1 supports up to 6 billion parameters for comparison.

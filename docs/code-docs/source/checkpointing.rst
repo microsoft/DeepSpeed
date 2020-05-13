@@ -4,7 +4,7 @@ DeepSpeed Activation Checkpointing
 The activation checkpointing API's in DeepSpeed can be used to enable a range of memory optimizations relating
 to activation checkpointing. These include activation partitioning across
 GPUs when using model parallelism, CPU Checkpointing, contiguous memory optimizations, etc.
-Please see the DeepSpeed Json config for the full set.
+Please see the `DeepSpeed JSON config <https://www.deepspeed.ai/docs/config-json/>`_ for the full set.
 
 Here we present the activation checkpointing API's.
 Please see the enabling DeepSpeed for Megatron-LM tutorial for usage details.
