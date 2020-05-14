@@ -668,7 +668,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.params_already_reduced[param_id] = True
 
                 if not self.is_param_in_current_partition[param_id]:
-                    if self.overlap_comm:
+                    if self.overlap_comm and self.contigious_gradients is False:
                         # Clear the previous grads during the next reduction
                         # to avoid clearing them before the reduction is complete.
                         if self.previous_reduced_grads is None:
