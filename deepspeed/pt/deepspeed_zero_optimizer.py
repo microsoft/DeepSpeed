@@ -545,9 +545,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #keeping the gradients contigious to prevent memory fragmentation, and avoid flattening
         if self.contigious_gradients:
-            new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(0,
-                                                     self.elements_in_ipg_bucket,
-                                                     param.numel())
+            new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
+                0,
+                self.elements_in_ipg_bucket,
+                param.numel())
             new_grad_tensor.copy_(param.grad.view(-1))
             param.grad.data = new_grad_tensor.data.view_as(param.grad)
 
