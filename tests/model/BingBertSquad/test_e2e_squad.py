@@ -25,10 +25,22 @@ def test_e2e_squad(tmpdir):
 
     # first test: deepspeed base
     output_dir = os.path.join(tmpdir, "DeepSpeed_Base")
+    pred_file = os.path.join(output_dir, "/predictions.json")
+
     proc = sp.Popen(["bash", script, num_gpus, model_file, squad_dir, output_dir], stdout=sp.PIPE, stderr=sp.PIPE)
 
     try:
         outs, errs = proc.communicate(timeout=timeout_sec)
+
+        if os.path.exists(pred_file):
+            eval_result = eval.evaluate(eval_version, eval_file, pred_file)
+            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-4)
+            assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-4)
+        else:
+            # error: what to do
+            log_event("Error: Run Failed", outs, errs)
+
+
     except TimeoutExpired:
         proc.kill()
         # error: what to do
@@ -37,14 +49,6 @@ def test_e2e_squad(tmpdir):
         # error: what to do
         log_event("Error: Run Failed", outs, errs)
 
-    pred_file = os.path.join(output_dir, "/predictions.json")
-    if os.path.exists(pred_file):
-        eval_result = eval.evaluate(eval_version, eval_file, pred_file)
-        assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-4)
-        assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-4)
-    else:
-        # error: what to do
-        log_event("Error: Run Failed", outs, errs)
 
     # second test: deepspeed with ZeRo-1 ...
     
