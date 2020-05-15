@@ -137,12 +137,17 @@ overview](features) for descriptions and usage.
 * [Model Parallelism](features.md#model-parallelism)
     * Support for Custom Model Parallelism
     * Integration with Megatron-LM
-* [Memory and Bandwidth Optimizations](features.md#memory-and-bandwidth-optimizations)
-    * The Zero Redundancy Optimizer (ZeRO)
-    * Constant Buffer Optimization (CBO)
+* [The Zero Redundancy Optimizer (ZeRO)](features.md#the-zero-redundancy-optimizer)
+    * Optimizer State and Gradient Partitioning
+    * Activation Partitioning
+    * Constant Buffer Optimization
+    * Contiguous Memory Optimization
+* [Additional Memory and Bandwidth Optimizations](features.md#additional-memory-and-bandwidth-optimizations)
     * Smart Gradient Accumulation
+    * Communication/Computation Overlap
 * [Training Features](features.md#training-features)
     * Simplified training API
+    * Activation Checkpointing API
     * Gradient Clipping
     * Automatic loss scaling with mixed precision
 * [Training Optimizers](features.md#training-optimizers)
