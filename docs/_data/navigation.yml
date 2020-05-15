@@ -18,7 +18,7 @@ lnav:
     children:
       - title: "Installation"
         url: /getting-started/#installation
-      - title: "Writing Models"
+      - title: "Writing models"
         url: /getting-started/#writing-deepspeed-models
       - title: "Training"
         url: /getting-started/#training
@@ -37,8 +37,12 @@ lnav:
         url: /docs/config-json/#communication-options
       - title: "FP16"
         url: /docs/config-json/#fp16-training-options
+      - title: "ZeRO optimizations"
+        url: /docs/config-json/#zero-optimizations-for-fp16-training
       - title: "Logging"
         url: /docs/config-json/#logging
+      - title: "Activation checkpointing"
+        url: /docs/config-json/#activation-checkpointing
   - title: "Tutorials"
     url: /tutorials/
     children:
