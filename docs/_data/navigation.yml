@@ -46,7 +46,9 @@ lnav:
   - title: "Tutorials"
     url: /tutorials/
     children:
-      - title: "Getting Started on Azure"
+      - title: "Getting started"
+        url: /getting-started/
+      - title: "Getting started on Azure"
         url: /tutorials/azure/
       - title: "CIFAR-10"
         url: /tutorials/cifar-10/
