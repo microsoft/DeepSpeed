@@ -1,63 +1,127 @@
 import subprocess as sp
-import evaluate as eval
 import datetime
 import os
 from math import isclose
+import sys
+import pytest
+import json
+import argparse
 
-def test_e2e_squad(tmpdir):
-    squad_dir = "/data/BingBertSquad"
-    base_dir = "../../../DeepSpeedExamples/BingBertSquad"
+sys.path.append("../../../DeepSpeedExamples/BingBertSquad")
+import evaluate as eval
 
-    script_name = "run_squad_deepspeed"
-    model_file_name = "training_state_checkpoint_162.tar"
-    eval_file_name = "dev-v1.1.json"
+squad_dir = "/data/BingBertSquad"
+base_dir = "../../../DeepSpeedExamples/BingBertSquad"
 
-    num_gpus = 8
-    timeout_sec = 5 * 60 * 60 # 5 hours
-    expected_exact_match = 84.15
-    expected_f1 = 90.95
+script_file_name = "run_squad_deepspeed.sh"
+model_file_name = "training_state_checkpoint_162.tar"
+eval_file_name = "dev-v1.1.json"
+pred_file_name = "predictions.json"
 
-    eval_version = "1.1"
+num_gpus = "4"
+timeout_sec = 5 * 60 * 60 # 5 hours
 
-    script = os.path.join(base_dir, script_name)
+eval_version = "1.1"
+
+
+def create_config_file(tmpdir, zeroenabled = False):
+    config_dict = {
+        "train_batch_size": 24,
+        "train_micro_batch_size_per_gpu": 6,
+        "steps_per_print": 10,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 3e-5,
+                "weight_decay": 0.0,
+                "bias_correction": False
+                }
+            },
+        "gradient_clipping": 1.0,
+        "fp16": {
+            "enabled": True
+            }
+        }
+    config_dict["zero_optimization"] = zeroenabled
+
+    config_path = os.path.join(tmpdir, 'temp_config.json')
+    with open(config_path, 'w') as fd:
+        json.dump(config_dict, fd)
+    return config_path
+
+
+
+def test_e2e_squad_deepspeed_base(tmpdir):
+    config_file = create_config_file(tmpdir)
+    
+    # base run results => {"exact_match": 83.9829706717124, "f1": 90.71138132004097}
+    expected_exact_match = 83.98
+    expected_f1 = 90.71
+
+
     model_file = os.path.join(squad_dir, model_file_name)
-    eval_file = os.path.join(squad_dir, 
+    eval_file = os.path.join(squad_dir, eval_file_name)
 
-    # first test: deepspeed base
-    output_dir = os.path.join(tmpdir, "DeepSpeed_Base")
-    pred_file = os.path.join(output_dir, "/predictions.json")
+    output_dir = os.path.join(tmpdir, "output")
+    pred_file = os.path.join(output_dir, pred_file_name)
 
-    proc = sp.Popen(["bash", script, num_gpus, model_file, squad_dir, output_dir], stdout=sp.PIPE, stderr=sp.PIPE)
+    proc = sp.Popen(["bash", script_file_name, num_gpus, model_file, squad_dir, output_dir, config_file], cwd=base_dir)
 
     try:
-        outs, errs = proc.communicate(timeout=timeout_sec)
+        proc.communicate(timeout=timeout_sec)
 
         if os.path.exists(pred_file):
             eval_result = eval.evaluate(eval_version, eval_file, pred_file)
-            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-4)
-            assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-4)
+
+            print ("evaluation result: ", json.dumps(eval_result))
+
+            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-2)
+            assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-2)
+
         else:
-            # error: what to do
-            log_event("Error: Run Failed", outs, errs)
+            pytest.fail("Error: Run Failed")
 
 
-    except TimeoutExpired:
+    except sp.TimeoutExpired:
         proc.kill()
-        # error: what to do
-        log_event("Error: TimeOut", outs, errs)
-    except subprocess.CalledProcessError: 
-        # error: what to do
-        log_event("Error: Run Failed", outs, errs)
+        pytest.fail("Error: Timeout")
+    except sp.CalledProcessError: 
+        pytest.fail("Error: Run Failed")
 
 
-    # second test: deepspeed with ZeRo-1 ...
-    
-    # third test: deepspeed with ZeRo-2 ...
+def test_e2e_squad_deepspeed_zero(tmpdir):
+    config_file = create_config_file(tmpdir, True)
+
+    # base run results => {"exact_match": 84.1438032166509, "f1": 90.89776136505441}
+    expected_exact_match = 84.14
+    expected_f1 = 90.89
 
 
-def log_results(msg, outs, errs):
-    # log.write(msg)
-    # log.write(outs)
-    # log.write(errs)
+    model_file = os.path.join(squad_dir, model_file_name)
+    eval_file = os.path.join(squad_dir, eval_file_name)
+
+    output_dir = os.path.join(tmpdir, "output")
+    pred_file = os.path.join(output_dir, pred_file_name)
+
+    proc = sp.Popen(["bash", script_file_name, num_gpus, model_file, squad_dir, output_dir, config_file], cwd=base_dir)
+
+    try:
+        proc.communicate(timeout=timeout_sec)
+
+        if os.path.exists(pred_file):
+            eval_result = eval.evaluate(eval_version, eval_file, pred_file)
+            
+            print ("evaluation result: ", json.dumps(eval_result))
+
+            assert isclose(eval_result["exact_match"], expected_exact_match, abs_tol=1e-2)
+            assert isclose(eval_result["f1"], expected_f1, abs_tol=1e-2)
+            
+        else:
+            pytest.fail("Error: Run Failed")
 
 
+    except sp.TimeoutExpired:
+        proc.kill()
+        pytest.fail("Error: Timeout")
+    except sp.CalledProcessError: 
+        pytest.fail("Error: Run Failed")
