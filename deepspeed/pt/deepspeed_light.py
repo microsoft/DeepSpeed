@@ -306,8 +306,8 @@ class DeepSpeedLight(Module):
     def zero_optimization_partition_gradients(self):
         return self.zero_optimization_stage() >= ZERO_OPTIMIZATION_GRADIENTS
 
-    def zero_contigious_gradients(self):
-        return self._config.zero_config.contigious_gradients
+    def zero_contiguous_gradients(self):
+        return self._config.zero_config.contiguous_gradients
 
     def allgather_size(self):
         return self._config.allgather_size
@@ -582,7 +582,7 @@ class DeepSpeedLight(Module):
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
-                contigious_gradients=self.zero_contigious_gradients(),
+                contiguous_gradients=self.zero_contiguous_gradients(),
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,

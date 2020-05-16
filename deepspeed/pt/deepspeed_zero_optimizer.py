@@ -104,7 +104,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
                  verbose=True,
-                 contigious_gradients=True,
+                 contiguous_gradients=True,
                  reduce_bucket_size=500000000,
                  allgather_bucket_size=5000000000,
                  dp_process_group=None,
@@ -251,7 +251,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
 
-        self.contigious_gradients = contigious_gradients
+        self.contiguous_gradients = contiguous_gradients
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
         self.elements_in_ipg_bucket = 0
@@ -341,7 +341,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             print("")
 
     def _release_ipg_buffers(self):
-        if self.contigious_gradients:
+        if self.contiguous_gradients:
             self.ipg_buffer = None
             self.grads_in_partition = None
             self.grads_in_partition_offset = 0
@@ -530,7 +530,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
                                          param.numel())
             self.reduce_ipg_grads()
-            if self.contigious_gradients and self.overlap_comm:
+            if self.contiguous_gradients and self.overlap_comm:
                 # Swap ipg_index between 0 and 1
                 self.ipg_index = 1 - self.ipg_index
             self.report_ipg_memory_usage("In ipg_remove_grads after reduce_ipg_grads",
@@ -543,8 +543,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             Gradient computed twice for this partition. \
             Multiple gradient reduction is currently not supported"
 
-        #keeping the gradients contigious to prevent memory fragmentation, and avoid flattening
-        if self.contigious_gradients:
+        #keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
+        if self.contiguous_gradients:
             new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
                 0,
                 self.elements_in_ipg_bucket,
@@ -655,7 +655,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         else:
             stream = torch.cuda.current_stream()
 
-        if self.contigious_gradients:
+        if self.contiguous_gradients:
             self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
             self.buffered_reduce_fallback(
@@ -668,7 +668,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.params_already_reduced[param_id] = True
 
                 if not self.is_param_in_current_partition[param_id]:
-                    if self.overlap_comm and self.contigious_gradients is False:
+                    if self.overlap_comm and self.contiguous_gradients is False:
                         # Clear the previous grads during the next reduction
                         # to avoid clearing them before the reduction is complete.
                         if self.previous_reduced_grads is None:
@@ -676,7 +676,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         self.previous_reduced_grads.append(param)
                     else:
                         param.grad = None
-                elif self.contigious_gradients:
+                elif self.contiguous_gradients:
                     self.copy_grads_in_partition(param)
 
         self.grads_in_ipg_bucket = []
@@ -1251,7 +1251,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        if self.contigious_gradients:
+        if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(self.reduce_bucket_size, dtype=torch.half).cuda()
             self.ipg_buffer.append(buf_0)

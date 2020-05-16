@@ -49,8 +49,8 @@ ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT = True
 ZERO_OPTIMIZATION_OVERLAP_COMM = 'overlap_comm'
 ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT = False
 
-ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS = 'contigious_gradients'
-ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS_DEFAULT = True
+ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS = 'contiguous_gradients'
+ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS_DEFAULT = True
 
 ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE = 'reduce_bucket_size'
 ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT = 500000000
@@ -60,8 +60,8 @@ ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT = 500000000
 
 ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_STAGE: ZERO_OPTIMIZATION_STAGE_DEFAULT,
-    ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS:
-    ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS_DEFAULT,
+    ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS:
+    ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS_DEFAULT,
     ZERO_OPTIMIZATION_REDUCE_SCATTER: ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT,
     ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE: ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT,
     ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS:
@@ -76,7 +76,7 @@ class DeepSpeedZeroConfig(object):
         super(DeepSpeedZeroConfig, self).__init__()
 
         self.stage = None
-        self.contigious_gradients = None
+        self.contiguous_gradients = None
         self.reduce_scatter = None
         self.reduce_bucket_size = None
         self.allgather_partitions = None
@@ -102,10 +102,10 @@ class DeepSpeedZeroConfig(object):
                                       ZERO_OPTIMIZATION_STAGE,
                                       ZERO_OPTIMIZATION_STAGE_DEFAULT)
 
-        self.contigious_gradients = get_scalar_param(
+        self.contiguous_gradients = get_scalar_param(
             zero_config_dict,
-            ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS,
-            ZERO_OPTIMIZATION_CONTIGIOUS_GRADIENTS_DEFAULT)
+            ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS,
+            ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS_DEFAULT)
 
         self.reduce_bucket_size = get_scalar_param(
             zero_config_dict,
