@@ -7,6 +7,7 @@ import torch
 import logging
 import json
 from deepspeed.pt.deepspeed_constants import *
+from deepspeed.pt.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
 from deepspeed.pt.deepspeed_config_utils import get_scalar_param
 from deepspeed.pt.deepspeed_zero_config import DeepSpeedZeroConfig
 from deepspeed.pt.deepspeed_checkpointing_config import DeepSpeedActivationCheckpointingConfig

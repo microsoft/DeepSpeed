@@ -24,21 +24,6 @@ def compare_deepspeed_states(saved_model, loaded_model):
     assert saved_model.global_steps == loaded_model.global_steps
 
 
-def compare_lr_scheduler_states(saved_model, loaded_model):
-    if saved_model.lr_scheduler is None:
-        assert loaded_model.lr_scheduler is None
-        return
-
-    saved = saved_model.lr_scheduler.state_dict()
-    loaded = loaded_model.lr_scheduler.state_dict()
-    assert sorted(saved.keys()) == sorted(loaded.keys())
-    for key in saved.keys():
-        if isinstance(saved[key], torch.Tensor):
-            assert torch.equal(saved[key], loaded[key])
-        else:
-            assert saved[key] == loaded[key]
-
-
 def compare_model_states(saved_model, loaded_model):
     compare_deepspeed_states(saved_model, loaded_model)
 
@@ -137,8 +122,6 @@ def checkpoint_correctness_verification(args,
 
     compare_model_states(trained_model, loaded_model)
 
-    compare_lr_scheduler_states(trained_model, loaded_model)
-
     if load_optimizer_states:
         compare_optimizer_states(trained_model, loaded_model, hidden_dim)
 
@@ -188,8 +171,7 @@ def test_checkpoint_unfused_optimizer(tmpdir):
                                            model,
                                            hidden_dim,
                                            load_optimizer_states):
-        checkpoint_correctness_verification(tmpdir,
-                                            args,
+        checkpoint_correctness_verification(args,
                                             model,
                                             hidden_dim,
                                             tmpdir,
@@ -231,8 +213,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_fused_optimizer(args, model, hidden_dim, load_optimizer_states):
-        checkpoint_correctness_verification(tmpdir,
-                                            args,
+        checkpoint_correctness_verification(args,
                                             model,
                                             hidden_dim,
                                             tmpdir,
@@ -277,8 +258,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_zero_optimizer(args, model, hidden_dim, load_optimizer_states):
-        checkpoint_correctness_verification(tmpdir,
-                                            args,
+        checkpoint_correctness_verification(args,
                                             model,
                                             hidden_dim,
                                             tmpdir,
