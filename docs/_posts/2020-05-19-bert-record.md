@@ -1,6 +1,6 @@
 ---
 layout: single
-title: "DeepSpeed optimizes transformer kernels to achieve the world's fastest and most efficient BERT training record: 44 minutes on 1024 NVIDIA V100 GPUs"
+title: "The Fastest and Most Efficient BERT Training through Optimized Transformer Kernels"
 excerpt: ""
 categories: news
 new_post: true
@@ -17,6 +17,6 @@ block, DeepSpeed achieves the fastest BERT training record: 44 minutes on
 1,024 NVIDIA V100 GPUs**, compared with the best published result
 of 67 minutes on the same number and generation of GPUs.
 
-**Code and tutorials are coming soon!**
-
 For a technical overview, see our [blog post](linklink).
+
+**Code and tutorials are coming soon!**
