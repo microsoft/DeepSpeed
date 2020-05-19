@@ -22,9 +22,9 @@ establishing a new SOTA in the LM category.
 {% assign news = site.posts | where: "sneak_preview", "false" %}
 {% for post in news limit:5 %}
   {% if post.link %}
-  * [{{ post.date | date: "%m/%d/%Y"  }}] [{{ post.title }}]({{ post.link }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
+  * [{{ post.date | date: "%Y/%m/%d"  }}] [{{ post.title }}]({{ post.link }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
   {% else %}
-  * [{{ post.date | date: "%m/%d/%Y"}}] [{{ post.title }}]({{ post.url }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
+  * [{{ post.date | date: "%Y/%m/%d"}}] [{{ post.title }}]({{ post.url }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
   {% endif %}
 {% endfor %}
 

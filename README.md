@@ -19,12 +19,12 @@ establishing a new SOTA in the LM category.
 
 
 # News
-* [5/19/2020] [ZeRO-2 empowers training models as large as 170 billion parameters up to 10x faster compared to the state-of-the-art!](link)
+* [2020/05/19] [ZeRO-2 empowers training models as large as 170 billion parameters up to 10x faster compared to state-of-the-art](https://www.deepspeed.ai/news/2020/05/19/zero-stage2.html)
 <span style="color:dodgerblue">**[_NEW_]**</span>
-* [5/19/2020] [DeepSpeed achieves the fastest Bert training record: 44 minutes on 1024 NVIDIA V100 GPUs!](link)
+* [2020/05/19] [DeepSpeed optimizes transformer kernels to achieve world’s fastest BERT training record: 44 minutes on 1024 NVIDIA V100 GPUs](https://www.deepspeed.ai/news/2020/05/19/bert-record.html)
 <span style="color:dodgerblue">**[_NEW_]**</span>
-* [2/13/2020] [Turing-NLG: A 17-billion-parameter language model by Microsoft](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/)
-* [2/13/2020] [ZeRO & DeepSpeed: New system optimizations enable training models with over 100 billion parameters](https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/)
+* [2020/02/13] [Turing-NLG: A 17-billion-parameter language model by Microsoft](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/)
+* [2020/02/13] [ZeRO & DeepSpeed: New system optimizations enable training models with over 100 billion parameters](https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/)
 
 
 # Table of Contents
