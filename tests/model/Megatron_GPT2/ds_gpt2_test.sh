@@ -85,6 +85,7 @@ gpt_options=" \
        --checkpoint-activations \
        --checkpoint-num-layers ${ckpt_num_layers} \
        --fp16 \
+       --cache-dir /tmp/cache_dir \
        --log-interval 1 \
        ${other_args} \
        ${ds_opt} \
