@@ -3,6 +3,7 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
+import logging
 #from deepspeed.pt.deepspeed_constants import *
 from deepspeed.pt.deepspeed_config_utils import get_scalar_param
 
@@ -57,6 +58,7 @@ ZERO_OPTIMIZATION_REDUCE_BUCKET_SIZE_DEFAULT = 500000000
 
 ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE = 'allgather_bucket_size'
 ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT = 500000000
+ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEPRECATED = 'allgather_size'
 
 ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_STAGE: ZERO_OPTIMIZATION_STAGE_DEFAULT,
@@ -85,10 +87,27 @@ class DeepSpeedZeroConfig(object):
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
+            if type(zero_config_dict) is bool:
+                zero_config_dict = self.read_zero_config_deprecated(param_dict)
         else:
             zero_config_dict = ZERO_OPTIMIZATION_DEFAULT
 
         self._initialize(zero_config_dict)
+
+    def read_zero_config_deprecated(self, param_dict):
+        zero_config_dict = {}
+        zero_config_dict[
+            ZERO_OPTIMIZATION_STAGE] = 1 if param_dict[ZERO_OPTIMIZATION] else 0
+        if zero_config_dict[ZERO_OPTIMIZATION_STAGE] > 0:
+            zero_config_dict[ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE] = get_scalar_param(
+                param_dict,
+                ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEPRECATED,
+                ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT)
+
+        logging.warning(
+            'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
+            .format(ZERO_FORMAT))
+        return zero_config_dict
 
     """
     For json serialization

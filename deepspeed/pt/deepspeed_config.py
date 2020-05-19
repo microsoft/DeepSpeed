@@ -8,7 +8,7 @@ import logging
 import json
 from deepspeed.pt.deepspeed_constants import *
 from deepspeed.pt.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
-from deepspeed.pt.deepspeed_config_utils import get_scalar_param
+from deepspeed.pt.deepspeed_config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
 from deepspeed.pt.deepspeed_zero_config import DeepSpeedZeroConfig
 from deepspeed.pt.deepspeed_checkpointing_config import DeepSpeedActivationCheckpointingConfig
 
@@ -253,7 +253,9 @@ class DeepSpeedConfigWriter:
         self.data[key] = value
 
     def load_config(self, filename):
-        self.data = json.load(open(filename, 'r'))
+        self.data = json.load(open(filename,
+                                   'r'),
+                              object_pairs_hook=dict_raise_error_on_duplicate_keys)
 
     def write_config(self, filename):
         with open(filename, 'w') as outfile:
@@ -265,7 +267,10 @@ class DeepSpeedConfig(object):
         super(DeepSpeedConfig, self).__init__()
 
         if param_dict is None:
-            self._param_dict = json.load(open(json_file, 'r'))
+            self._param_dict = json.load(
+                open(json_file,
+                     'r'),
+                object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
             self._param_dict = param_dict
 
