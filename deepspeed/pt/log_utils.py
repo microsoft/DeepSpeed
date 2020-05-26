@@ -1,10 +1,8 @@
 import logging
 import sys
 
-formatter = logging.Formatter(
-    "[%(asctime)s] [%(levelname)s] "
-    "[%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
-)
+formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] "
+                              "[%(filename)s:%(lineno)d:%(funcName)s] %(message)s")
 
 logger = logging.getLogger("DeepSpeed")
 logger.setLevel(logging.INFO)
