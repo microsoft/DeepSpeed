@@ -127,7 +127,7 @@ Gradient clipping should be enabled as:
 "gradient_clipping": 1.0
 '''
 GRADIENT_CLIPPING = 'gradient_clipping'
-GRADIENT_CLIPPING_DEFAULT = 1.0
+GRADIENT_CLIPPING_DEFAULT = 0.
 
 #########################################
 # ZeRO optimization
