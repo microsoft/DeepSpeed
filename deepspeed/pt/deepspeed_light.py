@@ -777,7 +777,7 @@ class DeepSpeedLight(Module):
         for param_name, param in self.module.named_parameters():
             param.grad = None
 
-    def clip_fp32_gradients():
+    def clip_fp32_gradients(self):
         torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
                                        max_norm=self.gradient_clipping())
 
