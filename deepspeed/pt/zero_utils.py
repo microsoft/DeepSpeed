@@ -28,7 +28,7 @@ def pprint(msg):
     """Print msg when dist is not initialized or my rank is zero
 
     Arguments:
-        msg: str
+        msg (str)
     """
 
     if not dist.is_initialized() or dist.get_rank() == 0:
