@@ -29,6 +29,7 @@ We work from adaptations of
 We have forked this repo under
 [DeepSpeedExamples/bing_bert](https://github.com/microsoft/DeepSpeedExamples/tree/master/bing_bert)
 and made several modifications in their script:
+
   * We adopted the modeling code from NVIDIA's BERT under `bing_bert/nvidia/`.
   * We extended the data pipeline from [Project Turing](https://msturing.org/)
     under `bing_bert/turing/`.
@@ -246,6 +247,69 @@ modifications. We have included a modified `train.py` file called
 applied.
 
 
+
+### Enabling DeepSpeed's Transformer Kernel
+
+To enable the transformer kernel for higher performance, first add an argument
+`--deepspeed_transformer_kernel` in `utils.py`, we can set it as `False` by
+default, for easily turning on/off.
+
+```python
+ parser.add_argument('--deepspeed_transformer_kernel',
+                     default=False,
+                     action='store_true',
+                     help='Use DeepSpeed transformer kernel to accelerate.')
+```
+Then in the `BertEncoder` class of the modeling source file, instantiate
+transformer layers using DeepSpeed transformer kernel as below.
+
+```python
+     if args.deepspeed_transformer_kernel:
+         from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig, DeepSpeedConfig
+
+         if hasattr(args, 'deepspeed_config') and args.deepspeed_config:
+             ds_config = DeepSpeedConfig(args.deepspeed_config)
+         else:
+             raise RuntimeError('deepspeed_config is not found in args.')
+
+         cuda_config = DeepSpeedTransformerConfig(
+             batch_size = ds_config.train_micro_batch_size_per_gpu,
+             max_seq_length = args.max_seq_length,
+             hidden_size = config.hidden_size,
+             heads = config.num_attention_heads,
+             attn_dropout_ratio = config.attention_probs_dropout_prob,
+             hidden_dropout_ratio = config.hidden_dropout_prob,
+             num_hidden_layers = config.num_hidden_layers,
+             initializer_range = config.initializer_range,
+             local_rank = args.local_rank if hasattr(args, 'local_rank') else -1,
+             seed = args.seed,
+             fp16 = ds_config.fp16_enabled,
+             pre_layer_norm=True,
+             attn_dropout_checkpoint=args.attention_dropout_checkpoint,
+             normalize_invertible=args.normalize_invertible,
+             gelu_checkpoint=args.gelu_checkpoint,
+             stochastic_mode=True)
+
+         self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
+     else:
+         layer = BertLayer(config)
+         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+```
+All configuration settings come from the DeepSpeed configuration file and
+command arguments and thus we must pass the `args` variable to here in this model.
+
+Note:
+
+1. `batch_size` is the maximum bath size of input data, all fine-tuning training data or prediction data shouldn't exceed this threshold, otherwise it will throw an exception. In the DeepSpeed configuration file micro batch size is defined as `train_micro_batch_size_per_gpu`, e.g. if it is set as 8 and prediction uses batch size of 12, we can use 12 as transformer kernel batch size, or using "--predict_batch_size" argument to set prediction batch size to 8 or a smaller number.
+2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
+3. `stochastic_mode` has higher performance when it is enabled, we enable it in pre-training, and disable it in fine-tuning.
+4. The transformer kernel has its own parameters and so the checkpoint files
+  generated with transformer kernel must to be loaded by the model with
+  transformer kernel enabled (such as in fine-tuning).
+
+For more details about the transformer kernel, please see [DeepSpeed Transformer Kernel](/transformer_kernel/) and [DeepSpeed Fast-Bert Training](/fast_bert/).
+
+
 ### Start Training
 An example of launching `deepspeed_train.py` on four nodes with four GPUs each would be:
 ```bash
@@ -263,6 +327,7 @@ deepspeed --num_nodes 4  \
     --delay_allreduce \
     --max_steps 32 \
     --print_steps 1 \
+    --deepspeed_transformer_kernel \
     --output_dir <output_directory>
 ```
 See the [Getting Started](/getting-started/) guide for more information on
