@@ -85,12 +85,16 @@ def get_alignment_padding(tensor_list, alignment):
     num_elements = sum([tensor.numel() for tensor in tensor_list])
     remainder = num_elements % alignment
     return (alignment - remainder) if remainder else remainder
+
+
 def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
 
+
 def print_rank_msg(msg):
     print(f"rank {dist.get_rank()} - {msg}")
+
 
 class FP16_DeepSpeedZeroOptimizer(object):
     """
@@ -1332,11 +1336,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
         optimizer_groups_state = []
         for i, group in enumerate(self.optimizer.param_groups):
             p = group['params'][0]
-            lean_optimizer_state = self._get_state_without_padding(self.optimizer.state[p],
-                                                                   self.groups_padding[i])
+            lean_optimizer_state = self._get_state_without_padding(
+                self.optimizer.state[p],
+                self.groups_padding[i])
             optimizer_groups_state.append(lean_optimizer_state)
 
         return optimizer_groups_state
+
     def state_dict(self):
         """
         Returns a dict containing the current state of this :class:`FP16_Optimizer` instance.
@@ -1354,9 +1360,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['overflow'] = self.overflow
         state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
         # Remove paddings for DP alignment to enable loading for other alignment values
-        fp32_groups_without_padding = self._get_groups_without_padding(self.single_partition_of_fp32_groups)
-        state_dict[
-            'single_partition_of_fp32_groups'] = fp32_groups_without_padding
+        fp32_groups_without_padding = self._get_groups_without_padding(
+            self.single_partition_of_fp32_groups)
+        state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
 
         state_dict['partition_count'] = self.partition_count
 
@@ -1370,10 +1376,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
         partition_id = dist.get_rank(group=self.dp_process_group)
         merged_single_partition_of_fp32_groups = []
         for i in range(len(self.single_partition_of_fp32_groups)):
-            merged_partitions = [sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict]
-            flat_merged_partitions = flatten_dense_tensors_aligned(merged_partitions,
-                                                                  dist.get_world_size(group=self.dp_process_group),
-                                                                  self.dp_process_group)
+            merged_partitions = [
+                sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict
+            ]
+            flat_merged_partitions = flatten_dense_tensors_aligned(
+                merged_partitions,
+                dist.get_world_size(group=self.dp_process_group),
+                self.dp_process_group)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
             merged_single_partition_of_fp32_groups.append(dp_partitions[partition_id])
 
@@ -1386,14 +1395,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
             fp32_partition.data.copy_(fp16_partitions[partition_id].data)
 
-
     # Extract optimizer state for current partition from merged states of all partitions
     def _partition_base_optimizer_state(self, state_key, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)
-        flat_merged_partitions = flatten_dense_tensors_aligned(all_partition_states,
-                                                                alignment,
-                                                                self.dp_process_group)
+        flat_merged_partitions = flatten_dense_tensors_aligned(
+            all_partition_states,
+            alignment,
+            self.dp_process_group)
         dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
         return dp_partitions[partition_id]
 
@@ -1405,10 +1414,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         base_optimizer_group_states = []
         for i in range(len(self.optimizer.param_groups)):
             partition_states = {}
-            all_partition_group_states = [sd['base_optimizer_state'][i] for sd in all_state_dict]
+            all_partition_group_states = [
+                sd['base_optimizer_state'][i] for sd in all_state_dict
+            ]
             for key in all_partition_group_states[0].keys():
-                all_partition_states = [all_states[key] for all_states in all_partition_group_states]
-                partition_states[key] = self._partition_base_optimizer_state(key, all_partition_states)
+                all_partition_states = [
+                    all_states[key] for all_states in all_partition_group_states
+                ]
+                partition_states[key] = self._partition_base_optimizer_state(
+                    key,
+                    all_partition_states)
             base_optimizer_group_states.append(partition_states)
 
         for i, group in enumerate(self.optimizer.param_groups):
@@ -1416,7 +1431,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for key, saved in base_optimizer_group_states[i].items():
                 current = self.optimizer.state[p][key]
                 current.data.copy_(saved.data)
-
 
     def load_state_dict(self,
                         state_dict_list,

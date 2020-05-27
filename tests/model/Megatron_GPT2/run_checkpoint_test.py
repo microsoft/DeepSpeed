@@ -97,7 +97,6 @@ class GPT2CheckpointTestCase(BaseTestCase):
         succ = self.run_test(test_config, 0.01)
         self.assertTrue(succ)
 
-
     def test_mp1_gpu2_load_gpu1_node1_with_zero2(self):
         test_config = {
             "mp": 1,
@@ -184,7 +183,6 @@ class GPT2CheckpointTestCase(BaseTestCase):
             del test_config["load_gpus"]
         else:
             load_gpus = test_config["gpus"]
-
 
         # save to current directory.
         checkpoint_folder = test_config["checkpoint_name"]
