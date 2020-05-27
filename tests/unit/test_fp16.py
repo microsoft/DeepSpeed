@@ -26,7 +26,7 @@ def test_lamb_fp32_grad_clip(tmpdir):
     model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[1, 2])
-    def _test_lamb_fp16_basic(args, model, hidden_dim):
+    def _test_lamb_fp32_grad_clip(args, model, hidden_dim):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
@@ -39,7 +39,7 @@ def test_lamb_fp32_grad_clip(tmpdir):
             model.backward(loss)
             model.step()
 
-    _test_lamb_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
+    _test_lamb_fp32_grad_clip(args=args, model=model, hidden_dim=hidden_dim)
 
 
 def test_lamb_fp16_basic(tmpdir):
