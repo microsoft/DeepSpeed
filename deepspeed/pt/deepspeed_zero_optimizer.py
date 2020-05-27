@@ -1116,7 +1116,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             shard_size = partitioned_params[partition_id].numel() // num_shards
             num_elements = shard_size
 
-            assert shard_size * num_shards <= partitioned_params[partition_id]
+            assert shard_size * num_shards <= partitioned_params[partition_id].numel()
 
             for shard_id in range(num_shards):
 
