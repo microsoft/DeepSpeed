@@ -81,10 +81,16 @@ def flatten_dense_tensors_aligned(tensor_list, alignment, pg):
     return _flatten_dense_tensors(padded_tensor_list)
 
 
+def get_alignment_padding(tensor_list, alignment):
+    num_elements = sum([tensor.numel() for tensor in tensor_list])
+    remainder = num_elements % alignment
+    return (alignment - remainder) if remainder else remainder
 def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
 
+def print_rank_msg(msg):
+    print(f"rank {dist.get_rank()} - {msg}")
 
 class FP16_DeepSpeedZeroOptimizer(object):
     """
@@ -182,10 +188,19 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.all_reduce_print = False
 
+        # padding on each partition for alignment purposes
+        self.groups_padding = []
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
+            # Record padding for required to align group to world size
+            if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
+                padding = get_alignment_padding(self.fp16_groups[i],
+                                                self.partition_count)
+            else:
+                padding = 0
+            self.groups_padding.append(padding)
 
             #not sure why apex was cloning the weights before flattening
             #removing cloning here
@@ -1299,6 +1314,36 @@ class FP16_DeepSpeedZeroOptimizer(object):
     loss_scale = property(_get_loss_scale, _set_loss_scale)
     cur_scale = property(_get_loss_scale, _set_loss_scale)
 
+    # Return group tensor after removing paddings that are added for alignment to DP world size.
+    # This method works on the assumption that each group contains a single flattened tensor.
+    def _get_groups_without_padding(self, groups_with_padding):
+        groups_without_padding = []
+        for i, group in enumerate(groups_with_padding):
+            lean_length = group.numel() - self.groups_padding[i]
+            groups_without_padding.append(group[:lean_length])
+
+        return groups_without_padding
+
+    # Return optimizer state after removing paddings that are added for alignment.
+    def _get_state_without_padding(self, state_with_padding, padding):
+        lean_state = {}
+        for key, value in state_with_padding.items():
+            lean_length = value.numel() - padding
+            lean_state[key] = value[:lean_length]
+
+        return lean_state
+
+    # Return base optimizer states.
+    # This method assumes that each param group contains a single flattened tensor.
+    def _get_base_optimizer_state(self):
+        optimizer_groups_state = []
+        for i, group in enumerate(self.optimizer.param_groups):
+            p = group['params'][0]
+            lean_optimizer_state = self._get_state_without_padding(self.optimizer.state[p],
+                                                                   self.groups_padding[i])
+            optimizer_groups_state.append(lean_optimizer_state)
+
+        return optimizer_groups_state
     def state_dict(self):
         """
         Returns a dict containing the current state of this :class:`FP16_Optimizer` instance.
@@ -1314,15 +1359,86 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['optimizer_state_dict'] = self.optimizer.state_dict()
+        state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+        # Remove paddings for DP alignment to enable loading for other alignment values
+        fp32_groups_without_padding = self._get_groups_without_padding(self.single_partition_of_fp32_groups)
         state_dict[
-            'single_partition_of_fp32_groups'] = self.single_partition_of_fp32_groups
+            'single_partition_of_fp32_groups'] = fp32_groups_without_padding
 
         state_dict['partition_count'] = self.partition_count
 
         return state_dict
 
-    def load_state_dict(self, state_dict, load_optimizer_states=True):
+    # Restore base optimizer fp32 weights from checkpoint by:
+    # 1) Merging fp32 weights from checkpoints of all partitions
+    # 2) Extracting fp32 weights for current partition from merged weights
+    # 3) Using extracted weights to update base optimizer weights directly.
+    def _restore_from_fp32_weights(self, all_state_dict):
+        partition_id = dist.get_rank(group=self.dp_process_group)
+        merged_single_partition_of_fp32_groups = []
+        for i in range(len(self.single_partition_of_fp32_groups)):
+            merged_partitions = [sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict]
+            flat_merged_partitions = flatten_dense_tensors_aligned(merged_partitions,
+                                                                  dist.get_world_size(group=self.dp_process_group),
+                                                                  self.dp_process_group)
+            dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
+            merged_single_partition_of_fp32_groups.append(dp_partitions[partition_id])
+
+        for current, saved in zip(self.single_partition_of_fp32_groups, merged_single_partition_of_fp32_groups):
+            current.data.copy_(saved.data)
+
+    # Restore base optimizer fp32 weights from ZeRO fp16 weights
+    def _restore_from_fp16_weights(self):
+        partition_id = dist.get_rank(group=self.dp_process_group)
+        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+            fp32_partition.data.copy_(fp16_partitions[partition_id].data)
+
+
+    # Extract optimizer state for current partition from merged states of all partitions
+    def _partition_base_optimizer_state(self, state_key, all_partition_states):
+        partition_id = dist.get_rank(group=self.dp_process_group)
+        alignment = dist.get_world_size(group=self.dp_process_group)
+        flat_merged_partitions = flatten_dense_tensors_aligned(all_partition_states,
+                                                                alignment,
+                                                                self.dp_process_group)
+        dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
+        return dp_partitions[partition_id]
+
+    # Restore base optimizer state from checkpoint by
+    # 1) Merging optimizer state from checkpoints of all partitions
+    # 2) Extracting optimizer state for current partition from the merged state
+    # 3) Using the extracted value to directly update the base optimizer.
+    def _restore_base_optimizer_state(self, all_state_dict):
+        base_optimizer_group_states = []
+        for i in range(len(self.optimizer.param_groups)):
+            partition_states = {}
+            all_partition_group_states = [sd['base_optimizer_state'][i] for sd in all_state_dict]
+            for key in all_partition_group_states[0].keys():
+                all_partition_states = [all_states[key] for all_states in all_partition_group_states]
+                partition_states[key] = self._partition_base_optimizer_state(key, all_partition_states)
+            base_optimizer_group_states.append(partition_states)
+
+        for i, group in enumerate(self.optimizer.param_groups):
+            p = group['params'][0]
+            for key, saved in base_optimizer_group_states[i].items():
+                current = self.optimizer.state[p][key]
+                current.data.copy_(saved.data)
+
+
+    def load_state_dict(self,
+                        state_dict_list,
+                        load_optimizer_states=True,
+                        load_from_fp32_weights=False):
+        r"""Loading ZeRO checkpoint
+
+        Arguments:
+            state_dict_list: List of all saved ZeRO checkpoints, one for each saved partition.
+                Note that the number of saved partitions may differ from number of loading partitions to support
+                changing GPU count, specifically DP world size, between saving and loading checkpoints.
+            load_optimizer_states: Boolean indicating whether or not to load base optimizer states
+            load_from_fp32_weights: Boolean indicating whether to initialize fp32 master weights from fp32
+            copies in checkpoints (no precision loss) or from model's fp16 copies (with precision loss).
+        """
         """
         Loads a state_dict created by an earlier call to state_dict().
         If ``fp16_optimizer_instance`` was constructed from some ``init_optimizer``,
@@ -1339,12 +1455,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
         # I think it should actually be ok to reload the optimizer before the model.
-        self.loss_scaler = state_dict['loss_scaler']
-        self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
-        self.overflow = state_dict['overflow']
+        self.loss_scaler = state_dict_list[0]['loss_scaler']
+        self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
+        self.overflow = state_dict_list[0]['overflow']
 
         if load_optimizer_states:
-            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+            self._restore_base_optimizer_state(state_dict_list)
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
@@ -1361,16 +1477,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # constructed in the same way as the one whose state_dict we are loading, the same master params
         # are guaranteed to exist, so we can just copy_() from the saved master params.
 
-        if 'partition_count' in state_dict and state_dict[
-                'partition_count'] == self.partition_count:
-            # Use option 2
-            for current, saved in zip(self.single_partition_of_fp32_groups, state_dict['single_partition_of_fp32_groups']):
-                current.data.copy_(saved.data)
+        if load_from_fp32_weights:
+            self._restore_from_fp32_weights(state_dict_list)
         else:
-            # Use option 1
-            partition_id = dist.get_rank(group=self.dp_process_group)
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp32_partition.data.copy_(fp16_partitions[partition_id].data)
+            self._restore_from_fp16_weights()
 
 
 def _handle_overflow(cpu_sum, x, i):
