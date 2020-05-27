@@ -1112,17 +1112,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 1,
                 partitioned_params[partition_id].numel() * dp_world_size //
                 self.allgather_bucket_size)
-            
+
             shard_size = partitioned_params[partition_id].numel() // num_shards
             num_elements = shard_size
 
             assert shard_size * num_shards <= partitioned_params[partition_id]
-            
+
             for shard_id in range(num_shards):
 
                 if shard_id == (num_shards - 1):
-                    num_elements = partitioned_params[partition_id].numel() 
-                                    - shard_id * shard_size 
+                    num_elements = partitioned_params[partition_id].numel(
+                    ) - shard_id * shard_size
 
                 shard_list = []
                 for dp_id in range(dp_world_size):
