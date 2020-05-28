@@ -20,14 +20,3 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
         if rank in ranks:
             my_group = group
     return my_group
-
-
-def pprint(msg):
-    """Print msg when dist is not initialized or my rank is zero
-
-    Arguments:
-        msg (str)
-    """
-
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        logger.info(msg)
