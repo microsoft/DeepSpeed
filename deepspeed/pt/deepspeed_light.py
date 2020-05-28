@@ -758,7 +758,7 @@ class DeepSpeedLight(Module):
             self.timers('backward_allreduce_microstep').start()
             self.timers('backward_allreduce').start()
 
-        if allreduce_gradients:
+        if allreduce_gradients and self.dp_world_size > 1:
             self.allreduce_gradients()
 
         if self.wall_clock_breakdown():
