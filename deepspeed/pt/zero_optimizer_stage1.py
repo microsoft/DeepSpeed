@@ -18,11 +18,10 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
     for tensor in tensor_list:
         num_elements = num_elements + tensor.numel()
 
-    log_dist(
-        "Total number of elements in model: {}, max elements per com: {}".format(
-            num_elements,
-            max_elements_per_comm),
-        ranks=[0])
+    log_dist("Total number of elements in model: {}, max elements per com: {}".format(
+        num_elements,
+        max_elements_per_comm),
+             ranks=[0])
 
     max_elements_per_comm = min(max_elements_per_comm, num_elements)
     sub_partition_size = int(max_elements_per_comm // dp)
