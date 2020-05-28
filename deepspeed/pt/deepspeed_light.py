@@ -119,7 +119,6 @@ class DeepSpeedLight(Module):
         self.global_steps = 0
         self.micro_steps = 0
         self.skipped_steps = 0
-        self.gradient_predivide_factor = 1.0
         self.gradient_average = True
         self.warn_unscaled_loss = True
         self.config_params = config_params
@@ -327,6 +326,9 @@ class DeepSpeedLight(Module):
     def postscale_gradients(self):
         return not self._config.prescale_gradients
 
+    def gradient_predivide_factor(self):
+        return self._config.gradient_predivide_factor
+
     def steps_per_print(self):
         return self._config.steps_per_print
 
@@ -503,11 +505,10 @@ class DeepSpeedLight(Module):
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
-        if self.fp16_enabled() and 'max_grad_norm' in optimizer_parameters.keys():
-            warnings.warn(
+        if 'max_grad_norm' in optimizer_parameters.keys():
+            raise ValueError(
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
-            optimizer_parameters['max_grad_norm'] = 0.0
         if self.optimizer_name() == ADAM_OPTIMIZER:
             from apex.optimizers.fused_adam import FusedAdam
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
@@ -550,8 +551,7 @@ class DeepSpeedLight(Module):
                 dynamic_loss_args=dynamic_loss_args,
                 mpu=self.mpu,
                 clip_grad=clip_grad,
-                fused_lamb_legacy=self.optimizer_legacy_fusion()
-                if self.optimizer_name() == LAMB_OPTIMIZER else False)
+                fused_lamb_legacy=self.optimizer_name() == LAMB_OPTIMIZER)
 
         return optimizer
 
@@ -588,7 +588,9 @@ class DeepSpeedLight(Module):
                 dp_process_group=self.data_parallel_group,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=self.zero_overlap_comm(),
-                mpu=self.mpu)
+                mpu=self.mpu,
+                postscale_gradients=self.postscale_gradients(),
+                gradient_predivide_factor=self.gradient_predivide_factor())
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
         logging.info('Creating fp16 zero stage {} optimizer'.format(zero_stage))
@@ -691,7 +693,7 @@ class DeepSpeedLight(Module):
                 assert self.zero_reduce_scatter()
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
-                    gradient_predivide_factor=self.gradient_predivide_factor,
+                    gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_average=self.gradient_average)
             elif self.zero_optimization_partition_gradients():
                 self.optimizer.overlapping_partition_gradients_reduce_epilogue()
@@ -778,6 +780,10 @@ class DeepSpeedLight(Module):
         for param_name, param in self.module.named_parameters():
             param.grad = None
 
+    def clip_fp32_gradients(self):
+        torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
+                                       max_norm=self.gradient_clipping())
+
     def step(self):
         r"""Execute the weight update step after forward and backward propagation on effective_train_batch
         """
@@ -790,6 +796,10 @@ class DeepSpeedLight(Module):
         report_progress = self.global_rank == 0 if self.global_rank else True
 
         if self.is_gradient_accumulation_boundary():
+
+            if not self.fp16_enabled() and self.gradient_clipping() > 0.0:
+                self.clip_fp32_gradients()
+
             self.optimizer.step()
 
             #zero grad in basic optimizer could be unreliable and may not exhibit
@@ -898,14 +908,14 @@ class DeepSpeedLight(Module):
             tensor_to_allreduce = tensor.float()
 
         if self.postscale_gradients():
-            if self.gradient_predivide_factor != 1.0:
-                tensor_to_allreduce.mul_(1. / self.gradient_predivide_factor)
+            if self.gradient_predivide_factor() != 1.0:
+                tensor_to_allreduce.mul_(1. / self.gradient_predivide_factor())
 
             dist.all_reduce(tensor_to_allreduce, group=self.data_parallel_group)
 
             if self.gradient_average:
-                if self.gradient_predivide_factor != self.dp_world_size:
-                    tensor_to_allreduce.mul_(self.gradient_predivide_factor /
+                if self.gradient_predivide_factor() != self.dp_world_size:
+                    tensor_to_allreduce.mul_(self.gradient_predivide_factor() /
                                              self.dp_world_size)
         else:
             tensor_to_allreduce.div_(self.dp_world_size)

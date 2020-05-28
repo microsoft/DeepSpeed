@@ -119,6 +119,12 @@ def get_prescale_gradients(param_dict):
     return get_scalar_param(param_dict, PRESCALE_GRADIENTS, PRESCALE_GRADIENTS_DEFAULT)
 
 
+def get_gradient_predivide_factor(param_dict):
+    return get_scalar_param(param_dict,
+                            GRADIENT_PREDIVIDE_FACTOR,
+                            GRADIENT_PREDIVIDE_FACTOR_DEFAULT)
+
+
 def get_steps_per_print(param_dict):
     return get_scalar_param(param_dict, STEPS_PER_PRINT, STEPS_PER_PRINT_DEFAULT)
 
@@ -132,11 +138,7 @@ def get_dump_state(param_dict):
 
 
 def get_gradient_clipping(param_dict):
-    grad_clip = get_optimizer_gradient_clipping(param_dict)
-    if grad_clip is not None:
-        return grad_clip
-    else:
-        return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
+    return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
 
 
 def get_optimizer_name(param_dict):
@@ -299,6 +301,7 @@ class DeepSpeedConfig(object):
         self.disable_allgather = get_disable_allgather(param_dict)
         self.allreduce_always_fp32 = get_allreduce_always_fp32(param_dict)
         self.prescale_gradients = get_prescale_gradients(param_dict)
+        self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
         self.allgather_size = get_allgather_size(param_dict)
@@ -443,9 +446,6 @@ class DeepSpeedConfig(object):
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
-        if self.gradient_clipping > 0. and not fp16_enabled:
-            logging.warning(
-                'DeepSpeedConfig: gradient clipping enabled without FP16 enabled.')
 
         vocabulary_size = self._param_dict.get(VOCABULARY_SIZE, VOCABULARY_SIZE_DEFAULT)
         if vocabulary_size and vocabulary_size % TENSOR_CORE_ALIGN_SIZE != 0:
