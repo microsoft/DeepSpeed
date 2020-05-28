@@ -560,7 +560,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def print_rank_0(self, message):
         if dist.get_rank() == 0:
-            logger(message)
+            logger.info(message)
 
     def average_tensor(self, tensor):
         if self.overlap_comm:
