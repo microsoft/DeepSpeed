@@ -117,7 +117,7 @@ ext_modules = [
 ]
 
 setup(name='deepspeed',
-      version='0.1.0',
+      version='0.2.0',
       description='DeepSpeed library',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
