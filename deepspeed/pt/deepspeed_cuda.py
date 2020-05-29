@@ -64,13 +64,19 @@ class DeepSpeedTransformerConfig(TransformerConfig):
             gelu_checkpoint: Optional: Enable checkpointing of Gelu activation output to save memory,
                 default is False
 
-            attn_dropout_checkpoint: Optional: Enable checkpointing of attention dropout to save memory,
-                default is False
-
             adjust_init_range: Optional: Set as True (default) if the model adjusts the weight initial values of
                 its self-attention output and layer output, False keeps the initializer_range no change.
                 See the adjustment below:
                     output_std = self.config.initializer_range / math.sqrt(2.0 * num_layers)
+
+            attn_dropout_checkpoint: Optional: Enable checkpointing of attention dropout to save memory,
+                default is False
+
+            stochastic_mode:  Enable for high performance, please note that this flag has some level of
+                non-determinism and can produce different results on different runs.  However, we have seen
+                that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
+                a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
+                to turn it off in order to be able to reproduce the same result through the regular kernel execution.
     """
     def __init__(self,
                  batch_size=-1,

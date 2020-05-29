@@ -72,7 +72,7 @@ The environment parameters of the transformer kernel includes:
 
 High-performance optimization flag:
 
-1. `stochastic_mode`: By turning on this flag, the training can run faster by 2% on average. Note, that this flag has some level of non-determinism and can produce different results on different runs. However, we have seen that by enabling it, the pretraining tasks such as BERT is not affected and can obtain a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend to turn it of in order to be able to reproduce the same result through the regular kernel execution.
+1. `stochastic_mode`: By turning on this flag, the training can run faster by 2% on average. Note, that this flag has some level of non-determinism and can produce different results on different runs. However, we have seen that by enabling it, the pretraining tasks such as BERT are not affected and can obtain a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
 The memory-optimization flags consist of:
 
