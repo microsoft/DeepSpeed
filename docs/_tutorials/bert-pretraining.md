@@ -310,7 +310,7 @@ An example of launching `deepspeed_train.py` on four nodes with four GPUs each w
 deepspeed --num_nodes 4  \
     deepspeed_train.py \
     --deepspeed \
-    --deepspeed_config  deepspeed_bsz4096_adam_config.json
+    --deepspeed_config  deepspeed_bsz4096_adam_config.json \
     --cf /path-to-deepspeed/examples/tests/bing_bert/bert_large_adam_seq128.json \
     --train_batch_size 4096  \
     --max_seq_length 128 \
@@ -329,57 +329,52 @@ launching DeepSpeed.
 
 ------
 
-## Reproducing BERT Training Results with DeepSpeed
+## Reproducing Fastest BERT Training Results with DeepSpeed
 
-Our BERT training result is competitive across the industry in terms of
-achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set:
+We achieve the fastest BERT training time while remaining competitive across the industry in terms of achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set
 
+- We complete BERT pretraining in 44 minutes using 1024 V100 GPUs (64 NVIDIA DGX-2 nodes). In comparison, the previous SOTA from NVIDIA takes 47 mins using 1472 V100 GPUs. DeepSpeed is not only faster but also uses 30% less resources. Using the same 1024 GPUS, NVIDIA BERT is 52% slower than DeepSpeed, taking 67 minutes to train.
 - Comparing with the original BERT training time from Google, it took them
-about 96 hours to reach parity on 64 TPU2 chips, while it took us 14 hours on
+about 96 hours to reach parity on 64 TPU2 chips, while it took us less than 9 hours on
 4 DGX-2 nodes of 64 V100 GPUs.
-- On 256 GPUs, it took us 3.7 hours, faster than state-of-art result (3.9
+- On 256 GPUs, it took us 2.4, faster than state-of-art result (3.9
 hours) from Nvidia using their superpod on the same number of GPUs
 ([link](https://devblogs.nvidia.com/training-bert-with-gpus/)).
 
-![BERT Training Time](/assets/images/bert-large-training-time.png){: .align-center}
+![DeepSpeed BERT Training Time](/assets/images/end-to-end-bert-training.png){: .align-center}
 
 Our configuration for the BERT training result above can be reproduced with
-the scripts/json configs in our DeepSpeed repo. Below is a table containing a
+the scripts/json configs in our DeepSpeedExamples repo. Below is a table containing a
 summary of the configurations. Specifically see the
-`ds_train_bert_bsz16k_seq128.sh` and `ds_train_bert_bsz16k_seq512.sh` scripts
+`ds_train_bert_bsz64k_seq128.sh` and `ds_train_bert_bsz32k_seq512.sh` scripts
 for more details in
 [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples/tree/master/bing_bert).
 
 
 | Parameters               | 128 Sequence              | 512 Sequence              |
 | ------------------------ | ------------------------- | ------------------------- |
-| Total batch size         | 16K                       | 16K                       |
+| Total batch size         | 64K                       | 32K                       |
 | Train micro batch size per gpu | 64                  | 8                         |
 | Optimizer                | Lamb                      | Lamb                      |
-| Learning rate            | 4e-3                      | 1e-3                      |
-| Min Lamb coefficient     | 0.08                      | 0.08                      |
-| Max Lamb coefficient     | 0.5                       | 0.5                       |
-| Learning rate scheduler  | `warmup_linear_decay_exp` | `warmup_linear_decay_exp` |
-| Warmup proportion        | 0.02                      | 0.01                      |
-| Decay rate               | 0.90                      | 0.70                      |
-| Decay step               | 1000                      | 1000                      |
-| Max Training steps       | 187000                    | 18700                     |
-| Rewarm LR                | N/A                       | True                      |
-| Output checkpoint number | 150                       | 162                       |
-| Sample count             | 402679081                 | 34464170                  |
-| Iteration count          | 24430                     | 2089                      |
+| Learning rate            | 11e-3                     | 2e-3                      |
+| Initial learning rate (`lr_offset`)   | 10e-4        | 0.0                       |
+| Min Lamb coefficient     | 0.01                      | 0.01                      |
+| Max Lamb coefficient     | 0.3                       | 0.3                       |
+| Learning rate scheduler  | `warmup_exp_decay_exp`    | `warmup_exp_decay_exp`    |
+| Warmup proportion        | 0.02                      | 0.02                      |
+| Decay rate               | 0.90                      | 0.90                      |
+| Decay step               | 250                       | 150                       |
+| Max training steps       | 7500                      | 7500                      |
+| Rewarm learning rate     | N/A                       | True                      |
+| Output checkpoint number | 150                       | 160-162                   |
+| Sample count             | 403M                      | 18-22M                    |
+| Epoch count              | 150                       | 160-162                   |
 
 
-## DeepSpeed Throughput Results
+## DeepSpeed Single GPU Throughput Results
 
-We have measured the throughput results of DeepSpeed using both the Adam
-optimizer and LAMB optimizer. We measure the throughput by measuring the wall
-clock time to process one mini-batch and dividing the mini-batch size with
-the elapsed wall clock time. The table below shows that for sequence length 128,
-DeepSpeed achieves 200 samples/sec throughput on a single V100 GPU, and it
-obtains 53X and 57.4X speedups over the single GPU run for Adam and LAMB
-respectively:
+![DeepSpeed Single GPU Bert Training Throughput](/assets/images/single-gpu-throughput.png){: .align-center}
 
-![](/assets/images/deepspeed-throughput-seq128.png){: .align-center}
+Compared to SOTA, DeepSpeed significantly improves single GPU performance for transformer-based model like BERT. Figure above shows the single GPU throughput of training BertBERT-Large optimized through DeepSpeed, compared with two well-known Pytorch implementations, NVIDIA BERT and HuggingFace BERT. DeepSpeed reaches as high as 64 and 53 teraflops throughputs (corresponding to 272 and 52 samples/second) for sequence lengths of 128 and 512, respectively, exhibiting up to 28% throughput improvements over NVIDIA BERT and up to 62% over HuggingFace BERT.  We also support up to 1.8x larger batch size without running out of memory.
 
-![](/assets/images/deepspeed-throughput-seq512.png){: .align-center}
+For more details on how we achieve the record breaking BERT training time please check out deep dive into DeepSpeed BERT [Fastest BERT Training](https://www.deepspeed.ai/news/2020/05/18/bert-record.html)
