@@ -56,6 +56,7 @@ practical scenarios range from a few hundred to a few thousand.
 
 
 ![Transformer-Kernel-Throughput-128](../../../../assets/images/transformer_kernel_perf_seq128.PNG)
+
 ![Transformer-Kernel-Throughput-512](../../../../assets/images/transformer_kernel_perf_seq512.PNG)
 
 Figure 1: Performance evaluation of BERT-Large on a single V100 GPU, comparing
