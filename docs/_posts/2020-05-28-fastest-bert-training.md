@@ -55,7 +55,7 @@ sizes and configurations, since on average an overall batch size used in
 practical scenarios range from a few hundred to a few thousand.
 
 
-![Transformer-Kernel-Throughput](../assets/images/transformer_kernel_perf.png)
+![Transformer-Kernel-Throughput](../../../../assets/images/transformer_kernel_perf.png)
 
 Figure 1: Performance evaluation of BERT-Large on a single V100 GPU, comparing
 DeepSpeed with NVIDIA and HuggingFace versions of BERT in mixed-sequence length
@@ -100,7 +100,7 @@ approach the GPU peak performance,  we employ two lines of optimizations in our
 own Transformer kernel implementation: advanced fusion, and invertible
 operators.
 
-![Transformer-PreLN-Arch](../assets/images/transformer_preln_arch.png)
+![Transformer-PreLN-Arch](../../../../assets/images/transformer_preln_arch.png)
 
 Figure 2: Transformer Layer with Pre-LayerNorm Architecture
 
@@ -131,7 +131,7 @@ shared memory, we reduce the cost of uncoalesced access to main memory to
 better exploit memory bandwidth, resulting in 3% to 5% performance improvement
 in the end-to-end training.  
 
-![QKV-Fusion](../assets/images/qkv_fusion.png)
+![QKV-Fusion](../../../../assets/images/qkv_fusion.png)
 
 Figure 3: QKV’s GEMM and transform Kernel-Fusion
 
@@ -196,13 +196,13 @@ optimization, we are able to reduce the activation memory of the operator by
 half, and the reduced memory allows us to train with larger batch sizes, which
 once again improves GPU efficiency.
 
-![Softmax-DS](../assets/images/softmax_ds.png)
-![Softmax-PyTorch](../assets/images/softmax_torch.png)
+![Softmax-DS](../../../../assets/images/softmax_ds.png)
+![Softmax-PyTorch](../../../../assets/images/softmax_torch.png)
 
 Figure 4: DeepSpeed invertible SoftMax operation versus Default PyTorch SoftMax operation
 
-![LayerNorm-DS](../assets/images/layernorm_ds.png)
-![LayerNorm-PyTorch](../assets/images/layernorm_torch.png)
+![LayerNorm-DS](../../../../assets/images/layernorm_ds.png)
+![LayerNorm-PyTorch](../../../../assets/images/layernorm_torch.png)
 
 Figure 5: DeepSpeed invertible LayerNorm operation versus Default PyTorch LayerNorm operation
 
