@@ -199,11 +199,13 @@ half, and the reduced memory allows us to train with larger batch sizes, which
 once again improves GPU efficiency.
 
 ![Softmax-torch](../../../../assets/images/softmax_pytorch.gif)
+
 ![Softmax-DS](../../../../assets/images/softmax_deepspeed.gif)
 
 Figure 4: DeepSpeed invertible SoftMax operation versus Default PyTorch SoftMax operation
 
 ![LayerNorm-DS](../../../../assets/images/layernorm_pytorch.gif)
+
 ![LayerNorm-DS](../../../../assets/images/layernorm_deepspeed.gif)
 
 Figure 5: DeepSpeed invertible LayerNorm operation versus Default PyTorch LayerNorm operation
