@@ -80,17 +80,17 @@ transformer layers using the DeepSpeed transformer kernel as below.
                  raise RuntimeError('deepspeed_config is not found in args.')
 
              cuda_config = DeepSpeedTransformerConfig(
-             		 batch_size = ds_config.train_micro_batch_size_per_gpu,
-                 	 max_seq_length = args.max_seq_length,
-                     hidden_size = config.hidden_size,
-                     heads = config.num_attention_heads,
-                     attn_dropout_ratio = config.attention_probs_dropout_prob,
-                     hidden_dropout_ratio = config.hidden_dropout_prob,
-                     num_hidden_layers = config.num_hidden_layers,
-                     initializer_range = config.initializer_range,
-                     seed = args.seed,
-                     fp16 = ds_config.fp16_enabled,
-                     pre_layer_norm=True)
+                 batch_size = ds_config.train_micro_batch_size_per_gpu,
+                 max_seq_length = args.max_seq_length,
+                 hidden_size = config.hidden_size,
+                 heads = config.num_attention_heads,
+                 attn_dropout_ratio = config.attention_probs_dropout_prob,
+                 hidden_dropout_ratio = config.hidden_dropout_prob,
+                 num_hidden_layers = config.num_hidden_layers,
+                 initializer_range = config.initializer_range,
+                 seed = args.seed,
+                 fp16 = ds_config.fp16_enabled,
+                 pre_layer_norm=True)
 
              self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
          else:

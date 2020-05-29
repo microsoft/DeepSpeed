@@ -29,6 +29,49 @@ class TransformerConfig():
 
 
 class DeepSpeedTransformerConfig(TransformerConfig):
+    """Initialize the DeepSpeed Transformer Config.
+
+        Arguments:
+            batch_size: The maximum batch size used for running the kernel on each GPU
+
+            max_seq_length: The sequence-length of the model being trained with DeepSpeed
+
+            hidden_size: The hidden size of the transformer layer
+
+            heads: The number of heads in the self-attention of the transformer layer
+
+            attn_dropout_ratio: The ratio of dropout for the attention's output
+
+            hidden_dropout_ratio: The ratio of dropout for the transformer's output
+
+            num_hidden_layers: The number of transformer layers
+
+            initializer_range: BERT model's initializer range for initializing parameter data
+
+            local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
+                to use if the model already set the current device, otherwise need to set it
+                so that the transformer kernel can work on the right device
+
+            seed: The random seed for the dropout layers
+
+            fp16: Enable half-precision computation
+
+            pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
+
+            normalize_invertible: Optional: Enable invertible LayerNorm execution (dropping the input activation),
+                default is False
+
+            gelu_checkpoint: Optional: Enable checkpointing of Gelu activation output to save memory,
+                default is False
+
+            attn_dropout_checkpoint: Optional: Enable checkpointing of attention dropout to save memory,
+                default is False
+
+            adjust_init_range: Optional: Set as True (default) if the model adjusts the weight initial values of
+                its self-attention output and layer output, False keeps the initializer_range no change.
+                See the adjustment below:
+                    output_std = self.config.initializer_range / math.sqrt(2.0 * num_layers)
+    """
     def __init__(self,
                  batch_size=-1,
                  max_seq_length=-1,
@@ -47,16 +90,15 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False):
-
-        TransformerConfig.__init__(self,
-                                   batch_size,
-                                   max_seq_length,
-                                   hidden_size,
-                                   heads,
-                                   attn_dropout_ratio,
-                                   hidden_dropout_ratio,
-                                   num_hidden_layers,
-                                   initializer_range)
+        super(DeepSpeedTransformerConfig,
+              self).__init__(batch_size,
+                             max_seq_length,
+                             hidden_size,
+                             heads,
+                             attn_dropout_ratio,
+                             hidden_dropout_ratio,
+                             num_hidden_layers,
+                             initializer_range)
         self.fp16 = fp16
         self.pre_layer_norm = pre_layer_norm = True
         self.local_rank = local_rank
@@ -343,7 +385,19 @@ class DeepSpeedTransformerFunction(Function):
 
 
 class DeepSpeedTransformerLayer(nn.Module):
-    def __init__(self, layer_id, config, weights=None, biases=None):
+    """Initialize the DeepSpeed Transformer Layer.
+
+        Arguments:
+            layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
+                layer_id will be 0,1,2...23 when each layer object is instantiated
+
+            config: An object of DeepSpeedTransformerConfig
+
+            initial_weights: Optional: Only used for unit test
+
+            initial_biases: Optional: Only used for unit test
+    """
+    def __init__(self, layer_id, config, initial_weights=None, initial_biases=None):
         super(DeepSpeedTransformerLayer, self).__init__()
 
         self.config = config
@@ -354,7 +408,7 @@ class DeepSpeedTransformerLayer(nn.Module):
         if self.config.local_rank >= 0:
             torch.cuda.set_device(self.config.local_rank)
 
-        if weights is None and biases is None:
+        if initial_weights is None and initial_biases is None:
             self.attn_qkvw = nn.Parameter(
                 torch.Tensor(self.config.hidden_size * 3,
                              self.config.hidden_size))
@@ -383,19 +437,19 @@ class DeepSpeedTransformerLayer(nn.Module):
                              self.config.hidden_size))
             for i in range(3):
                 self.attn_qkvw[i * self.config.hidden_size:(i + 1) * self.config.hidden_size] = \
-                    torch.empty_like(weights[i]).copy_(weights[i])
+                    torch.empty_like(initial_weights[i]).copy_(initial_weights[i])
             self.attn_qkvb = nn.Parameter(torch.Tensor(self.config.hidden_size * 3))
             self.attn_qkvb.data.zero_()
-            self.attn_ow = weights[3]
-            self.attn_ob = biases[3]
-            self.attn_nw = weights[4]
-            self.attn_nb = biases[4]
-            self.inter_w = weights[5]
-            self.inter_b = biases[5]
-            self.output_w = weights[6]
-            self.output_b = biases[6]
-            self.norm_w = weights[7]
-            self.norm_b = biases[7]
+            self.attn_ow = initial_weights[3]
+            self.attn_ob = initial_biases[3]
+            self.attn_nw = initial_weights[4]
+            self.attn_nb = initial_biases[4]
+            self.inter_w = initial_weights[5]
+            self.inter_b = initial_biases[5]
+            self.output_w = initial_weights[6]
+            self.output_b = initial_biases[6]
+            self.norm_w = initial_weights[7]
+            self.norm_b = initial_biases[7]
 
         # create the layer in cuda kernels.
         cuda_module = ds_stochastic_transformer_cuda if self.config.stochastic_mode else ds_transformer_cuda
