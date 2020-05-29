@@ -55,7 +55,7 @@ sizes and configurations, since on average an overall batch size used in
 practical scenarios range from a few hundred to a few thousand.
 
 
-![Transformer-Kernel-Throughput-128](/assets/images/transformer_kernel_perf_seq128.PNG) {: .align-center}
+![Transformer-Kernel-Throughput-128](/assets/images/transformer_kernel_perf_seq128.PNG){: .align-center}
 
 ![Transformer-Kernel-Throughput-512](/assets/images/transformer_kernel_perf_seq512.PNG) {: .align-center}
 
