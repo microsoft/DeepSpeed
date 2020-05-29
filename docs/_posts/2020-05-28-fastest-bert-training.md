@@ -55,7 +55,8 @@ sizes and configurations, since on average an overall batch size used in
 practical scenarios range from a few hundred to a few thousand.
 
 
-![Transformer-Kernel-Throughput](../../../../assets/images/transformer_kernel_perf.png)
+![Transformer-Kernel-Throughput-128](../../../../assets/images/transformer_kernel_perf_seq128.PNG)
+![Transformer-Kernel-Throughput-512](../../../../assets/images/transformer_kernel_perf_seq512.PNG)
 
 Figure 1: Performance evaluation of BERT-Large on a single V100 GPU, comparing
 DeepSpeed with NVIDIA and HuggingFace versions of BERT in mixed-sequence length
@@ -73,7 +74,6 @@ Using the same 1024 GPUS,NVIDIA BERT takes 67 minutes using the same 1024 GPUs
 Similarly, on 256 GPUs, NVIDIA BERT takes 236 minutes while DeepSpeed takes 144
 minutes (39% faster).
 
-<p align="center">
 | Number of nodes   | Number of V100 GPUs  | Time         |
 | ----------------- | -------------------- | ------------ |
 | 1 DGX-2           | 16                   | 33 hr 13 min |
@@ -82,7 +82,6 @@ minutes (39% faster).
 | 64 DGX-2          | 1024                 | 44 min       |
 
 Table 1: BERT-Large training time using 1 to 64 DGX-2's with DeepSpeed.
-</p>
 
 At the recent GTC 2020, NVIDIA announced the next generation hardware A100,
 which now offers 2.5X hardware peak performance over the V100 GPU.  Assuming
