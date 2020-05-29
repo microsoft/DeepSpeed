@@ -75,7 +75,6 @@ Using the same 1024 GPUS,NVIDIA BERT takes 67 minutes using the same 1024 GPUs
 Similarly, on 256 GPUs, NVIDIA BERT takes 236 minutes while DeepSpeed takes 144
 minutes (39% faster).
 
-<center>
 | Number of nodes   | Number of V100 GPUs  | Time         |
 | ----------------- | -------------------- | ------------ |
 | 1 DGX-2           | 16                   | 33 hr 13 min |
@@ -84,7 +83,6 @@ minutes (39% faster).
 | 64 DGX-2          | 1024                 | 44 min       |
 
 Table 1: BERT-Large training time using 1 to 64 DGX-2's with DeepSpeed.
-</center>
 
 At the recent GTC 2020, NVIDIA announced the next generation hardware A100,
 which now offers 2.5X hardware peak performance over the V100 GPU.  Assuming
