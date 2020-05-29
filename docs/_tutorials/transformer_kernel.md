@@ -37,9 +37,10 @@ config = DeepSpeedTransformerConfig(batch_size = 64,
                                     attn_dropout_checkpoint=False,
                                     normalize_invertible=False,
                                     gelu_checkpoint=False)
-self.layer = nn.ModuleList([copy.deepcopy(
-							 (DeepSpeedTransformerLayer(i, cuda_config))
-							 for i in range(config.num_hidden_layers)])
+self.layer = nn.ModuleList([
+    copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config))
+    for i in range(config.num_hidden_layers)
+])
 ```
 ### Transformer kernel Parameters
 
@@ -71,7 +72,7 @@ The environment parameters of the transformer kernel includes:
 
 High-performance optimization flag:
 
-1. `stochastic-mode`: By turning on this flag, the training can run faster by 2% on average. Note, that this flag has some level of non-determinism and can produce different results on different runs. However, we have seen that by enabling it, the pretraining tasks such as BERT is not affected and can obtain a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend to turn it of in order to be able to reproduce the same result through the regular kernel execution.
+1. `stochastic_mode`: By turning on this flag, the training can run faster by 2% on average. Note, that this flag has some level of non-determinism and can produce different results on different runs. However, we have seen that by enabling it, the pretraining tasks such as BERT is not affected and can obtain a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend to turn it of in order to be able to reproduce the same result through the regular kernel execution.
 
 The memory-optimization flags consist of:
 
@@ -91,13 +92,14 @@ The `attn_dropout_checkpoint` and `gelu_checkpoint` flags refer to the checkpoin
 
 The following table shows which memory optimization flags need to be turned on when running Bert-Large on NVIDIA V100 GPU with 32GB of memory, considering different micro-batch sizes and sequence lengths. For the two sequence lengths, 128 and 512, used in our experiments, we have seen that larger batch size improves the overall training performance for both. Please see our [Bert-Fast](/fast-bert/) blog post for more information regarding the performance evaluation of these configurations.
 
-| Micro-batch Size |           512 Sequence-length            |    128 Sequence-length    |
-| :--------------: | :--------------------------------------: | :-----------------------: |
-|       > 12       |        `attn_dropout_checkpoint`         |             -             |
-|       > 16       | `normalize_invertible`, `gelu_checkpoint` |             -             |
-|       > 80       |                   OOM                    |  `normalize_invertible`   |
-|      > 112       |                   OOM                    | `attn_dropout_checkpoint` |
-|      > 128       |                   OOM                    |     `gelu_checkpoint`     |
+| Micro-batch size |    128 sequence-length    |           512 sequence-length            |
+| :--------------: | :-----------------------: | :--------------------------------------: |
+|       > 12       |             -             |        `attn_dropout_checkpoint`         |
+|       > 16       |             -             | `normalize_invertible`, `gelu_checkpoint`|
+|       > 80       |  `normalize_invertible`   |                   OOM                    |
+|      > 112       | `attn_dropout_checkpoint` |                   OOM                    |
+|      > 128       |     `gelu_checkpoint`     |                   OOM                    |
+
 
 ### **Enable Transformer Kernel**
 
