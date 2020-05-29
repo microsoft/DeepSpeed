@@ -331,7 +331,7 @@ launching DeepSpeed.
 
 ## Reproducing Fastest BERT Training Results with DeepSpeed
 
-We achieve the fastest BERT training time while remaining competitive across the industry in terms of achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set
+We achieve the fastest BERT training time while remaining competitive across the industry in terms of achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set. Please follow the [Fine-tuning](/bert-finetuning/) tutorial to finetune your model pretrained by transformer kernel and reprodue the SQUAD F1 score.
 
 - We complete BERT pretraining in 44 minutes using 1024 V100 GPUs (64 NVIDIA DGX-2 nodes). In comparison, the previous SOTA from NVIDIA takes 47 mins using 1472 V100 GPUs. DeepSpeed is not only faster but also uses 30% less resources. Using the same 1024 GPUS, NVIDIA BERT is 52% slower than DeepSpeed, taking 67 minutes to train.
 - Comparing with the original BERT training time from Google, it took them
