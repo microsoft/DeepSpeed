@@ -202,8 +202,7 @@ once again improves GPU efficiency.
 
 Figure 4: DeepSpeed invertible SoftMax operation versus Default PyTorch SoftMax operation
 
-![LayerNorm-DS](../../../../assets/images/layernorm_ds.png)
-![LayerNorm-PyTorch](../../../../assets/images/layernorm_torch.png)
+![LayerNorm-DS](../../../../assets/images/layernorm_animation.gif)
 
 Figure 5: DeepSpeed invertible LayerNorm operation versus Default PyTorch LayerNorm operation
 
