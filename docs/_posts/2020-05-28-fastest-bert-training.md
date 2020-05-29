@@ -256,3 +256,11 @@ To try out these optimizations and training recipe, please check out our [BERT
 training tutorial](https://www.deepspeed.ai/tutorials/bert-pretraining/) and
 source code at the [DeepSpeed GitHub
 repo](https://github.com/microsoft/deepspeed).
+
+### References
+
+[1] "NVIDIA Clocks World’s Fastest BERT Training Time and Largest Transformer Based Model, Paving Path For Advanced Conversational AI" [https://devblogs.nvidia.com/training-bert-with-gpus/](https://devblogs.nvidia.com/training-bert-with-gpus/).
+
+[2] S. R. Bulo, L. Porzi, and P. Kontschieder, "In-place activated batch norm for memory-optimized training of dnns" 2017. [http://arxiv.org/abs/1712.02616](http://arxiv.org/abs/1712.02616).
+
+[3] Mark Harris and Kyrylo Perelygin, "Cooperative Groups: Flexible CUDA Thread Programming", [https://devblogs.nvidia.com/cooperative-groups/]( https://devblogs.nvidia.com/cooperative-groups/).
