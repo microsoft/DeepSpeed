@@ -50,6 +50,70 @@ args = parser.parse_args()
 
 Similar to this, all the options with their corresponding description are available in `utils.py`.
 
+
+### Training
+
+#### Initialization
+
+DeepSpeed has an initialization function to create model, optimizer and LR scheduler. For BingBertSquad, we simply augment the Baseline script with the initialize function as follows.
+
+```python
+model, optimizer, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=optimizer_grouped_parameters,
+                                              dist_init_required=False)
+
+```
+
+Another feature of DeepSpeed is its convenient `step()` function which can be called directly as `model.step()` which hides the `fp16_optimizer` away from the user as opposed to `optimizer.step()` in the baseline code (similar to other models in this tutorial) which needs explicit handling of the case of FP16 computation.
+
+#### Forward pass
+
+This is identical in both Baseline and DeepSpeed, and is performed by `loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)`.
+
+#### Backward pass
+
+In the Baseline script you need to handle the all-reduce operation at the gradient accumulation boundary explicitly by using `enable_need_reduction()` followed by `optimizer.backward(loss)` in FP16 and `loss.backward()` in FP32. In DeepSpeed, you may simply do `model.backward(loss)`.
+
+#### Weight updates
+
+In the Baseline Script, you are required to explicitly specify the optimizer as `FusedAdam` (along with the handling of dynamic loss scaling) in FP16 and `BertAdam` in FP32, followed by the call `optimizer.step()` and `optimizer.zero_grad()`. DeepSpeed handles this internally (by setting the optimizer using the JSON config) when `initialize()` is called and thus you don't need to explicitly write code but just do `model.step()`.
+
+Congratulations! Porting into DeepSpeed is complete.
+
+### Evaluation
+
+Once training is complete, the EM and F1 scores may be obtained from the following command:
+
+`python evaluate-v1.1.py <PATH_TO_DEVSET>/dev-v1.1.json <PATH_TO_PREDICTIONS>/predictions.json`
+
+### DeepSpeed Improvements
+
+The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 8 GPUs for 2 epochs on the DLTS RR1 DGX-2 hypercluster. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; Baseline seeds were 42 and DeepSpeed seeds were 10.
+
+| Case      | Precision | EM    | F1    | Throughput |
+| --------- | --------- | ----- | ----- | ---------- |
+| DeepSpeed | FP16      | 84.38 | 91.11 | 9.6        |
+| Baseline  | FP16      | 84.39 | 91.29 | 8.4        |
+| DeepSpeed | FP32      | 84.20 | 91.06 | 3.7        |
+| Baseline  | FP32      | 84.20 | 90.91 | 2.7        |
+
+In terms of throughput (expressed in iterations processed per second), we note that DeepSpeed outperforms the baseline for the desired accuracy (in terms of EM, F1 scores).
+
+## Fine-tuning the model pre-trained with DeepSpeed Transformer Kernels
+For pre-training your model, please see [BERT Pre-Training](\bert-pretraining\) tutorial for the detailed instrucions.
+If you already obtained the checkpoint of your model, use the following configuration to finetune your pretrained checkpoint.
+
+| Parameters               | Value             |
+| ------------------------ | ------------------------- |
+| Total batch size         | 24                       |
+| Train micro batch size per gpu | 3                  |
+| Optimizer                | Adam                      |
+| Learning rate            | 4e-5                      |
+| Sequence-length          | 384                      |
+| Weight-decay             | 0.0                      |
+| Epoch count               | 2                      |
+
 ### Enabling DeepSpeed's Transformer Kernel
 
 DeepSpeed's optimized transformer kernel must be enabled during fine-tuning
@@ -109,51 +173,17 @@ Note:
 
 For more details about the transformer kernel, please see [DeepSpeed Transformer Kernel](/transformer_kernel/) and [DeepSpeed Fast-Bert Training](/fast_bert/).
 
-### Training
+### Dropout Setting
+For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/transformer_kernel/) for more detail of selecting these two modes).
 
-#### Initialization
+For model pre-trained with deterministic transformer, we use the same dropout ration used in pretraining (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fune-tuning.
 
-DeepSpeed has an initialization function to create model, optimizer and LR scheduler. For BingBertSquad, we simply augment the Baseline script with the initialize function as follows.
 
-```python
-model, optimizer, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              model_parameters=optimizer_grouped_parameters,
-                                              dist_init_required=False)
+| Pretraining mode               | Dropout ratio             |
+| ------------------------ | ------------------------- |
+| Determinstic | 0.1                      |
+| Stochastic | 0.12 - 0.14                |
 
-```
+### Results
 
-Another feature of DeepSpeed is its convenient `step()` function which can be called directly as `model.step()` which hides the `fp16_optimizer` away from the user as opposed to `optimizer.step()` in the baseline code (similar to other models in this tutorial) which needs explicit handling of the case of FP16 computation.
-
-#### Forward pass
-
-This is identical in both Baseline and DeepSpeed, and is performed by `loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)`.
-
-#### Backward pass
-
-In the Baseline script you need to handle the all-reduce operation at the gradient accumulation boundary explicitly by using `enable_need_reduction()` followed by `optimizer.backward(loss)` in FP16 and `loss.backward()` in FP32. In DeepSpeed, you may simply do `model.backward(loss)`.
-
-#### Weight updates
-
-In the Baseline Script, you are required to explicitly specify the optimizer as `FusedAdam` (along with the handling of dynamic loss scaling) in FP16 and `BertAdam` in FP32, followed by the call `optimizer.step()` and `optimizer.zero_grad()`. DeepSpeed handles this internally (by setting the optimizer using the JSON config) when `initialize()` is called and thus you don't need to explicitly write code but just do `model.step()`.
-
-Congratulations! Porting into DeepSpeed is complete.
-
-### Evaluation
-
-Once training is complete, the EM and F1 scores may be obtained from the following command:
-
-`python evaluate-v1.1.py <PATH_TO_DEVSET>/dev-v1.1.json <PATH_TO_PREDICTIONS>/predictions.json`
-
-## DeepSpeed Improvements
-
-The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 8 GPUs for 2 epochs on the DLTS RR1 DGX-2 hypercluster. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; Baseline seeds were 42 and DeepSpeed seeds were 10.
-
-| Case      | Precision | EM    | F1    | Throughput |
-| --------- | --------- | ----- | ----- | ---------- |
-| DeepSpeed | FP16      | 84.38 | 91.11 | 9.6        |
-| Baseline  | FP16      | 84.39 | 91.29 | 8.4        |
-| DeepSpeed | FP32      | 84.20 | 91.06 | 3.7        |
-| Baseline  | FP32      | 84.20 | 90.91 | 2.7        |
-
-In terms of throughput (expressed in iterations processed per second), we note that DeepSpeed outperforms the baseline for the desired accuracy (in terms of EM, F1 scores).
+Fine-tuning the model pre-trained usng DeepSpeed Transformer and the recepie in [DeepSpeed Fast-Bert Training](/fast_bert/) should yield F1 score of 90.5 and is expected to increase if you let the pre-training longer than suggested in the tutorial.
