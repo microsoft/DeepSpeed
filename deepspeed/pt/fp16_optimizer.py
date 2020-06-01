@@ -239,7 +239,7 @@ class FP16_Optimizer(object):
 
         self.start_timers([UPDATE_FP16])
 
-        for i in range(len(norm_groups)):
+        for i in range(len(self.fp16_groups)):
             updated_params = _unflatten_dense_tensors(self.fp32_groups_flat[i],
                                                       self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
@@ -352,6 +352,11 @@ class FP16_Optimizer(object):
         state_dict['fp32_groups_flat'] = self.fp32_groups_flat
         state_dict['clip_grad'] = self.clip_grad
         return state_dict
+
+    def refresh_fp32_params(self):
+        for current, saved in zip(self.fp32_groups_flat, self.fp16_groups_flat):
+            current.data.copy_(saved.data)
+
 
     def load_state_dict(self, state_dict, load_optimizer_states=True):
         """

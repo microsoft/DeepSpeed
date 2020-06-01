@@ -488,6 +488,7 @@ class DeepSpeedLight(Module):
         if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
                 logging.info('Creating fp16 optimizer with dynamic loss scale')
+                timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
                     dynamic_loss_scale=True,
@@ -496,7 +497,7 @@ class DeepSpeedLight(Module):
                     mpu=self.mpu,
                     clip_grad=clip_grad,
                     fused_adam_legacy=self.optimizer_legacy_fusion(),
-                    timers=self.timers)
+                    timers=timers)
             else:
                 logging.info('Creating fp16 optimizer with static loss scale: {}'.format(
                     self.loss_scale()))
