@@ -24,7 +24,7 @@ class FP16_Optimizer(object):
                  init_optimizer,
                  static_loss_scale=1.0,
                  dynamic_loss_scale=False,
-                 initial_dynamic_scale=2**16,
+                 initial_dynamic_scale=2**32,
                  dynamic_loss_args=None,
                  verbose=True,
                  mpu=None,

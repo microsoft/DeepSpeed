@@ -813,11 +813,7 @@ class DeepSpeedLight(Module):
 
     def _report_progress(self, step):
         lr = self.get_lr()
-        if type(lr) == list:
-            lr = lr[0]
         mom = self.get_mom()
-        if type(mom) == list:
-            mom = mom[0]
         logging.info('rank:{} step={}, skipped={}, lr={}, mom={}'.format(
             self.global_rank,
             step,
