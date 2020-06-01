@@ -123,7 +123,7 @@ FP16_MIN_LOSS_SCALE_DEFAULT = 1
 # Gradient clipping. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
 GRADIENT_CLIPPING_FORMAT = '''
-Dump state should be enabled as:
+Gradient clipping should be enabled as:
 "gradient_clipping": 1.0
 '''
 GRADIENT_CLIPPING = 'gradient_clipping'
@@ -133,14 +133,27 @@ GRADIENT_CLIPPING_DEFAULT = 0.
 # ZeRO optimization
 #########################################
 # ZeRO optimization. By default, this optimization is not enabled.
-# Users can configure in ds_config.json as below example:
+# Users have to configure the desired optimization (0 means disabled) in params.json as below example:
 ZERO_FORMAT = '''
 ZeRO optimization should be enabled as:
-"zero_optimization": true,
-"zero_all_gather_size": 200
+"session_params": {
+  "zero_optimization": [0|1|2],
+  "zero_all_gather_size": 200
+}
 '''
+
 ZERO_OPTIMIZATION = 'zero_optimization'
-ZERO_OPTIMIZATION_DEFAULT = False
+ZERO_OPTIMIZATION_DEFAULT = 0
+ZERO_OPTIMIZATION_OPTIMIZER_STATES = 1
+ZERO_OPTIMIZATION_GRADIENTS = 2
+ZERO_OPTIMIZATION_WEIGHTS = 3
+MAX_STAGE_ZERO_OPTIMIZATION = ZERO_OPTIMIZATION_GRADIENTS
+
+ZERO_REDUCE_SCATTER = "zero_reduce_scatter"
+ZERO_REDUCE_SCATTER_DEFAULT = True
+
+ZERO_MAX_ELEMENTS_PER_COMM = "zero_max_elements_per_comm"
+ZERO_MAX_ELEMENTS_PER_COMM_DEFAULT = 5e8
 
 ALLGATHER_SIZE = 'allgather_size'
 ALLGATHER_SIZE_DEFAULT = 500000000
@@ -158,7 +171,7 @@ FP32_ALLREDUCE = "fp32_allreduce"
 FP32_ALLREDUCE_DEFAULT = False
 
 #########################################
-# Scale gradients before allreduce
+# Scale/predivide gradients before allreduce
 #########################################
 # Prescale gradients. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
@@ -168,6 +181,13 @@ Gradient prescaling should be enabled as:
 '''
 PRESCALE_GRADIENTS = "prescale_gradients"
 PRESCALE_GRADIENTS_DEFAULT = False
+
+GRADIENT_PREDIVIDE_FACTOR_FORMAT = '''
+Gradient predivide factor should be enabled as:
+"gradient_predivide_factor": 1.0
+'''
+GRADIENT_PREDIVIDE_FACTOR = "gradient_predivide_factor"
+GRADIENT_PREDIVIDE_FACTOR_DEFAULT = 1.0
 
 #########################################
 # Disable AllGather
@@ -216,6 +236,9 @@ Wall block breakdown should be enabled as:
 '''
 WALL_CLOCK_BREAKDOWN = 'wall_clock_breakdown'
 WALL_CLOCK_BREAKDOWN_DEFAULT = False
+
+MEMORY_BREAKDOWN = 'memory_breakdown'
+MEMORY_BREAKDOWN_DEFAULT = False
 
 #########################################
 # Tensorboard
