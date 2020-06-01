@@ -846,14 +846,14 @@ class DeepSpeedLight(Module):
         if self.wall_clock_breakdown():
             self.timers('step').stop()
             self.timers('step_microstep').stop()
-            self.timers.log([
+            timer_names = [
                 'forward_microstep',
                 'backward_microstep',
                 'backward_inner_microstep',
                 'backward_allreduce_microstep',
                 'step_microstep'
-            ],
-            memory_breakdown=self.memory_breakdown())
+            ]
+            self.timers.log(names=timer_names, memory_breakdown=self.memory_breakdown())
 
             # Log timing
             if self.is_gradient_accumulation_boundary():
@@ -870,14 +870,13 @@ class DeepSpeedLight(Module):
                         self.summary_writer.flush()
 
             if self.wall_clock_breakdown():
-                    self.timers.log([
-                        'forward',
-                        'backward',
-                        'backward_inner',
-                        'backward_allreduce',
-                        'step'
-                    ])
-            ],
+                self.timers.log([
+                    'forward',
+                    'backward',
+                    'backward_inner',
+                    'backward_allreduce',
+                    'step'
+                ])
 
         self.micro_steps += 1
 

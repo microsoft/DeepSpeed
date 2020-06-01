@@ -187,7 +187,7 @@ class FP16_Optimizer(object):
         UNSCALE_AND_CLIP = 'unscale_and_clip'
         BASIC_STEP = 'basic_step'
         UPDATE_FP16 = 'update_fp16'
-        STEP_TIMERS = OVERFLOW_TIMERS  + [UNSCALE_AND_CLIP, BASIC_STEP, UPDATE_FP16]
+        STEP_TIMERS = OVERFLOW_TIMERS + [UNSCALE_AND_CLIP, BASIC_STEP, UPDATE_FP16]
 
         # First compute norm for all group so we know if there is overflow
         grads_groups_flat = []
@@ -207,11 +207,12 @@ class FP16_Optimizer(object):
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 
         self.start_timers([COMPUTE_NORM])
-        norm_groups.append(get_grad_norm(self.fp32_groups_flat, mpu=self.mpu))
+        #        norm_groups.append(get_grad_norm(self.fp32_groups_flat, mpu=self.mpu))
+        all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
         self.stop_timers([COMPUTE_NORM])
 
         self.start_timers([OVERFLOW_CHECK])
-        self.overflow = self.overflow_checker.check_using_norm(norm_groups)
+        self.overflow = self.overflow_checker.check_using_norm([all_groups_norm])
         self.stop_timers([OVERFLOW_CHECK])
 
         prev_scale = self.cur_scale
@@ -226,7 +227,7 @@ class FP16_Optimizer(object):
             return self.overflow
 
         self.start_timers([UNSCALE_AND_CLIP])
-        self.unscale_and_clip_grads(grads_groups_flat, norm_groups)
+        self.unscale_and_clip_grads(grads_groups_flat, [all_groups_norm])
         self.stop_timers([UNSCALE_AND_CLIP])
 
         self.start_timers([BASIC_STEP])
@@ -356,7 +357,6 @@ class FP16_Optimizer(object):
     def refresh_fp32_params(self):
         for current, saved in zip(self.fp32_groups_flat, self.fp16_groups_flat):
             current.data.copy_(saved.data)
-
 
     def load_state_dict(self, state_dict, load_optimizer_states=True):
         """
