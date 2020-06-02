@@ -191,7 +191,6 @@ class FP16_Optimizer(object):
 
         # First compute norm for all group so we know if there is overflow
         grads_groups_flat = []
-        norm_groups = []
 
         for i, group in enumerate(self.fp16_groups):
             data_type = self.fp32_groups_flat[i].dtype
@@ -207,7 +206,6 @@ class FP16_Optimizer(object):
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 
         self.start_timers([COMPUTE_NORM])
-        #        norm_groups.append(get_grad_norm(self.fp32_groups_flat, mpu=self.mpu))
         all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
         self.stop_timers([COMPUTE_NORM])
 
@@ -239,7 +237,6 @@ class FP16_Optimizer(object):
             group.grad = None
 
         self.start_timers([UPDATE_FP16])
-
         for i in range(len(self.fp16_groups)):
             updated_params = _unflatten_dense_tensors(self.fp32_groups_flat[i],
                                                       self.fp16_groups[i])
