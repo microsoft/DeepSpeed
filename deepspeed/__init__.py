@@ -6,6 +6,8 @@ from deepspeed.pt.deepspeed_light import DeepSpeedLight
 from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 from deepspeed.pt.log_utils import logger
+from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
 import deepspeed.pt.deepspeed_checkpointing as checkpointing
 
