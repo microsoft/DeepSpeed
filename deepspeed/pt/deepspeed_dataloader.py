@@ -24,7 +24,9 @@ class DeepSpeedDataLoader(object):
 
         if local_rank >= 0:
             if data_sampler is None:
-                data_sampler = DistributedSampler(dataset, data_parallel_world_size, data_parallel_rank)
+                data_sampler = DistributedSampler(dataset=dataset,
+                                                  num_replicas=data_parallel_world_size,
+                                                  rank=data_parallel_rank)
             device_count = 1
         else:
             if data_sampler is None:
