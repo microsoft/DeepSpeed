@@ -164,9 +164,6 @@ class DeepSpeedLight(Module):
         self.training_dataloader = self.deepspeed_io(
             training_data) if training_data else None
 
-        # Configure wall clock timer
-        self.timers = SynchronizedWallClockTimer()
-
         # Configure optimizer and scheduler
         self.optimizer = None
         self.lr_scheduler = None
