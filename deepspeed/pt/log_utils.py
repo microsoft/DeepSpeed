@@ -26,6 +26,7 @@ class LoggerFactory:
 
         logger_ = logging.getLogger(name)
         logger_.setLevel(level)
+        logger.propagate = False
         ch = logging.StreamHandler(stream=sys.stdout)
         ch.setLevel(level)
         ch.setFormatter(formatter)
