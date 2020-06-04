@@ -3,17 +3,18 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import time
-import logging
 import psutil
 import torch
+
+from deepspeed.pt.log_utils import logger
 
 
 def print_rank_0(message):
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
-            print(message, flush=True)
+            logger.info(message)
     else:
-        print(message, flush=True)
+        logger.info(message)
 
 
 class SynchronizedWallClockTimer:
@@ -69,13 +70,27 @@ class SynchronizedWallClockTimer:
             self.timers[name] = self.Timer(name)
         return self.timers[name]
 
-    def log(self, names, normalizer=1.0, reset=True):
+    @staticmethod
+    def memory_usage():
+        alloc = "mem_allocated: {:.4f} GB".format(torch.cuda.memory_allocated() /
+                                                  (1024 * 1024 * 1024))
+        max_alloc = "max_mem_allocated: {:.4f} GB".format(
+            torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024))
+        cache = "cache_allocated: {:.4f} GB".format(torch.cuda.memory_cached() /
+                                                    (1024 * 1024 * 1024))
+        max_cache = "max_cache_allocated: {:.4f} GB".format(
+            torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))
+        return " | {} | {} | {} | {}".format(alloc, max_alloc, cache, max_cache)
+
+    def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False):
         """Log a group of timers."""
         assert normalizer > 0.0
         string = 'time (ms)'
         for name in names:
             elapsed_time = self.timers[name].elapsed(reset=reset) * 1000.0 / normalizer
             string += ' | {}: {:.2f}'.format(name, elapsed_time)
+        if memory_breakdown:
+            string += self.memory_usage()
         print_rank_0(string)
 
 
@@ -103,7 +118,7 @@ class ThroughputTimer():
         self.monitor_memory = monitor_memory
         self.logging = logging_fn
         if self.logging is None:
-            self.logging = logging.info
+            self.logging = logger.info
         self.initialized = False
 
     def update_epoch_count(self):
