@@ -523,7 +523,7 @@ class DeepSpeedLight(Module):
         clip_grad = self.gradient_clipping()
         if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
-                logging.info('Creating fp16 optimizer with dynamic loss scale')
+                logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
