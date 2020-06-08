@@ -19,7 +19,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -t, --third_party_only  Install only third party dependencies and not deepspeed
     -l, --local_only        Install only on local machine
     -s, --pip_sudo          Run pip install with sudo (default: no sudo)
-    -r, --allow_sudo        Force all sudo for entire script (probably don't want this, instead use --pip_sudo)
+    -r, --allow_sudo        Allow script to be run by root (probably don't want this, instead use --pip_sudo)
     -n, --no_clean          Do not clean prior build state, by default prior build files are removed before building wheels
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
