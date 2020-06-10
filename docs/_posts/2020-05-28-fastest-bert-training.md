@@ -102,7 +102,7 @@ For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger
 On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best
 samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 
-| Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
+| Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 36.34   | 50.76     | 1.4         |
 | 6                | OOM     | 54.28     | 1.5         |
@@ -110,7 +110,7 @@ samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 
 Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
 
-| Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
+| Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 37.8    | 50.8      | 1.34        |
 | 6                | 43.8    | 55.97     | 1.3         |

@@ -184,12 +184,12 @@ Note:
 1. `batch_size` is the maximum bath size of input data, all fine-tuning training data or prediction data shouldn't exceed this threshold, otherwise it will throw an exception. In the DeepSpeed configuration file micro batch size is defined as `train_micro_batch_size_per_gpu`, e.g. if it is set as 8 and prediction uses batch size of 12, we can use 12 as transformer kernel batch size, or using "--predict_batch_size" argument to set prediction batch size to 8 or a smaller number.
 2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
 
-For more details about the transformer kernel, please see [DeepSpeed Transformer Kernel](/_tutorials/transformer_kernel/) and [DeepSpeed Fast-Bert Training](/_posts/2020-05-28-fastest-bert-training/).
+For more details about the transformer kernel, please see our [usage tutoria](/tutorials/transformer_kernel/) and [technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on the fastest BERT training.
 
 ### Tuning Micro-Batch Size
-In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32 GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs OOM.
+In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 
-| Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
+| Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 36.34   | 50.76     | 1.4         |
 | 6                | OOM     | 54.28     | 1.5         |
@@ -197,7 +197,7 @@ In order to perform fine-tuning, we set the total batch size to 24 as shown in T
 
 Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
 
-| Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
+| Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 37.8    | 50.8      | 1.34        |
 | 6                | 43.8    | 55.97     | 1.3         |
@@ -207,9 +207,9 @@ Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) usi
 
 Table 3. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
 
-As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even higher if larger batch size is required. In order to support a larger micro-batch, we may need to enable the memory-optimization flags for the transformer kernel as described in [DeepSpeed Transformer Kernel](/_tutorials/transformer_kernel/) tutorial. Table 4 shows which optimization flags are required for running different range of micro-batch size.
+As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even higher if larger batch size is required. In order to support a larger micro-batch, we may need to enable the memory-optimization flags for the transformer kernel as described in [DeepSpeed Transformer Kernel](/tutorials/transformer_kernel/) tutorial. Table 4 shows which optimization flags are required for running different range of micro-batch size.
 
-| Micro-batch size |           NVIDIA V100 (32-GB)            |           NVIDIA V100 (16-GB)            |
+| Micro batch size |           NVIDIA V100 (32-GB)            |           NVIDIA V100 (16-GB)            |
 | :--------------: | :--------------------------------------: | :--------------------------------------: |
 |       > 4        |                    -                     |          `normalize_invertible`          |
 |       > 6        |                    -                     | `attn_dropout_checkpoint`, `gelu_checkpoint` |
@@ -219,7 +219,7 @@ As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even 
 Table 4. The setting of memory-optimization flags for a range of micro-batch size on 16-GB and 32-GB V100.
 
 ### Dropout Setting
-For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/transformer_kernel/) for more detail of selecting these two modes).
+For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/tutorials/transformer_kernel/) for more detail of selecting these two modes).
 
 For model pre-trained with deterministic transformer, we use the same dropout ration used in pretraining (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fune-tuning.
 
