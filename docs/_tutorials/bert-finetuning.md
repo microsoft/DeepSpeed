@@ -28,7 +28,7 @@ Go to the `DeepSpeedExamples/BingBertSquad` folder to follow along.
   * Validation set: [dev-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json)
 
 You also need a pre-trained BERT model checkpoint from DeepSpeed. We will use checkpoint 162 from the
-BERT pre-training [tutorial](bert-pretraining).
+BERT pre-training [tutorial](/tutorials/bert-pretraining/).
 
   * Pre-training checkpoint: `training_state_checkpoint_162.tar`
 
@@ -113,8 +113,8 @@ The table summarizing the results are given below. In all cases, the batch size 
 In terms of throughput (expressed in iterations processed per second), we note that DeepSpeed outperforms the baseline for the desired accuracy (in terms of EM, F1 scores).
 
 ## Fine-tuning the model pre-trained with DeepSpeed Transformer Kernels
-For pre-training your model, please see [BERT Pre-Training](\bert-pretraining\) tutorial for the detailed instrucions.
-If you already obtained the checkpoint of your model, use the following configuration to finetune your pretrained checkpoint.
+For pre-training your model, please see [BERT pre-training](/tutorials/bert-pretraining/) tutorial for the detailed instrucions.
+If you already obtained the checkpoint of your model, use the following configuration to finetune your pre-trained checkpoint.
 
 | Parameters                     | Value |
 | ------------------------------ | ----- |
@@ -187,7 +187,7 @@ Note:
 For more details about the transformer kernel, please see our [usage tutoria](/tutorials/transformer_kernel/) and [technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on the fastest BERT training.
 
 ### Tuning Micro-Batch Size
-In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs OOM.
+In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs out-of-memory (OOM).
 
 | Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
@@ -195,7 +195,7 @@ In order to perform fine-tuning, we set the total batch size to 24 as shown in T
 | 6                | OOM     | 54.28     | 1.5         |
 | 8                | OOM     | 54.16     | 1.5         |
 
-Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
+Table 2. Samples/second for running SQuAD fine-tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
 
 | Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
@@ -205,7 +205,7 @@ Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) usi
 | 24               | OOM     | 60.7      | 1.2         |
 | 32               | OOM     | 63        | 1.3         |
 
-Table 3. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
+Table 3. Samples/second for running SQuAD fine-tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
 
 As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even higher if larger batch size is required. In order to support a larger micro-batch, we may need to enable the memory-optimization flags for the transformer kernel as described in [DeepSpeed Transformer Kernel](/tutorials/transformer_kernel/) tutorial. Table 4 shows which optimization flags are required for running different range of micro-batch size.
 
@@ -221,10 +221,10 @@ Table 4. The setting of memory-optimization flags for a range of micro-batch siz
 ### Dropout Setting
 For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/tutorials/transformer_kernel/) for more detail of selecting these two modes).
 
-For model pre-trained with deterministic transformer, we use the same dropout ration used in pretraining (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fune-tuning.
+For model pre-trained with deterministic transformer, we use the same dropout ration used in pre-training (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fune-tuning.
 
 
-| Pretraining mode | Dropout ratio |
+| Pre-training mode | Dropout ratio |
 | ---------------- | ------------- |
 | Determinstic     | 0.1           |
 | Stochastic       | 0.12 - 0.14   |

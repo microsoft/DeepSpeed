@@ -24,7 +24,7 @@ DeepSpeed to achieve this record-breaking BERT training time.
 4.  Layer-norm reordering for training stability and faster convergence
 
 These optimizations not only benefit BERT; they are also applicable to many
-other transformer-based models such as RoBERTa, XLNet, and UniLM. Furthermore, besides the improvements mentioned for pretraining, DeepSpeed achieves up to 1.5x speedups for the downstream tasks, such as the fine-tuning for Bing-BERT Squad.
+other transformer-based models such as RoBERTa, XLNet, and UniLM. Furthermore, besides the improvements mentioned for pre-training, DeepSpeed achieves up to 1.5x speedups for the downstream tasks, such as the fine-tuning for Bing-BERT SQuAD.
 
 ## Performance Results for BERT Pretraining
 
@@ -66,8 +66,8 @@ in teraflops (Tflops). DeepSpeed boosts throughput and allows for higher batch
 sizes without running out-of-memory.
 
 Looking at distributed training across GPUs, Table 1 shows our end-to-end
-BERT-Large pretraining time (F1 score of 90.5 for SQUAD) using 16 to 1024 GPUs.
-We complete BERT pretraining in 44 minutes using 1024 V100 GPUs (64 NVIDIA
+BERT-Large pre-training time (F1 score of 90.5 for SQUAD) using 16 to 1024 GPUs.
+We complete BERT pre-training in 44 minutes using 1024 V100 GPUs (64 NVIDIA
 DGX-2 nodes). In comparison, the previous SOTA from NVIDIA takes 47 mins using
 1472 V100 GPUs. DeepSpeed is not only faster but also uses  30% less resources.
 Using the same 1024 GPUS,NVIDIA BERT takes 67 minutes using the same 1024 GPUs
@@ -94,13 +94,13 @@ cluster of 1024 A100 GPUs.
 
 ## Performance Results for Fine-Tuning Tasks
 
-In addition to the performance benefits we show for the pretraining,
+In addition to the performance benefits we show for the pre-training,
 we have evaluated the performance of our customized kernel for fine-tuning the
 downstream tasks. Tables 2 and 3 show the samples-per-second achieved when running
-Bing-BERT Squad on NVIDIA V100 using 16 and 32 GB of memory, using Pytorch and DeepSpeed transformer kernels.
+Bing-BERT SQuAD on NVIDIA V100 using 16 and 32 GB of memory, using Pytorch and DeepSpeed transformer kernels.
 For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger batch size per GPU.
 On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best
-samples-per-second to compute speedup for the cases that PyTorch runs OOM.
+samples-per-second to compute speedup for the cases that PyTorch runs out-of-memory (OOM).
 
 | Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
@@ -108,7 +108,7 @@ samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 | 6                | OOM     | 54.28     | 1.5         |
 | 8                | OOM     | 54.16     | 1.5         |
 
-Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
+Table 2. Samples/second for running SQuAD fine-tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
 
 | Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
@@ -118,7 +118,7 @@ Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) usi
 | 24               | OOM     | 60.7      | 1.2         |
 | 32               | OOM     | 63        | 1.3         |
 
-Table 3: Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
+Table 3: Samples/second for running SQuAD fine-tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
 
 
 ## BERT Highly Optimized Transformer Kernels
@@ -199,7 +199,7 @@ between the two versions depending on their usage scenarios: Stochastic version
 pursues ultimate training performance goal, and deterministic version may save
 development time by better facilitating experimentation and debugging.
 
-In our experiments, we use stochastic kernels for the pretraining BERT, while
+In our experiments, we use stochastic kernels for the pre-training BERT, while
 using non-stochastic kernels for fine-tuning to achieve fully reproducible
 results. We recommend using stochastic kernels for training tasks involving
 massive amounts of data such as pre-training, while using non-stochastic
