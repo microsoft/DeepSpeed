@@ -94,12 +94,12 @@ cluster of 1024 A100 GPUs.
 
 ## Performance Results for Fine-Tuning Tasks
 
-In addition to the performance benefits we show for the pretraining, 
-we have evaluated the performance of our customized kernel for fine-tuning the 
-downstream tasks. Tables 2 and 3 show the samples-per-second achieved when running 
-Bing-BERT Squad on NVIDIA V100 using 16 and 32 GB of memory, using Pytorch and DeepSpeed transformer kernels. 
-For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger batch size per GPU. 
-On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best 
+In addition to the performance benefits we show for the pretraining,
+we have evaluated the performance of our customized kernel for fine-tuning the
+downstream tasks. Tables 2 and 3 show the samples-per-second achieved when running
+Bing-BERT Squad on NVIDIA V100 using 16 and 32 GB of memory, using Pytorch and DeepSpeed transformer kernels.
+For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger batch size per GPU.
+On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best
 samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 
 | Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
@@ -107,7 +107,9 @@ samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 | 4                | 36.34   | 50.76     | 1.4         |
 | 6                | OOM     | 54.28     | 1.5         |
 | 8                | OOM     | 54.16     | 1.5         |
+
 Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
+
 | Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 37.8    | 50.8      | 1.34        |
@@ -115,6 +117,7 @@ Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) usi
 | 12               | 49.32   | 61.4      | 1.2         |
 | 24               | OOM     | 60.7      | 1.2         |
 | 32               | OOM     | 63        | 1.3         |
+
 Table 3: Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
 
 

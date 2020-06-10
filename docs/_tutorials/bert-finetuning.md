@@ -186,25 +186,17 @@ Note:
 
 For more details about the transformer kernel, please see [DeepSpeed Transformer Kernel](/_tutorials/transformer_kernel/) and [DeepSpeed Fast-Bert Training](/_posts/2020-05-28-fastest-bert-training/).
 
-### Increasing Micro-Batch Size
-In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can increase the micro-batch size per GPU from 3 to 24 or even higher if larger batch size is required. However, in order to support a larger micro-batch, we may need to enable the memory-optimization flags for the transformer kernel as described in [DeepSpeed Transformer Kernel](/_tutorials/transformer_kernel/) tutorial. For our experiments, we use NVIDIA V100 with 16GB and 32GB of memory. Table 2 shows which optimization flags are required for running different range of micro-batch size.
-
-| Micro-batch size |           NVIDIA V100 (32-GB)            |           NVIDIA V100 (16-GB)            |
-| :--------------: | :--------------------------------------: | :--------------------------------------: |
-|       > 4        |                    -                     |          `normalize_invertible`          |
-|       > 6        |                    -                     | `attn_dropout_checkpoint`, `gelu_checkpoint` |
-|       > 12       | `normalize_invertible`, `attn_dropout_checkpoint` |                   OOM                    |
-|       > 24       |            `gelu_checkpoint`             |                   OOM                    |
-Table 2. The setting of memory-optimization flags for a range of micro-batch size on 16-GB and 32-GB V100.
-
-Furthermore, we have evaluated the performance of DeepSpeed transformer kernel comparing with PyTorch, by sweeping the micro batch size between 4 and 32. Tables 3 and 4 show the samples-per-second achieved on 16-GB and 32-GB NVIDIA V100 GPUs, respectively. For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs OOM.
+### Tuning Micro-Batch Size
+In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32 GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs OOM.
 
 | Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 36.34   | 50.76     | 1.4         |
 | 6                | OOM     | 54.28     | 1.5         |
 | 8                | OOM     | 54.16     | 1.5         |
-Table 3. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
+
+Table 2. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) using PyTorch and DeepSpeed transformer kernels.
+
 | Micro Batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
 | 4                | 37.8    | 50.8      | 1.34        |
@@ -212,7 +204,19 @@ Table 3. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (16-GB) usi
 | 12               | 49.32   | 61.4      | 1.2         |
 | 24               | OOM     | 60.7      | 1.2         |
 | 32               | OOM     | 63        | 1.3         |
-Table 4: Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
+
+Table 3. Samples/second for running Squad Fine-Tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
+
+As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even higher if larger batch size is required. In order to support a larger micro-batch, we may need to enable the memory-optimization flags for the transformer kernel as described in [DeepSpeed Transformer Kernel](/_tutorials/transformer_kernel/) tutorial. Table 4 shows which optimization flags are required for running different range of micro-batch size.
+
+| Micro-batch size |           NVIDIA V100 (32-GB)            |           NVIDIA V100 (16-GB)            |
+| :--------------: | :--------------------------------------: | :--------------------------------------: |
+|       > 4        |                    -                     |          `normalize_invertible`          |
+|       > 6        |                    -                     | `attn_dropout_checkpoint`, `gelu_checkpoint` |
+|       > 12       | `normalize_invertible`, `attn_dropout_checkpoint` |                   OOM                    |
+|       > 24       |            `gelu_checkpoint`             |                   OOM                    |
+
+Table 4. The setting of memory-optimization flags for a range of micro-batch size on 16-GB and 32-GB V100.
 
 ### Dropout Setting
 For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/transformer_kernel/) for more detail of selecting these two modes).
