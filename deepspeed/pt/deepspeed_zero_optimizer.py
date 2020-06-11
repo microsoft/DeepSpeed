@@ -230,7 +230,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.fp16_groups_flat.append(
                 flatten_dense_tensors_aligned(
                     self.fp16_groups[i],
-                    dist.get_world_size(group=self.dp_process_group)).cuda(torch.cuda.current_device()))
+                    dist.get_world_size(group=self.dp_process_group)).cuda(
+                        torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU")
 
             if dist.get_rank(group=self.dp_process_group) == 0:
@@ -246,7 +247,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #divide the flat weights into near equal paritition equal to the data parallel degree
             #each process will compute on a different part of the partition
-            data_parallel_partitions = self.get_data_parallel_partitions(self.fp16_groups_flat[i])
+            data_parallel_partitions = self.get_data_parallel_partitions(
+                self.fp16_groups_flat[i])
             self.parallel_partitioned_fp16_groups.append(data_parallel_partitions)
 
             # a partition of the fp32 master weights that will be updated by this process
@@ -1401,7 +1403,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
         state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
-
 
         return state_dict
 

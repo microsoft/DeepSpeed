@@ -12,24 +12,19 @@ from deepspeed.pt.deepspeed_utils import get_grad_norm, CheckOverflow
 from deepspeed.pt.deepspeed_zero_config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 
 
-def get_alignment_padding(flattened_lean_size,
-                          sub_partition_id,
-                          sub_partition_size):
+def get_alignment_padding(flattened_lean_size, sub_partition_id, sub_partition_size):
     sub_partition_high_limit = (sub_partition_id + 1) * sub_partition_size
     if sub_partition_high_limit <= flattened_lean_size:
         return 0
     else:
         return min(sub_partition_size, sub_partition_high_limit - flattened_lean_size)
 
-def get_group_alignment_padding(tensor_list,
-                                sub_partition_size,
-                                sub_partition_count):
+
+def get_group_alignment_padding(tensor_list, sub_partition_size, sub_partition_count):
     group_paddings = []
     flattened_size = sum([tensor.numel() for tensor in tensor_list])
     for i in range(sub_partition_count):
-        padding = get_alignment_padding(flattened_size,
-                                        i,
-                                        sub_partition_size)
+        padding = get_alignment_padding(flattened_size, i, sub_partition_size)
         group_paddings.append(padding)
 
     pprint("****Padding information*****")
@@ -40,6 +35,7 @@ def get_group_alignment_padding(tensor_list,
         pprint(f"padding[{i}] = {padding}")
 
     return group_paddings
+
 
 def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                                 dp,
@@ -116,7 +112,9 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
     if pg is None or dist.get_rank(group=pg) == 0:
         print("Number of Elements (w. padding) is ", num_elements)
         lean_num_elements = sum([tensor.numel() for tensor in tensor_list])
-        print(f"Padding overhead is {num_elements} / {lean_num_elements} = {num_elements/lean_num_elements}")
+        print(
+            f"Padding overhead is {num_elements} / {lean_num_elements} = {num_elements/lean_num_elements}"
+        )
 
     padded_num_elems = 0
     for p in padded_tensor_list:
@@ -290,8 +288,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             sub_partition_paddings = get_group_alignment_padding(
                 tensor_list=self.fp16_groups[i],
                 sub_partition_size=sub_partition_size,
-                sub_partition_count=num_comm_intervals * self.partition_count
-            )
+                sub_partition_count=num_comm_intervals * self.partition_count)
             self.group_paddings.append(sub_partition_paddings)
 
             # modify optimizer of have flat master weight
@@ -337,13 +334,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         self._initialize_optimizer_states()
 
-
     def _initialize_optimizer_states(self):
         for group_idx, group in enumerate(self.local_sub_partitions_of_fp32_groups):
             for idx, sub_partition_param in enumerate(group):
-                sub_partition_grad = torch.zeros(
-                    int(self.sub_partition_sizes[group_idx]),
-                    dtype=sub_partition_param.dtype).cuda()
+                sub_partition_grad = torch.zeros(int(
+                    self.sub_partition_sizes[group_idx]),
+                                                 dtype=sub_partition_param.dtype).cuda()
                 sub_partition_param.grad = sub_partition_grad
 
         self.optimizer.step()
@@ -825,7 +821,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         local_rank = dist.get_rank(group=self.dp_process_group)
         for i, group in enumerate(groups_with_padding):
             low_index = local_rank * len(group)
-            high_index = (local_rank +  1) * len(group)
+            high_index = (local_rank + 1) * len(group)
             group_paddings = self.group_paddings[i][low_index:high_index]
             lean_sub_partitions = []
             for j, sub_partition in enumerate(group):
@@ -834,7 +830,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             groups_without_padding.append(lean_sub_partitions)
 
         return groups_without_padding
-
 
     # Return optimizer state after removing paddings that are added for alignment.
     def _get_state_without_padding(self, state_with_padding, padding):
@@ -853,12 +848,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         for group_idx, group in enumerate(self.optimizer.param_groups):
             group_lean_state = []
             low_index = local_rank * self.num_comm_intervals_per_group[group_idx]
-            high_index = (local_rank +  1) * self.num_comm_intervals_per_group[group_idx]
+            high_index = (local_rank + 1) * self.num_comm_intervals_per_group[group_idx]
             param_paddings = self.group_paddings[group_idx][low_index:high_index]
             for param_idx, param in enumerate(group['params']):
-                lean_state = self._get_state_without_padding(
-                    self.optimizer.state[param],
-                    param_paddings[param_idx])
+                lean_state = self._get_state_without_padding(self.optimizer.state[param],
+                                                             param_paddings[param_idx])
                 group_lean_state.append(lean_state)
 
             optimizer_groups_state.append(group_lean_state)
@@ -889,13 +883,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.local_sub_partitions_of_fp32_groups)
-        state_dict[
-            'local_sub_partitions_of_fp32_groups'] = fp32_groups_without_padding
+        state_dict['local_sub_partitions_of_fp32_groups'] = fp32_groups_without_padding
 
         return state_dict
-
-
-
 
     def _retrieve_group_sub_partition_weights(self, all_partition_fp32_weights):
         partition_id = dist.get_rank(group=self.dp_process_group)
@@ -921,7 +911,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return [sub_partition for sub_partition in dp_sub_partitions[partition_id]]
 
-
     # Restore base optimizer fp32 weights from checkpoint by:
     # 1) Merging fp32 weights from checkpoints of all partitions
     # 2) Extracting fp32 weights for current partition from merged weights
@@ -930,11 +919,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         sub_partition_of_fp32_groups = []
         for group_idx in range(len(self.local_sub_partitions_of_fp32_groups)):
             all_partition_fp32_weights = [
-                sd['local_sub_partitions_of_fp32_groups'][group_idx] for sd in all_state_dict
+                sd['local_sub_partitions_of_fp32_groups'][group_idx]
+                for sd in all_state_dict
             ]
             sub_partition_weights = self._retrieve_group_sub_partition_weights(
-                all_partition_fp32_weights
-            )
+                all_partition_fp32_weights)
             sub_partition_of_fp32_groups.append(sub_partition_weights)
 
         for current_group, saved_group in zip(self.local_sub_partitions_of_fp32_groups, sub_partition_of_fp32_groups):
@@ -985,10 +974,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         group_optimizer_states = {}
         for key, value in merged_optimizer_states.items():
-            group_optimizer_states[key] = self._partition_base_optimizer_state(key, value)
+            group_optimizer_states[key] = self._partition_base_optimizer_state(
+                key,
+                value)
 
         return group_optimizer_states
-
 
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
@@ -1009,8 +999,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 for key, saved in base_optimizer_group_states[group_idx].items():
                     current = self.optimizer.state[param][key]
                     current.data.copy_(saved[param_idx].data)
-
-
 
     def load_state_dict(self,
                         state_dict_list,

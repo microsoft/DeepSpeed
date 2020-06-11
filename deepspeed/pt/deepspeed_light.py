@@ -1151,6 +1151,7 @@ class DeepSpeedLight(Module):
             f'loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}'
         )
 
+
 #        if isinstance(self.optimizer, FP16_DeepSpeedZeroOptimizer):
 #            zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
 #            self.optimizer.load_state_dict(
@@ -1173,6 +1174,7 @@ class DeepSpeedLight(Module):
 #                                           load_optimizer_states=load_optimizer_states)
 #            logging.info('loading zero checkpoint {}'.format(zero_checkpoint_name))
 #
+
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size):
         zero_ckpt_names = []
         for dp_rank in range(dp_world_size):
