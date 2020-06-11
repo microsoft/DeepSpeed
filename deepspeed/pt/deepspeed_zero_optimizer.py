@@ -60,7 +60,7 @@ def lcm(x, y):
     return x * y // gcd(x, y)
 
 
-##create a flat tensor aligned at the alignment boundary
+# create a flat tensor aligned at the alignment boundary
 def flatten_dense_tensors_aligned(tensor_list, alignment):
     num_elements = 0
     for tensor in tensor_list:

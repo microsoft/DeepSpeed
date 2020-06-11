@@ -367,8 +367,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         num_comm_intervals = int(num_sub_partitions // world_size)
         assert num_sub_partitions % world_size == 0, "{} % {} != 0".format(num_sub_partitions, world_size)
 
-        # Compute padding overhead
-
         if not dist.is_initialized() or dist.get_rank(group=dp_process_group) == 0:
             print("**** partition info:")
             print("\t total_num_elements=", total_num_elements)

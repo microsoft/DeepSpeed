@@ -1151,30 +1151,6 @@ class DeepSpeedLight(Module):
             f'loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}'
         )
 
-
-#        if isinstance(self.optimizer, FP16_DeepSpeedZeroOptimizer):
-#            zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
-#            self.optimizer.load_state_dict(
-#                state_dict_list=zero_sd_list,
-#                load_optimizer_states=load_optimizer_states,
-#                load_from_fp32_weights=self.zero_load_from_fp32_weights())
-#
-#            print(
-#                f'loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}'
-#            )
-#        else:
-#            zero_checkpoint_name = self._get_zero_ckpt_name(load_dir, tag)
-#            if not os.path.exists(zero_checkpoint_name):
-#                logging.warn(
-#                    'Client provided checkpoint load path: {} does not exist ... skip checkpoint load'
-#                    .format(zero_checkpoint_name))
-#
-#            zero_sd = torch.load(zero_checkpoint_name, map_location='cpu')
-#            self.optimizer.load_state_dict(zero_sd['optimizer_state_dict'],
-#                                           load_optimizer_states=load_optimizer_states)
-#            logging.info('loading zero checkpoint {}'.format(zero_checkpoint_name))
-#
-
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size):
         zero_ckpt_names = []
         for dp_rank in range(dp_world_size):
