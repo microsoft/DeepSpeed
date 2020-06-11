@@ -18,6 +18,8 @@ from deepspeed.pt.deepspeed_zero_config import ZERO_OPTIMIZATION_GRADIENTS
 #with gradient partitioning and without
 pg_correctness_test = False
 
+from deepspeed.pt.log_utils import logger
+
 try:
     from apex_C import flatten
     from apex_C import unflatten
@@ -25,8 +27,8 @@ except ImportError:
     try:
         _ = warned_flatten
     except NameError:
-        print(
-            "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+        logger.warning(
+            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
         )
         warned_flatten = True
     from torch._utils import _flatten_dense_tensors as flatten
@@ -128,8 +130,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0):
 
         if dist.get_rank() == 0:
-            print(f"Reduce bucket size {reduce_bucket_size}")
-            print(f"Allgather bucket size {allgather_bucket_size}")
+            logger.info(f"Reduce bucket size {reduce_bucket_size}")
+            logger.info(f"Allgather bucket size {allgather_bucket_size}")
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -237,7 +239,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if dist.get_rank(group=self.dp_process_group) == 0:
                 see_memory_usage(
                     f"After Flattening and after emptying param group {i} cache")
-                print("")
 
             # set model fp16 weight to slices of flattened buffer
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
@@ -365,11 +366,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         see_memory_usage("After initializing optimizer states")
 
         if dist.get_rank() == 0:
-            print(f"optimizer state initialized")
+            logger.info(f"optimizer state initialized")
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer")
-            print("")
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -382,7 +382,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i, group in enumerate(self.fp16_groups):
             single_grad_partition = torch.zeros(
                 int(self.partition_size[i]),
-                dtype=self.single_partition_of_fp32_groups[i].dtype).cuda()
+                dtype=self.single_partition_of_fp32_groups[i].dtype,
+                device=torch.cuda.current_device())
             self.single_partition_of_fp32_groups[i].grad = single_grad_partition
 
         self.optimizer.step()
@@ -436,7 +437,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.report_ipg_memory_usage(f"In ipg_epilogue after reduce_ipg_grads", 0)
 
         #if dist.get_rank() == 0:
-        #    print("Params already reduced ", self.params_already_reduced)
+        #    logger.info("Params already reduced %s", self.params_already_reduced)
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
 
@@ -591,7 +592,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def print_rank_0(self, message):
         if dist.get_rank() == 0:
-            print(message)
+            logger.info(message)
 
     def gradient_reduction_w_predivide(self, tensor):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
@@ -694,7 +695,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             see_memory_usage(f"before copying {total_size} gradients into partition")
             self.grads_in_partition = torch.empty(int(total_size),
-                                                  dtype=torch.half).cuda()
+                                                  dtype=torch.half,
+                                                  device=torch.cuda.current_device())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
         #The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
@@ -758,7 +760,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         flatten_tensor = _flatten_dense_tensors(tensors)
 
         def print_func():
-            print(flatten_tensor.contiguous().view(-1).narrow(0, start, n))
+            logger.info(flatten_tensor.contiguous().view(-1).narrow(0, start, n))
 
         self.sequential_execution(print_func, message)
 
@@ -797,7 +799,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if group is None:
             group = self.dp_process_group
         if dist.get_rank(group=group) == 0:
-            print(message)
+            logger.info(message)
         for id in range(dist.get_world_size(group=group)):
             if id == dist.get_rank(group=group):
                 function()
@@ -1002,7 +1004,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         else:
             total_norm = 0.0
             #if dist.get_rank() == 0:
-            #    print(f"Total Norm begining {total_norm}")
+            #    logger.info(f"Total Norm begining {total_norm}")
             for g, p in zip(gradients, params):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
@@ -1098,7 +1100,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.zero_grad()
             see_memory_usage('After overflow after clearing gradients')
 
-            print(
+            logger.info(
                 "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
                                         prev_scale,
@@ -1301,12 +1303,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         if self.contiguous_gradients:
             self.ipg_buffer = []
-            buf_0 = torch.empty(self.reduce_bucket_size, dtype=torch.half).cuda()
+            buf_0 = torch.empty(self.reduce_bucket_size,
+                                dtype=torch.half,
+                                device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
-                buf_1 = torch.empty(self.reduce_bucket_size, dtype=torch.half).cuda()
+                buf_1 = torch.empty(self.reduce_bucket_size,
+                                    dtype=torch.half,
+                                    device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
 
@@ -1535,6 +1541,6 @@ def _handle_overflow(cpu_sum, x, i):
             if not math.isfinite(float(v)):
                 t_i = v_i
                 break
-        print(
+        logger.info(
             f"rank {rank} detected overflow {cpu_sum} in tensor {i}:{t_i} shape {x.shape}"
         )
