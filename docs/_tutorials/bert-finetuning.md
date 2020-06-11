@@ -58,112 +58,6 @@ The `deepspeed_bsz24_config.json` file gives the user to specify DeepSpeed optio
 
 Table 1. Fine-tuning configuration
 
-### Enabling DeepSpeed's Transformer Kernel
-
-DeepSpeed's optimized transformer kernel can be enabled during fine-tuning to increase the training throughput. In addition to supporting the models pretrained with DeepSpeed, the kernel can be used with TensorFlow and HuggingFace checkpoints.
-
-- **How to Enable Transformer Kernel**
-
-An argument `--deepspeed_transformer_kernel` is already created in `utils.py`, we enable the transformer kernel by adding it in the shell script.
-
-```python
- parser.add_argument('--deepspeed_transformer_kernel',
-                     default=False,
-                     action='store_true',
-                     help='Use DeepSpeed transformer kernel to accelerate.')
-```
-
-In the `BertEncoder` class of the modeling source file, DeepSpeed transformer kernel is created as below when it is enabled by using `--deepspeed_transformer_kernel` argument.
-
-```python
-         if args.deepspeed_transformer_kernel:
-             from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig, DeepSpeedConfig
-
-             if hasattr(args, 'deepspeed_config') and args.deepspeed_config:
-                 ds_config = DeepSpeedConfig(args.deepspeed_config)
-             else:
-                 raise RuntimeError('deepspeed_config is not found in args.')
-
-             cuda_config = DeepSpeedTransformerConfig(
-                 batch_size = ds_config.train_micro_batch_size_per_gpu,
-                 max_seq_length = args.max_seq_length,
-                 hidden_size = config.hidden_size,
-                 heads = config.num_attention_heads,
-                 attn_dropout_ratio = config.attention_probs_dropout_prob,
-                 hidden_dropout_ratio = config.hidden_dropout_prob,
-                 num_hidden_layers = config.num_hidden_layers,
-                 initializer_range = config.initializer_range,
-                 seed = args.seed,
-                 fp16 = ds_config.fp16_enabled)
-
-             self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
-         else:
-             layer = BertLayer(config)
-             self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
-
-```
-
-All configuration settings come from the DeepSpeed configuration file and
-command arguments and thus we must pass the `args` variable to here in this model.
-
-Note:
-
-1. `batch_size` is the maximum bath size of input data, all fine-tuning training data or prediction data shouldn't exceed this threshold, otherwise it will throw an exception. In the DeepSpeed configuration file micro batch size is defined as `train_micro_batch_size_per_gpu`, e.g. if it is set as 8 and prediction uses batch size of 12, we can use 12 as transformer kernel batch size, or using "--predict_batch_size" argument to set prediction batch size to 8 or a smaller number.
-2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
-
-For more details about the transformer kernel, please see our [usage tutorial](/tutorials/transformer_kernel/) and [technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on the fastest BERT training.
-
-
-
-- **How to Use HuggingFace and TensorFlow Pretrained Models**
-
-BingBertSquad supports both HuggingFace and TensorFlow pretrained models. Here, we show the two model examples in `/test/huggingface/` and `/test/tensorflow/`.
-
-```shell
-[/test/huggingface/]
-bert-large-uncased-whole-word-masking-config.json
-bert-large-uncased-whole-word-masking-pytorch_model.bin
-```
-
-```shell
-[/test/tensorflow/]
-bert_config.json
-bert_model.ckpt.data-00000-of-00001
-bert_model.ckpt.index
-bert_model.ckpt.meta
-```
-
-There are three arguments used for loading these two types of checkpoints.
-
-1. `--model_file`, points to the pretrained model file.
-2. `--ckpt_type`, indicates the checkpoint type, `TF` for Tensorflow, `HF` for HuggingFace, default value is `DS` for DeepSpeed.
-3. `--origin_bert_config_file`, points to the BERT config file, usually saved in same folder of `model_file`.
-
-We can add the followings in fine-tuning command line in `nvidia_run_squad_deepspeed.py` to run the above HuggingFace and TensorFlow examples.
-
-```shell
-[HuggingFace]
-
---model_file /test/huggingface/bert-large-uncased-whole-word-masking-pytorch_model.bin \
---ckpt_type HF \
---origin_bert_config_file /test/huggingface/bert-large-uncased-whole-word-masking-config.json \
-```
-
-```shell
-[TensorFlow]
-
---model_file /test/tensorflow/bert_model.ckpt \
---ckpt_type TF \
---origin_bert_config_file /test/tensorflow/bert_config.json \
-```
-
-Note:
-
-1. `--deepspeed_transformer_kernel` flag is required for using HuggingFace or TensorFlow pretrained models.
-
-2. `--preln` flag can't be used with HuggingFace or TensorFlow pretrained models, since they are using post-layer-norm.
-
-3. BingBertSquad will check the pretrained models to have the same vocabulary size and won't be able to run if there is any mismatch. You should either use a matched pretrained model or change the BingBertSquad.
 
 ### Argument Parsing
 
@@ -224,6 +118,113 @@ The table summarizing the results are given below. In all cases, the batch size 
 | TensorFlow  | Bert-large-uncased-L-24_H-1024_A-16   | FP16      | 84.13 | 91.03 |
 | HuggingFace | Bert-large-uncased-whole-word-masking | FP16      | 87.27 | 93.33 |
 
+## Enabling DeepSpeed's Transformer Kernel for better Throughput
+
+DeepSpeed's optimized transformer kernel can be enabled during fine-tuning to increase the training throughput. In addition to supporting the models pretrained with DeepSpeed, the kernel can be used with TensorFlow and HuggingFace checkpoints.
+
+### Enabling Transformer Kernel
+
+An argument `--deepspeed_transformer_kernel` is already created in `utils.py`, we enable the transformer kernel by adding it in the shell script.
+
+```python
+ parser.add_argument('--deepspeed_transformer_kernel',
+                     default=False,
+                     action='store_true',
+                     help='Use DeepSpeed transformer kernel to accelerate.')
+```
+
+In the `BertEncoder` class of the modeling source file, DeepSpeed transformer kernel is created as below when it is enabled by using `--deepspeed_transformer_kernel` argument.
+
+```python
+         if args.deepspeed_transformer_kernel:
+             from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig, DeepSpeedConfig
+
+             if hasattr(args, 'deepspeed_config') and args.deepspeed_config:
+                 ds_config = DeepSpeedConfig(args.deepspeed_config)
+             else:
+                 raise RuntimeError('deepspeed_config is not found in args.')
+
+             cuda_config = DeepSpeedTransformerConfig(
+                 batch_size = ds_config.train_micro_batch_size_per_gpu,
+                 max_seq_length = args.max_seq_length,
+                 hidden_size = config.hidden_size,
+                 heads = config.num_attention_heads,
+                 attn_dropout_ratio = config.attention_probs_dropout_prob,
+                 hidden_dropout_ratio = config.hidden_dropout_prob,
+                 num_hidden_layers = config.num_hidden_layers,
+                 initializer_range = config.initializer_range,
+                 seed = args.seed,
+                 fp16 = ds_config.fp16_enabled)
+
+             self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
+         else:
+             layer = BertLayer(config)
+             self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+
+```
+
+All configuration settings come from the DeepSpeed configuration file and
+command arguments and thus we must pass the `args` variable to here in this model.
+
+Note:
+
+1. `batch_size` is the maximum bath size of input data, all fine-tuning training data or prediction data shouldn't exceed this threshold, otherwise it will throw an exception. In the DeepSpeed configuration file micro batch size is defined as `train_micro_batch_size_per_gpu`, e.g. if it is set as 8 and prediction uses batch size of 12, we can use 12 as transformer kernel batch size, or using "--predict_batch_size" argument to set prediction batch size to 8 or a smaller number.
+2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
+
+For more details about the transformer kernel, please see our [usage tutorial](/tutorials/transformer_kernel/) and [technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on the fastest BERT training.
+
+
+
+### Loading HuggingFace and TensorFlow Pretrained Models
+
+BingBertSquad supports both HuggingFace and TensorFlow pretrained models. Here, we show the two model examples in `/test/huggingface/` and `/test/tensorflow/`.
+
+```shell
+[/test/huggingface/]
+bert-large-uncased-whole-word-masking-config.json
+bert-large-uncased-whole-word-masking-pytorch_model.bin
+```
+
+```shell
+[/test/tensorflow/]
+bert_config.json
+bert_model.ckpt.data-00000-of-00001
+bert_model.ckpt.index
+bert_model.ckpt.meta
+```
+
+There are three arguments used for loading these two types of checkpoints.
+
+1. `--model_file`, points to the pretrained model file.
+2. `--ckpt_type`, indicates the checkpoint type, `TF` for Tensorflow, `HF` for HuggingFace, default value is `DS` for DeepSpeed.
+3. `--origin_bert_config_file`, points to the BERT config file, usually saved in same folder of `model_file`.
+
+We can add the followings in fine-tuning command line in `nvidia_run_squad_deepspeed.py` to run the above HuggingFace and TensorFlow examples.
+
+```shell
+[HuggingFace]
+
+--model_file /test/huggingface/bert-large-uncased-whole-word-masking-pytorch_model.bin \
+--ckpt_type HF \
+--origin_bert_config_file /test/huggingface/bert-large-uncased-whole-word-masking-config.json \
+```
+
+```shell
+[TensorFlow]
+
+--model_file /test/tensorflow/bert_model.ckpt \
+--ckpt_type TF \
+--origin_bert_config_file /test/tensorflow/bert_config.json \
+```
+
+Note:
+
+1. `--deepspeed_transformer_kernel` flag is required for using HuggingFace or TensorFlow pretrained models.
+
+2. `--preln` flag can't be used with HuggingFace or TensorFlow pretrained models, since they are using post-layer-norm.
+
+3. BingBertSquad will check the pretrained models to have the same vocabulary size and won't be able to run if there is any mismatch. You should either use a matched pretrained model or change the BingBertSquad.
+
 ### Tuning Performance
 In order to perform fine-tuning, we set the total batch size to 24 as shown in Table 1. However, we can tune the micro-batch size per GPU to get high-performance training. In this regard, we have tried different micro-batch sizes on NVIDIA V100 using either 16GB or 32GB of memory. As Tables 2 and 3 show, we can improve performance by increasing the micro-batch. Compared with PyTorch, we can achieve up to 1.5x speedup for the 16-GB V100 while supporting 2x larger batch size per GPU. On the other hand, we can support as large as 32 batch size (2.6x higher than PyTorch) using 32GB of memory, while providing 1.3x speedup in the end-to-end fine-tune training. Note, that we use the best samples-per-second to compute speedup for the cases that PyTorch runs out-of-memory (OOM).
 
@@ -256,6 +257,12 @@ As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even 
 
 Table 4. The setting of memory-optimization flags for a range of micro-batch size on 16-GB and 32-GB V100.
 
+### FineTuning model pre-trained with DeepSpeed Transformer Kernels
+
+Fine-tuning the model pre-trained using DeepSpeed Transformer and the recipe in [DeepSpeed Fast-Bert Training](/fast_bert/) should yield F1 score of 90.5 and is expected to increase if you let the pre-training longer than suggested in the tutorial. 
+
+To get this results, we do require some tuning of the dropout settings as described below:
+
 ### Dropout Setting
 For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/tutorials/transformer_kernel/) for more detail of selecting these two modes).
 
@@ -267,6 +274,4 @@ For models pre-trained with deterministic transformer, we use the same dropout r
 | Deterministic | 0.1           |
 | Stochastic       | 0.12 - 0.14   |
 
-### Results
 
-Fine-tuning the model pre-trained using DeepSpeed Transformer and the recipe in [DeepSpeed Fast-Bert Training](/fast_bert/) should yield F1 score of 90.5 and is expected to increase if you let the pre-training longer than suggested in the tutorial.
