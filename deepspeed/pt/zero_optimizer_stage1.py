@@ -4,7 +4,7 @@ import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from collections import defaultdict
 
-from deepspeed.pt.zero_utils import _initialize_parameter_parallel_groups, pprint
+from deepspeed.pt.zero_utils import _initialize_parameter_parallel_groups
 from deepspeed.pt.log_utils import log_dist, logger
 from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import get_grad_norm, CheckOverflow
@@ -26,12 +26,12 @@ def get_group_alignment_padding(tensor_list, sub_partition_size, sub_partition_c
         padding = get_alignment_padding(flattened_size, i, sub_partition_size)
         group_paddings.append(padding)
 
-    pprint("****Padding information*****")
-    pprint(f"tensor_size = {flattened_size}")
-    pprint(f"sub_partition_size = {sub_partition_size}")
+    logger.info("****Padding information*****")
+    logger.info(f"tensor_size = {flattened_size}")
+    logger.info(f"sub_partition_size = {sub_partition_size}")
     pprint(f"sub_partition_count = {sub_partition_count}")
     for i, padding in enumerate(group_paddings):
-        pprint(f"padding[{i}] = {padding}")
+        logger.info(f"padding[{i}] = {padding}")
 
     return group_paddings
 
