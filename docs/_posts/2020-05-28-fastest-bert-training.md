@@ -97,7 +97,7 @@ cluster of 1024 A100 GPUs.
 In addition to the performance benefits we show for the pre-training,
 we have evaluated the performance of our customized kernel for fine-tuning the
 downstream tasks. Tables 2 and 3 show the samples-per-second achieved when running
-Bing-BERT SQuAD on NVIDIA V100 using 16 and 32 GB of memory, using Pytorch and DeepSpeed transformer kernels.
+Bing-BERT SQuAD on NVIDIA V100 using 16 and 32 GB of memory, using PyTorch and DeepSpeed transformer kernels.
 For the 16-GB V100, we can achieve up to 1.5x speedup while supporting 2x larger batch size per GPU.
 On the other hand, we can support as large as 32 batch size (2.6x more than Pytorch) using 32GB of memory, while providing 1.3x speedup for the end-to-end fine-tune training. Note, that we use the best
 samples-per-second to compute speedup for the cases that PyTorch runs out-of-memory (OOM).
@@ -112,11 +112,11 @@ Table 2. Samples/second for running SQuAD fine-tuning on NVIDIA V100 (16-GB) usi
 
 | Micro batch size | PyTorch | DeepSpeed | Speedup (x) |
 | ---------------- | ------- | --------- | ----------- |
-| 4                | 37.8    | 50.8      | 1.34        |
-| 6                | 43.8    | 55.97     | 1.3         |
-| 12               | 49.32   | 61.4      | 1.2         |
-| 24               | OOM     | 60.7      | 1.2         |
-| 32               | OOM     | 63        | 1.3         |
+| 4                | 37.78    | 50.82      | 1.3        |
+| 6                | 43.81    | 55.97      | 1.3         |
+| 12               | 49.32    | 61.41      | 1.2         |
+| 24               | OOM      | 60.70      | 1.2         |
+| 32               | OOM      | 63.01      | 1.3         |
 
 Table 3: Samples/second for running SQuAD fine-tuning on NVIDIA V100 (32-GB) using PyTorch and DeepSpeed transformer kernels.
 
