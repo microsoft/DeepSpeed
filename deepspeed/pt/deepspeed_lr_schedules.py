@@ -14,214 +14,62 @@ from typing import Union, List
 import math
 from deepspeed.pt.deepspeed_constants import *
 from deepspeed.pt.log_utils import logger
-
-LR_SCHEDULE = 'lr_schedule'
-LR_RANGE_TEST = 'LRRangeTest'
-ONE_CYCLE = 'OneCycle'
-WARMUP_LR = 'WarmupLR'
-VALID_LR_SCHEDULES = [LR_RANGE_TEST, ONE_CYCLE, WARMUP_LR]
-
-LR_RANGE_TEST_MIN_LR = 'lr_range_test_min_lr'
-LR_RANGE_TEST_STEP_RATE = 'lr_range_test_step_rate'
-LR_RANGE_TEST_STEP_SIZE = 'lr_range_test_step_size'
-LR_RANGE_TEST_STAIRCASE = 'lr_range_test_staircase'
-
-EDGE_VALUE = 'edge_value'
-MID_VALUE = 'mid_value'
-
-CYCLE_FIRST_STEP_SIZE = 'cycle_first_step_size'
-CYCLE_FIRST_STAIR_COUNT = 'cycle_first_stair_count'
-CYCLE_SECOND_STEP_SIZE = 'cycle_second_step_size'
-CYCLE_SECOND_STAIR_COUNT = 'cycle_second_stair_count'
-DECAY_STEP_SIZE = 'decay_step_size'
-
-CYCLE_MIN_LR = 'cycle_min_lr'
-CYCLE_MAX_LR = 'cycle_max_lr'
-DECAY_LR_RATE = 'decay_lr_rate'
-
-CYCLE_MIN_MOM = 'cycle_min_mom'
-CYCLE_MAX_MOM = 'cycle_max_mom'
-DECAY_MOM_RATE = 'decay_mom_rate'
-
-WARMUP_MIN_LR = 'warmup_min_lr'
-WARMUP_MAX_LR = 'warmup_max_lr'
-WARMUP_NUM_STEPS = 'warmup_num_steps'
+from deepspeed.pt.deepspeed_constants import LRScheduleConstants
+from deepspeed.pt.args import create_lr_tuning_parser
+from deepspeed.pt.args import parse_lr_tuning_args
 
 
 def add_tuning_arguments(parser):
-    group = parser.add_argument_group('Convergence Tuning',
-                                      'Convergence tuning configurations')
-
-    # LR scheduler
-    group.add_argument('--lr_schedule',
-                       type=str,
-                       default=None,
-                       help='LR schedule for training.')
-
-    # Learning rate range test
-    group.add_argument("--lr_range_test_min_lr",
-                       type=float,
-                       default=0.001,
-                       help='Starting lr value.')
-    group.add_argument("--lr_range_test_step_rate",
-                       type=float,
-                       default=1.0,
-                       help='scaling rate for LR range test.')
-    group.add_argument("--lr_range_test_step_size",
-                       type=int,
-                       default=1000,
-                       help='training steps per LR change.')
-    group.add_argument("--lr_range_test_staircase",
-                       type=bool,
-                       default=False,
-                       help='use staircase scaling for LR range test.')
-
-    # OneCycle schedule
-    group.add_argument("--cycle_first_step_size",
-                       type=int,
-                       default=1000,
-                       help='size of first step of 1Cycle schedule (training steps).')
-    group.add_argument("--cycle_first_stair_count",
-                       type=int,
-                       default=-1,
-                       help='first stair count for 1Cycle schedule.')
-    group.add_argument(
-        "--cycle_second_step_size",
-        type=int,
-        default=-1,
-        help='size of second step of 1Cycle schedule (default first_step_size).')
-    group.add_argument("--cycle_second_stair_count",
-                       type=int,
-                       default=-1,
-                       help='second stair count for 1Cycle schedule.')
-    group.add_argument(
-        "--decay_step_size",
-        type=int,
-        default=1000,
-        help='size of intervals for applying post cycle decay (training steps).')
-
-    # 1Cycle LR
-    group.add_argument("--cycle_min_lr",
-                       type=float,
-                       default=0.01,
-                       help='1Cycle LR lower bound.')
-    group.add_argument("--cycle_max_lr",
-                       type=float,
-                       default=0.1,
-                       help='1Cycle LR upper bound.')
-    group.add_argument("--decay_lr_rate",
-                       type=float,
-                       default=0.0,
-                       help='post cycle LR decay rate.')
-
-    # 1Cycle Momentum
-    group.add_argument('--cycle_momentum',
-                       default=False,
-                       action='store_true',
-                       help='Enable 1Cycle momentum schedule.')
-    group.add_argument("--cycle_min_mom",
-                       type=float,
-                       default=0.8,
-                       help='1Cycle momentum lower bound.')
-    group.add_argument("--cycle_max_mom",
-                       type=float,
-                       default=0.9,
-                       help='1Cycle momentum upper bound.')
-    group.add_argument("--decay_mom_rate",
-                       type=float,
-                       default=0.0,
-                       help='post cycle momentum decay rate.')
-
-    # Warmup LR
-    group.add_argument('--warmup_min_lr',
-                       type=float,
-                       default=0,
-                       help='WarmupLR minimum/initial LR value')
-    group.add_argument('--warmup_max_lr',
-                       type=float,
-                       default=0.001,
-                       help='WarmupLR maximum LR value.')
-    group.add_argument('--warmup_num_steps',
-                       type=int,
-                       default=1000,
-                       help='WarmupLR step count for LR warmup.')
-
-    return parser
+    return create_lr_tuning_parser(parser)
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser = add_tuning_arguments(parser)
+    return parse_lr_tuning_args()
 
-    lr_sched_args, unknown_args = parser.parse_known_args()
-    return lr_sched_args, unknown_args
+
+def _single_override(args, key, params):
+    """Override a single param if appears in args"""
+    if getattr(args, key, None) is not None:
+        params[key] = getattr(args, key)
 
 
 def override_lr_range_test_params(args, params):
-    if hasattr(args, LR_RANGE_TEST_MIN_LR) and args.lr_range_test_min_lr is not None:
-        params[LR_RANGE_TEST_MIN_LR] = args.lr_range_test_min_lr
-
-    if hasattr(args,
-               LR_RANGE_TEST_STEP_RATE) and args.lr_range_test_step_rate is not None:
-        params[LR_RANGE_TEST_STEP_RATE] = args.lr_range_test_step_rate
-
-    if hasattr(args,
-               LR_RANGE_TEST_STEP_SIZE) and args.lr_range_test_step_size is not None:
-        params[LR_RANGE_TEST_STEP_SIZE] = args.lr_range_test_step_size
-
-    if hasattr(args,
-               LR_RANGE_TEST_STAIRCASE) and args.lr_range_test_staircase is not None:
-        params[LR_RANGE_TEST_STAIRCASE] = args.lr_range_test_staircase
+    keys = [
+        LRScheduleConstants.LR_RANGE_TEST_MIN_LR.name,
+        LRScheduleConstants.LR_RANGE_TEST_STEP_RATE.name,
+        LRScheduleConstants.LR_RANGE_TEST_STEP_SIZE.name,
+        LRScheduleConstants.LR_RANGE_TEST_STAIRCASE.name,
+    ]
+    for key in keys:
+        _single_override(args, key, params)
 
 
 def override_1cycle_params(args, params):
-    if hasattr(args, CYCLE_FIRST_STEP_SIZE) and args.cycle_first_step_size is not None:
-        params[CYCLE_FIRST_STEP_SIZE] = args.cycle_first_step_size
-
-    if hasattr(args,
-               CYCLE_FIRST_STAIR_COUNT) and args.cycle_first_stair_count is not None:
-        params[CYCLE_FIRST_STAIR_COUNT] = args.cycle_first_stair_count
-
-    if hasattr(args, CYCLE_SECOND_STEP_SIZE) and args.cycle_second_step_size is not None:
-        params[CYCLE_SECOND_STEP_SIZE] = args.cycle_second_step_size
-
-    if hasattr(args,
-               CYCLE_SECOND_STAIR_COUNT) and args.cycle_second_stair_count is not None:
-        params[CYCLE_SECOND_STAIR_COUNT] = args.cycle_second_stair_count
-
-    if hasattr(args, DECAY_STEP_SIZE) and args.decay_step_size is not None:
-        params[DECAY_STEP_SIZE] = args.decay_step_size
-
-    # 1Cycle LR params
-    if hasattr(args, CYCLE_MIN_LR) and args.cycle_min_lr is not None:
-        params[CYCLE_MIN_LR] = args.cycle_min_lr
-
-    if hasattr(args, CYCLE_MAX_LR) and args.cycle_max_lr is not None:
-        params[CYCLE_MAX_LR] = args.cycle_max_lr
-
-    if hasattr(args, DECAY_LR_RATE) and args.decay_lr_rate is not None:
-        params[DECAY_LR_RATE] = args.decay_lr_rate
-
-    # 1Cycle MOM params
-    if hasattr(args, CYCLE_MIN_MOM) and args.cycle_min_mom is not None:
-        params[CYCLE_MIN_MOM] = args.cycle_min_mom
-
-    if hasattr(args, CYCLE_MAX_MOM) and args.cycle_max_mom is not None:
-        params[CYCLE_MAX_MOM] = args.cycle_max_mom
-
-    if hasattr(args, DECAY_MOM_RATE) and args.decay_mom_rate is not None:
-        params[DECAY_MOM_RATE] = args.decay_mom_rate
+    keys = [
+        LRScheduleConstants.CYCLE_FIRST_STEP_SIZE.name,
+        LRScheduleConstants.CYCLE_FIRST_STAIR_COUNT.name,
+        LRScheduleConstants.CYCLE_SECOND_STEP_SIZE.name,
+        LRScheduleConstants.CYCLE_SECOND_STAIR_COUNT.name,
+        LRScheduleConstants.DECAY_STEP_SIZE.name,
+        LRScheduleConstants.CYCLE_MIN_LR.name,
+        LRScheduleConstants.CYCLE_MAX_LR.name,
+        LRScheduleConstants.CYCLE_MIN_MOM.name,
+        LRScheduleConstants.CYCLE_MAX_MOM.name,
+        LRScheduleConstants.DECAY_MOM_RATE.name,
+        LRScheduleConstants.DECAY_LR_RATE.name,
+    ]
+    for key in keys:
+        _single_override(args, key, params)
 
 
 def override_warmupLR_params(args, params):
-    if hasattr(args, WARMUP_MIN_LR) and args.warmup_min_lr is not None:
-        params[WARMUP_MIN_LR] = args.warmup_min_lr
-
-    if hasattr(args, WARMUP_MAX_LR) and args.warmup_max_lr is not None:
-        params[WARMUP_MAX_LR] = args.warmup_max_lr
-
-    if hasattr(args, WARMUP_NUM_STEPS) and args.warmup_num_steps is not None:
-        params[WARMUP_NUM_STEPS] = args.warmup_num_steps
+    keys = [
+        LRScheduleConstants.WARMUP_MAX_LR.name,
+        LRScheduleConstants.WARMUP_MIN_LR.name,
+        LRScheduleConstants.WARMUP_NUM_STEPS.name,
+    ]
+    for key in keys:
+        _single_override(args, key, params)
 
 
 def override_params(args, params):
@@ -236,19 +84,19 @@ def override_params(args, params):
 
 
 def get_config_from_args(args):
-    if not hasattr(args, LR_SCHEDULE) or args.lr_schedule is None:
-        return None, '--{} not specified on command line'.format(LR_SCHEDULE)
+    if getattr(args, LRScheduleConstants.LR_SCHEDULE.name, None) is None:
+        return None, '--{} not specified on command line'.format(LRScheduleConstants.LR_SCHEDULE.name)
 
-    if not args.lr_schedule in VALID_LR_SCHEDULES:
+    if not args.lr_schedule in LRScheduleConstants.VALID_LR_SCHEDULES:
         return None, '{} is not supported LR schedule'.format(args.lr_schedule)
 
     config = {}
     config['type'] = args.lr_schedule
     config['params'] = {}
 
-    if args.lr_schedule == LR_RANGE_TEST:
+    if args.lr_schedule == LRScheduleConstants.LR_RANGE_TEST.name:
         override_lr_range_test_params(args, config['params'])
-    elif args.lr_schedule == ONE_CYCLE:
+    elif args.lr_schedule == LRScheduleConstants.ONE_CYCLE.name:
         override_1cycle_params(args, config['params'])
     else:
         override_warmupLR_params(args, config['params'])
@@ -266,15 +114,15 @@ def get_lr_from_config(config):
     lr_schedule = config['type']
     lr_params = config['params']
 
-    if not lr_schedule in VALID_LR_SCHEDULES:
+    if not lr_schedule in LRScheduleConstants.VALID_LR_SCHEDULES:
         return None, '{} is not a valid LR schedule'.format(lr_schedule)
 
-    if lr_schedule == LR_RANGE_TEST:
-        return lr_params[LR_RANGE_TEST_MIN_LR], ''
-    if lr_schedule == ONE_CYCLE:
-        return lr_params[CYCLE_MAX_LR], ''
+    if lr_schedule == LRScheduleConstants.LR_RANGE_TEST.name:
+        return lr_params[LRScheduleConstants.LR_RANGE_TEST_MIN_LR.name], ''
+    if lr_schedule == LRScheduleConstants.ONE_CYCLE.name:
+        return lr_params[LRScheduleConstants.CYCLE_MAX_LR.name], ''
     # Warmup LR
-    return lr_params[WARMUP_MAX_LR], ''
+    return lr_params[LRScheduleConstants.WARMUP_MAX_LR.name], ''
 
 
 """

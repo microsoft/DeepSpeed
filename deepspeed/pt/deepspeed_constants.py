@@ -266,3 +266,55 @@ TENSORBOARD_OUTPUT_PATH_DEFAULT = ""
 # Tensorboard job name
 TENSORBOARD_JOB_NAME = "job_name"
 TENSORBOARD_JOB_NAME_DEFAULT = "DeepSpeedJobName"
+
+# TODO Refact above constants
+
+
+class Constant:
+    """A single constant"""
+    def __init__(self, name, default=None):
+        self._name = name
+        self._default = default
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def default(self):
+        return self._default
+
+
+class LRScheduleConstants:
+    """Learning relate constants"""
+    LR_SCHEDULE = Constant("lr_schedule")
+    LR_RANGE_TEST = Constant("LRRangeTest")
+    ONE_CYCLE = Constant("OneCycle")
+    WARMUP_LR = Constant("WarmupLR")
+    VALID_LR_SCHEDULES = [LR_RANGE_TEST, ONE_CYCLE, WARMUP_LR]
+
+    LR_RANGE_TEST_MIN_LR = Constant("lr_range_test_min_lr")
+    LR_RANGE_TEST_STEP_RATE = Constant("lr_range_test_step_rate")
+    LR_RANGE_TEST_STEP_SIZE = Constant("lr_range_test_step_size")
+    LR_RANGE_TEST_STAIRCASE = Constant("lr_range_test_staircase")
+
+    EDGE_VALUE = Constant("edge_value")
+    MID_VALUE = Constant("mid_value")
+
+    CYCLE_FIRST_STEP_SIZE = Constant("cycle_first_step_size")
+    CYCLE_FIRST_STAIR_COUNT = Constant("cycle_first_stair_count")
+    CYCLE_SECOND_STEP_SIZE = Constant("cycle_second_step_size")
+    CYCLE_SECOND_STAIR_COUNT = Constant("cycle_second_stair_count")
+    DECAY_STEP_SIZE = Constant("decay_step_size")
+
+    CYCLE_MIN_LR = Constant("cycle_min_lr")
+    CYCLE_MAX_LR = Constant("cycle_max_lr")
+    DECAY_LR_RATE = Constant("decay_lr_rate")
+
+    CYCLE_MIN_MOM = Constant("cycle_min_mom")
+    CYCLE_MAX_MOM = Constant("cycle_max_mom")
+    DECAY_MOM_RATE = Constant("decay_mom_rate")
+
+    WARMUP_MIN_LR = Constant("warmup_min_lr")
+    WARMUP_MAX_LR = Constant("warmup_max_lr")
+    WARMUP_NUM_STEPS = Constant("warmup_num_steps")
