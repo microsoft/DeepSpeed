@@ -160,12 +160,10 @@ In the `BertEncoder` class of the modeling source file, DeepSpeed transformer ke
 
 ```python
 if args.deepspeed_transformer_kernel:
-    from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig, DeepSpeedConfig
+    from deepspeed import DeepSpeedTransformerLayer, \
+        DeepSpeedTransformerConfig, DeepSpeedConfig
 
-    if hasattr(args, 'deepspeed_config') and args.deepspeed_config:
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
-    else:
-        raise RuntimeError('deepspeed_config is not found in args.')
+    ds_config = DeepSpeedConfig(args.deepspeed_config)
 
     cuda_config = DeepSpeedTransformerConfig(
         batch_size=ds_config.train_micro_batch_size_per_gpu,
@@ -179,11 +177,16 @@ if args.deepspeed_transformer_kernel:
         seed=args.seed,
         fp16=ds_config.fp16_enabled
     )
-
-    self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
+    self.layer = nn.ModuleList([
+        copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config))
+        for i in range(config.num_hidden_layers)
+    ])
 else:
     layer = BertLayer(config)
-    self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+    self.layer = nn.ModuleList([
+        copy.deepcopy(layer)
+        for _ in range(config.num_hidden_layers)
+    ])
 ```
 
 All configuration settings come from the DeepSpeed configuration file and
