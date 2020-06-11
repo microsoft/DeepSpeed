@@ -12,6 +12,7 @@ from torch.autograd import Variable
 
 from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import see_memory_usage, is_model_parallel_parameter
+from deepspeed.pt.deepspeed_zero_config import ZERO_OPTIMIZATION_GRADIENTS
 
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
@@ -59,8 +60,8 @@ def lcm(x, y):
     return x * y // gcd(x, y)
 
 
-#create a flat tensor aligned at the alignment boundary
-def flatten_dense_tensors_aligned(tensor_list, alignment, pg):
+##create a flat tensor aligned at the alignment boundary
+def flatten_dense_tensors_aligned(tensor_list, alignment):
     num_elements = 0
     for tensor in tensor_list:
         num_elements = num_elements + tensor.numel()
@@ -198,7 +199,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
-            # Record padding for required to align group to world size
+            # Record padding required to align group to world size
             if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
                 padding = get_alignment_padding(self.fp16_groups[i],
                                                 self.partition_count)
@@ -218,8 +219,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.fp16_groups_flat.append(
                 flatten_dense_tensors_aligned(
                     self.fp16_groups[i],
-                    dist.get_world_size(group=self.dp_process_group),
-                    self.dp_process_group).cuda(torch.cuda.current_device()))
+                    dist.get_world_size(group=self.dp_process_group)).cuda(torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU")
 
             if dist.get_rank(group=self.dp_process_group) == 0:
@@ -235,8 +235,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #divide the flat weights into near equal paritition equal to the data parallel degree
             #each process will compute on a different part of the partition
-            data_parallel_partitions = self.get_data_parallel_partitions(
-                self.fp16_groups_flat[i])
+            data_parallel_partitions = self.get_data_parallel_partitions(self.fp16_groups_flat[i])
             self.parallel_partitioned_fp16_groups.append(data_parallel_partitions)
 
             # a partition of the fp32 master weights that will be updated by this process
@@ -1090,8 +1089,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
                 single_grad_partition = flatten_dense_tensors_aligned(
                     self.averaged_gradients[i],
-                    int(self.partition_size[i]),
-                    self.dp_process_group).to(
+                    int(self.partition_size[i])).to(
                         self.single_partition_of_fp32_groups[i].dtype)
             else:
                 single_grad_partition = _flatten_dense_tensors(
@@ -1359,12 +1357,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
         state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+
+        state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict['partition_count'] = self.partition_count
+
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
         state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
 
-        state_dict['partition_count'] = self.partition_count
 
         return state_dict
 
@@ -1381,8 +1382,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             ]
             flat_merged_partitions = flatten_dense_tensors_aligned(
                 merged_partitions,
-                dist.get_world_size(group=self.dp_process_group),
-                self.dp_process_group)
+                dist.get_world_size(group=self.dp_process_group))
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
             merged_single_partition_of_fp32_groups.append(dp_partitions[partition_id])
 
@@ -1401,8 +1401,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         alignment = dist.get_world_size(group=self.dp_process_group)
         flat_merged_partitions = flatten_dense_tensors_aligned(
             all_partition_states,
-            alignment,
-            self.dp_process_group)
+            alignment)
         dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
         return dp_partitions[partition_id]
 
