@@ -117,7 +117,7 @@ For more details about the transformer kernel, please see our [usage tutorial](/
 
 - **How to Use HuggingFace and TensorFlow Pretrained Models**
 
-BingBertSquad supports both HuggingFace and TensorFlow pretrained models, followings are two model examples in `/test/huggingface/` and `/test/tensorflow/`.
+BingBertSquad supports both HuggingFace and TensorFlow pretrained models. Here, we show the two model examples in `/test/huggingface/` and `/test/tensorflow/`.
 
 ```shell
 [/test/huggingface/]
@@ -133,13 +133,13 @@ bert_model.ckpt.index
 bert_model.ckpt.meta
 ```
 
-There are 3 arguments used for loading these two types checkpoint files.
+There are three arguments used for loading these two types of checkpoints.
 
 1. `--model_file`, points to the pretrained model file.
 2. `--ckpt_type`, indicates the checkpoint type, `TF` for Tensorflow, `HF` for HuggingFace, default value is `DS` for DeepSpeed.
 3. `--origin_bert_config_file`, points to the BERT config file, usually saved in same folder of `model_file`.
 
-We can add followings in fine-tuning command line to use above HuggingFace and TensorFlow examples.
+We can add the followings in fine-tuning command line in `nvidia_run_squad_deepspeed.py` to run the above HuggingFace and TensorFlow examples.
 
 ```shell
 [HuggingFace]
@@ -161,11 +161,9 @@ Note:
 
 1. `--deepspeed_transformer_kernel` flag is required for using HuggingFace or TensorFlow pretrained models.
 
-2. `--preln` flag can't be used with HuggingFace or TensorFlow pretrained models, since they are not using pre-layer-norm.
+2. `--preln` flag can't be used with HuggingFace or TensorFlow pretrained models, since they are using post-layer-norm.
 
-3. BingBertSquad will check the pretrained models have same vocab size, it can't work with this mismatch, either using a matched pretrained model or change BingBertSquad.
-
-
+3. BingBertSquad will check the pretrained models to have the same vocabulary size and won't be able to run if there is any mismatch. You should either use a matched pretrained model or change the BingBertSquad.
 
 ### Argument Parsing
 
@@ -219,7 +217,7 @@ Once training is complete, the EM and F1 scores may be obtained from the followi
 
 ### Fine-tuning Results
 
-The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 4 GPUs for 2 epochs on a  DGX-2 node. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; We set the seeds to 9041 and 19068 for HuggingFace and TensorFlow models.
+The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 4 GPUs for 2 epochs on a DGX-2 node. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; We set the seeds to 9041 and 19068 for HuggingFace and TensorFlow models.
 
 | Case        | Model                                 | Precision | EM    | F1    |
 | ----------- | ------------------------------------- | --------- | ----- | ----- |
