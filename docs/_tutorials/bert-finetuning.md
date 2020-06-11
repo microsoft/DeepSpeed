@@ -62,7 +62,9 @@ Table 1. Fine-tuning configuration
 
 DeepSpeed's optimized transformer kernel can be enabled during fine-tuning to increase the training throughput. In addition to supporting the models pretrained with DeepSpeed, the kernel can be used with TensorFlow and HuggingFace checkpoints.
 
-To enable the transformer kernel for higher performance, first add an argument `--deepspeed_transformer_kernel` in `utils.py`, we can set it as `False` by default, for easily turning on/off.
+- **How to Enable Transformer Kernel**
+
+An argument `--deepspeed_transformer_kernel` is already created in `utils.py`, we enable the transformer kernel by adding it in the shell script.
 
 ```python
  parser.add_argument('--deepspeed_transformer_kernel',
@@ -71,16 +73,7 @@ To enable the transformer kernel for higher performance, first add an argument `
                      help='Use DeepSpeed transformer kernel to accelerate.')
 ```
 
-We can also choose between different checkpoint models by setting the `--ckpt_type` parameter as follows. For the models pretrained with other frameworks, the BERT config file can be provided to DeepSpeed using `--origin_bert_config_file` argument.
-
-```python
- parser.add_argument('--ckpt_type',
-                     type=str,
-                     default="DS",
-                     help="Checkpoint's type, DS - DeepSpeed, TF - Tensorflow, HF - Huggingface.")
-```
-
-Then in the `BertEncoder` class of the modeling source file, instantiate transformer layers using the DeepSpeed transformer kernel as below.
+In the `BertEncoder` class of the modeling source file, DeepSpeed transformer kernel is created as below when it is enabled by using `--deepspeed_transformer_kernel` argument.
 
 ```python
          if args.deepspeed_transformer_kernel:
@@ -101,8 +94,7 @@ Then in the `BertEncoder` class of the modeling source file, instantiate transfo
                  num_hidden_layers = config.num_hidden_layers,
                  initializer_range = config.initializer_range,
                  seed = args.seed,
-                 fp16 = ds_config.fp16_enabled,
-                 pre_layer_norm=True)
+                 fp16 = ds_config.fp16_enabled)
 
              self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
          else:
@@ -120,6 +112,60 @@ Note:
 2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
 
 For more details about the transformer kernel, please see our [usage tutorial](/tutorials/transformer_kernel/) and [technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on the fastest BERT training.
+
+
+
+- **How to Use HuggingFace and TensorFlow Pretrained Models**
+
+BingBertSquad supports both HuggingFace and TensorFlow pretrained models, followings are two model examples in `/test/huggingface/` and `/test/tensorflow/`.
+
+```shell
+[/test/huggingface/]
+bert-large-uncased-whole-word-masking-config.json
+bert-large-uncased-whole-word-masking-pytorch_model.bin
+```
+
+```shell
+[/test/tensorflow/]
+bert_config.json
+bert_model.ckpt.data-00000-of-00001
+bert_model.ckpt.index
+bert_model.ckpt.meta
+```
+
+There are 3 arguments used for loading these two types checkpoint files.
+
+1. `--model_file`, points to the pretrained model file.
+2. `--ckpt_type`, indicates the checkpoint type, `TF` for Tensorflow, `HF` for HuggingFace, default value is `DS` for DeepSpeed.
+3. `--origin_bert_config_file`, points to the BERT config file, usually saved in same folder of `model_file`.
+
+We can add followings in fine-tuning command line to use above HuggingFace and TensorFlow examples.
+
+```shell
+[HuggingFace]
+
+--model_file /test/huggingface/bert-large-uncased-whole-word-masking-pytorch_model.bin \
+--ckpt_type HF \
+--origin_bert_config_file /test/huggingface/bert-large-uncased-whole-word-masking-config.json \
+```
+
+```shell
+[TensorFlow]
+
+--model_file /test/tensorflow/bert_model.ckpt \
+--ckpt_type TF \
+--origin_bert_config_file /test/tensorflow/bert_config.json \
+```
+
+Note:
+
+1. `--deepspeed_transformer_kernel` flag is required for using HuggingFace or TensorFlow pretrained models.
+
+2. `--preln` flag can't be used with HuggingFace or TensorFlow pretrained models, since they are not using pre-layer-norm.
+
+3. BingBertSquad will check the pretrained models have same vocab size, it can't work with this mismatch, either using a matched pretrained model or change BingBertSquad.
+
+
 
 ### Argument Parsing
 
