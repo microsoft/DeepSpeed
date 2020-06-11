@@ -27,7 +27,7 @@ Go to the `DeepSpeedExamples/BingBertSquad` folder to follow along.
   * Training set: [train-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json)
   * Validation set: [dev-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json)
 
-You also need a pre-trained BERT model checkpoint from DeepSpeed. We will use checkpoint 160 from the BERT pre-training [tutorial](/tutorials/bert-pretraining/).
+You also need a pre-trained BERT model checkpoint from either DeepSpeed, HuggingFace or TensorFlow to run the fine-tuning. Regarding the DeepSpeed model, we will use checkpoint 160 from the BERT pre-training [tutorial](/tutorials/bert-pretraining/).
 
 Note that the BERT model in the file `train-v1.1.json_bert-large-uncased_384_128_64` is not strictly required as it will be downloaded automatically if it is not present locally on the cluster.
 
@@ -60,7 +60,7 @@ Table 1. Fine-tuning configuration
 
 ### Enabling DeepSpeed's Transformer Kernel
 
-DeepSpeed's optimized transformer kernel can be enabled during fine-tuning to increase the fine-tuning throughput. In addition to supporting the models pretrained by DeepSpeed, the kernels can be used with TensorFlow and HuggingFace checkpoints.
+DeepSpeed's optimized transformer kernel can be enabled during fine-tuning to increase the training throughput. In addition to supporting the models pretrained with DeepSpeed, the kernel can be used with TensorFlow and HuggingFace checkpoints.
 
 To enable the transformer kernel for higher performance, first add an argument `--deepspeed_transformer_kernel` in `utils.py`, we can set it as `False` by default, for easily turning on/off.
 
@@ -173,11 +173,11 @@ Once training is complete, the EM and F1 scores may be obtained from the followi
 
 ### Fine-tuning Results
 
-The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 4 GPUs for 2 epochs on a  DGX-2 node. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; We set the seeds to 9041 and 19068 for HuggingFace and Google models.
+The table summarizing the results are given below. In all cases, the batch size is set to 24 and the training is conducted on 4 GPUs for 2 epochs on a  DGX-2 node. A set of parameters (seeds and learning rates) were tried and the best ones were selected. All learning rates was 3e-5; We set the seeds to 9041 and 19068 for HuggingFace and TensorFlow models.
 
 | Case        | Model                                 | Precision | EM    | F1    |
 | ----------- | ------------------------------------- | --------- | ----- | ----- |
-| Google      | Bert-large-uncased-L-24_H-1024_A-16   | FP16      | 84.13 | 91.03 |
+| TensorFlow  | Bert-large-uncased-L-24_H-1024_A-16   | FP16      | 84.13 | 91.03 |
 | HuggingFace | Bert-large-uncased-whole-word-masking | FP16      | 87.27 | 93.33 |
 
 ### Tuning Performance
