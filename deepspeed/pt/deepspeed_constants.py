@@ -291,7 +291,7 @@ class LRScheduleConstants:
     LR_RANGE_TEST = Constant("LRRangeTest")
     ONE_CYCLE = Constant("OneCycle")
     WARMUP_LR = Constant("WarmupLR")
-    VALID_LR_SCHEDULES = [LR_RANGE_TEST, ONE_CYCLE, WARMUP_LR]
+    VALID_LR_SCHEDULES = [LR_RANGE_TEST.name, ONE_CYCLE.name, WARMUP_LR.name]
 
     LR_RANGE_TEST_MIN_LR = Constant("lr_range_test_min_lr")
     LR_RANGE_TEST_STEP_RATE = Constant("lr_range_test_step_rate")
