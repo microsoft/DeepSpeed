@@ -403,11 +403,14 @@ class DeepSpeedTransformerLayer(nn.Module):
 
             initial_biases: Optional: Only used for unit test
     """
-    def __init__(self, layer_id, config, initial_weights=None, initial_biases=None):
+    layer_id = 0
+
+    def __init__(self, config, initial_weights=None, initial_biases=None):
         super(DeepSpeedTransformerLayer, self).__init__()
 
         self.config = config
-        self.config.layer_id = layer_id
+        self.config.layer_id = DeepSpeedTransformerLayer.layer_id
+        DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
         print("DeepSpeed Transformer config is ", self.config.__dict__)
 
