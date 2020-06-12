@@ -29,7 +29,7 @@ def get_group_alignment_padding(tensor_list, sub_partition_size, sub_partition_c
     logger.info("****Padding information*****")
     logger.info(f"tensor_size = {flattened_size}")
     logger.info(f"sub_partition_size = {sub_partition_size}")
-    pprint(f"sub_partition_count = {sub_partition_count}")
+    logger.info(f"sub_partition_count = {sub_partition_count}")
     for i, padding in enumerate(group_paddings):
         logger.info(f"padding[{i}] = {padding}")
 
