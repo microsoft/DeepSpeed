@@ -114,6 +114,29 @@ ext_modules = [
                           '-D__STOCHASTIC_MODE__'
                       ]
                   }),
+    CUDAExtension(name='deepspeed_lsh',
+                  sources=[
+                      'csrc/LSH/entry.cpp',
+                  ],
+                  include_dirs=['csrc/includes'],
+                  extra_compile_args={
+                      'cxx': ['-O3',
+                              '-std=c++14',
+                              '-g',
+                              '-Wno-reorder'],
+                      'nvcc': [
+                          '-O3',
+                          '--use_fast_math',
+                          '-gencode',
+                          'arch=compute_61,code=compute_61',
+                          '-gencode',
+                          'arch=compute_70,code=compute_70',
+                          '-std=c++14',
+                          '-U__CUDA_NO_HALF_OPERATORS__',
+                          '-U__CUDA_NO_HALF_CONVERSIONS__',
+                          '-U__CUDA_NO_HALF2_OPERATORS__'
+                      ]
+                  }),
 ]
 
 setup(name='deepspeed',
