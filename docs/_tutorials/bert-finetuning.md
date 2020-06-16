@@ -28,7 +28,7 @@ Go to the `DeepSpeedExamples/BingBertSquad` folder to follow along.
   * Validation set: [dev-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json)
 
 You also need a pre-trained BERT model checkpoint from DeepSpeed. We will use checkpoint 162 from the
-BERT pre-training [tutorial](bert-pretraining).
+BERT pre-training [tutorial](/tutorials/bert-pretraining/).
 
   * Pre-training checkpoint: `training_state_checkpoint_162.tar`
 
@@ -36,7 +36,11 @@ Note that the BERT model in the file `train-v1.1.json_bert-large-uncased_384_128
 
 ### Running BingBertSquad
 
-- **Unmodified (BaseLine):** If you would like to run unmodified BingBertSquad with the pre-processed data, there is a helper script which you can invoke via: `bash run_squad_baseline.sh 8 <PATH_TO_CHECKPOINT>/training_state_checkpoint_162.tar <PATH_TO_DATA_DIR> <PATH_TO_OUTPUT_DIR> ` where the first argument `8` is the number of GPUs, second argument is the path to the pre-training checkpoint, third is the path to training and validation sets (e.g. train-v1.1.json), and fourth is path to an output folder (e.g. ~/output). This bash script sets the parameters and invokes `nvidia_run_squad_baseline.py`.
+- **Unmodified (BaseLine):** If you would like to run unmodified BingBertSquad with the pre-processed data, there is a helper script which you can invoke via:
+  ```bash
+  bash run_squad_baseline.sh 8 <PATH_TO_CHECKPOINT>/training_state_checkpoint_162.tar <PATH_TO_DATA_DIR> <PATH_TO_OUTPUT_DIR>
+  ```
+  where the first argument `8` is the number of GPUs, second argument is the path to the pre-training checkpoint, third is the path to training and validation sets (e.g. `train-v1.1.json`), and fourth is path to an output folder (e.g. `~/output`). This bash script sets the parameters and invokes `nvidia_run_squad_baseline.py`.
 - **Modified (DeepSpeed):** This is similar to baseline;  just substitute `run_squad_baseline.sh` with `run_squad_deepspeed.sh` which invokes `nvidia_run_squad_deepspeed.py`.
 
 ## DeepSpeed Integration
@@ -118,8 +122,8 @@ The table summarizing the results are given below. In all cases, the batch size 
 In terms of throughput (expressed in iterations processed per second), we note that DeepSpeed outperforms the baseline for the desired accuracy (in terms of EM, F1 scores).
 
 ## Fine-tuning the model pre-trained with DeepSpeed Transformer Kernels
-For pre-training your model, please see [BERT Pre-Training](\bert-pretraining\) tutorial for the detailed instrucions.
-If you already obtained the checkpoint of your model, use the following configuration to finetune your pretrained checkpoint.
+For pre-training your model, please see the [BERT pre-training](/tutorials/bert-pretraining/) tutorial for the detailed instrucions.
+If you already obtained the checkpoint of your model, use the following configuration to fine-tune your pretrained checkpoint.
 
 | Parameters               | Value             |
 | ------------------------ | ------------------------- |
@@ -188,12 +192,21 @@ Note:
 1. `batch_size` is the maximum bath size of input data, all fine-tuning training data or prediction data shouldn't exceed this threshold, otherwise it will throw an exception. In the DeepSpeed configuration file micro batch size is defined as `train_micro_batch_size_per_gpu`, e.g. if it is set as 8 and prediction uses batch size of 12, we can use 12 as transformer kernel batch size, or using "--predict_batch_size" argument to set prediction batch size to 8 or a smaller number.
 2. `local_rank` in DeepSpeedTransformerConfig is used to assign the transformer kernel to the correct device. Since the model already runs set_device() before here, so does not need to be set here.
 
-For more details about the transformer kernel, please see [DeepSpeed Transformer Kernel](/transformer_kernel/) and [DeepSpeed Fast-Bert Training](/fast_bert/).
+For more details about the transformer kernel, please see
+[usage tutorial](/tutorials/transformer_kernel/) and
+[technical deep dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
 
 ### Dropout Setting
-For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/transformer_kernel/) for more detail of selecting these two modes).
+For the fine-tuning, we only use the deterministic transformer to have
+reproducible fine-tuning results. But, we choose different values for
+dropout based on whether pre-training was done using deterministic or
+stochastic transformer. Please see [usage tutorial](/tutorials/transformer_kernel/)
+for more detail of selecting these two modes.
 
-For model pre-trained with deterministic transformer, we use the same dropout ration used in pretraining (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fune-tuning.
+For model pre-trained with deterministic transformer, we use the same dropout
+ration used in pretraining (0.1). However, we slightly increase the dropout
+ratio when fine-tuning the model pre-trained using the stochastic transformer
+to compensate for the lack of stochastic noise during fune-tuning.
 
 
 | Pretraining mode               | Dropout ratio             |
@@ -203,4 +216,7 @@ For model pre-trained with deterministic transformer, we use the same dropout ra
 
 ### Results
 
-Fine-tuning the model pre-trained usng DeepSpeed Transformer and the recepie in [DeepSpeed Fast-Bert Training](/fast_bert/) should yield F1 score of 90.5 and is expected to increase if you let the pre-training longer than suggested in the tutorial.
+Fine-tuning the model pre-trained usng DeepSpeed Transformer and the recipe in
+[DeepSpeed Fast-Bert Training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html)
+should yield F1 score of 90.5 and is expected to increase if you let the
+pre-training longer than suggested in the tutorial.
