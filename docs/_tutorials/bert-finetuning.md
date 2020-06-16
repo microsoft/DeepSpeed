@@ -204,7 +204,7 @@ stochastic transformer. Please see [usage tutorial](/tutorials/transformer_kerne
 for more detail of selecting these two modes.
 
 For model pre-trained with deterministic transformer, we use the same dropout
-ration used in pretraining (0.1). However, we slightly increase the dropout
+ratio used in pretraining (0.1). However, we slightly increase the dropout
 ratio when fine-tuning the model pre-trained using the stochastic transformer
 to compensate for the lack of stochastic noise during fune-tuning.
 
