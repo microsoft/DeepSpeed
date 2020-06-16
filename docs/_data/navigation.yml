@@ -52,6 +52,8 @@ lnav:
         url: /tutorials/azure/
       - title: "CIFAR-10"
         url: /tutorials/cifar-10/
+      - title: "BERT Fine-tuning"
+        url: /tutorials/bert-finetuning/
       - title: "BERT Pre-training"
         url: /tutorials/bert-pretraining/
       - title: "Megatron-LM GPT2"

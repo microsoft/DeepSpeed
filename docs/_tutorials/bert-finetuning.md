@@ -1,5 +1,5 @@
 ---
-title: "BingBertSQuAD Fine-tuning"
+title: "BERT Fine-tuning (SQuAD)"
 excerpt: ""
 ---
 
@@ -81,7 +81,10 @@ Another feature of DeepSpeed is its convenient `step()` function which can be ca
 
 #### Forward pass
 
-This is identical in both Baseline and DeepSpeed, and is performed by `loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)`.
+This is identical in both Baseline and DeepSpeed, and is performed by
+```python
+loss = model(input_ids, segment_ids, input_mask, start_positions, end_positions)
+```
 
 #### Backward pass
 
@@ -97,7 +100,9 @@ Congratulations! Porting into DeepSpeed is complete.
 
 Once training is complete, the EM and F1 scores may be obtained from the following command:
 
-`python evaluate-v1.1.py <PATH_TO_DEVSET>/dev-v1.1.json <PATH_TO_PREDICTIONS>/predictions.json`
+```bash
+python evaluate-v1.1.py <PATH_TO_DEVSET>/dev-v1.1.json <PATH_TO_PREDICTIONS>/predictions.json
+```
 
 ### DeepSpeed Improvements
 
