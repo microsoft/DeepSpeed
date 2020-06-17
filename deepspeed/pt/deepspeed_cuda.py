@@ -394,7 +394,7 @@ class DeepSpeedTransformerLayer(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
 
         Static variable:
-            layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated, 
+            layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
             e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
         Arguments:
             config: An object of DeepSpeedTransformerConfig
@@ -500,11 +500,22 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.norm_w.data.fill_(1.0)
         self.norm_b.data.zero_()
 
-    def forward(self, input, input_mask, grads=None):
+    #def forward(self, input, input_mask, grads=None):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        output_attentions=False,
+    ):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
-        return DeepSpeedTransformerFunction.apply(input,
-                                                  input_mask,
+        # disable grad testing for now
+        grads = None
+        return DeepSpeedTransformerFunction.apply(hidden_states,
+                                                  attention_mask,
                                                   self,
                                                   grads,
                                                   self.config.layer_id,

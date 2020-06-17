@@ -8,6 +8,7 @@ from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 from deepspeed.pt.log_utils import logger
 from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
+from deepspeed.pt.inject import module_inject
 
 import deepspeed.pt.deepspeed_checkpointing as checkpointing
 
