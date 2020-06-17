@@ -23,7 +23,29 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
 
             new_module = DeepSpeedTransformerLayer(cuda_config)
 
-            #TODO: copy relevant state from child -> new module
+            # copy relevant state from child -> new module
+            qw = child.attention.self.query.weight
+            qb = child.attention.self.query.bias
+            kw = child.attention.self.key.weight
+            kb = child.attention.self.key.bias
+            vw = child.attention.self.value.weight
+            vb = child.attention.self.value.bias
+
+            qkvw = torch.cat((qw, kw, vw), 0)
+            qkvb = torch.cat((qb, kb, vb), 0)
+
+            new_module.attn_qkvw.data = qkvw
+            new_module.attn_qkvb.data = qkvb
+            new_module.attn_ow.data = child.attention.output.dense.weight
+            new_module.attn_ob.data = child.attention.output.dense.bias
+            new_module.attn_nw.data = child.attention.output.LayerNorm.weight
+            new_module.attn_nb.data = child.attention.output.LayerNorm.bias
+            new_module.inter_w.data = child.intermediate.dense.weight
+            new_module.inter_b.data = child.intermediate.dense.bias
+            new_module.output_w.data = child.output.dense.weight
+            new_module.output_b.data = child.output.dense.bias
+            new_module.norm_w.data = child.output.LayerNorm.weight
+            new_module.norm_b.data = child.output.LayerNorm.bias
 
             setattr(model, name, copy.deepcopy(new_module))
 
