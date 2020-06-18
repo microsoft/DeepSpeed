@@ -3,7 +3,7 @@ import torch
 from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 
 
-def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, seed):
+def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, seed, preln, fp16 = True):
     for name, child in model.named_children():
         if isinstance(child, layer_obj):
             print('REPLACING BertLayer')
@@ -18,8 +18,8 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
                 num_hidden_layers=config.num_hidden_layers,
                 initializer_range=config.initializer_range,
                 seed=seed,
-                fp16=True,
-                pre_layer_norm=True)
+                fp16=fp16,
+                pre_layer_norm=preln)
 
             new_module = DeepSpeedTransformerLayer(cuda_config)
 
@@ -38,14 +38,26 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
             new_module.attn_qkvb.data = qkvb
             new_module.attn_ow.data = child.attention.output.dense.weight
             new_module.attn_ob.data = child.attention.output.dense.bias
-            new_module.attn_nw.data = child.attention.output.LayerNorm.weight
-            new_module.attn_nb.data = child.attention.output.LayerNorm.bias
-            new_module.inter_w.data = child.intermediate.dense.weight
-            new_module.inter_b.data = child.intermediate.dense.bias
+            if preln:
+                attention_layerNorm = child.PostAttentionLayerNorm
+            else:
+                attention_layerNorm = child.attention.output.LayerNorm
+            new_module.attn_nw.data = attention_layerNorm.weight
+            new_module.attn_nb.data = attention_layerNorm.bias
+            if preln:
+                intermediate_FF = child.intermediate.dense_act
+            else:
+                intermediate_FF = child.intermediate.dense
+            new_module.inter_w.data = intermediate_FF.weight
+            new_module.inter_b.data = intermediate_FF.bias
             new_module.output_w.data = child.output.dense.weight
             new_module.output_b.data = child.output.dense.bias
-            new_module.norm_w.data = child.output.LayerNorm.weight
-            new_module.norm_b.data = child.output.LayerNorm.bias
+            if preln:
+                transformer_LayerNorm = child.PreAttentionLayerNorm 
+            else:
+                transformer_LayerNorm = child.output.LayerNorm
+            new_module.norm_w.data = transformer_LayerNorm.weight
+            new_module.norm_b.data = transformer_LayerNorm.bias
 
             setattr(model, name, copy.deepcopy(new_module))
 
@@ -55,7 +67,7 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
                           config,
                           micro_batch_size,
                           max_seq_length,
-                          seed)
+                          seed, preln, fp16)
 
     return model
 
