@@ -3,7 +3,14 @@ import torch
 from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 
 
-def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, seed, preln, fp16 = True):
+def module_inject(layer_obj,
+                  model,
+                  config,
+                  micro_batch_size,
+                  max_seq_length,
+                  seed,
+                  preln,
+                  fp16=True):
     for name, child in model.named_children():
         if isinstance(child, layer_obj):
             print('REPLACING BertLayer')
@@ -53,7 +60,7 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
             new_module.output_w.data = child.output.dense.weight
             new_module.output_b.data = child.output.dense.bias
             if preln:
-                transformer_LayerNorm = child.PreAttentionLayerNorm 
+                transformer_LayerNorm = child.PreAttentionLayerNorm
             else:
                 transformer_LayerNorm = child.output.LayerNorm
             new_module.norm_w.data = transformer_LayerNorm.weight
@@ -67,7 +74,9 @@ def module_inject(layer_obj, model, config, micro_batch_size, max_seq_length, se
                           config,
                           micro_batch_size,
                           max_seq_length,
-                          seed, preln, fp16)
+                          seed,
+                          preln,
+                          fp16)
 
     return model
 
