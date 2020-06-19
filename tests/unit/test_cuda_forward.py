@@ -93,7 +93,6 @@ class DSEncoder(nn.Module):
         return all_encoder_layers
 
 
-
 def create_models(ds_config):
     bert_config = BertConfig(vocab_size_or_config_json_file=119547,
                              hidden_size=ds_config.hidden_size,

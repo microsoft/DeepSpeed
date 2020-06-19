@@ -501,16 +501,14 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.norm_b.data.zero_()
 
     #def forward(self, input, input_mask, grads=None):
-    def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        head_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        output_attentions=False,
-        grads=None
-    ):
+    def forward(self,
+                hidden_states,
+                attention_mask=None,
+                head_mask=None,
+                encoder_hidden_states=None,
+                encoder_attention_mask=None,
+                output_attentions=False,
+                grads=None):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
         return DeepSpeedTransformerFunction.apply(hidden_states,
