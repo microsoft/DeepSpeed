@@ -117,7 +117,7 @@ class DSEncoder(nn.Module):
             # decoder layers
         else:
             for i, layer_module in enumerate(self.layer):
-                hidden_states = layer_module(hidden_states, attention_mask, self.grads)
+                hidden_states = layer_module(hidden_states, attention_mask, grads=self.grads)
                 hidden_states.register_hook(
                     lambda x,
                     self=self: self.grads.append([x,

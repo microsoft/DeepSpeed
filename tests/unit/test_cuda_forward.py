@@ -49,7 +49,6 @@ class DSEncoder(nn.Module):
                                                     biases))
             for _ in range(config.num_hidden_layers)
         ])
-        self.grads = []
         self.pre_or_post = config.pre_layer_norm
 
     def forward(self,
@@ -83,11 +82,6 @@ class DSEncoder(nn.Module):
         else:
             for i, layer_module in enumerate(self.layer):
                 hidden_states = layer_module(hidden_states, attention_mask)
-                hidden_states.register_hook(
-                    lambda x,
-                    i=i,
-                    self=self: self.grads.append([x,
-                                                  "hidden_state"]))
 
                 if output_all_encoded_layers:
                     all_encoder_layers.append(hidden_states)
@@ -98,8 +92,6 @@ class DSEncoder(nn.Module):
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
 
-    def get_grads(self):
-        return self.grads
 
 
 def create_models(ds_config):
@@ -199,7 +191,7 @@ def run_forward(ds_config, atol=1e-2, verbose=False, test_bsz=None):
                             output_all_encoded_layers=False,
                             checkpoint_activations=False)
 
-    # check grads
+    # check forward evaluation
     check_equal(base_results, ds_results, atol=atol, verbose=verbose)
 
 
