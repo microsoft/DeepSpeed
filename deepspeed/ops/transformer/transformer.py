@@ -544,11 +544,10 @@ class DeepSpeedTransformerLayer(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         output_attentions=False,
+        grads=None
     ):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
-        # disable grad testing for now
-        grads = None
         return DeepSpeedTransformerFunction.apply(hidden_states,
                                                   attention_mask,
                                                   self,
