@@ -343,7 +343,12 @@ about 96 hours to reach parity on 64 TPU2 chips, we train in less than 9 hours o
 hours) from NVIDIA using their superpod on the same number of GPUs
 ([link](https://devblogs.nvidia.com/training-bert-with-gpus/)).
 
-![DeepSpeed BERT Training Time](/assets/images/end-to-end-bert-training.png){: .align-center}
+| Number of nodes | Number of V100 GPUs | Time         |
+| --------------- | ------------------- | ------------ |
+| 1 DGX-2         | 16                  | 33 hr 13 min |
+| 4 DGX-2         | 64                  | 8 hr 41 min  |
+| 16 DGX-2        | 256                 | 144 min      |
+| 64 DGX-2        | 1024                | 44 min       |
 
 Our configuration for the BERT training result above can be reproduced with
 the scripts/json configs in our DeepSpeedExamples repo. Below is a table containing a
