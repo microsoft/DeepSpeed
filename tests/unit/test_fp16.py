@@ -373,6 +373,7 @@ def test_zero_empty_partition(tmpdir, zero_stage):
         }
     }
     args = args_from_dict(tmpdir, config_dict)
+
     @distributed_test(world_size=[3])
     def _test_zero_empty_partition(args):
         hidden_dim = 1
@@ -393,5 +394,4 @@ def test_zero_empty_partition(tmpdir, zero_stage):
             model.backward(loss)
             model.step()
 
-#        model.step()
     _test_zero_empty_partition(args)

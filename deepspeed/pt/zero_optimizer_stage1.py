@@ -15,13 +15,13 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                                 max_elements_per_comm,
                                                 pg):
     assert (max_elements_per_comm >= dp,
-        f"max_elements_per_comm {max_elements_per_comm} < dp {dp}")
+            f"max_elements_per_comm {max_elements_per_comm} < dp {dp}")
 
     num_elements = sum(t.numel() for t in tensor_list)
     log_dist("Total number of elements in model: {}, max elements per com: {}".format(
         num_elements,
         max_elements_per_comm),
-        ranks=[0])
+             ranks=[0])
 
     # Compute aligned partition size based on parameter count
     aligned_param_partition_size = math.ceil(num_elements / dp)
@@ -33,7 +33,8 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
         sub_partition_count = 1
         sub_partition_size = aligned_param_partition_size
     else:
-        sub_partition_count = math.ceil(aligned_param_partition_size/aligned_comm_partition_size)
+        sub_partition_count = math.ceil(aligned_param_partition_size /
+                                        aligned_comm_partition_size)
         sub_partition_size = aligned_comm_partition_size
 
     # Compute required padding  for alignment to dp and max_elements_per_comm
