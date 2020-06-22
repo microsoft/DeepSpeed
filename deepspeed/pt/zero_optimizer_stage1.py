@@ -10,10 +10,13 @@ from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import get_grad_norm, CheckOverflow
 
 
-def flatten_dense_tensors_sub_partition_aligned_(tensor_list,
+def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                                 dp,
                                                 max_elements_per_comm,
                                                 pg):
+    assert (max_elements_per_comm >= dp,
+        f"max_elements_per_comm {max_elements_per_comm} < dp {dp}")
+
     num_elements = sum(t.numel() for t in tensor_list)
     log_dist("Total number of elements in model: {}, max elements per com: {}".format(
         num_elements,
@@ -26,93 +29,32 @@ def flatten_dense_tensors_sub_partition_aligned_(tensor_list,
     # Compute aligned partition size based on communication size
     aligned_comm_partition_size = int(max_elements_per_comm // dp)
 
-
-
-def flatten_dense_tensors_sub_partition_aligned(tensor_list,
-                                                dp,
-                                                max_elements_per_comm,
-                                                pg):
-    num_elements = 0
-    for tensor in tensor_list:
-        num_elements = num_elements + tensor.numel()
-
-    log_dist("Total number of elements in model: {}, max elements per com: {}".format(
-        num_elements,
-        max_elements_per_comm),
-             ranks=[0])
-
-    max_elements_per_comm = min(max_elements_per_comm, num_elements)
-    sub_partition_size = int(max_elements_per_comm // dp)
-
-    alignment = sub_partition_size
-
-    # if alignment == 0:
-    #     # number of elements not divisible by dp, outside range and small model must pad with zeroes
-    #     pad_tensor = torch.zeros(max_elements_per_comm,
-    #                              device=tensor_list[0].device,
-    #                              dtype=tensor_list[0].dtype)
-    #     return _flatten_dense_tensors(pad_tensor)
-
-    remaining = int(num_elements % alignment)
-
-    # ensure we have equal sized sub-partitions
-    elements_to_add = 0
-    if remaining:
-        elements_to_add = alignment - remaining
-        # adding padded tensor later after we check comm alignment
-        log_dist("adding pad tensor for alignment, {} + {}->{}".format(
-            num_elements,
-            elements_to_add,
-            num_elements + elements_to_add),
-                 ranks=[0])
-        #num_elements = num_elements + elements_to_add
+    if aligned_param_partition_size <= aligned_comm_partition_size:
+        sub_partition_count = 1
+        sub_partition_size = aligned_param_partition_size
     else:
-        padded_tensor_list = tensor_list
+        sub_partition_count = math.ceil(aligned_param_partition_size/aligned_comm_partition_size)
+        sub_partition_size = aligned_comm_partition_size
 
-    num_partitions = int((num_elements + elements_to_add) // sub_partition_size)
-    assert (num_elements + elements_to_add) % sub_partition_size == 0, "num elements should be " \
-                                                                       "aligned by sub partition " \
-                                                                       "size"
-    num_comm_intervals = int(num_partitions // dp)
-    partition_remaining = int(num_partitions % dp)
-    log_dist("num_comm_intervals={}, partition_remaining={}".format(
-        num_comm_intervals,
-        partition_remaining),
-             ranks=[0])
-    if partition_remaining != 0:
-        log_dist("adding pad tensor and/or extra sub partition", ranks=[0])
-        # add pad tensor for alignment of comm interval, this overrules previous possibly sub-partition alignment
-        num_comm_intervals += 1
-        aligned_comm_elements = num_comm_intervals * sub_partition_size * dp
-        elements_to_add = aligned_comm_elements - num_elements
+    # Compute required padding  for alignment to dp and max_elements_per_comm
+    padding = (sub_partition_count * sub_partition_size * dp) - num_elements
 
-        pad_tensor = torch.zeros(elements_to_add,
+    log_dist(
+        f"sub_partition_count: {sub_partition_count}, sub_partition_size: {sub_partition_size}, padding: {padding}",
+        ranks=[0])
+    log_dist(
+        f"number of elements with padding: {num_elements} + {padding} = {num_elements + padding}",
+        ranks=[0])
+
+    if padding == 0:
+        aligned_tensor_list = tensor_list
+    else:
+        pad_tensor = torch.zeros(padding,
                                  device=tensor_list[0].device,
                                  dtype=tensor_list[0].dtype)
-        padded_tensor_list = tensor_list + [pad_tensor]
-        log_dist("adding pad tensor and/or extra sub partition, {} + {}->{}".format(
-            num_elements,
-            elements_to_add,
-            num_elements + elements_to_add),
-                 ranks=[0])
-        num_elements += elements_to_add
-    elif elements_to_add > 0:
-        # add pad tensor for just alignment of sub-partition
-        pad_tensor = torch.zeros(elements_to_add,
-                                 device=tensor_list[0].device,
-                                 dtype=tensor_list[0].dtype)
-        padded_tensor_list = tensor_list + [pad_tensor]
-        num_elements += elements_to_add
+        aligned_tensor_list = tensor_list + [pad_tensor]
 
-    if pg is None or dist.get_rank(group=pg) == 0:
-        logger.info("Number of Elements (w. padding) is %s", num_elements)
-
-    padded_num_elems = 0
-    for p in padded_tensor_list:
-        padded_num_elems += p.numel()
-    assert num_elements == padded_num_elems, "{} != {}, rank={}".format(num_elements, padded_num_elems, dist.get_rank())
-
-    return _flatten_dense_tensors(padded_tensor_list)
+    return _flatten_dense_tensors(aligned_tensor_list)
 
 
 def _single_range_check(current_index, start_index, end_index, tensor_size):
