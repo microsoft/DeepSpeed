@@ -465,7 +465,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             else:
                 dictionary[key] = 1
 
-
         partition_size = self.partition_size[i]
 
         start_index = partition_size * partition_id
@@ -1052,7 +1051,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             current_size = current_size + num_elements
 
-        print(f"tensor_list length = {len(tensor_list)}")
         #this means its the last partition and does not align with the dp boundary. We need to pad before flattening
         if current_size < partition_size:
             flat_tensor_list.append(
@@ -1142,9 +1140,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for group in self.single_partition_of_fp32_groups:
             group.grad = None
 
-        for i in range(len(norm_groups)):
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+            fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         timers('optimizer_step').stop()
 
         timers('optimizer_allgather').start()
