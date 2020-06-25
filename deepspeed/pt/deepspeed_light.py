@@ -31,7 +31,7 @@ from deepspeed.pt.deepspeed_constants import \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
-from deepspeed.pt.deepspeed_distributed import distributed_init
+from deepspeed.pt.deepspeed_distributed import init_distributed
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -121,7 +121,8 @@ class DeepSpeedLight(Module):
         self.warn_unscaled_loss = True
         self.config_params = config_params
 
-        distributed_init()
+        # Initialize torch distributed backend
+        init_distributed()
         self.local_rank = int(os.environ["LOCAL_RANK"])
 
         self._do_args_sanity_check(args)

@@ -8,7 +8,7 @@ from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 from deepspeed.pt.log_utils import logger
 from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
-from deepspeed.pt.deepspeed_distributed import distributed_init, mpi_discovery
+from deepspeed.pt.deepspeed_distributed import init_distributed, mpi_discovery
 
 import deepspeed.pt.deepspeed_checkpointing as checkpointing
 
