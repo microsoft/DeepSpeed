@@ -1,5 +1,7 @@
+import os
 import torch
 from deepspeed.pt.log_utils import logger
+from deepspeed.pt.deepspeed_constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 
 
 def distributed_init(dist_backend="nccl"):
@@ -16,7 +18,7 @@ def distributed_init(dist_backend="nccl"):
         )
         mpi_discovery()
 
-    if not dist.is_initialized():
+    if not torch.distributed.is_initialized():
         logger.info("Initializing torch distributed with backend: {}".format(
             self.dist_backend))
         torch.distributed.init_process_group(backend=self.dist_backend)
@@ -47,7 +49,7 @@ def mpi_discovery():
 
     os.environ['RANK'] = str(rank)
     os.environ['WORLD_SIZE'] = str(world_size)
-    os.environ['LOCAL_RANK'] = local_rank
+    os.environ['LOCAL_RANK'] = str(local_rank)
     os.environ['MASTER_ADDR'] = master_addr
     os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
 

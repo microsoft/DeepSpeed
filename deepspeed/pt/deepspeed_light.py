@@ -26,7 +26,6 @@ from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
 from deepspeed.pt.deepspeed_dataloader import DeepSpeedDataLoader
 from deepspeed.pt.deepspeed_constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT, \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
