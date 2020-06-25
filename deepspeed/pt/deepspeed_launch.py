@@ -11,7 +11,6 @@ from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
 from deepspeed.pt.log_utils import logger
-from deepspeed.deepspeed_constants import DEEPSPEED_LAUNCHER, DEEPSPEED_LAUNCHER_DEFAULT
 
 
 def parse_args():
