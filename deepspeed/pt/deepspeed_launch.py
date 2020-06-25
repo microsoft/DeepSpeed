@@ -102,9 +102,6 @@ def main():
     current_env["MASTER_PORT"] = str(args.master_port)
     current_env["WORLD_SIZE"] = str(dist_world_size)
 
-    # Set deepspeed launcher environment
-    current_env[DEEPSPEED_LAUNCHER] = DEEPSPEED_LAUNCHER_DEFAULT
-
     processes = []
     for local_rank in range(0, num_local_procs):
         # each process's rank
