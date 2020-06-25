@@ -1269,8 +1269,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             return True
         else:
             if cpu_sum == float('inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
-                if dist.get_rank() == 0 and j is not None:
-                    _handle_overflow(cpu_sum, x, j)
                 return True
             return False
 
@@ -1356,6 +1354,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['partition_count'] = self.partition_count
 
         return state_dict
+
+    # Refresh the fp32 master params from the fp16 copies.
+    def refresh_fp32_params(self):
+        partition_id = dist.get_rank(group=self.dp_process_group)
+        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+            fp32_partition.data.copy_(fp16_partitions[partition_id].data)
 
     def load_state_dict(self, state_dict, load_optimizer_states=True):
         """
