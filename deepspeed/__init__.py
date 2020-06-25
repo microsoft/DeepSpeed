@@ -63,8 +63,7 @@ def initialize(args,
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
 
-        dist_init_required: Optional: None will auto-initialize torch.distributed if needed,
-            otherwise the user can force it to be initialized or not via boolean.
+        dist_init_required: deprecated argument, torch.distributed will be auto-initialized if needed
 
         collate_fn: Optional: Merges a list of samples to form a
             mini-batch of Tensor(s).  Used when using batched loading from a
@@ -91,6 +90,11 @@ def initialize(args,
             __git_branch__),
     )
 
+    if dist_init_required is not None:
+        logger.warning(
+            "deepspeed.initialize argument of 'dist_init_required' is deprecated and not used, torch.distributed will be auto-initialized if needed."
+        )
+
     engine = DeepSpeedLight(args=args,
                             model=model,
                             optimizer=optimizer,
@@ -98,7 +102,6 @@ def initialize(args,
                             training_data=training_data,
                             lr_scheduler=lr_scheduler,
                             mpu=mpu,
-                            dist_init_required=dist_init_required,
                             collate_fn=collate_fn,
                             config_params=config_params)
 
