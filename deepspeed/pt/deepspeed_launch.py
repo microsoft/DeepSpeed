@@ -11,6 +11,7 @@ from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
 from deepspeed.pt.log_utils import logger
+from deepspeed.deepspeed_constants import DEEPSPEED_LAUNCHER, DEEPSPEED_LAUNCHER_DEFAULT
 
 
 def parse_args():
@@ -96,16 +97,20 @@ def main():
         current_env["CUDA_VISIBLE_DEVICES"]))
     exclusion_counts_per_node = None
 
-    # set PyTorch distributed related environmental variables
+    # Set torch distributed related environmental variables
     current_env["MASTER_ADDR"] = args.master_addr
     current_env["MASTER_PORT"] = str(args.master_port)
     current_env["WORLD_SIZE"] = str(dist_world_size)
+
+    # Set deepspeed launcher environment
+    current_env[DEEPSPEED_LAUNCHER] = DEEPSPEED_LAUNCHER_DEFAULT
 
     processes = []
     for local_rank in range(0, num_local_procs):
         # each process's rank
         dist_rank = global_rank_mapping[local_node][local_rank]
         current_env["RANK"] = str(dist_rank)
+        current_env["LOCAL_RANK"] = str(local_rank)
 
         # spawn the processes
         cmd = [

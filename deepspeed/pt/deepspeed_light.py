@@ -32,6 +32,8 @@ from deepspeed.pt.deepspeed_constants import \
 import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
 from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
 
+from deepspeed.pt.deepspeed_distributed import distributed_init
+
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
 
@@ -102,7 +104,6 @@ class DeepSpeedLight(Module):
                  training_data=None,
                  lr_scheduler=None,
                  mpu=None,
-                 dist_init_required=None,
                  collate_fn=None,
                  config_params=None):
         super(DeepSpeedLight, self).__init__()
@@ -121,21 +122,8 @@ class DeepSpeedLight(Module):
         self.warn_unscaled_loss = True
         self.config_params = config_params
 
-        if dist_init_required is None:
-            dist_init_required = not dist.is_initialized()
-
-        self._mpi_check(args, dist_init_required)
-
-        self.dist_backend = "nccl"
-        if dist_init_required:
-            if not dist.is_initialized():
-                logger.info("Initializing torch distributed with backend: {}".format(
-                    self.dist_backend))
-                dist.init_process_group(backend=self.dist_backend)
-            else:
-                logger.warning(
-                    "Was given dist_init_required=True but detected that torch"
-                    "distributed was already initialized, cannot initialize twice.")
+        distributed_init()
+        self.local_rank = int(os.environ["LOCAL_RANK"])
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -144,8 +132,6 @@ class DeepSpeedLight(Module):
         self.sample_count = 0
         if self.tensorboard_enabled():
             self.summary_writer = self.get_summary_writer()
-
-        self._init_distributed(dist_init_required)
 
         # Configure distributed model
         self._configure_distributed_model(model)
@@ -181,50 +167,12 @@ class DeepSpeedLight(Module):
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
-        self._configure_checkpointing(dist_init_required)
+        self._configure_checkpointing()
 
         if self.global_rank == 0:
             self._config.print('DeepSpeedLight configuration')
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
-
-    def _mpi_check(self, args, dist_init_required):
-        if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
-            from mpi4py import MPI
-            import subprocess
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            world_size = comm.Get_size()
-
-            master_addr = None
-            if rank == 0:
-                hostname_cmd = ["hostname -I"]
-                result = subprocess.check_output(hostname_cmd, shell=True)
-                master_addr = result.decode('utf-8').split()[0]
-            master_addr = comm.bcast(master_addr, root=0)
-
-            # Determine local rank by assuming hostnames are unique
-            proc_name = MPI.Get_processor_name()
-            all_procs = comm.allgather(proc_name)
-            local_rank = sum([i == proc_name for i in all_procs[:rank]])
-
-            os.environ['RANK'] = str(rank)
-            os.environ['WORLD_SIZE'] = str(world_size)
-            args.local_rank = local_rank
-            os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
-
-            logger.info(
-                "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-                .format(os.environ['RANK'],
-                        args.local_rank,
-                        os.environ['WORLD_SIZE'],
-                        os.environ['MASTER_ADDR'],
-                        os.environ['MASTER_PORT']))
-
-            if not dist_init_required and dist.is_initialized():
-                assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-                assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(world_size, dist.get_world_size())
 
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
@@ -360,7 +308,7 @@ class DeepSpeedLight(Module):
             self.lr_scheduler = client_lr_scheduler
         logger.info(f'DeepSpeed LR Scheduler = {self.lr_scheduler}')
 
-    def _configure_checkpointing(self, dist_init_required):
+    def _configure_checkpointing(self):
 
         dp_rank = self.global_rank
         if self.mpu:
@@ -392,19 +340,6 @@ class DeepSpeedLight(Module):
             return instantiated_scheduler
         else:
             return None
-
-    def _init_distributed(self, dist_init_required):
-        if self.local_rank >= 0:
-            torch.cuda.set_device(self.local_rank)
-            self.device = torch.device("cuda", self.local_rank)
-            self.world_size = dist.get_world_size()
-            self.global_rank = dist.get_rank()
-            logger.info("Set device to local rank {} within node.".format(
-                self.local_rank))
-        else:
-            self.world_size = 1
-            self.global_rank = 0
-            self.device = torch.device("cuda")
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
@@ -450,10 +385,23 @@ class DeepSpeedLight(Module):
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
     def _configure_distributed_model(self, model):
+        if self.local_rank >= 0:
+            torch.cuda.set_device(self.local_rank)
+            self.device = torch.device("cuda", self.local_rank)
+            self.world_size = dist.get_world_size()
+            self.global_rank = dist.get_rank()
+            logger.info("Set device to local rank {} within node.".format(
+                self.local_rank))
+        else:
+            self.world_size = 1
+            self.global_rank = 0
+            self.device = torch.device("cuda")
+
         self.module = model
         if self.fp16_enabled():
             self.module.half()
         self.module.to(self.device)
+
         if self.mpu is None:
             self.data_parallel_group = _initialize_parameter_parallel_groups()
             self.dp_world_size = dist.get_world_size()
@@ -466,11 +414,6 @@ class DeepSpeedLight(Module):
         for p in self.module.parameters():
             if torch.is_tensor(p):
                 dist.broadcast(p, src_rank, group=self.data_parallel_group)
-
-        # TODO: support new AMP optimizer
-        # self.module.half()
-        # self.module.to(self.local_rank)
-        #self.module, self.optimizer = amp.initialize(self.module, self.optimizer, opt_level="O2")
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
