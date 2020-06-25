@@ -89,6 +89,9 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
+
+            huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+
     """
     def __init__(self,
                  batch_size=-1,
@@ -108,7 +111,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  gelu_checkpoint=False,
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
-                 stochastic_mode=False):
+                 stochastic_mode=False,
+                 huggingface=False):
         super(DeepSpeedTransformerConfig,
               self).__init__(
                   batch_size,
@@ -132,6 +136,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
+        self.huggingface = huggingface
 
     @classmethod
     def from_dict(cls, json_object):
@@ -303,7 +308,10 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_layer_norm_var = attn_layer_norm_var
             ctx.layer_norm_var = layer_norm_var
 
-        return output
+        if config.huggingface:
+            return (output, )  # outputs -> (output) : outputs[0] = output
+        else:
+            return output
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -536,16 +544,19 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.norm_b.data.zero_()
 
     #def forward(self, input, input_mask, grads=None):
-    def forward(self,
-                hidden_states,
-                attention_mask=None,
-                head_mask=None,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                output_attentions=False,
-                grads=None):
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        head_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        output_attentions=False,
+    ):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
+        # disable grad testing for now
+        grads = None
         return DeepSpeedTransformerFunction.apply(hidden_states,
                                                   attention_mask,
                                                   self,

@@ -13,6 +13,7 @@ from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .module_inject.ds_kernel_inject import replace_transformer_layer, revert_transformer_layer
 from .utils import log_dist
 
 from .pipe import PipelineModule
