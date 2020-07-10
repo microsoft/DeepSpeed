@@ -498,7 +498,7 @@ class DeepSpeedLight(Module):
         logger.info('DeepSpeed Basic Optimizer = {}'.format(basic_optimizer))
 
         if self.zero_optimization():
-            assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode"
+            assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
             if self.optimizer_name() != ADAM_OPTIMIZER:
                 assert self.zero_allow_untested_optimizer(), \
                 'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
