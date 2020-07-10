@@ -120,6 +120,16 @@ FP16_MIN_LOSS_SCALE_DEFAULT = 1
 #########################################
 # Apex AMP support
 #########################################
+# Use Apex AMP for mixed precision support, all parameters (other than 'enabled') will be passed to
+# amp.initialize(model, optimizer, **amp_params)
+# See apex documentation for supported parameters/features: https://nvidia.github.io/apex/amp.html#apex.amp.initialize
+AMP_FORMAT = '''
+"amp" {
+  "enabled: true,
+  "opt_level": "O1",
+  ...
+}
+'''
 AMP = "amp"
 
 AMP_ENABLED = "enabled"
