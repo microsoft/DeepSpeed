@@ -118,6 +118,14 @@ FP16_MIN_LOSS_SCALE = "min_loss_scale"
 FP16_MIN_LOSS_SCALE_DEFAULT = 1
 
 #########################################
+# Apex AMP support
+#########################################
+AMP = "amp"
+
+AMP_ENABLED = "enabled"
+AMP_ENABLED_DEFAULT = False
+
+#########################################
 # Gradient clipping
 #########################################
 # Gradient clipping. By default, this feature is not enabled.
