@@ -479,7 +479,7 @@ class DeepSpeedLight(Module):
             self.broadcast_src_rank = _get_global_rank(
                 self.mpu.get_data_parallel_group(),
                 0)
-            logger.info(f"global src_rank={src_rank}")
+            logger.info(f"global src_rank={self.broadcast_src_rank}")
 
         if not self.amp_enabled():
             self._broadcast_model()
