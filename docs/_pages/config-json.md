@@ -177,7 +177,7 @@ Example of ***scheduler***
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| ***enabled*** is a **fp16** parameter indicating whether or not FP16 training enabled. | `false`   |
+| ***enabled*** is an **amp** parameter indicating whether or not AMP training is enabled. | `false`   |
 
 ***amp params***: [various]
 
