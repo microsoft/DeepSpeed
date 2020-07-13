@@ -889,7 +889,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             for current_sub_part, saved_sub_part in zip(current_group, saved_group):
                 current_sub_part.data.copy_(saved_sub_part.data)
 
-
     # Extract optimizer state for current partition from merged states of all partitions
     def _partition_base_optimizer_state(self, state_key, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
@@ -953,7 +952,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                     current = self.optimizer.state[param][key]
                     current.data.copy_(saved[param_idx].data)
 
-
     # Restore base optimizer fp32 weights from ZeRO fp16 weights
     def _restore_from_fp16_weights(self):
         partition_id = dist.get_rank(group=self.dp_process_group)
@@ -964,7 +962,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     # Refresh the fp32 master params from the fp16 copies.
     def refresh_fp32_params(self):
         self._restore_from_fp16_weights()
-
 
     def load_state_dict(self,
                         state_dict_list,
