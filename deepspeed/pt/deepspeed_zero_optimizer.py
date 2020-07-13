@@ -423,6 +423,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.is_grad_computed[i][partition_id] = {}
                 self.grad_partition_insertion_offset[i][partition_id] = {}
                 self.grad_start_offset[i][partition_id] = {}
+                self.total_grads_in_partition[i][partition_id] = 0
                 self.initialize_gradient_partition(i, param_group, partition_id)
                 self.is_partition_reduced[i][partition_id] = False
                 self.first_param_index_in_partition[i][
@@ -449,6 +450,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.params_in_partition[i],
                 self.first_offset[i],
                 self.partition_size[i],
+                dtype=torch.half,
+                device=torch.cuda.current_device(),
                 return_tensor_list=True)
 
         self._release_ipg_buffers()
@@ -1034,6 +1037,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                            tensor_list,
                            first_offset,
                            partition_size,
+                           dtype,
+                           device,
                            return_tensor_list=False):
         flat_tensor_list = []
         current_size = 0
@@ -1070,8 +1075,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if current_size < partition_size:
             flat_tensor_list.append(
                 torch.zeros(int(partition_size - current_size),
-                            dtype=tensor_list[0].dtype,
-                            device=tensor_list[0].device))
+                            dtype=dtype,
+                            device=device))
 
         if return_tensor_list:
             return flat_tensor_list
@@ -1154,9 +1159,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for group in self.single_partition_of_fp32_groups:
             group.grad = None
 
-        for i in range(len(norm_groups)):
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+            fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         timers('optimizer_step').stop()
 
         timers('optimizer_allgather').start()
@@ -1288,8 +1292,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             return True
         else:
             if cpu_sum == float('inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
-                if dist.get_rank() == 0 and j is not None:
-                    _handle_overflow(cpu_sum, x, j)
                 return True
             return False
 
@@ -1437,6 +1439,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         partition_id = dist.get_rank(group=self.dp_process_group)
         for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
             fp32_partition.data.copy_(fp16_partitions[partition_id].data)
+
+    # Refresh the fp32 master params from the fp16 copies.
+    def refresh_fp32_params(self):
+        self._restore_from_fp16_weights()
 
     # Extract optimizer state for current partition from merged states of all partitions
     def _partition_base_optimizer_state(self, state_key, all_partition_states):

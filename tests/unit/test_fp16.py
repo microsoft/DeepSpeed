@@ -353,34 +353,145 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage):
     _test_zero_allow_untested_optimizer(args)
 
 
-# @pytest.mark.parametrize("zero_stage", [1])
-# def test_zero_empty_partition(tmpdir, zero_stage):
-#     config_dict = {
-#         "train_batch_size": 3,
-#         "fp16": {
-#             "enabled": True
-#         },
-#         "optimizer": {
-#             "type": "Adam",
-#             "params": {
-#                 "lr": 0.00015
-#             }
-#         },
-#         "zero_optimization": {
-#             "stage": zero_stage
-#         }
-#     }
-#     args = args_from_dict(tmpdir, config_dict)
+@pytest.mark.parametrize("zero_stage", [1, 2])
+def test_zero_empty_partition(tmpdir, zero_stage):
+    config_dict = {
+        "train_micro_batch_size_per_gpu": 1,
+        "gradient_accumulation_steps": 1,
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
 
-#     @distributed_test(world_size=[3])
-#     def _test_zero_empty_partition(args):
-#         hidden_dim = 1
-#         model = SimpleModel(hidden_dim)
-#         # Ensure model has 2 parameters, to cause empty partition with DP=3
-#         assert len(list(model.parameters())) == 2
-#         model, _, _, _ = deepspeed.initialize(args=args,
-#                                               model=model,
-#                                               model_parameters=model.parameters())
-#         model.step()
+    @distributed_test(world_size=[3])
+    def _test_zero_empty_partition(args):
+        hidden_dim = 1
+        model = SimpleModel(hidden_dim)
+        # Ensure model has 2 parameters, to cause empty partition with DP=3
+        assert len(list(model.parameters())) == 2
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
 
-#     _test_zero_empty_partition(args)
+        # Now make sure things work..
+        data_loader = random_dataloader(model=model,
+                                        total_samples=1,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_zero_empty_partition(args)
+
+
+def test_adam_amp_basic(tmpdir):
+    config_dict = {"train_batch_size": 1, "steps_per_print": 1, "amp": {"enabled": True}}
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[1])
+    def _test_adam_amp_basic(args, model, hidden_dim):
+        optimizer = torch.optim.Adam(params=model.parameters())
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             optimizer=optimizer)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_adam_amp_basic(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_lamb_amp_basic(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Lamb",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "gradient_clipping": 1.0,
+        "amp": {
+            "enabled": True,
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[1, 2])
+    def _test_lamb_amp_basic(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_lamb_amp_basic(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_adam_amp_o2(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "gradient_clipping": 1.0,
+        "amp": {
+            "enabled": True,
+            "opt_level": "O2"
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[1, 2])
+    def _test_adam_amp_o2(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_adam_amp_o2(args=args, model=model, hidden_dim=hidden_dim)
