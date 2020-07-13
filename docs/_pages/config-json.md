@@ -170,7 +170,6 @@ Example of ***scheduler***
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
 | Configuration for using automatic mixed precision (AMP) training that leverages [NVIDIA's Apex AMP package](https://nvidia.github.io/apex/). An example, including the available dictionary keys is illustrated below. Is not compatible with `fp16` mode above or ZeRO. Any parameters outside of "enabled" will be passed to AMP's initialize call, see the API and descriptions here at the [apex.amp.initialize documentation](https://nvidia.github.io/apex/amp.html#apex.amp.initialize). | None    |
-{: .notice--warning}
 
 ```json
 "amp": {
