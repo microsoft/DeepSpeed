@@ -104,10 +104,10 @@ Example of ***scheduler***
 
 ### FP16 training options
 
-***fp16***: [dictionary]
-
 **Note:** this mode cannot be combined with the `amp` mode described below.
 {: .notice--warning}
+
+***fp16***: [dictionary]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
