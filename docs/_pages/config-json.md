@@ -161,10 +161,11 @@ Example of ***scheduler***
 | ***min\_loss\_scale*** is  a **fp16** parameter representing the minimum dynamic loss scale value. | `1000`    |
 
 ### Automatic mixed precision (AMP) training options
-***amp***: [dictionary]
 
 **Note:** this mode cannot be combined with the `fp16` mode described above. In addition this mode is not currently compatible with ZeRO.
 {: .notice--warning}
+
+***amp***: [dictionary]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
