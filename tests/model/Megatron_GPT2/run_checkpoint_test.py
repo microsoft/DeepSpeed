@@ -189,6 +189,98 @@ class GPT2CheckpointTestCase(BaseTestCase):
         succ = self.run_test(test_config, 0.01)
         self.assertTrue(succ)
 
+    def test_mp2_gpu4_load_gpu2_node1_with_zero1(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 4,
+            "load_gpus": 2,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1100,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": 256,
+            "heads": ATTN_HEADS,
+            "deepspeed": True,
+            "tag": "ds_zero1",
+            "zero": True,
+            "other_args": "",
+            "checkpoint_name": "ckpt_mp2_gpu4_gpu2_w_zero1",
+            "checkpoint_interval": 1000,
+            "json": "ds_config_func_bs8_zero1.json",
+        }
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp2_gpu2_load_gpu4_node1_with_zero1(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 2,
+            "load_gpus": 4,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1100,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": 256,
+            "heads": ATTN_HEADS,
+            "deepspeed": True,
+            "tag": "ds_zero1",
+            "zero": True,
+            "other_args": "",
+            "checkpoint_name": "ckpt_mp2_gpu2_gpu4_w_zero1",
+            "checkpoint_interval": 1000,
+            "json": "ds_config_func_bs8_zero1.json",
+        }
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp2_gpu4_load_gpu2_node1_with_zero2(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 4,
+            "load_gpus": 2,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1100,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": 256,
+            "heads": ATTN_HEADS,
+            "deepspeed": True,
+            "tag": "ds_zero2",
+            "zero": True,
+            "other_args": "",
+            "checkpoint_name": "ckpt_mp2_gpu4_gpu2_w_zero2",
+            "checkpoint_interval": 1000,
+            "json": "ds_config_func_bs8_zero2.json",
+        }
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp2_gpu2_load_gpu4_node1_with_zero2(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 2,
+            "load_gpus": 4,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1100,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": 256,
+            "heads": ATTN_HEADS,
+            "deepspeed": True,
+            "tag": "ds_zero2",
+            "zero": True,
+            "other_args": "",
+            "checkpoint_name": "ckpt_mp2_gpu2_gpu4_w_zero2",
+            "checkpoint_interval": 1000,
+            "json": "ds_config_func_bs8_zero2.json",
+        }
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
     def test_mp2_gpu4_node1_without_zero(self):
         test_config = {
             "mp": 2,
@@ -321,10 +413,19 @@ def checkpoint_suite():
     suite = unittest.TestSuite()
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_node1_with_zero2'))
+
+    # Shrink DP
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero1'))
-    suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu1_node1_with_zero2'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero1'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_load_gpu2_node1_with_zero2'))
+
+    # Expand DP
+    suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero1'))
     suite.addTest(GPT2CheckpointTestCase('test_mp1_gpu2_load_gpu4_node1_with_zero2'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero1'))
+    suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu2_load_gpu4_node1_with_zero2'))
+
     suite.addTest(GPT2CheckpointTestCase('test_mp2_gpu4_node1_without_zero'))
 
     return suite
