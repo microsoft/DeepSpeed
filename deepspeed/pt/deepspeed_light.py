@@ -831,7 +831,7 @@ class DeepSpeedLight(Module):
 
         if self.is_gradient_accumulation_boundary():
 
-            if self.gradient_clipping > 0.0:
+            if self.gradient_clipping() > 0.0:
                 if not self.fp16_enabled():
                     self.clip_fp32_gradients()
                 elif self.amp_enabled():
