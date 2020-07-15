@@ -82,7 +82,7 @@ def test_lamb_fp16_basic(tmpdir):
 
 def test_lamb_fp16_empty_grad(tmpdir):
     config_dict = {
-        "train_batch_size": 1,
+        "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
             "type": "Lamb",
@@ -105,7 +105,6 @@ def test_lamb_fp16_empty_grad(tmpdir):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
-        model.module.rank = args.local_rank
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,

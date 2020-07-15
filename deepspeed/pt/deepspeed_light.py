@@ -980,6 +980,11 @@ class DeepSpeedLight(Module):
         grads = []
         for param_name, param in self.module.named_parameters():
             if param.grad is None:
+                # In cases where there is an imbalance of empty grads across
+                # ranks we must create empty grads, this will ensure that every
+                # rank is reducing the same size. In some cases it may make
+                # sense in the future to support the ability to average not
+                # w.r.t. world size but with a different value.
                 grads.append(
                     torch.zeros(param.size(),
                                 dtype=param.dtype,
