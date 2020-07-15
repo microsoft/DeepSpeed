@@ -835,6 +835,7 @@ class DeepSpeedLight(Module):
                 if not self.fp16_enabled():
                     self.clip_fp32_gradients()
                 elif self.amp_enabled():
+                    # AMP's recommended way of doing clipping
                     # https://nvidia.github.io/apex/advanced.html#gradient-clipping
                     master_params = amp.master_params(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(parameters=master_params,
