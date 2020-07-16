@@ -845,7 +845,8 @@ class DeepSpeedLight(Module):
 
             #zero grad in basic optimizer could be unreliable and may not exhibit
             #the behaviour that we want
-            if not self.zero_optimization() and not self.fp16_enabled():
+            if not self.zero_optimization() and not self.fp16_enabled(
+            ) and not self.amp_enabled():
                 self.zero_grad()
             else:
                 self.optimizer.zero_grad()
