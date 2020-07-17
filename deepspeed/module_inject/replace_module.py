@@ -84,6 +84,85 @@ def replace_transformer_layer(orig_layer_impl,
     return replace_module(model=model, orig_class=orig_layer_impl, replace_fn=replace_fn)
 
 
+def revert_transformer_layer(orig_layer_impl,
+                             model,
+                             micro_batch_size,
+                             bert_config,
+                             seed,
+                             max_seq_length,
+                             preln=False,
+                             fp16=True,
+                             huggingface=False):
+    """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
+    Arguments:
+        orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
+            e.g., transformers.modeling_bert.BertLayer.
+        model (torch.nn.Module): user's nn.module representing their model
+        micro_batch_size (int): micro batch size per gpu used during training/eval
+        bert_config (dict): model config containing hidden size, attention heads, etc.
+        seed (int): random seed value
+        max_seq_length (int): max sequence length for training
+        preln (bool): does the original layer implementation do pre or post layer norm?
+        fp16 (bool): fp16 or fp32
+        huggingface (bool): huggingface implementation is unique (supports both encoder/decoder modes)
+
+    Returns:
+        Updated nn.module with original bert-style transformer layers
+    """
+    def replace_fn(child):
+        #from turing.nvidia_modelingpreln import BertLayer
+        orig_module = orig_layer_impl(bert_config)
+
+        # copy relevant state from child -> original module
+        qkvw = child.attn_qkvw.data
+        qkvb = child.attn_qkvb.data
+
+        qw, kw, vw = torch.chunk(qkvw, 3, axis=0)
+        qb, kb, vb = torch.chunk(qkvb, 3, axis=0)
+
+        orig_module.attention.self.query.weight = qw
+        orig_module.attention.self.query.bias = qb
+        orig_module.attention.self.key.weight = kw
+        orig_module.attention.self.key.bias = kb
+        orig_module.attention.self.value.weight = vw
+        orig_module.attention.self.value.bias = vb
+
+        orig_module.attention.output.dense.weight = child.attn_ow.data
+        orig_module.attention.output.dense.bias = child.attn_ob.data
+
+        attn_ln_w = child.attn_nw.data
+        attn_ln_b = child.attn_nb.data
+        if preln:
+            orig_module.PostAttentionLayerNorm.weight = attn_ln_w
+            orig_module.PostAttentionLayerNorm.bias = attn_ln_b
+        else:
+            orig_module.attention.output.LayerNorm.weight = attn_ln_w
+            orig_module.attention.output.LayerNorm.bias = attn_ln_b
+
+        inter_ff_w = child.inter_w.data
+        inter_ff_b = child.inter_b.data
+        if preln:
+            orig_module.intermediate.dense_act.weight = inter_ff_w
+            orig_module.intermediate.dense_act.bias = inter_ff_b
+        else:
+            orig_module.intermediate.dense.weight = inter_ff_w
+            orig_module.intermediate.dense.bias = inter_ff_b
+
+        orig_module.output.dense.weight = child.output_w.data
+        orig_module.output.dense.bias = child.output_b.data
+
+        transformer_ln_w = child.norm_w.data
+        transformer_ln_b = child.norm_b.data
+        if preln:
+            orig_module.PreAttentionLayerNorm.weight = transformer_ln_w
+            orig_module.PreAttentionLayerNorm.bias = transformer_ln_b
+        else:
+            orig_module.output.LayerNorm.weight = transformer_ln_w
+            orig_module.output.LayerNorm.bias = transformer_ln_b
+        return orig_module
+
+    return replace_module(model=model, orig_class=deepspeed.DeepSpeedTransformerLayer, replace_fn=replace_fn)
+
 def replace_module(model, orig_class, replace_fn):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
     Arguments:
