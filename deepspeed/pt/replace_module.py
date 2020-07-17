@@ -161,7 +161,10 @@ def revert_transformer_layer(orig_layer_impl,
             orig_module.output.LayerNorm.bias = transformer_ln_b
         return orig_module
 
-    return replace_module(model=model, orig_class=deepspeed.DeepSpeedTransformerLayer, replace_fn=replace_fn)
+    return replace_module(model=model,
+                          orig_class=deepspeed.DeepSpeedTransformerLayer,
+                          replace_fn=replace_fn)
+
 
 def replace_module(model, orig_class, replace_fn):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
