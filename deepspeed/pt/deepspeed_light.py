@@ -95,7 +95,6 @@ def print_configuration(args, name):
 class DeepSpeedLight(Module):
     r"""DeepSpeed engine for training.
     """
-
     def __init__(self,
                  args,
                  model,
@@ -886,16 +885,24 @@ class DeepSpeedLight(Module):
             if self.is_gradient_accumulation_boundary():
                 if self.tensorboard_enabled():
                     if self.global_rank == 0:
-                        self.summary_events = [(f'Train/Samples/elapsed_time_ms_forward', self.timers('forward').elapsed(reset=False) * 1000.0, self.sample_count),
-                                               (f'Train/Samples/elapsed_time_ms_backward',
-                                                self.timers('backward').elapsed(reset=False) * 1000.0, self.sample_count),
-                                               (f'Train/Samples/elapsed_time_ms_backward_inner',
-                                                self.timers('backward_inner').elapsed(reset=False) * 1000.0, self.sample_count),
-                                               (f'Train/Samples/elapsed_time_ms_backward_allreduce',
-                                                self.timers('backward_allreduce').elapsed(reset=False) * 1000.0, self.sample_count),
-                                               (f'Train/Samples/elapsed_time_ms_step',
-                                                self.timers('step').elapsed(reset=False) * 1000.0, self.sample_count)
-                                               ]
+                        self.summary_events = [
+                            (f'Train/Samples/elapsed_time_ms_forward',
+                             self.timers('forward').elapsed(reset=False) * 1000.0,
+                             self.sample_count),
+                            (f'Train/Samples/elapsed_time_ms_backward',
+                             self.timers('backward').elapsed(reset=False) * 1000.0,
+                             self.sample_count),
+                            (f'Train/Samples/elapsed_time_ms_backward_inner',
+                             self.timers('backward_inner').elapsed(reset=False) * 1000.0,
+                             self.sample_count),
+                            (f'Train/Samples/elapsed_time_ms_backward_allreduce',
+                             self.timers('backward_allreduce').elapsed(reset=False) *
+                             1000.0,
+                             self.sample_count),
+                            (f'Train/Samples/elapsed_time_ms_step',
+                             self.timers('step').elapsed(reset=False) * 1000.0,
+                             self.sample_count)
+                        ]
                         for event in self.summary_events:  # write_summary_events
                             self.summary_writer.add_scalar(event[0], event[1], event[2])
                         self.summary_writer.flush()
@@ -1286,12 +1293,10 @@ class DeepSpeedLight(Module):
             checkpoint_name = name_function(save_dir, tag)
             self._ensure_directory_exists(checkpoint_name)
         except:
-            logger.error(
-                f'Failed Saving model checkpoint to {save_dir} with tag {tag}')
+            logger.error(f'Failed Saving model checkpoint to {save_dir} with tag {tag}')
             return False
 
         return True
-
 
     def _create_zero_checkpoint_files(self, save_dir, tag):
         success = True
