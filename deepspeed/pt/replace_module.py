@@ -84,27 +84,13 @@ def replace_transformer_layer(orig_layer_impl,
     return replace_module(model=model, orig_class=orig_layer_impl, replace_fn=replace_fn)
 
 
-def revert_transformer_layer(orig_layer_impl,
-                             model,
-                             micro_batch_size,
-                             bert_config,
-                             seed,
-                             max_seq_length,
-                             preln=False,
-                             fp16=True,
-                             huggingface=False):
+def revert_transformer_layer(orig_layer_impl, model, bert_config, preln=False):
     """ Revert DeepSpeed's transformer layer back to original bert-style transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation that was replaced,
             e.g., transformers.modeling_bert.BertLayer.
         model (torch.nn.Module): user's nn.module representing their model
-        micro_batch_size (int): micro batch size per gpu used during training/eval
         bert_config (dict): model config containing hidden size, attention heads, etc.
-        seed (int): random seed value
-        max_seq_length (int): max sequence length for training
-        preln (bool): does the original layer implementation do pre or post layer norm?
-        fp16 (bool): fp16 or fp32
-        huggingface (bool): huggingface implementation is unique (supports both encoder/decoder modes)
 
     Returns:
         Updated nn.module with original bert-style transformer layers
@@ -120,18 +106,19 @@ def revert_transformer_layer(orig_layer_impl,
         qw, kw, vw = torch.chunk(qkvw, 3, axis=0)
         qb, kb, vb = torch.chunk(qkvb, 3, axis=0)
 
-        orig_module.attention.self.query.weight = qw
-        orig_module.attention.self.query.bias = qb
-        orig_module.attention.self.key.weight = kw
-        orig_module.attention.self.key.bias = kb
-        orig_module.attention.self.value.weight = vw
-        orig_module.attention.self.value.bias = vb
+        orig_module.attention.self.query.weight = torch.nn.Parameter(qw)
+        orig_module.attention.self.query.bias = torch.nn.Parameter(qb)
+        orig_module.attention.self.key.weight = torch.nn.Parameter(kw)
+        orig_module.attention.self.key.bias = torch.nn.Parameter(kb)
+        orig_module.attention.self.value.weight = torch.nn.Parameter(vw)
+        orig_module.attention.self.value.bias = torch.nn.Parameter(vb)
 
-        orig_module.attention.output.dense.weight = child.attn_ow.data
-        orig_module.attention.output.dense.bias = child.attn_ob.data
+        orig_module.attention.output.dense.weight = torch.nn.Parameter(
+            child.attn_ow.data)
+        orig_module.attention.output.dense.bias = torch.nn.Parameter(child.attn_ob.data)
 
-        attn_ln_w = child.attn_nw.data
-        attn_ln_b = child.attn_nb.data
+        attn_ln_w = torch.nn.Parameter(child.attn_nw.data)
+        attn_ln_b = torch.nn.Parameter(child.attn_nb.data)
         if preln:
             orig_module.PostAttentionLayerNorm.weight = attn_ln_w
             orig_module.PostAttentionLayerNorm.bias = attn_ln_b
@@ -139,8 +126,8 @@ def revert_transformer_layer(orig_layer_impl,
             orig_module.attention.output.LayerNorm.weight = attn_ln_w
             orig_module.attention.output.LayerNorm.bias = attn_ln_b
 
-        inter_ff_w = child.inter_w.data
-        inter_ff_b = child.inter_b.data
+        inter_ff_w = torch.nn.Parameter(child.inter_w.data)
+        inter_ff_b = torch.nn.Parameter(child.inter_b.data)
         if preln:
             orig_module.intermediate.dense_act.weight = inter_ff_w
             orig_module.intermediate.dense_act.bias = inter_ff_b
@@ -148,11 +135,11 @@ def revert_transformer_layer(orig_layer_impl,
             orig_module.intermediate.dense.weight = inter_ff_w
             orig_module.intermediate.dense.bias = inter_ff_b
 
-        orig_module.output.dense.weight = child.output_w.data
-        orig_module.output.dense.bias = child.output_b.data
+        orig_module.output.dense.weight = torch.nn.Parameter(child.output_w.data)
+        orig_module.output.dense.bias = torch.nn.Parameter(child.output_b.data)
 
-        transformer_ln_w = child.norm_w.data
-        transformer_ln_b = child.norm_b.data
+        transformer_ln_w = torch.nn.Parameter(child.norm_w.data)
+        transformer_ln_b = torch.nn.Parameter(child.norm_b.data)
         if preln:
             orig_module.PreAttentionLayerNorm.weight = transformer_ln_w
             orig_module.PreAttentionLayerNorm.bias = transformer_ln_b
