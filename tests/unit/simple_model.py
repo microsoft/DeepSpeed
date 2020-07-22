@@ -5,16 +5,21 @@ import torch
 
 
 class SimpleModel(torch.nn.Module):
-    def __init__(self, hidden_dim, empty_grad=False):
+    def __init__(self, hidden_dim, empty_grad=False, rank=0):
         super(SimpleModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         if empty_grad:
-            self.layers2 = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim)])
+            self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+        self.rank = rank
+        self.empty_grad = empty_grad
 
     def forward(self, x, y):
         hidden_dim = x
-        hidden_dim = self.linear(hidden_dim)
+        if self.rank == 0 and self.empty_grad:
+            hidden_dim = self.linear(hidden_dim) + self.linear2(hidden_dim)
+        else:
+            hidden_dim = self.linear(hidden_dim)
         return self.cross_entropy_loss(hidden_dim, y)
 
 
@@ -41,9 +46,9 @@ class SimpleOptimizer(torch.optim.Optimizer):
         return loss
 
 
-def random_dataloader(model, total_samples, hidden_dim, device):
+def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half):
     batch_size = model.train_micro_batch_size_per_gpu()
-    train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=torch.half)
+    train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
     train_label = torch.empty(total_samples,
                               dtype=torch.long,
                               device=device).random_(hidden_dim)

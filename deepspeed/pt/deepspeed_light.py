@@ -144,11 +144,11 @@ class DeepSpeedLight(Module):
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
 
-        self.sample_count = 0
-        if self.tensorboard_enabled():
-            self.summary_writer = self.get_summary_writer()
-
         self._init_distributed(dist_init_required)
+
+        self.sample_count = 0
+        if self.tensorboard_enabled() and self.global_rank == 0:
+            self.summary_writer = self.get_summary_writer()
 
         # Configure distributed model
         self._configure_distributed_model(model)
@@ -979,7 +979,17 @@ class DeepSpeedLight(Module):
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
         grads = []
         for param_name, param in self.module.named_parameters():
-            if param.grad is not None:
+            if param.grad is None:
+                # In cases where there is an imbalance of empty grads across
+                # ranks we must create empty grads, this will ensure that every
+                # rank is reducing the same size. In some cases it may make
+                # sense in the future to support the ability to average not
+                # w.r.t. world size but with a different value.
+                grads.append(
+                    torch.zeros(param.size(),
+                                dtype=param.dtype,
+                                device=param.device))
+            else:
                 grad_data = param.grad.data
                 if self.sparse_gradients_enabled(
                 ) and param_name in self.csr_tensor_module_names:
@@ -1140,8 +1150,12 @@ class DeepSpeedLight(Module):
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
         if not self.zero_optimization():
-            self.optimizer.load_state_dict(checkpoint['optimizer'],
-                                           load_optimizer_states=load_optimizer_states)
+            if self.fp16_enabled():
+                self.optimizer.load_state_dict(
+                    checkpoint['optimizer'],
+                    load_optimizer_states=load_optimizer_states)
+            else:
+                self.optimizer.load_state_dict(checkpoint['optimizer'])
 
         if load_lr_scheduler_states and self.lr_scheduler is not None:
             self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
