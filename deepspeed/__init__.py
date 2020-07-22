@@ -4,7 +4,17 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import sys
 import types
 
+<<<<<<< HEAD
 from . import ops
+=======
+from deepspeed.pt.deepspeed_light import DeepSpeedLight
+from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
+from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
+from deepspeed.pt.log_utils import logger
+from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from deepspeed.pt.deepspeed_config import DeepSpeedConfig
+from deepspeed.pt.replace_module import replace_transformer_layer, revert_transformer_layer
+>>>>>>> 3161565... update replace to fix runtime errors
 
 from .runtime.engine import DeepSpeedEngine
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
