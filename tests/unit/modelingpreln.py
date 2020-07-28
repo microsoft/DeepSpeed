@@ -654,18 +654,18 @@ class BertLayer(nn.Module):
             self.biases[2].register_hook(lambda x, self=self: grads.append([x, "V_B"]))
             self.weight[3].register_hook(lambda x, self=self: grads.append([x, "O_W"]))
             self.biases[3].register_hook(lambda x, self=self: grads.append([x, "O_B"]))
-            self.PostAttentionLayerNorm.weight.register_hook(
-                lambda x,
-                self=self: grads.append([x,
-                                         "N2_W"]))
-            self.PostAttentionLayerNorm.bias.register_hook(
-                lambda x,
-                self=self: grads.append([x,
-                                         "N2_B"]))
-            self.weight[5].register_hook(lambda x, self=self: grads.append([x, "int_W"]))
-            self.biases[5].register_hook(lambda x, self=self: grads.append([x, "int_B"]))
-            self.weight[6].register_hook(lambda x, self=self: grads.append([x, "out_W"]))
-            self.biases[6].register_hook(lambda x, self=self: grads.append([x, "out_B"]))
+            #self.PostAttentionLayerNorm.weight.register_hook(
+            #    lambda x,
+            #    self=self: grads.append([x,
+            #                             "N2_W"]))
+            #self.PostAttentionLayerNorm.bias.register_hook(
+            #    lambda x,
+            #    self=self: grads.append([x,
+            #                             "N2_B"]))
+            #self.weight[5].register_hook(lambda x, self=self: grads.append([x, "int_W"]))
+            #self.biases[5].register_hook(lambda x, self=self: grads.append([x, "int_B"]))
+            #self.weight[6].register_hook(lambda x, self=self: grads.append([x, "out_W"]))
+            #self.biases[6].register_hook(lambda x, self=self: grads.append([x, "out_B"]))
             self.PreAttentionLayerNorm.weight.register_hook(
                 lambda x,
                 self=self: grads.append([x,
@@ -675,7 +675,7 @@ class BertLayer(nn.Module):
                 self=self: grads.append([x,
                                          "norm_B"]))
 
-        return layer_output + intermediate_input
+        return attention_output #layer_output + intermediate_input
 
     def get_w(self):
         return self.attention.get_w()
