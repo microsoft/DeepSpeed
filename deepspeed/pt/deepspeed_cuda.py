@@ -597,47 +597,51 @@ class DeepSpeedSelfAttentionFunction(Function):
             norm_w.register_hook(lambda x, self=self: grads.append([x, "norm_W"]))
             norm_b.register_hook(lambda x, self=self: grads.append([x, "norm_B"]))
 
-        if config.is_grad_enabled:
-            if (config.normalize_invertible):
-                ctx.save_for_backward(input_mask,
-                                      attn_qkvw,
-                                      attn_qkvb,
-                                      attn_ow,
-                                      attn_ob,
-                                      attn_nw,
-                                      attn_nb,
-                                      norm_w,
-                                      norm_b)
-            else:
-                ctx.save_for_backward(output,
-                                      input,
-                                      input_mask,
-                                      attn_qkvw,
-                                      attn_qkvb,
-                                      attn_ow,
-                                      attn_ob,
-                                      attn_nw,
-                                      attn_nb,
-                                      norm_w,
-                                      norm_b)
+        #if config.is_grad_enabled:
+        #    if (config.normalize_invertible):
+        #        ctx.save_for_backward(input_mask,
+        #                              attn_qkvw,
+        #                              attn_qkvb,
+        #                              attn_ow,
+        #                              attn_ob,
+        #                              attn_nw,
+        #                              attn_nb,
+        #                              norm_w,
+        #                              norm_b)
+        #    else:
+        #        ctx.save_for_backward(output,
+        #                              input,
+        #                              input_mask,
+        #                              attn_qkvw,
+        #                              attn_qkvb,
+        #                              attn_ow,
+        #                              attn_ob,
+        #                              attn_nw,
+        #                              attn_nb,
+        #                              norm_w,
+        #                              norm_b)
 
-            ctx.config = config
-            if (config.pre_layer_norm or not config.normalize_invertible):
-                ctx.inp_norm = inp_norm
-
-            ctx.qkv_tf = qkv_tf
-            ctx.soft_inp = soft_inp
-            if not config.attn_dropout_checkpoint:
-                ctx.ctx_bufB = ctx_bufB
-
-            ctx.attn_o_inp = attn_o_inp
-            if not config.normalize_invertible:
-                ctx.add_res = add_res
-
-            ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
-            ctx.attn_output_dropout_mask = attn_output_dropout_mask
-
-        return output
+        ctx.config = config
+        #    if (config.pre_layer_norm or not config.normalize_invertible):
+        #        ctx.inp_norm = inp_norm
+#
+        #    ctx.qkv_tf = qkv_tf
+        #    ctx.soft_inp = soft_inp
+        #    if not config.attn_dropout_checkpoint:
+        #        ctx.ctx_bufB = ctx_bufB
+#
+        #    ctx.attn_o_inp = attn_o_inp
+        #    if not config.normalize_invertible:
+        #        ctx.add_res = add_res
+#
+        #    ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
+        #    ctx.attn_output_dropout_mask = attn_output_dropout_mask
+        ctx.input = input
+        ctx.norm_w = norm_w
+        ctx.norm_b = norm_b
+        ctx.attn_qkvw = attn_qkvw
+        ctx.attn_qkvb = attn_qkvb
+        return qkv_tf
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -648,28 +652,28 @@ class DeepSpeedSelfAttentionFunction(Function):
 
         assert ctx.config.training
 
-        if (ctx.config.normalize_invertible):
-            (input_mask,
-             attn_qkvw,
-             attn_qkvb,
-             attn_ow,
-             attn_ob,
-             attn_nw,
-             attn_nb,
-             norm_w,
-             norm_b) = ctx.saved_tensors
-        else:
-            (output,
-             input,
-             input_mask,
-             attn_qkvw,
-             attn_qkvb,
-             attn_ow,
-             attn_ob,
-             attn_nw,
-             attn_nb,
-             norm_w,
-             norm_b) = ctx.saved_tensors
+        #if (ctx.config.normalize_invertible):
+        #    (input_mask,
+        #     attn_qkvw,
+        #     attn_qkvb,
+        #     attn_ow,
+        #     attn_ob,
+        #     attn_nw,
+        #     attn_nb,
+        #     norm_w,
+        #     norm_b) = ctx.saved_tensors
+        #else:
+        #    (output,
+        #     input,
+        #     input_mask,
+        #     attn_qkvw,
+        #     attn_qkvb,
+        #     attn_ow,
+        #     attn_ob,
+        #     attn_nw,
+        #     attn_nb,
+        #     norm_w,
+        #     norm_b) = ctx.saved_tensors
 
         cuda_module = ds_stochastic_transformer_cuda if ctx.config.stochastic_mode else ds_transformer_cuda
         backward_func = cuda_module.backward_self_attention_fp16 if ctx.config.fp16 else cuda_module.backward_self_attention_fp32
@@ -685,28 +689,27 @@ class DeepSpeedSelfAttentionFunction(Function):
          grad_norm_b) = backward_func(
              ctx.config.layer_id,
              grad_output,
-             (output if ctx.config.normalize_invertible else ctx.inp_norm ),
-             (ctx.inp_norm if (ctx.config.pre_layer_norm
-                               or not ctx.config.normalize_invertible) else input),
-             ctx.qkv_tf,
-             ctx.soft_inp,
-             (ctx.soft_inp if ctx.config.attn_dropout_checkpoint else ctx.ctx_bufB),
-             ctx.attn_o_inp,
-             (output if ctx.config.normalize_invertible else ctx.add_res),
-             
-             ctx.attn_prob_dropout_mask,
-             ctx.attn_output_dropout_mask,
-             (ctx.inp_norm if (ctx.config.pre_layer_norm
-                               and ctx.config.normalize_invertible) else input),
-             input_mask,
-             attn_qkvw,
-             attn_qkvb,
-             attn_ow,
-             attn_ob,
-             attn_nw,
-             attn_nb,
-             norm_w,
-             norm_b)
+             ctx.input, #(output if ctx.config.normalize_invertible else ctx.inp_norm ),
+             ctx.input, #(ctx.inp_norm if (ctx.config.pre_layer_norm
+            #                  or not ctx.config.normalize_invertible) else input),
+             ctx.input, #ctx.qkv_tf,
+             ctx.input, #ctx.soft_inp,
+             ctx.input, #(ctx.soft_inp if ctx.config.attn_dropout_checkpoint else ctx.ctx_bufB),
+             ctx.input, #ctx.attn_o_inp,
+             ctx.input, #(output if ctx.config.normalize_invertible else ctx.add_res),
+             ctx.input, #ctx.attn_prob_dropout_mask,
+             ctx.input, #ctx.attn_output_dropout_mask,
+                        #(ctx.inp_norm if (ctx.config.pre_layer_norm
+             ctx.input, #                  and ctx.config.normalize_invertible) else input),
+             ctx.input, #input_mask,
+             ctx.attn_qkvw,
+             ctx.attn_qkvb,
+             ctx.input, #attn_ow,
+             ctx.input, #attn_ob,
+             ctx.input, #attn_nw,
+             ctx.input, #attn_nb,
+             ctx.norm_w, #norm_w,
+             ctx.norm_b) #norm_b)
 
         return (grad_input,
                 None,
@@ -715,10 +718,10 @@ class DeepSpeedSelfAttentionFunction(Function):
                 None,
                 grad_attn_qkvw,
                 grad_attn_qkvb,
-                grad_attn_ow,
-                grad_attn_ob,
-                grad_attn_nw,
-                grad_attn_nb,
+                None, #grad_attn_ow,
+                None, #grad_attn_ob,
+                None, #grad_attn_nw,
+                None, #grad_attn_nb,
                 grad_norm_w,
                 grad_norm_b,
                 None)

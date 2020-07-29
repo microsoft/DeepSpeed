@@ -1099,7 +1099,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
 
     if (_normalize_invertible) add_res_ptr = buf_1 + small_buf_size;
     if (_attn_dropout_checkpoint) ctx_bufB_ptr = buf_1 + 2 * small_buf_size;
-
+/*
     if (_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
             _norm_layer3.ForwardCheckpoint(
@@ -1108,7 +1108,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
         else
             _norm_layer3.Forward(
                 bsz, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
-    }
+    }*/
 
     int bsz_seq = bsz * _seq_length;
 
@@ -1119,7 +1119,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
 
     launch_bias_add_transform_0213<T>(
         q_tf_ptr, buf_0, attn_qkvb_ptr, bsz, _seq_length, _hidden_size, _heads, _stream, 3);
-
+/*
     int bsz_heads = bsz * _heads;
 
     // attention scores
@@ -1138,7 +1138,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
         attn_o_inp_ptr, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 1);
 
     _attn_out_linear.Forward(bsz_seq, attn_o_inp_ptr, attn_ow_ptr, out_ptr, _cublasHandle);
-
+    */
 }
 
 template <typename T>
@@ -1191,7 +1191,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     int bsz_seq = bsz * _seq_length;
     int bsz_heads = bsz * _heads;
 
-
+/*
     _attn_out_linear.Backward(bsz_seq,
                               grad_output_ptr,
                               attn_o_inp_ptr,
@@ -1225,7 +1225,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     _softmax.Backward(bsz, ff2_buf, soft_out_ptr, _stream);
 
     _attn_scores.Backward(bsz_heads, ff2_buf, k_tf_ptr, q_tf_ptr, _cublasHandle, buf_2, buf_1);
-
+*/
     launch_transform4d_0213(ff2_buf, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 3);
 
     if (_pre_or_postLayerNorm)
@@ -1237,7 +1237,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
                              grad_attn_qkvb_ptr,
                              _cublasHandle,
                              _stream,
-                             buf_2);
+                             grad_input_ptr);
     else
         _qkv_linear.Backward(bsz_seq,
                              ff2_buf,
@@ -1247,11 +1247,11 @@ void Self_attentionLayer<T>::Backward(int bsz,
                              grad_attn_qkvb_ptr,
                              _cublasHandle,
                              _stream,
-                             buf_2);
+                             grad_input_ptr);
 
-    if (_norm_layer3.UseMean())
+/*    if (_norm_layer3.UseMean())
         _norm_layer3.Backward(bsz,
-                              buf_2,
+                              grad_output_ptr,
                               norm_w_ptr,
                               grad_norm_w_ptr,
                               grad_norm_b_ptr,
@@ -1261,14 +1261,14 @@ void Self_attentionLayer<T>::Backward(int bsz,
 
     else
         _norm_layer3.Backward(bsz,
-                              buf_2,
+                              grad_output_ptr,
                               norm_w_ptr,
                               norm_b_ptr,
                               grad_norm_w_ptr,
                               grad_norm_b_ptr,
                               streams,
                               grad_input_ptr,
-                              inp_norm_ptr);
+                              inp_norm_ptr);*/
 }
 
 template <typename T>
@@ -1391,7 +1391,7 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
     auto add_res = (normalize_invertible ? inp_norm : torch::empty_like(input));
     auto attn_o_inp = torch::empty_like(input);
-    auto qkv_tf = torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize() * 3}, options);
+    auto qkv_tf = torch::empty({(bsz * 3), layer->GetNumHeads(), layer->GetSeqLength(), (layer->GetHiddenSize() / layer->GetNumHeads())}, options);
 
     auto attn_prob_dropout_mask =
         torch::empty({(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()},
