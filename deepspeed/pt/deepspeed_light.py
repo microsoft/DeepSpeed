@@ -20,6 +20,7 @@ import deepspeed.pt.deepspeed_checkpointing as deepspeed_activation_checkpointin
 from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
+from deepspeed.pt.deepspeed_cpu_adam import CPUAdam
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
@@ -97,7 +98,7 @@ class DeepSpeedLight(Module):
     def __init__(self,
                  args,
                  model,
-                 optimizer=None,
+                 optimizer=CPUAdam,
                  model_parameters=None,
                  training_data=None,
                  lr_scheduler=None,
@@ -561,7 +562,6 @@ class DeepSpeedLight(Module):
 
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
-            logger.info('Creating fp16 ZeRO Optimizer Stage 1')
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -593,7 +593,6 @@ class DeepSpeedLight(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor())
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
-        logger.info('Creating fp16 zero stage {} optimizer'.format(zero_stage))
 
         return optimizer
 

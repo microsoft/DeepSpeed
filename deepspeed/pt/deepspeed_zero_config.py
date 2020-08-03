@@ -23,6 +23,7 @@ ZeRO optimization should be enabled as:
     "contiguous_gradients" : [true|false]
     "overlap_comm": [true|false],
     "reduce_bucket_size": 500000000
+    "cpu_offload": [true|false]
     }
 }
 '''
@@ -47,6 +48,9 @@ ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS_DEFAULT = True
 ZERO_OPTIMIZATION_REDUCE_SCATTER = 'reduce_scatter'
 ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT = True
 
+ZERO_OPTIMIZATION_CPU_OFFLOAD = 'cpu_offload'
+ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT = True
+
 ZERO_OPTIMIZATION_OVERLAP_COMM = 'overlap_comm'
 ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT = False
 
@@ -69,7 +73,9 @@ ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS:
     ZERO_OPTIMIZATION_ALLGATHER_PARTITIONS_DEFAULT,
     ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE:
-    ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT
+    ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT,
+    ZERO_OPTIMIZATION_CPU_OFFLOAD:
+    ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT
 }
 
 
@@ -84,6 +90,7 @@ class DeepSpeedZeroConfig(object):
         self.allgather_partitions = None
         self.allgather_bucket_size = None
         self.overlap_comm = None
+        self.cpu_offload = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -148,3 +155,7 @@ class DeepSpeedZeroConfig(object):
             zero_config_dict,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT)
+        
+        self.cpu_offload = get_scalar_param(zero_config_dict,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT)
