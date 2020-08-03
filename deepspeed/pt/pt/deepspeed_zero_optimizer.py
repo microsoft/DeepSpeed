@@ -183,18 +183,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #a single 32-bit partition of the parallel partitioned parameters
         #that this process will update
 
+        self.total_params = 0
+
         if self.cpu_offload == True:
-            logger.info("cpu_offload enabled")
-            total_params = 0
-            print(total_params)
+            logger.info(f"cpu_offload enabled")
             for i, param_group in enumerate(self.optimizer.param_groups):
-                total_params += sum([t.numel() for t in param_group['params']])
-            print(total_params)
-            self.single_partition_of_fp32_groups = torch.zeros([total_params],
+                self.total_params += sum([t.numel() for t in param_group['params']])
+            logger.info("Total # of params is {}".format(self.total_params))
+            self.single_partition_of_fp32_groups = torch.zeros([self.total_params],
                                                                 device=torch.device('cpu'), requires_grad=True)
-            #exit()
+
         else:
-            logger.info("cpu_offload disabled")
+            logger.info(f"cpu_offload disabled")
             self.single_partition_of_fp32_groups = []
 
         #These are the parameters in each group that will not be updated by this process directly
@@ -253,16 +253,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #jie: without CPU_offload, the initialization of
             #a single 32-bit partition of the parallel partitioned parameters
+
             #that this process will update
             if self.cpu_offload == True:
                 #move_to_cpu(self.parallel_partitioned_fp16_groups[i])
+                '''
                 index = 0
                 for tensor in self.parallel_partitioned_fp16_groups[i][partition_id]:
-                    self.single_partition_of_fp32_groups[index] = tensor.clone().float()
+                    self.single_partition_of_fp32_groups[index] = tensor.float()
                     index = index+1
                 cuda_device=torch.cuda.current_device()
                 #move_to_cuda(self.parallel_partitioned_fp16_groups[i].cuda_device)
-                #print(self.single_partition_of_fp32_groups[i])
+                '''
+                #torch.cat(self.parallel_partitioned_fp16_groups[i][partition_id], 0, out=self.single_partition_of_fp32_groups)
+                self.single_partition_of_fp32_groups = torch.tensor(self.parallel_partitioned_fp16_groups[i][partition_id],
+                                                                   dtype=self.single_partition_of_fp32_groups[i].dtype)
 
             else:
                 # a partition of the fp32 master weights that will be updated by this process
@@ -390,7 +395,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             see_memory_usage(f"After initializing ZeRO optimizer")
 
         logger.info(f"=========end init============")
-        #exit()
+        exit()
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -406,11 +411,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     int(self.partition_size[i]),
                     dtype=self.single_partition_of_fp16_groups[i].dtype,
                     device=torch.cuda.current_device())
-                single_grad_partition_cpu = torch.zeros(
-                    int(self.partition_size[i]),
-                    dtype=self.single_partition_of_fp32_groups[i].dtype,
-                    device='cpu')
-                self.single_partition_of_fp32_groups[i].grad = single_grad_partition
+               # single_grad_partition_cpu = torch.zeros(
+                 #   int(self.partition_size[i]),
+                  #  dtype=self.single_partition_of_fp32_groups[i].dtype,
+                   # device='cpu')
+                #self.single_partition_of_fp32_groups[i].grad = single_grad_partition
             else:
                 single_grad_partition = torch.zeros(
                     int(self.partition_size[i]),
