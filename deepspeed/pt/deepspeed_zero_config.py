@@ -24,6 +24,7 @@ ZeRO optimization should be enabled as:
     "overlap_comm": [true|false],
     "reduce_bucket_size": 500000000
     "load_from_fp32_weights": [true|false]
+    "cpu_offload": [true|false]
     }
 }
 '''
@@ -63,6 +64,9 @@ ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEPRECATED = 'allgather_size'
 ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS = 'load_from_fp32_weights'
 ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS_DEFAULT = True
 
+ZERO_OPTIMIZATION_CPU_OFFLOAD = 'cpu_offload'
+ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT = True
+
 ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_STAGE:
     ZERO_OPTIMIZATION_STAGE_DEFAULT,
@@ -77,7 +81,9 @@ ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE:
     ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT,
     ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS:
-    ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS_DEFAULT
+    ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS_DEFAULT,
+    ZERO_OPTIMIZATION_CPU_OFFLOAD:
+    ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT
 }
 
 
@@ -93,6 +99,7 @@ class DeepSpeedZeroConfig(object):
         self.allgather_bucket_size = None
         self.overlap_comm = None
         self.load_from_fp32_weights = None
+        self.cpu_offload = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -157,7 +164,12 @@ class DeepSpeedZeroConfig(object):
             zero_config_dict,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE,
             ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT)
+
         self.load_from_fp32_weights = get_scalar_param(
             zero_config_dict,
             ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS,
             ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS_DEFAULT)
+
+        self.cpu_offload = get_scalar_param(zero_config_dict,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT)
