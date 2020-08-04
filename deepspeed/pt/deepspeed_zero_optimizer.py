@@ -438,8 +438,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             device='cpu')
 
         self.single_partition_of_fp32_groups.grad = single_grad_partition_cpu
-
-        self.optimizer.step_with_cpuoffload()
+        self.optimizer.step_with_cpuoffload(self.single_partition_of_fp32_groups)
 
         for group in self.single_partition_of_fp32_groups:
             group.grad = None
@@ -1261,7 +1260,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         see_memory_usage('After zero_optimizer step')
         return
 
-        #jie: 
+        #jie:
         def step_with_cpuoffload(self, closure=None):
             """
             Not supporting closure.
@@ -1290,7 +1289,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 timers('optimizer_allgather').start()
                 timers('optimizer_allgather').stop()
                 return
-
+            print("==========step_with_cpuoffload=========")
             norm_groups = []
             single_partition_grad_groups = []
             skip = False
@@ -1318,7 +1317,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 assert single_grad_partition.numel() == self.partition_size[i], \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
-                self.single_partition_of_fp32_groups[i].grad = single_grad_partition
+                #self.single_partition_of_fp32_groups[i].grad = single_grad_partition
                 #release all the gradient since we have already created a necessary copy in dp_grad_partition
                 self.free_grad_in_param_list(self.params_in_partition[i])
 
