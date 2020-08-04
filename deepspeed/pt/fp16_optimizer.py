@@ -203,6 +203,8 @@ class FP16_Optimizer(object):
                                 device=p.device)
                     if p.grad is None else p.grad.to(data_type) for p in group
                 ]))
+            for p in group:
+                p.grad = None
 
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 

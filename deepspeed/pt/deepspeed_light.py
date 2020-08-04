@@ -21,6 +21,7 @@ import deepspeed.pt.deepspeed_checkpointing as deepspeed_activation_checkpointin
 from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
+from deepspeed.pt.deepspeed_onebit_adam import OnebitAdam
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
@@ -123,6 +124,7 @@ class DeepSpeedLight(Module):
         self.config_params = config_params
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
+        self.enable_backward_allreduce = True
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -528,6 +530,7 @@ class DeepSpeedLight(Module):
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
+        # print(optimizer_parameters.keys())
         if 'max_grad_norm' in optimizer_parameters.keys():
             raise ValueError(
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
@@ -537,6 +540,8 @@ class DeepSpeedLight(Module):
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == "OnebitAdam":
+            optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -795,7 +800,7 @@ class DeepSpeedLight(Module):
             self.timers('backward_allreduce_microstep').start()
             self.timers('backward_allreduce').start()
 
-        if allreduce_gradients:
+        if allreduce_gradients and self.enable_backward_allreduce:
             self.allreduce_gradients()
 
         if self.wall_clock_breakdown():

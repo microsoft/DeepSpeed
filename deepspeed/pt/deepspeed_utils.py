@@ -8,6 +8,7 @@ Helper functions and classes from multiple sources.
 
 import torch
 from torch._six import inf
+import torch.distributed as dist
 
 from deepspeed.pt.log_utils import logger
 
@@ -25,6 +26,9 @@ class CheckOverflow(object):
 
     def check_using_norm(self, norm_group):
         overflow = -1 in norm_group
+        cuda_overflow = torch.cuda.FloatTensor([overflow])
+        dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MIN)
+
 
         if self.mpu is not None:
             overflow_gpu = torch.cuda.ByteTensor([overflow])
