@@ -11,7 +11,7 @@ The wheel will be located at: dist/*.whl
 import os
 import torch
 from setuptools import setup, find_packages
-from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtension
 
 cmdclass = {}
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
@@ -114,6 +114,10 @@ ext_modules = [
                           '-D__STOCHASTIC_MODE__'
                       ]
                   }),
+    CppExtension(name='deepspeed_sparse_transformer_util',
+                 sources=['csrc/sparse_transformer/utils.cpp'],
+                 extra_compile_args={'cxx': ['-O2',
+                                             '-fopenmp']})
 ]
 
 setup(name='deepspeed',
@@ -125,6 +129,7 @@ setup(name='deepspeed',
       packages=find_packages(exclude=["docker",
                                       "third_party",
                                       "csrc"]),
+      package_data={'': ['trsrc/sparse_transformer/*.tr']},
       scripts=['bin/deepspeed',
                'bin/deepspeed.pt',
                'bin/ds',

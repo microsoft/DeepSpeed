@@ -7,3 +7,4 @@ pytest
 pytest-forked
 pre-commit
 clang-format
+triton>=0.2.1
