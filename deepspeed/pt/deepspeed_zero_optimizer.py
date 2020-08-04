@@ -94,10 +94,27 @@ def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
 
+def move_to_cuda(tensor_list, cuda_device):
+    for tensor in tensor_list:
+        tensor.data = tensor.data.to(cuda_device)
 
 def print_rank_msg(msg):
     print(f"rank {dist.get_rank()} - {msg}")
 
+def async_migrate_to(obj, dev, main_stream=None):
+    if torch.is_tensor(obj):
+        obj = Variable(obj)
+    if isinstance(obj, Variable):
+        v = obj.cuda(dev, async=True)
+        if main_stream is not None:
+            v.data.record_stream(main_stream)
+        return v
+    elif isinstance(obj, collections.Mapping):
+        return {k: async_copy_to(o, dev, main_stream) for k, o in obj.items()}
+    elif isinstance(obj, collections.Sequence):
+        return [async_copy_to(o, dev, main_stream) for o in obj]
+    else:
+        return obj
 
 class FP16_DeepSpeedZeroOptimizer(object):
     """
@@ -194,7 +211,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.cpu_offload == True:
             logger.info(f"cpu_offload enabled")
-            for i, param_group in enumerate(self.optimizer.param_groups):
+            for i,param_group in enumerate(self.optimizer.param_groups):
                 self.total_params += sum([t.numel() for t in param_group['params']])
             logger.info("Total # of params is {}".format(self.total_params))
             self.single_partition_of_fp32_groups = torch.zeros([self.total_params],
@@ -304,6 +321,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
         self.reduction_stream = torch.cuda.Stream()
         self.callback_queued = False
+
+        self.migration_event = torch.cuda.Event(enable_timing=False, blocking=False)
+        self.migration_stream = torch.cuda.Stream()
+
+        self.cpu_computation_event = torch.cuda.Event(enable_timing=False, blocking=False)
+        self.cpu_computation_stream = torch.cuda.Stream()
 
         self.param_dict = {}
 
@@ -437,11 +460,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
             dtype=self.single_partition_of_fp32_groups.dtype,
             device='cpu')
 
-        self.single_partition_of_fp32_groups.grad = single_grad_partition_cpu
-        self.optimizer.step_with_cpuoffload(self.single_partition_of_fp32_groups)
+        self.cpu_fp32_exp_avg = torch.zeros(
+            [self.total_params],
+            dtype=self.single_partition_of_fp32_groups.dtype,
+            device='cpu')
 
-        for group in self.single_partition_of_fp32_groups:
-            group.grad = None
+        self.cpu_fp32_exp_avg_sq = torch.zeros(
+            [self.total_params],
+            dtype=self.single_partition_of_fp32_groups.dtype,
+            device='cpu')
+
+        self.single_partition_of_fp32_groups.grad = single_grad_partition_cpu
+        stream = self.cpu_computation_stream
+        with torch.cuda.stream(stream):
+            self.optimizer.step_with_cpuoffload(self.single_partition_of_fp32_groups, self.cpu_fp32_exp_avg, self.cpu_fp32_exp_avg_sq).to('cpu')
+            return
 
         return
 
@@ -1143,6 +1176,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         Not supporting closure.
         """
+        print("=============I'm in step==============")
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow
@@ -1265,6 +1299,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             """
             Not supporting closure.
             """
+            print("=====================I'm in cpu step=================")
             see_memory_usage(f"In step before checking overflow")
 
             # First compute norm for all group so we know if there is overflow
