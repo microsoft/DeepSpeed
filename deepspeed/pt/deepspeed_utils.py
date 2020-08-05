@@ -26,9 +26,6 @@ class CheckOverflow(object):
 
     def check_using_norm(self, norm_group):
         overflow = -1 in norm_group
-        cuda_overflow = torch.cuda.FloatTensor([overflow])
-        dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MIN)
-
 
         if self.mpu is not None:
             overflow_gpu = torch.cuda.ByteTensor([overflow])
@@ -36,6 +33,10 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
             overflow = overflow_gpu[0].item()
+        else:
+            cuda_overflow = torch.cuda.FloatTensor([overflow])
+            dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MAX)
+            overflow = cuda_overflow.item()
 
         return bool(overflow)
 
