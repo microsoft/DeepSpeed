@@ -36,7 +36,8 @@ class CheckOverflow(object):
         else:
             cuda_overflow = torch.cuda.FloatTensor([overflow])
             dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MAX)
-            overflow = cuda_overflow.item()
+            dist.barrier()
+            overflow = cuda_overflow[0].item()
 
         return bool(overflow)
 

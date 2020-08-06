@@ -204,6 +204,9 @@ class FP16_Optimizer(object):
                     if p.grad is None else p.grad.to(data_type) for p in group
                 ]))
 
+            for p in group:
+                p.grad = None
+
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 
         self.start_timers([COMPUTE_NORM])
@@ -223,6 +226,7 @@ class FP16_Optimizer(object):
                       "scale: {}, reducing to {}".format(prev_scale,
                                                          self.cur_scale))
             self.log_timers(OVERFLOW_TIMERS)
+            grads_groups_flat = None
             return self.overflow
 
         self.start_timers([UNSCALE_AND_CLIP])
