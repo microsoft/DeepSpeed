@@ -274,7 +274,16 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage):
                                                 hidden_dim=hidden_dim)
 
 
-@pytest.mark.parametrize("zero_stage", [1, 2])
+#@pytest.mark.parametrize("zero_stage", [1, 2])
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+                         [
+                             (1,
+                              False),
+                             (2,
+                              False),
+                             (2,
+                              True),
+                         ])
 def test_zero_static_scale(tmpdir, zero_stage):
     config_dict = {
         "train_batch_size": 4,
@@ -291,7 +300,8 @@ def test_zero_static_scale(tmpdir, zero_stage):
         },
         "zero_optimization": {
             "stage": zero_stage
-        }
+        },
+        "zero_cpu_offload": use_cpu_offload,
     }
     args = args_from_dict(tmpdir, config_dict)
 

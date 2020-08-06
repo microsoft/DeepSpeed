@@ -99,7 +99,7 @@ class DeepSpeedLight(Module):
     def __init__(self,
                  args,
                  model,
-                 optimizer=CPUAdam,
+                 optimizer=None,
                  model_parameters=None,
                  training_data=None,
                  lr_scheduler=None,
@@ -496,9 +496,12 @@ class DeepSpeedLight(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         #jie:
-        if self.zero_cpu_offload() == True:
+        print("client_optimizer")
+        print(client_optimizer)
+        if self.zero_cpu_offload():
             optimizer_parameters = self.optimizer_params()
-            basic_optimizer = CPUAdam(client_optimizer.param_groups, **optimizer_parameters)
+            basic_optimizer = CPUAdam(client_optimizer.param_groups,
+                                      **optimizer_parameters)
             logger.info('Using CPU Optimizer as basic optimizer')
         elif client_optimizer is not None:
             basic_optimizer = client_optimizer
@@ -531,8 +534,8 @@ class DeepSpeedLight(Module):
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
-
-        # logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
@@ -541,7 +544,7 @@ class DeepSpeedLight(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            if self.zero_cpu_offload() == True:
+            if self.zero_cpu_offload():
                 optimizer = CPUAdam(model_parameters, **optimizer_parameters)
             else:
                 from apex.optimizers.fused_adam import FusedAdam
@@ -855,7 +858,6 @@ class DeepSpeedLight(Module):
                     master_params = amp.master_params(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                    max_norm=self.gradient_clipping())
-
             self.optimizer.step()
 
             #zero grad in basic optimizer could be unreliable and may not exhibit

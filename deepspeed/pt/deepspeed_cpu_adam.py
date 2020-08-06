@@ -25,9 +25,14 @@ class CPUAdam(torch.optim.Optimizer):
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
     """
-
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
-                 weight_decay=0, amsgrad=False):
+    def __init__(self,
+                 params,
+                 lr=1e-3,
+                 betas=(0.9,
+                        0.999),
+                 eps=1e-8,
+                 weight_decay=0,
+                 amsgrad=False):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not 0.0 <= eps:
@@ -36,8 +41,11 @@ class CPUAdam(torch.optim.Optimizer):
             raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
         if not 0.0 <= betas[1] < 1.0:
             raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
-        defaults = dict(lr=lr, betas=betas, eps=eps,
-                        weight_decay=weight_decay, amsgrad=amsgrad)
+        defaults = dict(lr=lr,
+                        betas=betas,
+                        eps=eps,
+                        weight_decay=weight_decay,
+                        amsgrad=amsgrad)
         super(CPUAdam, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -46,12 +54,11 @@ class CPUAdam(torch.optim.Optimizer):
             group.setdefault('amsgrad', False)
 
     def step_with_cpuoffload(self,
-                             #closure=None,
+                             closure=None,
                              fp32_params=None,
-                             exp_avg = None,
-                             exp_avg_sq = None
-                             ):
-
+                             fp32_params_grad=None,
+                             exp_avg=None,
+                             exp_avg_sq=None):
         """Performs a single optimization step.
 
         Arguments:
@@ -61,15 +68,65 @@ class CPUAdam(torch.optim.Optimizer):
             grads
         """
         loss = None
-        #if closure is not None:
-        #    loss = closure()
+        if closure is not None:
+            loss = closure()
 
-        index=0
+        if fp32_params is None:
+            raise RuntimeError('params is None')
+
+        index = 0
 
         for group in self.param_groups:
-            (a,b) = group.size()
-            p = torch.tensor(fp32_params[index:index+a*b], device=torch.device('cpu'), requires_grad=True)
-            torch.reshape(p, (a, b))
+            group_size = sum([t.numel() for t in group['params']])
+            p = torch.zeros(group_size, device=torch.device('cpu'), requires_grad=True)
+            p = fp32_params[index:index + group_size].detach()
+            p_grad = torch.zeros(group_size, device=torch.device('cpu'))
+            p_grad = fp32_params_grad[index:index + group_size].detach()
+            p.grad = p_grad
+            if p.grad is None:
+                continue
+            grad = p.grad.data
+            if grad.is_sparse:
+                raise RuntimeError(
+                    'Adam does not support sparse gradients, please consider SparseAdam instead'
+                )
+            #amsgrad = group['amsgrad']
+
+            state = self.state[p]
+
+            # State initialization
+            if len(state) == 0:
+                state['step'] = 0
+
+            beta1, beta2 = group['betas']
+
+            state['step'] += 1
+
+            if group['weight_decay'] != 0:
+                grad.add_(group['weight_decay'], p.data)
+
+            # Decay the first and second moment running average coefficient
+            exp_avg[index:index + group_size].mul_(beta1).add_(1 - beta1, grad)
+            exp_avg_sq[index:index + group_size].mul_(beta2).addcmul_(
+                1 - beta2,
+                grad,
+                grad)
+
+            denom = exp_avg_sq[index:index + group_size].sqrt().add_(group['eps'])
+
+            bias_correction1 = 1 - beta1**state['step']
+            bias_correction2 = 1 - beta2**state['step']
+            step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+
+            p.data.addcdiv_(-step_size, exp_avg[index:index + group_size], denom)
+
+            index += group_size
+
+            print(" ================CPUAdam finish===================")
+
+        return loss
+        '''
+        for i, p in emulrate(fp32_params)
             if p.grad is None:
                 continue
             grad = p.grad.data
@@ -87,8 +144,8 @@ class CPUAdam(torch.optim.Optimizer):
 
             state['step'] += 1
 
-            #if group['weight_decay'] != 0:
-            #    grad.add_(group['weight_decay'], p.data)
+            if group['weight_decay'] != 0:
+                grad.add_(group['weight_decay'], p.data)
 
             # Decay the first and second moment running average coefficient
             exp_avg[i].mul_(beta1).add_(1 - beta1, grad)
@@ -102,6 +159,5 @@ class CPUAdam(torch.optim.Optimizer):
 
             p.data.addcdiv_(-step_size, exp_avg[i], denom)
 
-            print(" ===================================")
-
-        return loss
+        returns
+        '''
