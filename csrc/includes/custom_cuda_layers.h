@@ -185,6 +185,18 @@ void launch_attn_softmax(T* vals,
                          int sequence_length,
                          cudaStream_t stream);
 
+
+template <typename T>
+void launch_attn_softmax_v2(T * vals, const T * attn_mask, 
+                                 int batch_size, int heads, 
+                                 int sequence_length, 
+                                 cudaStream_t stream);
+template <typename T>
+void launch_attn_softmax_v3(T * vals, const T * attn_mask, 
+                                 int batch_size, int heads,
+                                 int sequence_length, cudaStream_t stream);
+
+
 template <typename T>
 void launch_transform_0213(T* output,
                            const T* vals,

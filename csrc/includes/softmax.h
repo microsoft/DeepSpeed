@@ -36,7 +36,7 @@ public:
 
     void Forward(int bsz, T* vals, const T* attn_mask, cudaStream_t& stream)
     {
-        launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+        launch_attn_softmax_v3<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
     }
 
     void Backward(int bsz, T* out_grad, const T* soft_out, cudaStream_t stream)

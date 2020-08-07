@@ -178,7 +178,8 @@ class FP16_Optimizer(object):
         """
         Not supporting closure.
         """
-
+        #return False
+        
         if self.fused_adam_legacy:
             return self.step_fused_adam()
 
@@ -216,7 +217,7 @@ class FP16_Optimizer(object):
 
         prev_scale = self.cur_scale
         self._update_scale(self.overflow)
-
+        
         if self.overflow:
             if self.verbose:
                 print("[deepspeed] OVERFLOW! Skipping step. Attempted loss "

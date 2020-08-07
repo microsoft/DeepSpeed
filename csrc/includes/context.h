@@ -29,7 +29,7 @@
         for (size_t j = blockIdx.y * blockDim.y + threadIdx.y; j < (m); j += blockDim.y * gridDim.y)
 
 #define DS_CUDA_NUM_THREADS 512
-#define DS_MAXIMUM_NUM_BLOCKS 4096
+#define DS_MAXIMUM_NUM_BLOCKS 262144
 
 inline int DS_GET_BLOCKS(const int N)
 {
@@ -41,7 +41,7 @@ inline int DS_GET_BLOCKS(const int N)
 
 class Context {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0)
+    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _prev_offset(0), _offset_stored(false)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
@@ -95,6 +95,16 @@ public:
         uint64_t offset = _curr_offset;
         _curr_offset += offset_inc;
         return std::pair<uint64_t, uint64_t>(_seed, offset);
+    }
+
+    inline void StoreRandOffset() { 
+        _offset_stored = true; 
+        _prev_offset = _curr_offset; 
+    }
+
+    inline void RestoreRandOffset() { 
+        if(_offset_stored)_curr_offset = _prev_offset; 
+        _offset_stored = false; 
     }
 
     void SetSeed(uint64_t new_seed) { _seed = new_seed; }
@@ -173,5 +183,7 @@ private:
     uint64_t _seed;
     uint64_t _curr_offset;
     size_t _workSpaceSize;
+    uint64_t _prev_offset;
+    bool _offset_stored;
     std::vector<std::array<int, 3>> _gemm_algos;
 };

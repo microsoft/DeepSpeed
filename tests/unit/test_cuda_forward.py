@@ -44,8 +44,7 @@ class DSEncoder(nn.Module):
         super(DSEncoder, self).__init__()
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.layer = nn.ModuleList([
-            copy.deepcopy(DeepSpeedSelfAttentionLayer(i,
-                                                    config,
+            copy.deepcopy(DeepSpeedSelfAttentionLayer(config,
                                                     weights,
                                                     biases))
             for i in range(config.num_hidden_layers)

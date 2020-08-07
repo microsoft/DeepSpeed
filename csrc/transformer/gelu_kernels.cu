@@ -282,7 +282,7 @@ void launch_bias_gelu(const T* input,
                       int sequence_length,
                       cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size-1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(sequence_length * batch_size);
@@ -298,7 +298,7 @@ void launch_gelu(const T* input,
                  int sequence_length,
                  cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size-1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(sequence_length * batch_size);
@@ -323,7 +323,7 @@ void launch_d_gelu(T* d_output,
                    int sequence_length,
                    cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size-1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(sequence_length * batch_size);

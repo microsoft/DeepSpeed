@@ -8,6 +8,9 @@ from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
 from deepspeed.pt.log_utils import logger
 from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.pt.deepspeed_cuda import DeepSpeedSelfAttentionLayer
+from deepspeed.pt.deepspeed_cuda import DeepSpeedMLPLayer
+from deepspeed.pt.deepspeed_cuda import DeepSpeedBiasResidualDropoutLayer
+from deepspeed.pt.deepspeed_cuda import DeepSpeedLayerNormalizeLayer
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
 import deepspeed.pt.deepspeed_checkpointing as checkpointing

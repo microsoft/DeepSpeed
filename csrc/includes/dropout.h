@@ -3,6 +3,7 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
+#include "custom_cuda_layers.h"
 
 template <typename T>
 class Dropout {

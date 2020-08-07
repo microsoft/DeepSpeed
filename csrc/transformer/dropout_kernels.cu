@@ -375,6 +375,7 @@ template void launch_dropout_grad(__half*,
                                   cudaStream_t stream);
 
 __global__ void dropout_kernel(const int dim,
+                               const int total_count,
                                const float ratio,
                                const float* bias,
                                float* Xdata,
@@ -383,17 +384,20 @@ __global__ void dropout_kernel(const int dim,
 {
     const float scale = 1. / (1. - ratio);
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
+    int tid = threadIdx.x % dim;
 
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
 
     float4* Xdata_cast = reinterpret_cast<float4*>(Xdata);
     const float4* bias_cast = reinterpret_cast<const float4*>(bias);
+    uint32_t *mask_32 = reinterpret_cast<uint32_t*>(mask);
 
+    if(idx < total_count)
     {
         float4 rand = curand_uniform4(&state);
-        uint8_t m[4];
+        uint32_t m_32;
+        uint8_t *m = (uint8_t*)&m_32;
 
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
@@ -415,16 +419,13 @@ __global__ void dropout_kernel(const int dim,
         x_data.z = x_data.z * scale * m[2];
         x_data.w = x_data.w * scale * m[3];
 
-        mask[i] = (uint8_t)m[0];
-        mask[i + 1] = (uint8_t)m[1];
-        mask[i + 2] = (uint8_t)m[2];
-        mask[i + 3] = (uint8_t)m[3];
-
         Xdata_cast[idx] = x_data;
+        mask_32[idx] = m_32;
     }
 }
 
 __global__ void dropout_kernel(const int dim,
+                               const int total_count,
                                const float ratio,
                                const __half* bias,
                                __half* Xdata,
@@ -433,17 +434,17 @@ __global__ void dropout_kernel(const int dim,
 {
     const float scale = 1. / (1. - ratio);
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
+    int tid = threadIdx.x % dim;
 
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
 
     float2* Xdata_cast = reinterpret_cast<float2*>(Xdata);
     const float2* bias_cast = reinterpret_cast<const float2*>(bias);
+    uint32_t *mask_32 = reinterpret_cast<uint32_t*>(mask);
 
+    if(idx < total_count)
     {
-        int i = blockIdx.x * dim + tid * 4;
-
         float4 rand = curand_uniform4(&state);
 
         float2 data_f;
@@ -466,7 +467,8 @@ __global__ void dropout_kernel(const int dim,
         data_h_1.x += bias_h_1.x;
         data_h_1.y += bias_h_1.y;
 
-        uint8_t m[4];  // = mask + i;
+        uint32_t m_32;
+        uint8_t *m = (uint8_t*)&m_32;
 
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
@@ -485,11 +487,7 @@ __global__ void dropout_kernel(const int dim,
         result_h[1] = __float22half2_rn(data_h_1);
 
         Xdata_cast[idx] = result_f;
-
-        mask[i] = m[0];
-        mask[i + 1] = m[1];
-        mask[i + 2] = m[2];
-        mask[i + 3] = m[3];
+        mask_32[idx] = m_32;
     }
 }
 
@@ -502,13 +500,14 @@ void launch_dropout(T* out,
                     float ratio,
                     cudaStream_t stream)
 {
-    dim3 grid_dim(batch);     // DS_GET_BLOCKS(total_count/4);
-    dim3 block_dim(dim / 4);  // DS_CUDA_NUM_THREADS;
+    dim /= 4;
+    dim3 grid_dim((batch*dim - 1) / 1024 + 1);     // DS_GET_BLOCKS(total_count/4);
+    dim3 block_dim(1024); //(dim / 4);  // DS_CUDA_NUM_THREADS;
 
-    uint64_t inc = (batch * dim) / grid_dim.x / block_dim.x;
+    uint64_t inc = (batch * dim * 4) / grid_dim.x / block_dim.x;
     std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
 
-    dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(dim, ratio, bias, out, mask, seed);
+    dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(dim, (batch * dim), ratio, bias, out, mask, seed);
 }
 
 template void launch_dropout(float*,
@@ -527,6 +526,7 @@ template void launch_dropout(__half*,
                              cudaStream_t stream);
 
 __global__ void dropout_kernel(const int dim,
+                               const int total_count,
                                const float ratio,
                                const float* input,
                                const float* residual,
@@ -537,7 +537,7 @@ __global__ void dropout_kernel(const int dim,
 {
     const float scale = 1. / (1. - ratio);
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
+    int tid = threadIdx.x % dim;
 
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
@@ -546,17 +546,18 @@ __global__ void dropout_kernel(const int dim,
     const float4* bias_cast = reinterpret_cast<const float4*>(bias);
     const float4* residual_cast = reinterpret_cast<const float4*>(residual);
     const float4* input_cast = reinterpret_cast<const float4*>(input);
+    uint32_t *mask_32 = reinterpret_cast<uint32_t*>(mask);
 
+    if(idx < total_count)
     {
         float4 rand = curand_uniform4(&state);
-        uint8_t m[4];
+
+        uint32_t m_32;
+        uint8_t *m = (uint8_t*)&m_32;
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
         m[2] = (uint8_t)(rand.z > ratio);
         m[3] = (uint8_t)(rand.w > ratio);
-
-        // int bid = k * blockDim.x + tid;
-        int i = blockIdx.x * dim + tid * 4;
 
         float4 out_data = out_cast[idx];
         float4 b_data = bias_cast[tid];
@@ -578,16 +579,13 @@ __global__ void dropout_kernel(const int dim,
         out_data.z += res_data.z;
         out_data.w += res_data.w;
 
-        mask[i] = m[0];
-        mask[i + 1] = m[1];
-        mask[i + 2] = m[2];
-        mask[i + 3] = m[3];
-
+        mask_32[idx] = m_32;
         out_cast[idx] = out_data;
     }
 }
 
 __global__ void dropout_kernel(const int dim,
+                               const int total_count,
                                const float ratio,
                                const __half* input,
                                const __half* residual,
@@ -598,7 +596,7 @@ __global__ void dropout_kernel(const int dim,
 {
     const float scale = 1. / (1. - ratio);
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x;
+    int tid = threadIdx.x % dim;
 
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
@@ -607,9 +605,10 @@ __global__ void dropout_kernel(const int dim,
     const float2* bias_cast = reinterpret_cast<const float2*>(bias);
     const float2* residual_cast = reinterpret_cast<const float2*>(residual);
     const float2* input_cast = reinterpret_cast<const float2*>(input);
-
+    uint32_t *mask_32 = reinterpret_cast<uint32_t*>(mask);
+    
+    if(idx < total_count)
     {
-        int i = blockIdx.x * dim + tid * 4;
 
         float4 rand = curand_uniform4(&state);
 
@@ -647,7 +646,8 @@ __global__ void dropout_kernel(const int dim,
         data_h_1.x = (bias_h_1.x + input_h_1.x);
         data_h_1.y = (bias_h_1.y + input_h_1.y);
 
-        uint8_t m[4];  // = mask + i;
+        uint32_t m_32;
+        uint8_t *m = (uint8_t*)&m_32;  // = mask + i;
 
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
@@ -671,11 +671,7 @@ __global__ void dropout_kernel(const int dim,
         result_h[1] = __float22half2_rn(data_h_1);
 
         out_cast[idx] = result_f;
-
-        mask[i] = m[0];
-        mask[i + 1] = m[1];
-        mask[i + 2] = m[2];
-        mask[i + 3] = m[3];
+        mask_32[idx] = m_32;
     }
 }
 
@@ -690,14 +686,15 @@ void launch_dropout(T* out,
                     float ratio,
                     cudaStream_t stream)
 {
-    dim3 grid_dim(batch);     // DS_GET_BLOCKS(total_count/4);
-    dim3 block_dim(dim / 4);  // DS_CUDA_NUM_THREADS;
+    dim /= 4;
+    dim3 grid_dim((batch * dim-1) / 1024 + 1);     // DS_GET_BLOCKS(total_count/4);
+    dim3 block_dim(1024);     //(dim / 4);  // DS_CUDA_NUM_THREADS;
 
-    uint64_t inc = (batch * dim) / grid_dim.x / block_dim.x;
+    uint64_t inc = (batch * dim * 4) / grid_dim.x / block_dim.x;
     std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
 
     dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        dim, ratio, input, residual, bias, out, mask, seed);
+        dim, (batch * dim), ratio, input, residual, bias, out, mask, seed);
 }
 
 template void launch_dropout(float*,
