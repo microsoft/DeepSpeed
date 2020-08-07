@@ -1,6 +1,6 @@
 ---
 layout: single
-title: "DeepSpeed webinar is now on-demand"
+title: "DeepSpeed Microsoft Research Webinar is now on-demand"
 excerpt: ""
 categories: news
 link: https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-On-Demand.html
