@@ -452,6 +452,18 @@ class DeepSpeedConfigWriter:
             json.dump(self.data, outfile)
 
 
+def get_pipeline_config(param_dict):
+    '''Parses pipeline engine configuration. '''
+    default_pipeline = {
+        'stages': 'auto',
+        'partition': 'best',
+        'seed_layers': False,
+        'activation_checkpoint_interval': 0
+    }
+    config = param_dict.get('pipeline', default_pipeline)
+    return config
+
+
 class DeepSpeedConfig(object):
     def __init__(self, json_file, mpu=None, param_dict=None):
         super(DeepSpeedConfig, self).__init__()
@@ -530,6 +542,7 @@ class DeepSpeedConfig(object):
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)
+        self.pipeline = get_pipeline_config(param_dict)
 
     def _batch_assertion(self):
 

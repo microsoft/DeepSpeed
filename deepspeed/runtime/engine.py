@@ -32,6 +32,8 @@ from deepspeed.ops.lamb import FusedLamb
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
+from .deepspeed_utils import ensure_directory_exists
+
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
 
@@ -162,8 +164,10 @@ class DeepSpeedEngine(Module):
             steps_per_output=self.steps_per_print(),
             monitor_memory=False)
 
-        self.training_dataloader = self.deepspeed_io(
-            training_data) if training_data else None
+        if training_data:
+            self.training_dataloader = self.deepspeed_io(training_data)
+        else:
+            self.training_dataloader = None
 
         # Configure optimizer and scheduler
         self.optimizer = None
@@ -241,14 +245,23 @@ class DeepSpeedEngine(Module):
 
     def get_summary_writer(self,
                            name="DeepSpeedJobName",
-                           base=os.environ["HOME"] + "/tensorboard"):
-        if self.tensorboard_job_name():
-            name = self.tensorboard_job_name()
+                           base=os.path.join(os.environ["HOME"],
+                                             "tensorboard")):
         if self.tensorboard_output_path():
-            return SummaryWriter(log_dir=self.tensorboard_output_path())
-        if 'DLWS_JOB_ID' in os.environ:
-            SUMMARY_WRITER_DIR_NAME = os.environ['DLWS_JOB_ID'] + "/logs"
-        return SummaryWriter(log_dir=os.path.join(base, SUMMARY_WRITER_DIR_NAME, name))
+            log_dir = self.tensorboard_output_path()
+        else:
+            if self.tensorboard_job_name():
+                name = self.tensorboard_job_name()
+            if 'DLWS_JOB_ID' in os.environ:
+                SUMMARY_WRITER_DIR_NAME = os.path.join(os.environ['DLWS_JOB_ID'], "logs")
+            log_dir = os.path.join(base, SUMMARY_WRITER_DIR_NAME, name)
+
+        # Play nice with filesystems and ensure only one rank creates the directory.
+        if self.global_rank == 0:
+            os.makedirs(log_dir, exist_ok=True)
+        dist.barrier()
+
+        return SummaryWriter(log_dir=log_dir)
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -380,11 +393,12 @@ class DeepSpeedEngine(Module):
         self.save_non_zero_checkpoint = (dp_rank == 0)
 
         if self.zero_optimization():
-            pp_rank = torch.distributed.get_rank(group=self.optimizer.dp_process_group)
+            param_rank = torch.distributed.get_rank(
+                group=self.optimizer.dp_process_group)
 
             # Only the first parameter parallel process needs to store the
             # optimizer state checkpoints for zero
-            self.save_zero_checkpoint = (pp_rank == dp_rank)
+            self.save_zero_checkpoint = (param_rank == dp_rank)
 
     def _scheduler_from_config(self, optimizer):
         scheduler_name = self.scheduler_name()
@@ -534,6 +548,10 @@ class DeepSpeedEngine(Module):
         if self.optimizer_name() == ADAM_OPTIMIZER:
             from apex.optimizers.fused_adam import FusedAdam
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+
+            # XXX Shaden pipeline - when we want to disable FusedAdam
+            #torch_optimizer = getattr(torch.optim, 'Adam')
+            #optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
@@ -545,9 +563,11 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
+        # XXX SHADEN -- need option to disable fused?
+        #if False and self.optimizer_name() == ADAM_OPTIMIZER:
         if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
-                logger.info('Creating fp16 optimizer with dynamic loss scale')
+                logger.info('Creating fused fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
@@ -559,8 +579,9 @@ class DeepSpeedEngine(Module):
                     fused_adam_legacy=self.optimizer_legacy_fusion(),
                     timers=timers)
             else:
-                logger.info('Creating fp16 optimizer with static loss scale: {}'.format(
-                    self.loss_scale()))
+                logger.info(
+                    'Creating fused fp16 optimizer with static loss scale: {}'.format(
+                        self.loss_scale()))
                 optimizer = FP16_Optimizer(
                     optimizer,
                     static_loss_scale=self.loss_scale(),
@@ -568,14 +589,27 @@ class DeepSpeedEngine(Module):
                     clip_grad=clip_grad,
                     fused_adam_legacy=self.optimizer_legacy_fusion())
         else:
-            logger.info('Creating fp16 unfused optimizer with dynamic loss scale')
-            optimizer = FP16_UnfusedOptimizer(
-                optimizer,
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=dynamic_loss_args,
-                mpu=self.mpu,
-                clip_grad=clip_grad,
-                fused_lamb_legacy=self.optimizer_name() == LAMB_OPTIMIZER)
+            if self.dynamic_loss_scale():
+                logger.info('Creating unfused fp16 optimizer with dynamic loss scale')
+                optimizer = FP16_UnfusedOptimizer(
+                    optimizer,
+                    dynamic_loss_scale=self.dynamic_loss_scale(),
+                    dynamic_loss_args=dynamic_loss_args,
+                    mpu=self.mpu,
+                    clip_grad=clip_grad,
+                    fused_lamb_legacy=self.optimizer_legacy_fusion()
+                    if self.optimizer_name() == LAMB_OPTIMIZER else False)
+            else:
+                logger.info(
+                    'Creating unfused fp16 optimizer with static loss scale: {}'.format(
+                        self.loss_scale()))
+                optimizer = FP16_UnfusedOptimizer(
+                    optimizer,
+                    static_loss_scale=self.loss_scale(),
+                    mpu=self.mpu,
+                    clip_grad=clip_grad,
+                    fused_lamb_legacy=self.optimizer_legacy_fusion()
+                    if self.optimizer_name() == LAMB_OPTIMIZER else False)
 
         return optimizer
 
@@ -807,6 +841,17 @@ class DeepSpeedEngine(Module):
 
         return loss
 
+    def train_batch(self, *forward_args, **forward_kwargs):
+        """A simple wrapper around forward/backward/step.
+
+        Returns:
+            loss
+        """
+        loss = self.module(*forward_args, **forward_kwargs)
+        self.backward(loss)
+        self.step()
+        return loss
+
     def is_gradient_accumulation_boundary(self):
         return (self.micro_steps + 1) % \
             self.gradient_accumulation_steps() == 0
@@ -822,8 +867,45 @@ class DeepSpeedEngine(Module):
         torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
                                        max_norm=self.gradient_clipping())
 
+    def _take_model_step(self):
+        if self.gradient_clipping() > 0.0:
+            if not self.fp16_enabled() and not self.amp_enabled():
+                self.clip_fp32_gradients()
+            elif self.amp_enabled():
+                # AMP's recommended way of doing clipping
+                # https://nvidia.github.io/apex/advanced.html#gradient-clipping
+                master_params = amp.master_params(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(parameters=master_params,
+                                               max_norm=self.gradient_clipping())
+        self.optimizer.step()
+
+        report_progress = self.global_rank == 0 if self.global_rank else True
+
+        #zero grad in basic optimizer could be unreliable and may not exhibit
+        #the behaviour that we want
+        if not any([self.zero_optimization(), self.fp16_enabled(), self.amp_enabled()]):
+            self.zero_grad()
+        else:
+            self.optimizer.zero_grad()
+
+        # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
+        overflow = False
+        if hasattr(self.optimizer, 'overflow'):
+            overflow = self.optimizer.overflow
+
+        if overflow:
+            self.skipped_steps += 1
+        else:
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
+            if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
+                self._report_progress(self.global_steps + 1)
+
+        self.global_steps += 1
+
     def step(self):
-        r"""Execute the weight update step after forward and backward propagation on effective_train_batch
+        r"""Execute the weight update step after forward and backward propagation
+        on effective_train_batch.
         """
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
@@ -833,43 +915,9 @@ class DeepSpeedEngine(Module):
                                            "init in order to use step"
         report_progress = self.global_rank == 0 if self.global_rank else True
 
+        # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():
-
-            if self.gradient_clipping() > 0.0:
-                if not self.fp16_enabled() and not self.amp_enabled():
-                    self.clip_fp32_gradients()
-                elif self.amp_enabled():
-                    # AMP's recommended way of doing clipping
-                    # https://nvidia.github.io/apex/advanced.html#gradient-clipping
-                    master_params = amp.master_params(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(parameters=master_params,
-                                                   max_norm=self.gradient_clipping())
-
-            self.optimizer.step()
-
-            #zero grad in basic optimizer could be unreliable and may not exhibit
-            #the behaviour that we want
-            if not self.zero_optimization() and not self.fp16_enabled(
-            ) and not self.amp_enabled():
-                self.zero_grad()
-            else:
-                self.optimizer.zero_grad()
-
-            # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
-            overflow = False
-            if hasattr(self.optimizer, 'overflow'):
-                overflow = self.optimizer.overflow
-
-            if overflow:
-                self.skipped_steps += 1
-            else:
-                if self.lr_scheduler is not None:
-                    self.lr_scheduler.step()
-                if report_progress and (self.global_steps +
-                                        1) % self.steps_per_print() == 0:
-                    self._report_progress(self.global_steps + 1)
-
-            self.global_steps += 1
+            self._take_model_step()
 
         self.tput_timer.stop(report_progress)
 
@@ -1121,11 +1169,6 @@ class DeepSpeedEngine(Module):
                                  'mp_rank_{:02d}'.format(mp_rank) + '_model_states.pt')
         return ckpt_name
 
-    def _ensure_directory_exists(self, filename):
-        dirname = os.path.dirname(filename)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-
     def load_checkpoint(self,
                         load_dir,
                         tag,
@@ -1265,7 +1308,7 @@ class DeepSpeedEngine(Module):
                 invalid_zero_ckpt_paths.append(ckpt_name)
 
         if len(invalid_zero_ckpt_paths) > 0:
-            logging.warn(
+            logger.warn(
                 f"Client provided zero checkpoint load paths: {invalid_zero_ckpt_paths} does not exist"
             )
             return None
@@ -1306,7 +1349,7 @@ class DeepSpeedEngine(Module):
         name_function = self._get_zero_ckpt_name if zero_checkpoint else self._get_ckpt_name
         try:
             checkpoint_name = name_function(save_dir, tag)
-            self._ensure_directory_exists(checkpoint_name)
+            ensure_directory_exists(checkpoint_name)
         except:
             logger.error(f'Failed Saving model checkpoint to {save_dir} with tag {tag}')
             return False
@@ -1327,7 +1370,6 @@ class DeepSpeedEngine(Module):
     def _save_checkpoint(self, save_dir, tag, client_state={}):
 
         save_path = self._get_ckpt_name(save_dir, tag)
-        # self._ensure_directory_exists(save_path)
 
         state = {
             'module':
@@ -1355,7 +1397,6 @@ class DeepSpeedEngine(Module):
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
-        # self._ensure_directory_exists(zero_checkpoint_name)
         zero_sd = {'optimizer_state_dict': self.optimizer.state_dict()}
         torch.save(zero_sd, zero_checkpoint_name)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))

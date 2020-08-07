@@ -12,6 +12,9 @@ from deepspeed.runtime.activation_checkpointing import checkpointing
 from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from deepspeed.utils import logger
 
+from deepspeed.pt.pipe.PipelineParallelWrapper import PipelineEngine
+from deepspeed.pt.pipe.PipelineModule import PipelineModule, LayerSpec
+
 try:
     from deepspeed.git_version_info import version, git_hash, git_branch
 except ImportError:
@@ -104,16 +107,29 @@ def initialize(args,
             __git_branch__),
     )
 
-    engine = DeepSpeedEngine(args=args,
-                             model=model,
-                             optimizer=optimizer,
-                             model_parameters=model_parameters,
-                             training_data=training_data,
-                             lr_scheduler=lr_scheduler,
-                             mpu=mpu,
-                             dist_init_required=dist_init_required,
-                             collate_fn=collate_fn,
-                             config_params=config_params)
+    if not isinstance(model, PipelineModule):
+        engine = DeepSpeedEngine(args=args,
+                                 model=model,
+                                 optimizer=optimizer,
+                                 model_parameters=model_parameters,
+                                 training_data=training_data,
+                                 lr_scheduler=lr_scheduler,
+                                 mpu=mpu,
+                                 dist_init_required=dist_init_required,
+                                 collate_fn=collate_fn,
+                                 config_params=config_params)
+    else:
+        assert mpu is None, "mpu must be None with pipeline parallelism"
+        engine = PipelineEngine(args=args,
+                                model=model,
+                                optimizer=optimizer,
+                                model_parameters=model_parameters,
+                                training_data=training_data,
+                                lr_scheduler=lr_scheduler,
+                                mpu=model.mpu(),
+                                dist_init_required=dist_init_required,
+                                collate_fn=collate_fn,
+                                config_params=config_params)
 
     return_items = [
         engine,

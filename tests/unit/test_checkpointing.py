@@ -6,13 +6,17 @@ from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 
+#from deepspeed.pt.pipe.PipelineParallelGrid import PipeDataParallelTopology as PipeTopo
+from deepspeed.pt.pipe.PipelineParallelGrid import *
+PipeTopo = PipeDataParallelTopology
+
 import argparse
 import pytest
 import json
 import os
 import numbers
 from common import distributed_test
-from simple_model import SimpleModel, random_dataloader, args_from_dict
+from simple_model import *
 
 
 def compare_deepspeed_states(saved_model, loaded_model):
@@ -24,11 +28,14 @@ def compare_deepspeed_states(saved_model, loaded_model):
     assert saved_model.global_steps == loaded_model.global_steps
 
 
-def compare_model_states(saved_model, loaded_model):
+def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
     compare_deepspeed_states(saved_model, loaded_model)
 
     for p0, p1 in zip(saved_model.module.parameters(), loaded_model.module.parameters()):
         assert torch.allclose(p0,p1,atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
+
+    if not compare_optimizer:
+        return
 
     if isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer):
         for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups, loaded_model.optimizer.single_partition_of_fp32_groups):
@@ -457,3 +464,56 @@ def test_checkpoint_fp32_optimizer(tmpdir):
         checkpoint_correctness_verification(args, model, hidden_dim, tmpdir, fp16=False)
 
     _test_checkpoint_fp32_optimizer(args=args, model=model, hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize("base_topo,test_topo",
+                         [
+                             (PipeTopo(num_pp=1,
+                                       num_dp=4),
+                              PipeTopo(num_pp=4,
+                                       num_dp=1)),
+                             (PipeTopo(num_pp=2,
+                                       num_dp=2),
+                              PipeTopo(num_pp=2,
+                                       num_dp=2)),
+                             (PipeTopo(num_pp=4,
+                                       num_dp=1),
+                              PipeTopo(num_pp=2,
+                                       num_dp=2)),
+                         ])
+def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
+    @distributed_test(world_size=4)
+    def _test(base_topo, test_topo, save_folder):
+        base_model = LinearStackPipe(topology=base_topo)
+        base_model.save_state_dict(save_folder)
+
+        dist.barrier()
+
+        test_model = LinearStackPipe(topology=test_topo)
+        test_model.load_state_dict(save_folder)
+
+        # Base and test can have different lengths, so make sure we map from the
+        # smaller to larger model
+        if len(base_model.forward_funcs) < len(test_model.forward_funcs):
+            A = base_model
+            B = test_model
+        else:
+            A = test_model
+            B = base_model
+
+        # Compare layers individually since partitions are different
+        for idx, A_layer in enumerate(A.forward_funcs):
+            if not hasattr(A_layer, 'parameters'):
+                # Skip functionals, etc.
+                continue
+
+            # Find the corresponding layer in B
+            global_idx = idx + A._local_start
+            B_local_idx = global_idx - B._local_start
+            B_layer = B.forward_funcs[B_local_idx]
+
+            # Compare layer parameters
+            for p0, p1 in zip(A_layer.parameters(), B_layer.parameters()):
+                assert torch.allclose(p0, p1, atol=1e-07), f"Model state {p0} is not equal to {p1}"
+
+    _test(base_topo, test_topo, save_folder=tmpdir)

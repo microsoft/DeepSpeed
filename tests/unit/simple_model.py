@@ -3,6 +3,8 @@ import json
 import argparse
 import torch
 
+from deepspeed import PipelineModule, LayerSpec
+
 
 class SimpleModel(torch.nn.Module):
     def __init__(self, hidden_dim, empty_grad=False, rank=0):
@@ -21,6 +23,66 @@ class SimpleModel(torch.nn.Module):
         else:
             hidden_dim = self.linear(hidden_dim)
         return self.cross_entropy_loss(hidden_dim, y)
+
+
+class LinearStack(torch.nn.Module):
+    def __init__(self, input_dim=32, hidden_dim=128, output_dim=8, num_layers=4):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+
+        self.input_layer = VerboseLinear(in_features=self.input_dim,
+                                         out_features=self.hidden_dim)
+        self.layers = torch.nn.ModuleList([
+            torch.nn.Linear(in_features=self.hidden_dim,
+                            out_features=self.hidden_dim,
+                            bias=False) for x in range(num_layers)
+        ])
+        self.output_layer = torch.nn.Linear(in_features=self.hidden_dim,
+                                            out_features=self.output_dim)
+
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, x, y):
+        x = self.input_layer(x)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.output_layer(x)
+        return x
+
+
+class LinearStackPipe(PipelineModule):
+    def __init__(self,
+                 input_dim=32,
+                 hidden_dim=128,
+                 output_dim=8,
+                 num_layers=4,
+                 **kwargs):
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+
+        super().__init__(**kwargs)
+
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def layer_specs(self):
+        layers = []
+        layers.append(LayerSpec(torch.nn.Linear, self.input_dim, self.hidden_dim))
+        for x in range(self.num_layers):
+            layers.append(
+                LayerSpec(torch.nn.Linear,
+                          self.hidden_dim,
+                          self.hidden_dim,
+                          bias=False))
+            layers.append(lambda x: x)
+        layers.append(LayerSpec(torch.nn.Linear, self.hidden_dim, self.output_dim))
+        return layers
+
+    def loss_fn(self, output, y):
+        return self.cross_entropy_loss(output, y)
 
 
 class SimpleOptimizer(torch.optim.Optimizer):

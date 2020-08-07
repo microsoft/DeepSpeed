@@ -1,0 +1,578 @@
+import os
+import logging
+import enum
+
+import re as regex
+
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from functools import partial
+
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
+
+from numpy import prod
+
+import deepspeed.pt.deepspeed_utils as ds_utils
+import deepspeed.pt.deepspeed_checkpointing as checkpointing
+
+from deepspeed.pt.pipe.PipelineParallelGrid import PipelineParallelGrid
+
+
+class PipelineError(Exception):
+    """Errors related to the use of deepspeed.PipelineModule """
+
+
+class LayerSpec:
+    """Building block for specifying pipeline-parallel modules.
+
+    LayerSpec stores the type information and parameters for each stage in a
+    PipelineModule. For example:
+
+        nn.Sequence(
+            torch.nn.Linear(self.in_dim, self.hidden_dim, bias=False),
+            torch.nn.Linear(self.hidden_hidden, self.out_dim)
+        )
+
+    becomes
+
+        layer_specs = [
+            LayerSpec(torch.nn.Linear, self.in_dim, self.hidden_dim, bias=False),
+            LayerSpec(torch.nn.Linear, self.hidden_hidden, self.out_dim)]
+        ]
+    """
+    def __init__(self, typename, *module_args, **module_kwargs):
+        self.typename = typename
+        self.module_args = module_args
+        self.module_kwargs = module_kwargs
+
+        if not issubclass(typename, nn.Module):
+            raise RuntimeError('LayerSpec only supports torch.nn.Module types.')
+
+        if dist.is_initialized():
+            self.global_rank = dist.get_rank()
+        else:
+            self.global_rank = -1
+
+    def __repr__(self):
+        name = f'{self.typename.__name__}('
+        if self.module_args:
+            name += ', '.join(map(repr, self.module_args))
+        if self.module_kwargs:
+            name += ', '
+            name += ', '.join(f'{repr(key)}={repr(arg)}' for key,
+                              arg in self.module_kwargs.items())
+        name += ')'
+        return name
+
+    def build(self, log=False):
+        """Build the stored specification."""
+        if log:
+            logging.info(f'RANK={self.global_rank} building {repr(self)}')
+
+        return self.typename(*self.module_args, **self.module_kwargs)
+
+
+class TiedLayerSpec(LayerSpec):
+    def __init__(self,
+                 key,
+                 typename,
+                 *module_args,
+                 forward_fn=None,
+                 tied_weight_attr='weight',
+                 **module_kwargs):
+        super().__init__(typename, *module_args, **module_kwargs)
+        self.key = key
+        self.forward_fn = forward_fn
+        self.tied_weight_attr = tied_weight_attr
+
+
+class LayerType(enum.Enum):
+    Module = 0
+    Func = 1
+
+
+class PipelineModule(nn.Module, ABC):
+    """ Abstract base class for modules to be parallelized with pipeline parallelism.
+
+    Users should subclass PipelineModule and provide layer_specs(), which returns a list
+    of LayerSpec objects. Thes sequence of layers represents the pipeline-parallel model.
+    After initialization, a PipelineModule can be used as a traditional torch.nn.Module.
+
+    The forward pass is already provided by this base class. The key assumption is that
+    the output of each layer can be directly fed as input to the next, like a
+    torch.nn.Sequence.
+
+    The key constraint that enables pipeline parallelism is the representation of the
+    forward pass as a sequence of layers (i.e., stages) and the enforcement of a
+    simple interface between them.
+
+    Example:
+
+    class LinearPipeline(PipelineModule):
+        def __init__(self, in_dim, hidden_dim, out_dim):
+            self.in_dim = in_dim
+            self.hidden_dim = hidden_dim
+            self.out_dim = out_dim
+            super().__init__()
+
+        def layer_specs(self):
+            return [LayerSpec(torch.nn.Linear, self.in_dim, self.hidden_dim, bias=False),
+                    LayerSpec(torch.nn.Linear, self.hidden_hidden, self.out_dim)]
+    """
+    def __init__(self,
+                 process_group=None,
+                 topology=None,
+                 loss_fn=None,
+                 seed_layers=False,
+                 seed_fn=None,
+                 base_seed=1234,
+                 partition_method='uniform',
+                 activation_checkpoint_interval=0,
+                 activation_checkpoint_func=checkpointing.checkpoint):
+        super().__init__()
+        self.forward_funcs = []
+        self.tied_modules = nn.ModuleDict()
+        self.tied_weight_attrs = {}
+
+        self.micro_offset = 0
+
+        self.seed_layers = seed_layers
+        self.seed_fn = seed_fn
+        self.base_seed = base_seed
+        if dist.get_rank() == 0:
+            try:
+                seed_str = self.seed_fn.__name__
+            except AttributeError:
+                seed_str = None
+            print(
+                f'SEED_LAYERS={self.seed_layers} BASE_SEED={self.base_seed} SEED_FN={seed_str}'
+            )
+
+        # Setup the inital process group if one was not provided.
+        if process_group is None:
+            if not dist.is_initialized():
+                dist.init_process_group(backend='nccl')
+            self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
+        else:
+            self.world_group = process_group
+        self.global_rank = dist.get_rank(group=self.world_group)
+        self.world_size = dist.get_world_size(group=self.world_group)
+
+        self._grid = PipelineParallelGrid(process_group=self.world_group,
+                                          topology=topology)
+        self._topo = self._grid.topology()
+
+        # Initialize partition information
+        self._num_layers = len(self.layer_specs())
+        self._local_start = 0
+        self._local_stop = None
+        self._partition_layers(method=partition_method)
+
+        # Offset the random seed by the stage ID.
+        #newseed = torch.cuda.initial_seed() + self._grid.get_stage_id()
+        #ds_utils.set_random_seed(newseed)
+
+        #with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
+        self._build()
+        self.to('cuda')
+
+        self.tied_comms = self._index_tied_modules()
+        self._synchronize_tied_weights()
+
+        self.activation_checkpoint_interval = activation_checkpoint_interval
+        self.activation_checkpoint_func = activation_checkpoint_func
+
+    @abstractmethod
+    def layer_specs(self):
+        """Should return a list of LayerSpec objects. Subclasses must provide
+        this as a representation of their module.
+
+        Note that this may be called multiple times before build().
+        """
+        pass
+
+    def _build(self):
+        """ Allocate a local slice of the module and store as self.layers. """
+        specs = self.layer_specs()
+
+        for local_idx, layer in enumerate(specs[self._local_start:self._local_stop]):
+            layer_idx = local_idx + self._local_start
+            if self.seed_layers:
+                if self.seed_fn:
+                    self.seed_fn(self.base_seed + layer_idx)
+                else:
+                    ds_utils.set_random_seed(self.base_seed + layer_idx)
+
+            # Recursively build PipelineModule objects
+            if isinstance(layer, PipelineModule):
+                raise NotImplementedError('RECURSIVE BUILD NOT YET IMPLEMENTED')
+
+            # TiedLayerSpec objects contain an nn.Module that should be allocated now.
+            elif isinstance(layer, TiedLayerSpec):
+                # Build and register the module if we haven't seen it before.
+                if layer.key not in self.tied_modules:
+                    self.tied_modules[layer.key] = layer.build()
+                    self.tied_weight_attrs[layer.key] = layer.tied_weight_attr
+
+                if layer.forward_fn is None:
+                    # Just use forward()
+                    self.forward_funcs.append(self.tied_modules[layer.key])
+                else:
+                    # User specified fn with args (module, input)
+                    self.forward_funcs.append(
+                        partial(layer.forward_fn,
+                                self.tied_modules[layer.key]))
+
+            # LayerSpec objects contain an nn.Module that should be allocated now.
+            elif isinstance(layer, LayerSpec):
+                module = layer.build()
+                name = str(layer_idx)
+                self.forward_funcs.append(module)
+                self.add_module(name, module)
+
+            # Last option: layer may be a functional (e.g., lambda). We do nothing in
+            # that case and just use it in forward()
+            else:
+                self.forward_funcs.append(layer)
+
+        # All pipeline parameters should be considered as model parallel in the context
+        # of our FP16 optimizer
+        for p in self.parameters():
+            p.model_parallel = True
+
+    def _make_model_parallel(param):
+        param.model_parallel = True
+
+    def _count_layer_params(self):
+        """ Count the parameters in individual layers.
+
+        This routine will only build one layer at a time.
+
+        Returns:
+            A list of the number of parameters in each layer.
+        """
+        specs = self.layer_specs()
+        param_counts = [0] * len(specs)
+        for idx, layer in enumerate(specs):
+            if isinstance(layer, LayerSpec):
+                l = layer.build()
+                params = filter(lambda p: p.requires_grad, l.parameters())
+                param_counts[idx] = sum(prod(p.size()) for p in params)
+        return param_counts
+
+    def _find_layer_type(self, layername):
+        idxs = []
+        typeregex = regex.compile(layername, regex.IGNORECASE)
+        for idx, layer in enumerate(self.layer_specs()):
+            if isinstance(layer, LayerSpec):
+                if typeregex.search(layer.typename.__name__):
+                    idxs.append(idx)
+        if len(idxs) == 0:
+            raise RuntimeError(
+                f"Partitioning '{layername}' found no valid layers to partition.")
+        return idxs
+
+    def forward(self, forward_input):
+
+        # We need to offset the seed by the microbatch ID. Save it in a local var to
+        # ensure it is preserved in the closure. Otherwise checkpointed forward funcs
+        # will see a different offset.
+        self.micro_offset += 1
+
+        def exec_range_func(start, end):
+            ''' Helper function to be used with checkpoint()
+            Adapted from torch.utils.checkpoint:checkpoint_sequential()
+            '''
+            local_micro_offset = self.micro_offset + 1
+
+            def exec_func(*inputs):
+                # Single tensor inputs need to be unwrapped
+                if len(inputs) == 1:
+                    inputs = inputs[0]
+                for idx, layer in enumerate(self.forward_funcs[start:end]):
+                    self.curr_layer = idx + self._local_start
+                    if self.seed_layers:
+                        new_seed = (self.base_seed *
+                                    local_micro_offset) + self.curr_layer
+                        #print(f'layer={self.curr_layer} micro={idx} seed={new_seed}')
+                        if self.seed_fn:
+                            self.seed_fn(new_seed)
+                        else:
+                            ds_utils.set_random_seed(new_seed)
+
+                    #print(f'RANK={dist.get_rank()} layer={self.curr_layer} BEFORE inputs={inputs}')
+                    try:
+                        params = [p.flatten()[0:2].tolist() for p in layer.parameters()]
+                        #print(f'RANK={dist.get_rank()} layer={self.curr_layer} params={params}')
+                    except AttributeError:
+                        pass
+
+                    #ds_utils.memory_status(msg=f'BEFORE FWD layer={self.curr_layer}', reset_max=True, print_rank=-1)
+                    inputs = layer(inputs)
+                    #ds_utils.memory_status(msg=f'AFTER FWD layer={self.curr_layer}', reset_max=False, print_rank=-1)
+                    #print(f'RANK={dist.get_rank()} layer={self.curr_layer} AFTER inputs={inputs}')
+                return inputs
+
+            return exec_func
+
+        if self.activation_checkpoint_interval == 0:
+            func = exec_range_func(0, len(self.forward_funcs))
+            x = func(forward_input)
+        else:
+            num_layers = len(self.forward_funcs)
+            x = forward_input
+            for start_idx in range(0, num_layers, self.activation_checkpoint_interval):
+                end_idx = min(start_idx + self.activation_checkpoint_interval,
+                              num_layers)
+
+                funcs = self.forward_funcs[start_idx:end_idx]
+                if len(funcs) == 1 and \
+                        'GPT2ParallelTransformerLayerPipeline' in funcs[0].__class__.__name__:
+                    # Since we either pass tensors or tuples of tensors without unpacking, we
+                    # need to be careful not to double-wrap tensors with tuple. So if we have
+                    # a tuple, unpack it here but because it will be a tuple again in
+                    # exec_func().
+                    if isinstance(x, tuple):
+                        x = self.activation_checkpoint_func(
+                            exec_range_func(start_idx,
+                                            end_idx),
+                            *x)
+                    else:
+                        x = self.activation_checkpoint_func(
+                            exec_range_func(start_idx,
+                                            end_idx),
+                            x)
+                else:
+                    if isinstance(x, tuple):
+                        x = exec_range_func(start_idx, end_idx)(*x)
+                    else:
+                        x = exec_range_func(start_idx, end_idx)(x)
+        return x
+
+    def _partition_layers(self, method='uniform'):
+        num_stages = self._topo.get_dim('pipe')
+        stage_id = self._topo.get_coord(self.global_rank).pipe
+
+        if self.global_rank == 0:
+            print(f'PARTITIONING by method {method}')
+            logging.info(f'Partitioning pipeline stages with method {method}')
+
+        method = method.lower()
+
+        # Each stage gets a simple uniform number of layers.
+        if method == 'uniform':
+            num_layers = len(self.layer_specs())
+            self.parts = ds_utils.partition_uniform(num_items=num_layers,
+                                                    num_parts=num_stages)
+        elif method == 'parameters':
+            param_counts = self._count_layer_params()
+            if self.global_rank == 0:
+                print(f'PARAM_COUNTS: {param_counts}')
+            self.parts = ds_utils.partition_balanced(weights=param_counts,
+                                                     num_parts=num_stages)
+        elif method.startswith('type:'):
+            layertype = method.split(':')[1]
+            binary_weights = [0] * len(self.layer_specs())
+            for idx in self._find_layer_type(layertype):
+                binary_weights[idx] = 1
+
+            # XXX hack
+            pin_last_stage = False
+            if pin_last_stage:
+                num_last_layers = 14
+                if self.global_rank == 0:
+                    print(f'WARN: pinning {num_last_layers} layers to last pipe stage.')
+                parts_A = ds_utils.partition_balanced(
+                    weights=binary_weights[:-num_last_layers],
+                    num_parts=num_stages - 1)
+                self.parts = parts_A + [len(binary_weights)]
+            else:
+                self.parts = ds_utils.partition_balanced(weights=binary_weights,
+                                                         num_parts=num_stages)
+        elif method == 'profile':
+            raise NotImplementedError(f'Partitioning method {method} not implemented.')
+        else:
+            raise NotImplementedError(f'Partitioning method {method} not implemented.')
+
+        # Print some information on the partitioning.
+        if self.global_rank == 0:
+            for stage in range(num_stages):
+                start = self.parts[stage]
+                stop = self.parts[stage + 1]
+                print(f'stage={stage} layers={stop - start}')
+                for idx, layer in enumerate(self.layer_specs()[start:stop]):
+                    if isinstance(layer, LayerSpec):
+                        print(f'    {idx+start}: {layer.typename.__name__}')
+                    else:
+                        print(f'    {idx+start}: {layer}')
+            print(f'PARTITIONING complete. Parts: {self.parts}')
+            logging.info(f'PARTITIONING complete. Parts: {self.parts}')
+
+        self._set_bounds(start=self.parts[stage_id], stop=self.parts[stage_id + 1])
+
+    def allreduce_tied_weight_gradients(self):
+        '''All reduce the gradients of the tied weights between the first and last stages'''
+        for key, comm in self.tied_comms.items():
+            weight = getattr(self.tied_modules[key], comm['weight_attr'])
+            dist.all_reduce(weight.grad, group=comm['group'])
+
+    def _synchronize_tied_weights(self):
+        for key, comm in self.tied_comms.items():
+            dist.broadcast(
+                getattr(comm['module'],
+                        comm['weight_attr']),
+                src=min(comm['ranks']),
+                group=comm['group'],
+            )
+
+    def _index_tied_modules(self):
+        ''' Build communication structures for tied modules. '''
+        tied_comms = {}
+        if self._topo.get_dim('pipe') == 1:
+            return tied_comms
+
+        specs = self.layer_specs()
+        tie_keys = set(s.key for s in specs if isinstance(s, TiedLayerSpec))
+        for key in tie_keys:
+            # Find the layers that the tied module appears in
+            tied_layers = []
+            for idx, layer in enumerate(specs):
+                if isinstance(layer, TiedLayerSpec) and layer.key == key:
+                    tied_layers.append(idx)
+            # Find all stages with this tied module
+            # TODO: Would be nice to remove the nested data/model parallelism loops and
+            # TODO: instead generalize in some way, since we really just care about the
+            # TODO: stage that owns the tied layer. Then loop over each (dp, mp, ...)
+            # TODO: fiber to generate process groups.
+            tied_stages = set(self.stage_owner(idx) for idx in tied_layers)
+            for dp in range(self._grid.data_parallel_size):
+                for mp in range(self._grid.model_parallel_size):
+                    tied_ranks = []
+                    for s in sorted(tied_stages):
+                        if self._grid.model_parallel_size > 1:
+                            tied_ranks.append(
+                                self._grid.stage_to_global(stage_id=s,
+                                                           data=dp,
+                                                           model=mp))
+                        else:
+                            tied_ranks.append(
+                                self._grid.stage_to_global(stage_id=s,
+                                                           data=dp))
+                    group = dist.new_group(ranks=tied_ranks)
+                    dist.barrier()
+                    # Record this tied module if we own a local copy of it.
+                    if dp == self._grid.data_parallel_id and key in self.tied_modules:
+                        tied_comms[key] = {
+                            'ranks': tied_ranks,
+                            'group': group,
+                            'weight_attr': self.tied_weight_attrs[key],
+                            'module': self.tied_modules[key],
+                        }
+                        # Only count the tied module once in the eyes of the FP16 optimizer
+                        if self.global_rank != tied_ranks[0]:
+                            for p in self.tied_modules[key].parameters():
+                                p.model_parallel = False
+        if len(tied_comms) > 0:
+            print(f'RANK={self.global_rank} tied_comms={tied_comms}')
+
+        return tied_comms
+
+    def partitions(self):
+        return self.parts
+
+    def stage_owner(self, layer_idx):
+        assert 0 <= layer_idx < self._num_layers
+        for stage in range(self._topo.get_dim('pipe')):
+            if self.parts[stage] <= layer_idx < self.parts[stage + 1]:
+                return stage
+        raise RuntimeError(f'Layer {layer_idx} not owned? parts={self.parts}')
+
+    def _set_bounds(self, start=None, stop=None):
+        """Manually define the range of layers that will be built on this process.
+
+        These boundaries are treated as list slices and so start is inclusive and stop is
+        exclusive. The default of None for both results in all layers being built
+        locally.
+        """
+        logging.info(
+            f'RANK={dist.get_rank()} [{start}, {stop}) {self.layer_specs()[start:stop]}')
+        self._local_start = start
+        self._local_stop = stop
+
+    def set_checkpoint_interval(self, interval):
+        """ Checkpoint activations after each ``interval`` layers. Use 0 to disable. """
+        assert interval >= 0
+        self.checkpoint_interval = interval
+
+    def topology(self):
+        """ ProcessTopology object to query process mappings. """
+        return self._topo
+
+    def mpu(self):
+        return self._grid
+
+    def num_pipeline_stages(self):
+        return self._topo.get_dim('pipe')
+
+    def ckpt_prefix(self, checkpoints_path, tag):
+        """Build a prefix for all checkpoint files written by this module. """
+        # All checkpoint files start with this
+        rank_name = 'module'
+
+        # Data parallelism is omitted from the naming convention because we are agnostic
+        # to this in the checkpoint.
+        omit_dims = frozenset(['data'])
+        axes = [a for a in self._grid._topo.get_axis_names() if a not in omit_dims]
+        for dim in axes:
+            rank = getattr(self._grid._topo.get_coord(rank=self.global_rank), dim)
+            rank_name += f'-{dim}_{rank:02d}'
+
+        ckpt_name = os.path.join(checkpoints_path, str(tag), rank_name)
+        return ckpt_name
+
+    def ckpt_layer_path(self, ckpt_dir, local_layer_idx):
+        """Customize a prefix for a specific pipeline module layer. """
+        idx = local_layer_idx + self._local_start
+        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_{idx:02d}-model_states.pt')
+        return layer_ckpt_path
+
+    def save_state_dict(self, save_dir):
+        if self._grid.data_parallel_id != 0:
+            return
+
+        os.makedirs(save_dir, exist_ok=True)
+        layer_offset = self._local_start
+        for idx, layer in enumerate(self.forward_funcs):
+            model_ckpt_path = self.ckpt_layer_path(save_dir, idx)
+            try:
+                torch.save(layer.state_dict(), model_ckpt_path)
+                print(f'  Saved {model_ckpt_path}')
+            except AttributeError:
+                # Functions, etc. will not have state_dicts
+                print(f'  Skipping layer={idx+layer_offset} - no state_dict().')
+                pass
+
+    def load_state_dict(self, load_dir, strict=True):
+        rank = dist.get_rank()
+
+        layer_offset = self._local_start
+        for idx, layer in enumerate(self.forward_funcs):
+            model_ckpt_path = self.ckpt_layer_path(load_dir, idx)
+            try:
+                #layer = layer.detach()
+                layer.load_state_dict(torch.load(model_ckpt_path), strict=strict)
+                if self._grid.data_parallel_id == 0:
+                    print(
+                        f'    rank={dist.get_rank()} Loaded layer={idx+layer_offset} file={model_ckpt_path}'
+                    )
+            except AttributeError:
+                # Functions, etc. will not have state_dicts
+                if self._grid.data_parallel_id == 0:
+                    print(
+                        f'    rank={dist.get_rank()} Skipped layer idx={idx+layer_offset} file={model_ckpt_path} - no state_dict().'
+                    )
+
+        self._synchronize_tied_weights()
