@@ -1140,85 +1140,36 @@ class PipelineEngine(DeepSpeedLight):
             f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)'
         )
 
-    def _get_ckpt_prefix(self, checkpoints_path, tag):
-        """Build a prefix for all checkpoint files written by this process. """
-        # All checkpoint files start with this
-        rank_name = 'module'
+    def module_state_dict(self):
+        """Override hack to save a pipe model and return the directory path of the save.
 
-        # Data and pipeline parallelism are omitted from the naming convention because
-        # we are agnostic to these in the checkpoint.
-        omit_dims = frozenset(['data', 'pipe'])
-        axes = [a for a in self.grid._topo.get_axis_names() if a not in omit_dims]
-        for dim in axes:
-            rank = getattr(self.grid._topo.get_coord(rank=self.global_rank), dim)
-            rank_name += f'-{dim}_{rank:02d}'
+        This method should only be called by DeepSpeed's ``save_checkpoint()``. The
+        recommended way of saving a ``PipelineModule`` outside of ``save_checkpoint()``
+        is ``save_state_dict()``.
 
-        ckpt_name = os.path.join(checkpoints_path, str(tag), rank_name)
-        return ckpt_name
-
-    def save_checkpoint(self, save_dir, tag, client_state={}):
-        r"""Save training checkpoint
-
-        Arguments:
-            save_dir: Required. Directory for saving the checkpoint
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
-            client_state: Optional. State dictionary used for saving required training states in the client code.
+        Returns:
+            str: The directory path where the checkpoint was saved.
         """
-        if self.grid.data_parallel_id != 0:
+        assert isinstance(self.module, PipelineModule)
+        assert self._curr_save_path is not None, \
+            "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
+
+        self.module.save_state_dict(self._curr_save_path)
+        return self._curr_save_path
+
+    def load_module_state_dict(self, state_dict, strict=True):
+        """Override hack to instead use a directory path.
+
+        This is important because pipeline models checkpoint by layer instead of rank.
+
+        If ``state_dict`` is not a ``str``, we revert to ``super()`` expecting a ``dict``.
+
+        Args:
+            state_dict (str): Path to the directory for checkpoint.
+            strict (bool, optional): Strict state loading. Defaults to True.
+        """
+        if not isinstance(state_dict, str):
+            super().load_module_state_dict(state_dict, strict)
             return
 
-        prefix = self.module.ckpt_prefix(save_dir, tag)
-        ensure_directory_exists(prefix)
-
-        print(
-            f'RANK={self.global_rank} save_non_zero={self.save_non_zero_checkpoint} save_zero={self.save_zero_checkpoint} prefix={prefix}'
-        )
-
-        state = {
-            'optimizer':
-            self.optimizer.state_dict() if self.optimizer else None,
-            'lr_scheduler':
-            self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
-            'csr_tensor_module_names':
-            self.csr_tensor_module_names,
-            'skipped_steps':
-            self.skipped_steps,
-            'global_steps':
-            self.global_steps,
-        }
-        state.update(client_state)
-        engine_ckpt_path = prefix + '.pt'
-        torch.save(state, engine_ckpt_path)
-
-        # Pipeline model weights are saved in a different format.
-        self.module.save_state_dict(save_dir=save_dir, tag=tag)
-
-    def load_checkpoint(self, load_dir, tag, load_optimizer_states=False, strict=True):
-        assert not load_optimizer_states
-
-        prefix = self.module.ckpt_prefix(load_dir, tag)
-
-        engine_ckpt_path = prefix + '.pt'
-        checkpoint = torch.load(engine_ckpt_path,
-                                map_location=lambda storage,
-                                loc: storage)
-
-        self.csr_tensor_module_names = checkpoint['csr_tensor_module_names']
-        self.global_steps = checkpoint['global_steps']
-        self.skipped_steps = checkpoint['skipped_steps']
-        deepspeed_states = [
-            'optimizer',
-            'lr_scheduler',
-            'csr_tensor_module_names',
-            'skipped_steps',
-            'global_step'
-        ]
-        client_state = {
-            key: value
-            for key,
-            value in checkpoint.items() if not key in deepspeed_states
-        }
-
-        self.module.load_state_dict(load_dir=load_dir, tag=tag, strict=strict)
-
-        return engine_path, client_state
+        self.module.load_state_dir(state_dict, strict=strict)

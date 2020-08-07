@@ -41,6 +41,45 @@ def test_topology_match():
     print([topo.get_coord(r) for r in topo.filter_match(pipe=0, data=1)])
 
 
+def test_topology_rank_repr():
+    topo = Topo(axes=['a', 'b'], dims=[2, 2])
+    assert topo.get_rank_repr(rank=0) == 'a_00-b_00'
+    assert topo.get_rank_repr(rank=1) == 'a_00-b_01'
+    assert topo.get_rank_repr(rank=2) == 'a_01-b_00'
+    assert topo.get_rank_repr(rank=3) == 'a_01-b_01'
+
+    assert topo.get_rank_repr(rank=3, inner_sep='+') == 'a+01-b+01'
+    assert topo.get_rank_repr(rank=3,
+                              inner_sep='🤗',
+                              outer_sep='_JEFF_') == 'a🤗01_JEFF_b🤗01'
+
+    topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
+    assert topo.get_rank_repr(rank=0) == ''
+    assert topo.get_rank_repr(rank=1) == ''
+    assert topo.get_rank_repr(rank=2) == ''
+    assert topo.get_rank_repr(rank=3) == ''
+
+    assert topo.get_rank_repr(rank=0, omit_axes=['pipe']) == 'data_00'
+    assert topo.get_rank_repr(rank=1, omit_axes=['pipe']) == 'data_01'
+    assert topo.get_rank_repr(rank=2, omit_axes=['pipe']) == 'data_00'
+    assert topo.get_rank_repr(rank=3, omit_axes=['pipe']) == 'data_01'
+
+    assert topo.get_rank_repr(rank=0, omit_axes=[]) == 'pipe_00-data_00'
+    assert topo.get_rank_repr(rank=1, omit_axes=[]) == 'pipe_00-data_01'
+    assert topo.get_rank_repr(rank=2, omit_axes=[]) == 'pipe_01-data_00'
+    assert topo.get_rank_repr(rank=3, omit_axes=[]) == 'pipe_01-data_01'
+
+    topo = Topo(axes=['pipe', 'data', 'model'], dims=[2, 2, 2])
+    assert topo.get_rank_repr(rank=0) == 'model_00'
+    assert topo.get_rank_repr(rank=1) == 'model_01'
+    assert topo.get_rank_repr(rank=2) == 'model_00'
+    assert topo.get_rank_repr(rank=3) == 'model_01'
+    assert topo.get_rank_repr(rank=4) == 'model_00'
+    assert topo.get_rank_repr(rank=5) == 'model_01'
+    assert topo.get_rank_repr(rank=6) == 'model_00'
+    assert topo.get_rank_repr(rank=7) == 'model_01'
+
+
 def test_topology_3d():
     topo = Topo(axes=['a', 'b', 'c'], dims=[2, 2, 2])
 

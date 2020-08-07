@@ -63,6 +63,40 @@ class ProcessTopology:
         """Return a list of the axis names in the ordering of the topology. """
         return self.axes
 
+    def get_rank_repr(self,
+                      rank,
+                      omit_axes=['data',
+                                 'pipe'],
+                      inner_sep='_',
+                      outer_sep='-'):
+        """Return a string representation of a rank.
+
+        This method is primarily used for checkpointing model data.
+
+        For example:
+            >>> topo = Topo(axes=['a', 'b'], dims=[2, 2])
+            >>> topo.get_rank_repr(rank=3)
+            'a_01-b_01'
+            >>> topo.get_rank_repr(rank=3, omit_axes=['a'])
+            'b_01'
+
+        Args:
+            rank (int): A rank in the topology.
+            omit_axes (list, optional): Axes that should not be in the representation. Defaults to ['data', 'pipe'].
+            inner_sep (str, optional): [description]. Defaults to '_'.
+            outer_sep (str, optional): [description]. Defaults to '-'.
+
+        Returns:
+            str: A string representation of the coordinate owned by ``rank``.
+        """
+        omit_axes = frozenset(omit_axes)
+        axes = [a for a in self.get_axis_names() if a not in omit_axes]
+        names = []
+        for ax in axes:
+            ax_rank = getattr(self.get_coord(rank=rank), ax)
+            names.append(f'{ax}{inner_sep}{ax_rank:02d}')
+        return outer_sep.join(names)
+
     def get_dim(self, axis):
         """Return the number of processes along the given axis.
 
@@ -263,6 +297,7 @@ class PipelineParallelGrid:
         # Create new ProcessGroups for all model parallelism. DeepSpeedLight uses these
         # to detect overflow, etc.
         self.ds_model_proc_group = None
+        self.ds_model_rank = -1
         for dp in range(self.data_parallel_size):
             ranks = sorted(self._topo.get_axis_list(axis='data', idx=dp))
             if self.global_rank == 0:
@@ -272,6 +307,7 @@ class PipelineParallelGrid:
                 self.ds_model_proc_group = proc_group
                 self.ds_model_world_size = len(ranks)
                 self.ds_model_rank = ranks.index(self.global_rank)
+        assert self.ds_model_rank > -1
         assert self.ds_model_proc_group is not None
 
         # Create new ProcessGroup for gradient all-reduces - these are the data parallel groups
@@ -414,10 +450,10 @@ class PipelineParallelGrid:
     # These are model parallel groups across all types of model parallelism.
     # Deepspeed uses them to detect overflow, etc.
     def get_model_parallel_rank(self):
-        self.ds_model_rank
+        return self.ds_model_rank
 
     def get_model_parallel_world_size(self):
-        self.ds_model_world_size
+        return self.ds_model_world_size
 
     def get_model_parallel_group(self):
         return self.ds_model_proc_group

@@ -1,4 +1,6 @@
 import torch
+import torch.distributed as dist
+
 import deepspeed
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
@@ -102,20 +104,29 @@ def checkpoint_correctness_verification(args,
                                         tmpdir,
                                         load_optimizer_states=False,
                                         load_lr_scheduler_states=False,
-                                        fp16=True):
+                                        fp16=True,
+                                        train_batch=False):
     dtype = torch.half if fp16 else torch.float32
     ds_model, _, _,_ = deepspeed.initialize(args=args,
                                             model=model,
                                             model_parameters=model.parameters())
+
     data_loader = random_dataloader(model=ds_model,
                                     total_samples=50,
                                     hidden_dim=hidden_dim,
                                     device=ds_model.device,
                                     dtype=dtype)
-    for n, batch in enumerate(data_loader):
-        loss = ds_model(batch[0], batch[1])
-        ds_model.backward(loss)
-        ds_model.step()
+
+    if train_batch:
+        ds_model.set_dataloader(data_loader)
+        for n, batch in enumerate(data_loader):
+            loss = ds_model.train_batch()
+    else:
+        for n, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            print(loss)
+            ds_model.backward(loss)
+            ds_model.step()
 
     trained_model = ds_model
 
@@ -125,8 +136,8 @@ def checkpoint_correctness_verification(args,
     trained_model.save_checkpoint(save_folder, save_tag)
 
     loaded_model, _, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+                                                model=model,
+                                                model_parameters=model.parameters())
 
     loaded_model.load_checkpoint(save_folder,
                                  save_tag,
@@ -466,6 +477,60 @@ def test_checkpoint_fp32_optimizer(tmpdir):
     _test_checkpoint_fp32_optimizer(args=args, model=model, hidden_dim=hidden_dim)
 
 
+@pytest.mark.parametrize("zero_stage", [0, 1])
+def test_checkpoint_pipe_engine(zero_stage, tmpdir):
+    topo = PipeTopo(num_pp=2, num_dp=2)
+
+    config_dict = {
+        "train_batch_size": 2,
+        "train_micro_batch_size_per_gpu": 1,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 1e-5
+            }
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        },
+        "fp16": {
+            "enabled": zero_stage > 0
+        },
+        "scheduler": {
+            "type": "OneCycle",
+            "params": {
+                "cycle_first_step_size": 1000,
+                "cycle_first_stair_count": 500,
+                "cycle_second_step_size": 1000,
+                "cycle_second_stair_count": 500,
+                "decay_step_size": 1000,
+                "cycle_min_lr": 0.0001,
+                "cycle_max_lr": 0.0010,
+                "decay_lr_rate": 0.001,
+                "cycle_min_mom": 0.85,
+                "cycle_max_mom": 0.99,
+                "decay_mom_rate": 0.0
+            }
+        }
+    }
+
+    @distributed_test(world_size=4)
+    def _test(save_folder):
+        args = args_from_dict(tmpdir, config_dict)
+        model = LinearStackPipe(topology=topo)
+        checkpoint_correctness_verification(args=args,
+                                            model=model,
+                                            hidden_dim=model.hidden_dim,
+                                            tmpdir=save_folder,
+                                            fp16=config_dict['fp16']['enabled'],
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=True,
+                                            train_batch=True)
+
+    _test(tmpdir)
+
+
 @pytest.mark.parametrize("base_topo,test_topo",
                          [
                              (PipeTopo(num_pp=1,
@@ -490,7 +555,7 @@ def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
         dist.barrier()
 
         test_model = LinearStackPipe(topology=test_topo)
-        test_model.load_state_dict(save_folder)
+        test_model.load_state_dir(save_folder)
 
         # Base and test can have different lengths, so make sure we map from the
         # smaller to larger model

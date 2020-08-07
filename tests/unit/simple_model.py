@@ -26,7 +26,7 @@ class SimpleModel(torch.nn.Module):
 
 
 class LinearStack(torch.nn.Module):
-    def __init__(self, input_dim=32, hidden_dim=128, output_dim=8, num_layers=4):
+    def __init__(self, input_dim=128, hidden_dim=128, output_dim=128, num_layers=4):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -54,9 +54,9 @@ class LinearStack(torch.nn.Module):
 
 class LinearStackPipe(PipelineModule):
     def __init__(self,
-                 input_dim=32,
+                 input_dim=128,
                  hidden_dim=128,
-                 output_dim=8,
+                 output_dim=128,
                  num_layers=4,
                  **kwargs):
         self.input_dim = input_dim
@@ -132,5 +132,10 @@ def args_from_dict(tmpdir, config_dict):
     args = parser.parse_args(args='')
     args.deepspeed = True
     args.deepspeed_config = config_path
-    args.local_rank = 0
+    if torch.distributed.is_initialized():
+        # We assume up to one full node executing unit tests
+        assert torch.distributed.get_world_size() <= torch.cuda.device_count()
+        args.local_rank = torch.distributed.get_rank()
+    else:
+        args.local_rank = 0
     return args

@@ -536,7 +536,11 @@ class PipelineModule(nn.Module, ABC):
     def ckpt_layer_path(self, ckpt_dir, local_layer_idx):
         """Customize a prefix for a specific pipeline module layer. """
         idx = local_layer_idx + self._local_start
-        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_{idx:02d}-model_states.pt')
+        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_{idx:02d}')
+        rank_repr = self._grid._topo.get_rank_repr(rank=self.global_rank)
+        if rank_repr is not '':
+            layer_ckpt_path += f'-{rank_repr}'
+        layer_ckpt_path += '-model_states.pt'
         return layer_ckpt_path
 
     def save_state_dict(self, save_dir):
@@ -555,7 +559,7 @@ class PipelineModule(nn.Module, ABC):
                 print(f'  Skipping layer={idx+layer_offset} - no state_dict().')
                 pass
 
-    def load_state_dict(self, load_dir, strict=True):
+    def load_state_dir(self, load_dir, strict=True):
         rank = dist.get_rank()
 
         layer_offset = self._local_start

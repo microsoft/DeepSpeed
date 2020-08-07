@@ -1162,7 +1162,6 @@ class DeepSpeedEngine(Module):
         return self._get_rank_zero_ckpt_name(checkpoints_path, tag, mp_rank, pp_rank)
 
     def _get_ckpt_name(self, checkpoints_path, tag):
-
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         ckpt_name = os.path.join(checkpoints_path,
                                  str(tag),
@@ -1370,6 +1369,10 @@ class DeepSpeedEngine(Module):
     def _save_checkpoint(self, save_dir, tag, client_state={}):
 
         save_path = self._get_ckpt_name(save_dir, tag)
+        # A hack to save the checkpointing directory. Pipeline parallelism overrides
+        # module_state_dict() and uses this path to save the model. module_state_dict()
+        # then instead just returns self._curr_save_path.
+        self._curr_save_path = os.path.dirname(save_path)
 
         state = {
             'module':
@@ -1394,6 +1397,7 @@ class DeepSpeedEngine(Module):
 
         logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
+        self._curr_save_path = None
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
