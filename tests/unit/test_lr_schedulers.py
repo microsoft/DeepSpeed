@@ -40,7 +40,7 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
     model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[1])
-    def _test_warmup_lr(args, model, hidden_dim):
+    def _test_get_lr_before_train(args, model, hidden_dim):
         model, _, _, lr_scheduler = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
@@ -56,4 +56,4 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
             model.backward(loss)
             model.step()
 
-    _test_warmup_lr(args=args, model=model, hidden_dim=hidden_dim)
+    _test_get_lr_before_train(args=args, model=model, hidden_dim=hidden_dim)
