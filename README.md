@@ -28,7 +28,8 @@ information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)
 
 # News
 
-* [2020/07/24] [DeepSpeed webinar](https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-Live.html) on August 6th, 2020
+* [2020/08/07] [DeepSpeed Microsoft Research Webinar](https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-On-Demand.html) is now available on-demand
+* [2020/07/24] [DeepSpeed Microsoft Research Webinar](https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-On-Demand.html) on August 6th, 2020
   [![DeepSpeed webinar](docs/assets/images/webinar-aug2020.png)](https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-Live.html)
 * [2020/05/19] [ZeRO-2 & DeepSpeed: Shattering Barriers of Deep Learning Speed & Scale](https://www.microsoft.com/en-us/research/blog/zero-2-deepspeed-shattering-barriers-of-deep-learning-speed-scale/)
 <span style="color:dodgerblue">**[_NEW_]**</span>
