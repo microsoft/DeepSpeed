@@ -148,7 +148,7 @@ class DeepSpeedEngine(Module):
         self._init_distributed(dist_init_required)
 
         self.sample_count = 0
-        if self.tensorboard_enabled() and self.global_rank == 0:
+        if self.tensorboard_enabled():
             self.summary_writer = self.get_summary_writer()
 
         # Configure distributed model

@@ -11,7 +11,6 @@ from functools import partial
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from numpy import prod
 
@@ -329,27 +328,20 @@ class PipelineModule(nn.Module, ABC):
                               num_layers)
 
                 funcs = self.forward_funcs[start_idx:end_idx]
-                if len(funcs) == 1 and \
-                        'GPT2ParallelTransformerLayerPipeline' in funcs[0].__class__.__name__:
-                    # Since we either pass tensors or tuples of tensors without unpacking, we
-                    # need to be careful not to double-wrap tensors with tuple. So if we have
-                    # a tuple, unpack it here but because it will be a tuple again in
-                    # exec_func().
-                    if isinstance(x, tuple):
-                        x = self.activation_checkpoint_func(
-                            exec_range_func(start_idx,
-                                            end_idx),
-                            *x)
-                    else:
-                        x = self.activation_checkpoint_func(
-                            exec_range_func(start_idx,
-                                            end_idx),
-                            x)
+                # Since we either pass tensors or tuples of tensors without unpacking, we
+                # need to be careful not to double-wrap tensors with tuple. So if we have
+                # a tuple, unpack it here but because it will be a tuple again in
+                # exec_func().
+                if isinstance(x, tuple):
+                    x = self.activation_checkpoint_func(
+                        exec_range_func(start_idx,
+                                        end_idx),
+                        *x)
                 else:
-                    if isinstance(x, tuple):
-                        x = exec_range_func(start_idx, end_idx)(*x)
-                    else:
-                        x = exec_range_func(start_idx, end_idx)(x)
+                    x = self.activation_checkpoint_func(
+                        exec_range_func(start_idx,
+                                        end_idx),
+                        x)
         return x
 
     def _partition_layers(self, method='uniform'):

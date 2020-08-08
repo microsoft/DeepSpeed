@@ -194,7 +194,8 @@ def test_pipe_cifar10_seedlayers(base_topo, test_topo, tmpdir):
             "enabled": True
         },
         "pipeline": {
-            "seed_layers": True
+            "seed_layers": True,
+            "activation_checkpoint_interval": 1
         }
     }
     args = args_from_dict(tmpdir, config_dict)

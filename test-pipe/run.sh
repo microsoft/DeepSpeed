@@ -13,25 +13,37 @@ mkdir -p ${LOGDIR}
 
 GPUS=4
 
-SEED=1138
+SEED=12345
 
-for PP in 4;
+for PP in 1 4 0 2;
 do
-    for MBSIZE in 2 ;
+    WORKER_STR="-i worker-0"
+    for MBSIZE in 16 ;
     do
         #for GAS in 32 64 128 256 512 1024 ;
-        for TRAIN_BATCH_SIZE in 64;
+        for TRAIN_BATCH_SIZE in 128 ;
         do
             if [ $PP -eq 0 ]
             then
                 DP=$GPUS
             else
                 DP=$(( ${GPUS} / ${PP} ))
+                DP=1
+                GPUS=${PP}
+                if [ $PP -eq 1 ]
+                then
+                    WORKER_STR="-i worker-0:0"
+                fi
+                if [ $PP -eq 2 ]
+                then
+                    WORKER_STR="-i worker-0:0,1"
+                fi
             fi
 
             GAS=$(( ${TRAIN_BATCH_SIZE} / (${DP} * ${MBSIZE}) ))
 
-            LOGFILE="${LOGDIR}/log-batch_${TRAIN_BATCH_SIZE}-test-pp_${PP}-dp_${DP}-mp_${MP}-gas_${GAS}-mb_${MBSIZE}-ds_${USE_DEEPSPEED}-zero_${USE_ZERO}.txt"
+            #LOGFILE="${LOGDIR}/log-batch_${TRAIN_BATCH_SIZE}-test-pp_${PP}-dp_${DP}-mp_${MP}-gas_${GAS}-mb_${MBSIZE}-ds_${USE_DEEPSPEED}-zero_${USE_ZERO}.txt"
+            LOGFILE="pplog-tensorboard.log"
 
             sed "s/CONFIG_BATCH_SIZE/${TRAIN_BATCH_SIZE}/" ${template_json} \
                 | sed "s/CONFIG_MBSIZE/${MBSIZE}/" \
@@ -46,11 +58,11 @@ do
             options=" \
                 --seed=${SEED} \
                 --pipeline-parallel-size=${PP} \
-                --steps 15000 \
+                --steps 20000 \
                 --deepspeed_config=${config_json}
                 "
 
-            run_cmd="deepspeed -i worker-0 demo.py $@ ${options}"
+            run_cmd="deepspeed ${WORKER_STR} demo.py $@ ${options}"
             date > ${LOGFILE}
             echo ${run_cmd} >> ${LOGFILE}
             eval ${run_cmd} 2>&1 | tee -a ${LOGFILE}
@@ -60,4 +72,5 @@ do
 done
 
 echo "ALL DONE"
-#deepspeed ~/train.py
+#deepspeed ${WORKER_STR} ~/train.py
+deepspeed -i worker-0 ~/train.py

@@ -160,6 +160,10 @@ class PipelineEngine(DeepSpeedLight):
         self.agg_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
         self.dp_group_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
 
+        if self._config.pipeline['activation_checkpoint_interval'] > 0:
+            self.module.activation_checkpoint_interval = self._config.pipeline[
+                'activation_checkpoint_interval']
+
         if self.is_last_stage:
             self.loss_model = self.module.loss_fn
             self.loss_input = None
@@ -212,38 +216,41 @@ class PipelineEngine(DeepSpeedLight):
 
         self.sample_count = self.train_batch_size() * self.global_steps
 
+        # Scale loss, average among DP ranks, and bcast loss to the rest of my DP group
         if self.is_last_stage:
             loss = self._scale_loss(self.total_loss)
-
-            if self.mpu.get_slice_parallel_rank() == 0 and self.tensorboard_enabled():
-                self.summary_events = [(f'Train/Samples/train_loss',
-                                        self.agg_loss.mean().item(),
-                                        self.sample_count)]
-                for event in self.summary_events:  # write_summary_events
-                    self.summary_writer.add_scalar(event[0], event[1], event[2])
-                self.summary_writer.flush()
-
-        # Send loss to the rest of my DP group
-        if self.is_last_stage:
             self.dp_group_loss = loss.clone().detach()
-            assert self.global_rank in self.grid.pp_group
-            #print(f'RANK={self.global_rank} bcast SENDER src={self.global_rank} group={self.grid.pp_group}', flush=True)
-            dist.broadcast(tensor=self.dp_group_loss,
-                           src=self.global_rank,
-                           group=self.mpu.get_pipe_parallel_group())
+
             ## Average loss across all data-parallel groups
             self.agg_loss = self.dp_group_loss.clone().detach()
             if self.is_data_parallel:
                 dist.all_reduce(self.agg_loss, group=self.mpu.get_data_parallel_group())
                 self.agg_loss /= self.dp_world_size
+
+            #print(f'RANK={self.global_rank} bcast SENDER src={self.global_rank} group={self.grid.pp_group}', flush=True)
+            assert self.global_rank in self.grid.pp_group
+            dist.broadcast(tensor=self.agg_loss,
+                           src=self.global_rank,
+                           group=self.mpu.get_pipe_parallel_group())
         else:
             # Get loss from last stage
             src_rank = self.grid.stage_to_global(self.num_stages - 1)
             assert src_rank in self.grid.pp_group
             #print(f'RANK={self.global_rank} bcast src={src_rank} group={self.grid.pp_group}', flush=True)
-            dist.broadcast(tensor=self.dp_group_loss,
+            dist.broadcast(tensor=self.agg_loss,
                            src=src_rank,
                            group=self.grid.get_pipe_parallel_group())
+
+        # Tensorboard
+        if self.tensorboard_enabled():
+            if self.global_rank == 0:
+                self.summary_events = [(f'Train/Samples/train_loss',
+                                        self.agg_loss.mean().item(),
+                                        self.sample_count)]
+                for event in self.summary_events:  # write_summary_events
+                    self.summary_writer.add_scalar(event[0], event[1], event[2])
+                if self.global_steps % self.steps_per_print() == 0:
+                    self.summary_writer.flush()
 
         if self.wall_clock_breakdown():
             self.timers.log([
@@ -784,18 +791,19 @@ class PipelineEngine(DeepSpeedLight):
         if self.global_steps < 10:
             self.mem_status('AFTER STEP')
 
-        if self.mpu.get_slice_parallel_rank() == 0 and self.tensorboard_enabled():
-            self.summary_events = [(f'Train/Samples/stage-{self.stage_id}/lr',
-                                    self.get_lr()[0],
-                                    self.sample_count)]
-            for event in self.summary_events:  # write_summary_events
-                self.summary_writer.add_scalar(event[0], event[1], event[2])
+        if self.tensorboard_enabled():
+            if self.global_rank == 0:
+                self.summary_events = [(f'Train/Samples/lr',
+                                        self.get_lr()[0],
+                                        self.sample_count)]
+                for event in self.summary_events:  # write_summary_events
+                    self.summary_writer.add_scalar(event[0], event[1], event[2])
 
         self.reduce_and_update = False
 
         if self.wall_clock_breakdown():
-            self.timers('step').stop()
             self.timers('step_microstep').stop()
+            self.timers('step').stop()
             self.timers.log([
                 'forward_microstep',
                 'backward_microstep',
@@ -805,7 +813,8 @@ class PipelineEngine(DeepSpeedLight):
             ])
             # Log timing
             if self.tensorboard_enabled():
-                if self.mpu.get_slice_parallel_rank() == 0:
+                '''
+                if self.global_rank == 0:
                     self.summary_events = [(f'Train/Samples/stage-{self.stage_id}/elapsed_time_ms_forward', self.timers('forward').elapsed(reset=False) * 1000.0, self.sample_count), \
                                             (f'Train/Samples/stage-{self.stage_id}/elapsed_time_ms_backward', self.timers('backward').elapsed(reset=False) * 1000.0, self.sample_count), \
                                             (f'Train/Samples/stage-{self.stage_id}/elapsed_time_ms_backward_inner', self.timers('backward_inner').elapsed(reset=False) * 1000.0, self.sample_count), \
@@ -814,13 +823,13 @@ class PipelineEngine(DeepSpeedLight):
                                             ]
                     for event in self.summary_events:  # write_summary_events
                         self.summary_writer.add_scalar(event[0], event[1], event[2])
-                self.timers.log([
-                    'forward',
-                    'backward',
-                    'backward_inner',
-                    'backward_allreduce',
-                    'step'
-                ])
+            '   '''
+            self.timers.log(
+                ['forward',
+                 'backward',
+                 'backward_inner',
+                 'backward_allreduce',
+                 'step'])
 
             if self.global_steps % self.steps_per_print() == 0:
                 if self.mpu.get_data_parallel_rank() == 0:

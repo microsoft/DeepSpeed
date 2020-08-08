@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import argparse
 import logging
@@ -109,7 +110,6 @@ def go(args):
 
             if engine.fp16_enabled():
                 inputs = inputs.half()
-                labels = labels.half()
 
             loss = engine.train_batch(inputs, labels)
 
@@ -142,6 +142,11 @@ def go_pipeline(args):
     else:
         net = AlexNetPipe(num_classes=100, topology=topology)
 
+    if args.pipeline_parallel_size == 1:
+        net.save_state_dict(os.path.join('checkpoint', 'init'))
+    else:
+        net.load_state_dir(os.path.join('checkpoint', 'init'))
+
     trainset = cifar_trainset()
 
     engine, opt, dataloader, scheduler = deepspeed.initialize(
@@ -149,10 +154,6 @@ def go_pipeline(args):
         model=net,
         model_parameters=[p for p in net.parameters() if p.requires_grad],
         training_data=trainset)
-    if args.pipeline_parallel_size == 1:
-        engine.save_checkpoint('simplenet-tied', tag='1')
-    else:
-        engine.load_checkpoint('simplenet-tied', tag='1')
 
     for step in range(args.steps):
         loss = engine.train_batch()
