@@ -148,7 +148,7 @@ class DeepSpeedEngine(Module):
         self._init_distributed(dist_init_required)
 
         self.sample_count = 0
-        if self.tensorboard_enabled():
+        if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
 
         # Configure distributed model
@@ -256,10 +256,7 @@ class DeepSpeedEngine(Module):
                 SUMMARY_WRITER_DIR_NAME = os.path.join(os.environ['DLWS_JOB_ID'], "logs")
             log_dir = os.path.join(base, SUMMARY_WRITER_DIR_NAME, name)
 
-        # Play nice with filesystems and ensure only one rank creates the directory.
-        if self.global_rank == 0:
-            os.makedirs(log_dir, exist_ok=True)
-        dist.barrier()
+        os.makedirs(log_dir, exist_ok=True)
 
         return SummaryWriter(log_dir=log_dir)
 
