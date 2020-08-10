@@ -1,5 +1,5 @@
 '''
-Copyright 2019 The Microsoft DeepSpeed Team
+Copyright 2019 The Microsoft DeepSpeed Team test
 Copyright NVIDIA/apex
 This file is adapted from NVIDIA/apex/optimizer/fused_adam and implements the LAMB optimizer
 '''
