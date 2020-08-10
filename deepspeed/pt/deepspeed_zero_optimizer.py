@@ -120,10 +120,12 @@ def async_migrate_to(obj, dev, main_stream=None):
         return obj
 
 
-def async_copy_to(in, out, main_stream=None):
-    in_dev = in.device()
-    out_dev = out.device()
-    
+def async_copy_to(v_in, v_out, main_stream=None):
+    #in_dev = in.device()
+    #out_dev = out.device()
+    print(v_in.size())
+    print(v_out.size())
+
 
 
 class FP16_DeepSpeedZeroOptimizer(object):
@@ -1267,8 +1269,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #jie: transform the grad back to CPU
             start, end = self.get_partition_fp32_group_index(i)
+            print(start)
+            print(end)
+            print(single_grad_partition)
             with torch.cuda.stream(self.migration_stream):
-                async_copy_to(self.single_partition_of_fp32_groups[start:end].grad,single_grad_partition)
+                print("========================")
+                print(single_grad_partition.size())
+                #self.single_partition_of_fp32_groups[start].grad = single_grad_partition.detach().clone()
+                self.single_partition_of_fp32_groups[start:end].grad  = torch.tensor(single_grad_partition.detach(),
+                                                                   dtype=self.single_partition_of_fp32_groups[i].dtype)
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(self.params_in_partition[i])
 
@@ -1276,8 +1285,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #single_partition_grad_groups.append(single_grad_partition)
 
-        #self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
-        self.migration_stream.sync()
+        self.cpu_computation_stream.wait_stream(self.migration_stream)
         timers('optimizer_step').start()
         with torch.cuda.stream(self.cpu_computation_stream):
             self.unscale_and_clip_grads_on_cpu(self.single_partition_of_fp32_groups.grad,norm_groups)
@@ -1487,6 +1495,31 @@ class FP16_DeepSpeedZeroOptimizer(object):
             else:
                 grad.data.mul_(1. / combined_scale)
 
+    def unscale_and_clip_grads_on_cpu(self, grad_groups_flat, norm_groups):
+        total_norm = 0.0
+        for norm in norm_groups:
+            total_norm += norm**2.0
+        total_norm = math.sqrt(total_norm)
+
+        # compute combined scale factor for this group
+        combined_scale = self.loss_scale
+        if self.clip_grad > 0.:
+            # norm is in fact norm*scale
+            clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
+            if clip > 1:
+                combined_scale = clip * self.loss_scale
+        print("combined_scale")
+        grad_groups_flat.data.mul_(1. / combined_scale)
+        '''
+        for i,grad in enumerate(grad_groups_flat):
+            if isinstance(grad, list):
+                sub_partitions = grad
+                for g in sub_partitions:
+                    g.data.mul_(1. / combined_scale)
+            else:
+                grad.data.mul_(1. / combined_scale)
+        '''
+
     def _check_overflow(self, partition_gradients=True):
         self.overflow = self.has_overflow(partition_gradients)
 
@@ -1665,7 +1698,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['partition_count'] = self.partition_count
 
         # Remove paddings for DP alignment to enable loading for other alignment values
-        fp32_groups_without_padding = self._get_groups_without_padding(
+        if self.cpu_offload:
+            fp32_groups_without_padding = self.single_partition_of_fp32_groups[0:self.total_params]
+        else:
+            fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
         state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
 

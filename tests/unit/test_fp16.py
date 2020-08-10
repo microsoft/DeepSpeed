@@ -299,9 +299,9 @@ def test_zero_static_scale(tmpdir, zero_stage):
             "loss_scale": 138.
         },
         "zero_optimization": {
-            "stage": zero_stage
-        },
-        "zero_cpu_offload": use_cpu_offload,
+            "stage": zero_stage,
+            "zero_cpu_offload": use_cpu_offload
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
 

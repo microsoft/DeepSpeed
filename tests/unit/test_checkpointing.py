@@ -263,9 +263,9 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
-        },
-        "zero_cpu_offload": use_cpu_offload,
+            "stage": zero_stage,
+            "zero_cpu_offload": use_cpu_offload
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -314,9 +314,9 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
-        },
-        "zero_cpu_offload": use_cpu_offload,
+            "stage": zero_stage,
+            "zero_cpu_offload": use_cpu_offload
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -370,7 +370,8 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
+            "stage": zero_stage,
+            "zero_cpu_offload": use_cpu_offload
         },
         "scheduler": {
             "type": "WarmupLR",
@@ -379,8 +380,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
                 "warmup_max_lr": 0.001,
                 "warmup_num_steps": 1000
             }
-        },
-        "zero_cpu_offload": use_cpu_offload,
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -434,7 +434,8 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
+            "stage": zero_stage,
+            "zero_cpu_offload": use_cpu_offload
         },
         "scheduler": {
             "type": "WarmupLR",
@@ -444,7 +445,6 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
                 "warmup_num_steps": 1000
             }
         },
-        "zero_cpu_offload": use_cpu_offload,
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10

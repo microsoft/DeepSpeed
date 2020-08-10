@@ -496,8 +496,6 @@ class DeepSpeedLight(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         #jie:
-        print("client_optimizer")
-        print(client_optimizer)
         if self.zero_cpu_offload():
             optimizer_parameters = self.optimizer_params()
             basic_optimizer = CPUAdam(client_optimizer.param_groups,
