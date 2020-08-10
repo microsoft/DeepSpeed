@@ -460,7 +460,9 @@ def get_pipeline_config(param_dict):
         'seed_layers': False,
         'activation_checkpoint_interval': 0
     }
-    config = param_dict.get('pipeline', default_pipeline)
+    config = default_pipeline
+    for key, val in param_dict.get('pipeline', {}).items():
+        config[key] = val
     return config
 
 

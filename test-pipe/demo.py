@@ -145,7 +145,11 @@ def go_pipeline(args):
     if args.pipeline_parallel_size == 1:
         net.save_state_dict(os.path.join('checkpoint', 'init'))
     else:
-        net.load_state_dir(os.path.join('checkpoint', 'init'))
+        try:
+            net.load_state_dir(os.path.join('checkpoint', 'init'))
+        except FileNotFoundError:
+            if dist.get_rank() == 0:
+                print('No checkpoint found.')
 
     trainset = cifar_trainset()
 

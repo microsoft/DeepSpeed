@@ -20,6 +20,11 @@ import deepspeed.pt.deepspeed_checkpointing as checkpointing
 from deepspeed.pt.pipe.PipelineParallelGrid import PipelineParallelGrid
 
 
+def _is_checkpointable(funcs):
+    params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
+    return any(len(list(p)) > 0 for p in params)
+
+
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
 
@@ -329,19 +334,17 @@ class PipelineModule(nn.Module, ABC):
 
                 funcs = self.forward_funcs[start_idx:end_idx]
                 # Since we either pass tensors or tuples of tensors without unpacking, we
-                # need to be careful not to double-wrap tensors with tuple. So if we have
-                # a tuple, unpack it here but because it will be a tuple again in
-                # exec_func().
-                if isinstance(x, tuple):
+                # need to be careful not to double-wrap tensors with tuple.
+                if not isinstance(x, tuple):
+                    x = (x, )
+
+                if _is_checkpointable(funcs):
                     x = self.activation_checkpoint_func(
                         exec_range_func(start_idx,
                                         end_idx),
                         *x)
                 else:
-                    x = self.activation_checkpoint_func(
-                        exec_range_func(start_idx,
-                                        end_idx),
-                        x)
+                    x = exec_range_func(start_idx, end_idx)(*x)
         return x
 
     def _partition_layers(self, method='uniform'):

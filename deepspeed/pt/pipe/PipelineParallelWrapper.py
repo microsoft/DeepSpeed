@@ -223,15 +223,16 @@ class PipelineEngine(DeepSpeedLight):
 
             ## Average loss across all data-parallel groups
             self.agg_loss = self.dp_group_loss.clone().detach()
+            #print(f'RANK={self.global_rank} bcast SENDER src={self.global_rank} group={self.grid.pp_group}', flush=True)
             if self.is_data_parallel:
                 dist.all_reduce(self.agg_loss, group=self.mpu.get_data_parallel_group())
                 self.agg_loss /= self.dp_world_size
 
-            #print(f'RANK={self.global_rank} bcast SENDER src={self.global_rank} group={self.grid.pp_group}', flush=True)
             assert self.global_rank in self.grid.pp_group
             dist.broadcast(tensor=self.agg_loss,
                            src=self.global_rank,
                            group=self.mpu.get_pipe_parallel_group())
+
         else:
             # Get loss from last stage
             src_rank = self.grid.stage_to_global(self.num_stages - 1)
@@ -264,6 +265,9 @@ class PipelineEngine(DeepSpeedLight):
             print(
                 f'LOSS={self.dp_group_loss.item()} DP={self.grid.data_parallel_id} global_steps={self.global_steps}',
                 flush=True)
+
+        if self.global_rank == 0 and self.global_steps % self.steps_per_print() == 0:
+            print('TB:', self.agg_loss.mean().item())
         return self.dp_group_loss
 
     def set_dataloader(self, loader):
