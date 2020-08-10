@@ -21,6 +21,7 @@ import deepspeed.pt.deepspeed_checkpointing as deepspeed_activation_checkpointin
 from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
+from deepspeed.pt.deepspeed_cpu_adam import CPUAdam
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
@@ -107,7 +108,6 @@ class DeepSpeedLight(Module):
                  collate_fn=None,
                  config_params=None):
         super(DeepSpeedLight, self).__init__()
-
         self.client_optimizer = optimizer
         self.client_model_parameters = model_parameters
         self.client_lr_scheduler = lr_scheduler
@@ -292,6 +292,9 @@ class DeepSpeedLight(Module):
 
     def zero_overlap_comm(self):
         return self._config.zero_config.overlap_comm
+
+    def zero_cpu_offload(self):
+        return self._config.zero_config.cpu_offload
 
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
@@ -492,7 +495,13 @@ class DeepSpeedLight(Module):
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
-        if client_optimizer is not None:
+        #jie:
+        if self.zero_cpu_offload():
+            optimizer_parameters = self.optimizer_params()
+            basic_optimizer = CPUAdam(client_optimizer.param_groups,
+                                      **optimizer_parameters)
+            logger.info('Using CPU Optimizer as basic optimizer')
+        elif client_optimizer is not None:
             basic_optimizer = client_optimizer
             logger.info('Using client Optimizer as basic optimizer')
         else:
@@ -523,8 +532,8 @@ class DeepSpeedLight(Module):
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
-
-        # logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
@@ -533,8 +542,11 @@ class DeepSpeedLight(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            from apex.optimizers.fused_adam import FusedAdam
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            if self.zero_cpu_offload():
+                optimizer = CPUAdam(model_parameters, **optimizer_parameters)
+            else:
+                from apex.optimizers.fused_adam import FusedAdam
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
@@ -613,6 +625,7 @@ class DeepSpeedLight(Module):
                 dp_process_group=self.data_parallel_group,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=self.zero_overlap_comm(),
+                cpu_offload=self.zero_cpu_offload(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor())
@@ -843,7 +856,6 @@ class DeepSpeedLight(Module):
                     master_params = amp.master_params(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                    max_norm=self.gradient_clipping())
-
             self.optimizer.step()
 
             #zero grad in basic optimizer could be unreliable and may not exhibit
