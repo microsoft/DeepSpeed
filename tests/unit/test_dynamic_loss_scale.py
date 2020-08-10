@@ -199,11 +199,7 @@ def test_unfused_no_overflow(tmpdir):
         assert optim.scale_window == expected_scale_window
 
         for i, value in enumerate(np.random.uniform(-0.1, 0.1, 10)):
-            print("============")
-            print(optim.cur_iter)
             run_model_step(model, [value])
-            print(optim.cur_iter)
-            print("============")
             assert optim.cur_scale == expected_loss_scale
             assert optim.cur_iter == (i + 1)
             if optim.cur_iter % expected_scale_window == 0:

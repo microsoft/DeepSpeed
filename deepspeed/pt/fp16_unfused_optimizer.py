@@ -154,7 +154,6 @@ class FP16_UnfusedOptimizer(object):
         """
         Not supporting closure.
         """
-        print("=========step=========")
         if self.fused_lamb_legacy:
             return self.step_fused_lamb()
 
@@ -259,7 +258,6 @@ class FP16_UnfusedOptimizer(object):
                 logger.info("Grad overflow on iteration %s", self.cur_iter)
                 logger.info("Using static loss scale of %s", self.cur_scale)
         self.cur_iter += 1
-        print("++++++++++++++")
         return
 
     # Promote state so it can be retrieved or set via "fp16_optimizer_instance.state"
