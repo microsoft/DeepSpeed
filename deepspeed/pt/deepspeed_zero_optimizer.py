@@ -312,9 +312,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.single_partition_of_fp32_groups[
                     start:end] = self.parallel_partitioned_fp16_groups[i][
                         partition_id].detach()
-                print(i)
-                print(end)
-                #print(self.single_partition_of_fp32_groups)
 
             else:
                 # a partition of the fp32 master weights that will be updated by this process
@@ -334,16 +331,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.params_in_partition.append(params_in_partition)
             self.params_not_in_partition.append(params_not_in_partition)
             self.first_offset.append(first_offset)
-
-        #print("=====================")
-        print("partition_size")
-        print(self.partition_size)
-        #print("params_in_partition")
-        #print(self.params_in_partition)
-        #print(params_not_in_partition)
-        #print(self.params_not_in_partition)
-        #print(first_offset)
-        #print(self.first_offset)
 
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
@@ -1269,12 +1256,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #jie: transform the grad back to CPU
             start, end = self.get_partition_fp32_group_index(i)
-            print(start)
-            print(end)
-            print(single_grad_partition)
             with torch.cuda.stream(self.migration_stream):
-                print("========================")
-                print(single_grad_partition.size())
                 #self.single_partition_of_fp32_groups[start].grad = single_grad_partition.detach().clone()
                 self.single_partition_of_fp32_groups[start:end].grad  = torch.tensor(single_grad_partition.detach(),
                                                                    dtype=self.single_partition_of_fp32_groups[i].dtype)
@@ -1300,9 +1282,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # jie: updated weights back to GPU
         with torch.cuda.stream(self.migration_stream):
-            async_copy_to(self.parallel_partitioned_fp16_groups,self.single_partition_of_fp32_groups[start:end])
-        #for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-        #    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+            #self.parallel_partitioned_fp16_groups,self.single_partition_of_fp32_groups[start:end])
+            for i, fp16_partitions in enumerate(self.parallel_partitioned_fp16_groups):
+                start, end = self.get_partition_fp32_group_index(i)
+                fp16_partitions[partition_id].data.copy_(self.single_partition_of_fp32_groups[start:end].data)
         timers('optimizer_step').stop()
 
         timers('optimizer_allgather').start()
@@ -1508,17 +1491,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
             if clip > 1:
                 combined_scale = clip * self.loss_scale
-        print("combined_scale")
         grad_groups_flat.data.mul_(1. / combined_scale)
-        '''
-        for i,grad in enumerate(grad_groups_flat):
-            if isinstance(grad, list):
-                sub_partitions = grad
-                for g in sub_partitions:
-                    g.data.mul_(1. / combined_scale)
-            else:
-                grad.data.mul_(1. / combined_scale)
-        '''
 
     def _check_overflow(self, partition_gradients=True):
         self.overflow = self.has_overflow(partition_gradients)

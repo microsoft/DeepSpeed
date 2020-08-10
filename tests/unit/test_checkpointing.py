@@ -245,7 +245,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
                               True),
                          ])
 #@pytest.mark.parametrize("zero_stage", [1, 2])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -288,15 +288,13 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
 
 #@pytest.mark.parametrize("zero_stage", [1, 2])
 @pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [
-                             (1,
-                              False),
+                         [ (1,False),
                              (2,
                               False),
                              (2,
                               True),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
+def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -352,7 +350,7 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
                              (2,
                               True),
                          ])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -420,7 +418,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
                              (2,
                               True),
                          ])
-def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,

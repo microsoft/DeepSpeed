@@ -122,8 +122,6 @@ class CPUAdam(torch.optim.Optimizer):
 
             index += group_size
 
-            print(" ================CPUAdam finish===================")
-
         return loss
         '''
         for i, p in emulrate(fp32_params)
