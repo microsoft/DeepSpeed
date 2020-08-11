@@ -288,7 +288,9 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
 
 #@pytest.mark.parametrize("zero_stage", [1, 2])
 @pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [ (1,False),
+                         [
+                             (1,
+                              False),
                              (2,
                               False),
                              (2,
