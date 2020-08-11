@@ -9,6 +9,7 @@ import torch.distributed as dist
 import math
 from torch._six import inf
 from torch.autograd import Variable
+import collections
 
 from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.pt.deepspeed_utils import see_memory_usage, is_model_parallel_parameter
@@ -120,11 +121,18 @@ def async_migrate_to(obj, dev, main_stream=None):
         return obj
 
 
-def async_copy_to(v_in, v_out, main_stream=None):
-    #in_dev = in.device()
-    #out_dev = out.device()
-    print(v_in.size())
-    print(v_out.size())
+def async_copy_to(obj, dev, main_stream=None):
+    if torch.is_tensor(obj):
+        obj = Variable(obj)
+    if isinstance(obj, Variable):
+        target = torch.empty_like(obj, device=dev).copy_(obj)
+        if main_stream is not None:
+            target.data.record_stream(main_stream)
+        return target
+    elif isinstance(obj, collections.Mapping):
+        return {k: async_copy_to(o, dev, main_stream) for k, o in obj.items()}
+    elif isinstance(obj, collections.Sequence):
+        return [async_copy_to(o, dev, main_stream) for o in obj]
 
 
 
@@ -1257,16 +1265,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #jie: transform the grad back to CPU
             start, end = self.get_partition_fp32_group_index(i)
             with torch.cuda.stream(self.migration_stream):
-                #self.single_partition_of_fp32_groups[start].grad = single_grad_partition.detach().clone()
-                self.single_partition_of_fp32_groups[start:end].grad  = torch.tensor(single_grad_partition.detach(),
-                                                                   dtype=self.single_partition_of_fp32_groups[i].dtype)
+                self.single_partition_of_fp32_groups[start:end].grad = async_copy_to(single_grad_partition,'cpu', self.migration_stream)
+                #self.single_partition_of_fp32_groups[start:end].grad  = torch.tensor(single_grad_partition.detach(),
+                #                                                   dtype=self.single_partition_of_fp32_groups[i].dtype)
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(self.params_in_partition[i])
 
             self.averaged_gradients[i] = None
 
-            #single_partition_grad_groups.append(single_grad_partition)
-
+        #jie: is syncization necessary???
         self.cpu_computation_stream.wait_stream(self.migration_stream)
         timers('optimizer_step').start()
         with torch.cuda.stream(self.cpu_computation_stream):
@@ -1286,6 +1293,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for i, fp16_partitions in enumerate(self.parallel_partitioned_fp16_groups):
                 start, end = self.get_partition_fp32_group_index(i)
                 fp16_partitions[partition_id].data.copy_(self.single_partition_of_fp32_groups[start:end].data)
+        return
+
         timers('optimizer_step').stop()
 
         timers('optimizer_allgather').start()
