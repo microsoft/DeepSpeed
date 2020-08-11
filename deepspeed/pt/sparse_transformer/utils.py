@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 
 from torch import nn
-from deepspeed.pt.sparse_transformer import DeepSpeedBertSparseSelfAttention, SparsityConfig
+from deepspeed.pt.sparse_transformer import BertSparseSelfAttention, SparsityConfig
 '''
 This file contains few utility functions to handle adapting pretrained model with sparse self-attention module.
 '''
@@ -72,9 +72,12 @@ def update_tokenizer_model_max_length(tokenizer, max_position):
     return tokenizer
 
 
-def replace_model_self_attention_with_sparse_self_attention(model,
-                                                            max_position,
-                                                            sparsity_config=None):
+def replace_model_self_attention_with_sparse_self_attention(
+    model,
+    max_position,
+    # SparsityConfig parameters needs to be set accordingly
+    sparsity_config=SparsityConfig(num_heads=4,
+                                   seq_len=1024)):
     """This function replaces the self attention layers in model encoder with sparse self attention.
     It currently supports bert and roberta model and can be easily extended to any other models following similar steps here.
     For sparsityConfig, refer to the config class.
@@ -110,7 +113,9 @@ def replace_model_self_attention_with_sparse_self_attention(model,
 def replace_self_attention_layer_with_sparse_self_attention_layer(
     config,
     layers,
-    sparsity_config=None):
+    # SparsityConfig parameters needs to be set accordingly
+    sparsity_config=SparsityConfig(num_heads=4,
+                                   seq_len=1024)):
     """This function replaces the self attention layers in attention layer with sparse self attention.
     For sparsityConfig, refer to the config class.
 
@@ -124,9 +129,7 @@ def replace_self_attention_layer_with_sparse_self_attention_layer(
     """
 
     for layer in layers:
-        deepspeed_sparse_self_attn = DeepSpeedBertSparseSelfAttention(
-            config,
-            sparsity_config)
+        deepspeed_sparse_self_attn = BertSparseSelfAttention(config, sparsity_config)
         deepspeed_sparse_self_attn.query = layer.attention.self.query
         deepspeed_sparse_self_attn.key = layer.attention.self.key
         deepspeed_sparse_self_attn.value = layer.attention.self.value

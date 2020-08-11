@@ -1,4 +1,4 @@
-# DeepSpeed note, code taken & adapted from commit c368a9fd1b2c9dee4cc94de9a6bb0be3d447be41
+# DeepSpeed note, code taken & adapted from commit beddcc3eda6d3df1b34f74c2e10139e4317d0e7f
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 
 import triton
@@ -26,11 +26,12 @@ class _sparse_softmax(torch.autograd.Function):
         offsets[1:] = torch.cumsum(sizes[:-1], dim=0)
         # block indices
         idx = torch.arange(layout.sum())
+        head = layout.nonzero()[:, 0]
         rows = layout.nonzero()[:, 1]
         columns = layout.nonzero()[:, 2]
-        core = torch.stack((idx, columns, rows), dim=1).view(-1)
+        core = torch.stack((idx, columns, rows, head), dim=1).view(-1)
         # construct look-up table
-        offsets = offsets * 3 + 2 * sizes.numel()
+        offsets = offsets * 4 + 2 * sizes.numel()
         header = torch.stack((sizes, offsets), dim=1).view(-1)
         lut = torch.cat((header, core)).type(torch.int32).to(device)
         return lut, int(sizes.max())
@@ -104,7 +105,6 @@ class _sparse_softmax(torch.autograd.Function):
                 block,
                 lut,
                 num_blocks,
-                num_blocks_per_head,
                 maxlut,
                 bench,
                 time):
@@ -154,7 +154,7 @@ class _sparse_softmax(torch.autograd.Function):
 
         # run kernel
         time[0] = kernel(x, scale, lut, rpe, key_padding_mask, attn_mask,\
-                         num_blocks, num_blocks_per_head, maxlut,\
+                         num_blocks, maxlut,\
                          x.stride(0),\
                          stride_zrpe, stride_hrpe, stride_srpe,\
                          stride_zkpm, stride_zattnm,\
@@ -231,7 +231,6 @@ class Softmax:
         """
 
         self.num_blocks = layout.sum()
-        self.num_blocks_per_head = self.num_blocks / layout.shape[0]
         self.spdims = layout.shape
         self.layout = layout
         self.block = block
@@ -282,7 +281,6 @@ class Softmax:
                                    self.block,
                                    lut,
                                    self.num_blocks,
-                                   self.num_blocks_per_head,
                                    maxlut,
                                    self.bench,
                                    time_y)

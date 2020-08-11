@@ -115,51 +115,7 @@ ret_t sdd_segment(torch::Tensor layout, int start_width)
     return ret;
 }
 
-torch::Tensor make_layout(int num_heads,
-                          const std::string& mode,
-                          int num_blocks,
-                          int block_stride,
-                          const std::string& attention,
-                          int numverts,
-                          int vertsize)
-{
-    /*
-    Currently this function is able to create 'dense' or 'fixed' layout as described here:
-    https://openai.com/blog/sparse-transformer/ You can extend this function to add any block-base
-    sparsity  following the 'fixed' part below.
-    */
-    std::vector<long> shape = {{num_heads, num_blocks, num_blocks}};
-
-    // attention type is currently supposed to be either unidirectional or bidirectional
-    // adding any other type, you need to update this function accordingly
-    bool unidirectional = (attention == "unidirectional") ? true : false;
-
-    if (mode == "dense")
-        return torch::ones(shape, torch::kLong);
-    else if (mode == "fixed") {
-        torch::Tensor ret = torch::zeros(shape, torch::kLong);
-        auto _ret = ret.accessor<long, 3>();
-        for (int h = 0; h < num_heads; h++) {
-            // set first part of layout
-            for (int i = 0; i < num_blocks; i += block_stride)
-                for (int j = i; j < i + block_stride; j++)
-                    for (int k = i; k < (unidirectional ? j + 1 : i + block_stride); k++)
-                        _ret[h][j][k] = 1;
-            // set second part of layout
-            int start = block_stride - (1 + h % numverts) * vertsize;
-            for (int i = 0; i < num_blocks; i++) {
-                int end = unidirectional ? i : num_blocks;
-                for (int j = start; j < end; j += block_stride)
-                    for (int k = j; k < j + vertsize; k += num_blocks) _ret[h][i][k] = 1;
-            }
-        }
-        return ret;
-    }
-    return torch::zeros(shape, torch::kLong);
-}
-
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("make_layout", &make_layout, "make sparsity layout");
     m.def("sdd_segment", &sdd_segment, "SDD segmentation handler");
 }

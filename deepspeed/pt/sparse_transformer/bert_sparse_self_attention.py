@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 
 from torch import nn
-from deepspeed.pt.sparse_transformer import SparseSelfAttention, SparsityConfig
+from deepspeed.pt.sparse_transformer import SparseSelfAttention, FixedSparsityConfig
 
 
 class BertSparseSelfAttention(nn.Module):
@@ -13,18 +13,19 @@ class BertSparseSelfAttention(nn.Module):
 
     For usage example please see, TODO DeepSpeed Sparse Transformer Tutorial.
     """
-    def __init__(self,
-                 config,
-                 sparsity_config=SparsityConfig('fixed',
-                                                16,
-                                                64,
-                                                'bidirectional',
-                                                4,
-                                                1)):
+    def __init__(
+        self,
+        config,
+        # SparsityConfig parameters needs to be set accordingly
+        sparsity_config=FixedSparsityConfig(num_heads=4,
+                                            seq_len=1024)):
         """Initialize the bert sparse self attention layer.
+
+        Note) you can use any of the provided sparsity configs or simply add yours!
+
         Arguments:
             config: required: Bert model config
-            sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on SparsityConfig class.
+            sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on FixedSparsityConfig class.
         """
 
         super(BertSparseSelfAttention, self).__init__()
@@ -41,7 +42,6 @@ class BertSparseSelfAttention(nn.Module):
         self.key = nn.Linear(config.hidden_size, self.all_head_size)
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
 
-        self.sparsity_config = sparsity_config
         self.sparse_self_attention = SparseSelfAttention(sparsity_config)
 
     def transpose_for_scores(self, x):
