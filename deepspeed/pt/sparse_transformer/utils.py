@@ -24,7 +24,7 @@ def extend_position_embedding(model, max_position):
         original_max_position = model.bert.embeddings.position_embeddings.weight.size(0)
         assert max_position > original_max_position
         extend_multiples = max(1, max_position // original_max_position)
-        model.bert.embeddings.position_embeddings.weight.data = model.bert_model.embeddings.position_embeddings.weight.repeat(
+        model.bert.embeddings.position_embeddings.weight.data = model.bert.embeddings.position_embeddings.weight.repeat(
             extend_multiples,
             1)
     elif hasattr(model, 'roberta'):
