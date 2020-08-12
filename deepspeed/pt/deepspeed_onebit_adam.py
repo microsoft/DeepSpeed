@@ -81,16 +81,22 @@ class OnebitAdam(torch.optim.Optimizer):
         self.threshold = threshold
 
     def myIgather(self, rank, size, comm, sendbuf, recbuf, root):
-        req = []
+        #req = []
+        req = 1
         if rank == root:
             for idx in range(size):
                 if idx != rank:
-                    req.append(comm.Irecv(recbuf[idx], source=idx))
+                    #req.append(comm.Irecv(recbuf[idx], source=idx))
+                    req = comm.Irecv(recbuf[idx], source=idx)
+                    req.wait()
                 else:
                     recbuf[rank] = sendbuf
         else:
-            req.append(comm.Isend(sendbuf, dest=root))
-
+            #req.append(comm.Isend(sendbuf, dest=root))
+            #req = comm.Isend(sendbuf, dest=root)
+            comm.Send(sendbuf, dest=root)
+            #req.wait()
+        
         return req
 
     def torch2cupy(self, tensor):
@@ -166,24 +172,30 @@ class OnebitAdam(torch.optim.Optimizer):
         requests = []
 
         for idx in range(world_size):
+            requests = []
             print ("igather1 queued at idx, rank, sizes,", idx, rank, cupy_sign_list_packed[idx].size, cupy_recvbuf_sign.size, flush=True)
             if cuda_aware:
                 if my_igather:
                     req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+                    #requests += req_sign
                 else:
-                    req_sign = comm.Igather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+                    req_sign = comm.Gather(cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
             else:
                 # 2. use numpy buffers for communication
                 if my_igather:
                     req_sign = self.myIgather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
+                    #requests += req_sign
                 else:
-                    req_sign = comm.Igather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
-            requests += req_sign
+                    print("calling Gather on numpy arrays")
+                    comm.Gather(numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
 
-        print (f"waitall called at rank {rank}", flush=True)   
-        MPI.Request.Waitall(requests)
-        print(f"igather1 completed at rank {rank}", flush=True)
+            if my_igather:
+                print (f"waitall called at rank {rank}", flush=True)   
+                #MPI.Request.Waitall(requests)
+            
+            print(f"---> gather1 completed at rank {rank}", flush=True)
         
+
         if cuda_aware == False:
             # 3. Convert back from numpy to cupy
             cupy_recvbuf_sign = cupy.asarray(numpy_recvbuf_sign)
@@ -191,7 +203,9 @@ class OnebitAdam(torch.optim.Optimizer):
                 cupy_sign_list_packed[idx] = cupy.asarray(numpy_sign_list_packed[idx])
             cupy.cuda.get_current_stream().synchronize()
             print("igather 1 conversion completed at rank ", rank, flush=True)
-            
+
+        
+        if cuda_aware == False:
             # 1. Convert from cupy to numpy
             cupy.cuda.get_current_stream().synchronize()
             numpy_worker_scale = cupy.asnumpy(cupy_worker_scale)
@@ -212,11 +226,11 @@ class OnebitAdam(torch.optim.Optimizer):
                     req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
                 else:
                     req_scale = comm.Igather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-            requests += req_scale
+            #requests += req_scale
 
-        MPI.Request.Waitall(requests)
+        #MPI.Request.Waitall(requests)
         gather_end = time.time()
-
+        comm.Barrier()
         logger.info("gather 2 completed")
 
         if cuda_aware == False:
@@ -255,6 +269,8 @@ class OnebitAdam(torch.optim.Optimizer):
         cupy_recvbuf_scale_server = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
 
         allgather_start = time.time()
+        
+
         if cuda_aware:
             comm.Allgather(cupy_server_sign_packed[0], cupy_recvbuf_sign_server)
             comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
@@ -269,9 +285,16 @@ class OnebitAdam(torch.optim.Optimizer):
             numpy_recvbuf_scale_server = cupy.asnumpy(cupy_recvbuf_scale_server)
             cupy.cuda.get_current_stream().synchronize()
 
+
+            #print("allgather 1 called: ", numpy_recvbuf_sign_server, numpy_server_sign_packed, flush=True)
+            print("allgather 1 called: ", flush=True)
             comm.Allgather(numpy_server_sign_packed, numpy_recvbuf_sign_server)
-            comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
-            
+            print("allgather 2 called", flush=True)
+            comm.Allgather(numpy_server_scale, numpy_recvbuf_scale_server)
+            print("allgather 2 finished", flush=True)
+
+            comm.Barrier()
+
             cupy_server_sign_packed = cupy.array(numpy_server_sign_packed[0])
             cupy_recvbuf_sign_server = cupy.array(numpy_recvbuf_sign_server)
             cupy_server_scale = cupy.array(numpy_server_scale)
