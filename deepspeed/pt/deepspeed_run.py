@@ -295,6 +295,8 @@ def main(args=None):
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
 
+        # PDSH flags for max node fan out and specific hosts to launch on
+        # See https://linux.die.net/man/1/pdsh for flag details
         pdsh_cmd_args = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
 
         num_nodes = len(active_resources.keys())
