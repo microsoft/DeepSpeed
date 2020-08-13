@@ -20,11 +20,6 @@ import deepspeed.pt.deepspeed_checkpointing as checkpointing
 from deepspeed.pt.pipe.PipelineParallelGrid import PipelineParallelGrid
 
 
-def _is_checkpointable(funcs):
-    params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
-    return any(len(list(p)) > 0 for p in params)
-
-
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
 
@@ -301,7 +296,6 @@ class PipelineModule(nn.Module, ABC):
                     if self.seed_layers:
                         new_seed = (self.base_seed *
                                     local_micro_offset) + self.curr_layer
-                        #print(f'layer={self.curr_layer} micro={idx} seed={new_seed}')
                         if self.seed_fn:
                             self.seed_fn(new_seed)
                         else:
@@ -338,7 +332,7 @@ class PipelineModule(nn.Module, ABC):
                 if not isinstance(x, tuple):
                     x = (x, )
 
-                if _is_checkpointable(funcs):
+                if self._is_checkpointable(funcs):
                     x = self.activation_checkpoint_func(
                         exec_range_func(start_idx,
                                         end_idx),
@@ -400,9 +394,9 @@ class PipelineModule(nn.Module, ABC):
                 print(f'stage={stage} layers={stop - start}')
                 for idx, layer in enumerate(self.layer_specs()[start:stop]):
                     if isinstance(layer, LayerSpec):
-                        print(f'    {idx+start}: {layer.typename.__name__}')
+                        print(f'    {idx+start:2d}: {layer.typename.__name__}')
                     else:
-                        print(f'    {idx+start}: {layer}')
+                        print(f'    {idx+start:2d}: {layer}')
             print(f'PARTITIONING complete. Parts: {self.parts}')
             logging.info(f'PARTITIONING complete. Parts: {self.parts}')
 
@@ -575,3 +569,11 @@ class PipelineModule(nn.Module, ABC):
                     )
 
         self._synchronize_tied_weights()
+
+    def _is_checkpointable(self, funcs):
+        if self.__class__.__name__ == 'GPT2ModelPipe':
+            return all('ParallelTransformerLayerPipe' in f.__class__.__name__
+                       for f in funcs)
+
+        params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
+        return any(len(list(p)) > 0 for p in params)

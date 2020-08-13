@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
+from deepspeed.pt.log_utils import logger
+
 from deepspeed.pt.deepspeed_light import DeepSpeedLight
 from deepspeed.pt.deepspeed_light import MEMORY_OPT_ALLREDUCE_SIZE
 from deepspeed.pt.deepspeed_timer import ThroughputTimer
@@ -118,22 +120,35 @@ class PipelineEngine(DeepSpeedLight):
 
         # Partition input/output buffers
         self.is_pipe_partitioned = self.is_model_parallel
-        self.is_grad_partitioned = self.is_model_parallel
-        print(f'RANK={self.global_rank} '
-              f'PIPE_PARTITION={self.is_pipe_partitioned} '
-              f'GRAD_PARTITION={self.is_grad_partitioned}')
+        self.is_grad_partitioned = False  #self.is_model_parallel
+        if self.global_rank == 0:
+            print(f'RANK={self.global_rank} '
+                  f'PIPE_PARTITION={self.is_pipe_partitioned} '
+                  f'GRAD_PARTITION={self.is_grad_partitioned}')
 
         model_parameters = filter(lambda p: p.requires_grad, self.module.parameters())
-        num_params = sum([prod(p.size()) for p in model_parameters])
-        total_params = torch.LongTensor(data=[num_params]).to(self.device)
-        dist.all_reduce(total_params, group=self.grid.get_model_parallel_group())
-        total_params = total_params.item()
+        num_params = sum([p.numel() for p in model_parameters])
+        unique_params = num_params
+        # Subtract tied parameters if we don't own them
+        if self.module.tied_comms:
+            tied_params = 0
+            for key, d in self.module.tied_comms.items():
+                if self.global_rank != min(d['ranks']):
+                    tied_params += sum(p.numel() for p in d['module'].parameters())
+            unique_params -= tied_params
+        params_tensor = torch.LongTensor(data=[num_params,
+                                               unique_params]).to(self.device)
+        dist.all_reduce(params_tensor, group=self.grid.get_model_parallel_group())
+        params_tensor = params_tensor.tolist()
+        total_params = params_tensor[0]
+        unique_params = params_tensor[1]
         print(f'RANK={self.global_rank} '
               f'STAGE={self.stage_id} '
               f'LAYERS={self.module._local_stop - self.module._local_start} '
               f'[{self.module._local_start}, {self.module._local_stop}) '
               f'STAGE_PARAMS={num_params} ({num_params/1e6:0.3f}M) '
-              f'TOTAL_PARAMS={total_params} ({total_params/1e6:0.3f}M)')
+              f'TOTAL_PARAMS={total_params} ({total_params/1e6:0.3f}M) '
+              f'UNIQUE_PARAMS={unique_params} ({unique_params/1e6:0.3f}M)')
 
         #intialize peer-2-peer communication and allreduce groups
         if self.is_pipe_parallel:
@@ -148,6 +163,8 @@ class PipelineEngine(DeepSpeedLight):
         self.out_layer_saved_tensors = [None
                                         ] * self.num_buffers  # for saving comp graphs
         self.labels = {}
+
+        self.meta_buffer = None
 
         self.first_output_send = True
         self.first_gradient_send = True
@@ -463,17 +480,27 @@ class PipelineEngine(DeepSpeedLight):
             assert isinstance(self.pipe_recv_buf, tuple)
             #for idx, buffer in enumerate(self.in_layers[buf_idx]):
             self.in_layers[buf_idx] = [None] * len(self.pipe_recv_buf)
+            #print(f'{self.global_rank} RECV={[b.size() for b in self.pipe_recv_buf]}')
             for idx, buffer in enumerate(self.pipe_recv_buf):
                 assert torch.is_tensor(buffer)
                 # XXX hardcode meta type
                 if self.is_pipe_partitioned and idx == 0 and buffer.dtype != torch.long:
-                    buffer = torch.zeros(buffer.size(),
-                                         dtype=torch.long,
-                                         device=self.device)
+                    if self.meta_buffer is None:
+                        self.meta_buffer = torch.zeros(buffer.size(),
+                                                       dtype=torch.long,
+                                                       device=self.device)
+                    buffer = self.meta_buffer
+
                 p2p.recv(buffer, sender_stage)
                 self.in_layers[buf_idx][idx] = buffer.clone().detach()
                 if self.in_layers[buf_idx][idx].is_floating_point():
                     self.in_layers[buf_idx][idx].requires_grad = True
+
+            # NCCL does not like to send torch.BoolTensor types, so un-cast the
+            # attention mask
+            if self.module.__class__.__name__ == 'GPT2ModelPipe':
+                self.in_layers[buf_idx][-1] = self.in_layers[buf_idx][-1].bool()
+
             self.in_layers[buf_idx] = tuple(self.in_layers[buf_idx])
 
         if self.wall_clock_breakdown():
@@ -506,8 +533,12 @@ class PipelineEngine(DeepSpeedLight):
                 s = list(self.out_layers[buf_idx].size())
                 self.grad_layer = self._allocate_buffer(s, num_buffers=1)[0]
             else:
-                sizes = [list(t.size()) for t in self.out_layers[buf_idx]]
+                sizes = [
+                    list(t.size()) for t in self.out_layers[buf_idx]
+                    if t.is_floating_point()
+                ]
                 self.grad_layer = self._allocate_buffers(sizes, num_buffers=1)[0]
+
             # Count size of buffers
             grad_bytes = 0
             if isinstance(self.grad_layer, torch.Tensor):
@@ -523,14 +554,13 @@ class PipelineEngine(DeepSpeedLight):
         if isinstance(self.grad_layer, torch.Tensor):
             p2p.recv(self.grad_layer, sender_stage)
         else:
-            assert isinstance(self.in_layers[buf_idx], tuple)
+            assert isinstance(self.out_layers[buf_idx], tuple)
             for idx, buffer in enumerate(self.grad_layer):
                 if self.is_grad_partitioned and idx == 0 and buffer.dtype != torch.long:
                     buffer.data = torch.zeros(buffer.size(),
                                               dtype=torch.long,
                                               device=self.device)
                 p2p.recv(buffer, sender_stage)
-                self.log_for_device(f'RECV GRAD sample={sample_id} SYNC-{idx}')
 
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
@@ -648,6 +678,14 @@ class PipelineEngine(DeepSpeedLight):
             self.timers('pipe_send_output').start()
 
         buf_idx = self._buffer_idx(sample_id)
+
+        # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
+        # We could do char, but with half() we can flatten with other fp16 messages.
+        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+            self.out_layers[buf_idx] = list(self.out_layers[buf_idx])
+            self.out_layers[buf_idx][-1] = self.out_layers[buf_idx][-1].half()
+            self.out_layers[buf_idx] = tuple(self.out_layers[buf_idx])
+
         if self.first_output_send:
             self.first_output_send = False
             self._send_tensor_meta(self.out_layers[buf_idx], receiver_stage)
@@ -655,11 +693,20 @@ class PipelineEngine(DeepSpeedLight):
         if isinstance(self.out_layers[buf_idx], torch.Tensor):
             p2p.send(self.out_layers[buf_idx], receiver_stage)
         elif isinstance(self.out_layers[buf_idx], tuple):
-            for buffer in self.out_layers[buf_idx]:
+            for idx, buffer in enumerate(self.out_layers[buf_idx]):
+                #print(f'{self.global_rank} START sending={buffer.__class__} {buffer}')
                 p2p.send(buffer, receiver_stage)
+                #print(f'{self.global_rank} END sending={buffer.__class__} {buffer}')
         else:
             raise NotImplementedError('Could not send output of type '
                                       f'{type(self.out_layers[buf_idx])}')
+
+        # uncast the half
+        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+            self.out_layers[buf_idx] = list(self.out_layers[buf_idx])
+            self.out_layers[buf_idx][-1] = self.out_layers[buf_idx][-1].bool()
+            self.out_layers[buf_idx] = tuple(self.out_layers[buf_idx])
+
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').stop()
 
@@ -679,10 +726,22 @@ class PipelineEngine(DeepSpeedLight):
                                      group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
             # Inject the partitoned tensor into the output before sending
+
+            # XXX Hack
             self.in_layers[buf_idx] = tuple(
                 [part.to_meta(),
                  part.data(),
                  self.in_layers[buf_idx][1]])
+
+        # XXX Terrible hack
+        # Drop the attention mask from the input buffer here. It does not have
+        # a grad that needs to be communicated. We free the buffer immediately
+        # after, so no need to restore it. The receiver also has a hack that skips
+        # the recv. This is because NCCL does not let us send torch.BoolTensor :-(.
+        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+            self.in_layers[buf_idx] = list(self.in_layers[buf_idx])
+            self.in_layers[buf_idx].pop()
+            self.in_layers[buf_idx] = tuple(self.in_layers[buf_idx])
 
         if isinstance(self.in_layers[buf_idx], torch.Tensor):
             assert self.in_layers[buf_idx].grad is not None
@@ -693,9 +752,14 @@ class PipelineEngine(DeepSpeedLight):
                 # First two sends are partitioned gradient
                 p2p.send(self.in_layers[buf_idx][0], receiver_stage)
                 p2p.send(self.in_layers[buf_idx][1], receiver_stage)
-                p2p.send(self.in_layers[buf_idx][2].grad, receiver_stage)
+                # XXX hack hack hack
+                #p2p.send(self.in_layers[buf_idx][2].grad, receiver_stage)
             else:
                 for idx, buffer in enumerate(self.in_layers[buf_idx]):
+                    # Skip tensors that will not produce a grad
+                    if not buffer.is_floating_point():
+                        assert buffer.grad is None
+                        continue
                     assert buffer.grad is not None
                     p2p.send(buffer.grad, receiver_stage)
 
@@ -905,7 +969,8 @@ class PipelineEngine(DeepSpeedLight):
                 [part_input.full(),
                  self.in_layers[buf_idx][2]])
             self.in_layers[buf_idx][0].requires_grad = True
-            self.in_layers[buf_idx][1].requires_grad = True
+            # skip mask
+            #self.in_layers[buf_idx][1].requires_grad = True
             part_input = None
 
         # Zero out the gradients each time we use the tensor because only the data in
@@ -1021,9 +1086,10 @@ class PipelineEngine(DeepSpeedLight):
 
         # This handles either a single tensor or tuple of tensors.
         if isinstance(self.out_layers[buf_idx], tuple):
-            assert len(self.out_layers[buf_idx]) == len(grad_tensors)
-            torch.autograd.backward(tensors=self.out_layers[buf_idx],
-                                    grad_tensors=grad_tensors)
+            out_tensors = [t for t in self.out_layers[buf_idx] if t.is_floating_point()]
+            #torch.autograd.backward(tensors=self.out_layers[buf_idx],
+            assert len(out_tensors) == len(grad_tensors)
+            torch.autograd.backward(tensors=out_tensors, grad_tensors=grad_tensors)
         else:
             torch.autograd.backward(tensors=(self.out_layers[buf_idx],
                                              ),

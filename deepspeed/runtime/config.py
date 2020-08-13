@@ -517,6 +517,7 @@ class DeepSpeedConfig(object):
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
+        self.fp16_fused_optimizer = param_dict['fp16'].get('fused_optimizer', True)
         self.amp_enabled = get_amp_enabled(param_dict)
         self.amp_params = get_amp_params(param_dict)
         self.loss_scale = get_loss_scale(param_dict)

@@ -543,14 +543,18 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            from apex.optimizers.fused_adam import FusedAdam
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
-
-            # XXX Shaden pipeline - when we want to disable FusedAdam
-            #torch_optimizer = getattr(torch.optim, 'Adam')
-            #optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
+            if self._config.fp16_fused_optimizer:
+                from apex.optimizers.fused_adam import FusedAdam
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            else:
+                torch_optimizer = getattr(torch.optim, 'Adam')
+                optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
-            optimizer = FusedLamb(model_parameters, **optimizer_parameters)
+            if self._config.fp16_fused_optimizer:
+                optimizer = FusedLamb(model_parameters, **optimizer_parameters)
+            else:
+                torch_optimizer = getattr(torch.optim, 'Lamb')
+                optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -562,7 +566,8 @@ class DeepSpeedEngine(Module):
         clip_grad = self.gradient_clipping()
         # XXX SHADEN -- need option to disable fused?
         #if False and self.optimizer_name() == ADAM_OPTIMIZER:
-        if self.optimizer_name() == ADAM_OPTIMIZER:
+        fused_optimizer = self._config.fp16_fused_optimizer
+        if fused_optimizer and self.optimizer_name() == ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
                 logger.info('Creating fused fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
