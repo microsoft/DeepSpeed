@@ -38,6 +38,7 @@ public:
               gemm_algos(algos)
         {
         }
+	void SetConfig(int m, int n, int k) { m = m; n = n; k = k; }
     };
 
     StridedBatchGemm(const Config& config) : _config(config) {}
@@ -162,6 +163,8 @@ public:
     inline const T* GetBufferA() const { return k_buf; }
 
     inline const T* GetBufferB() const { return q_buf; }
+
+    inline void SetConfig(int m, int n, int k) { _config.SetConfig(m, n, k); }
 
 private:
     Config _config;
