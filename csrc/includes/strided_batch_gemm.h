@@ -38,7 +38,12 @@ public:
               gemm_algos(algos)
         {
         }
-	void SetConfig(int m, int n, int k) { m = m; n = n; k = k; }
+	    void SetConfig(int mm, int nn, int kk) 
+        { 
+            m = mm; 
+            n = nn; 
+            k = kk; 
+        }
     };
 
     StridedBatchGemm(const Config& config) : _config(config) {}

@@ -705,8 +705,7 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     if(input.size(1) != seq_len)
     {
     	printf("Info: changing sequence-length from %d to %d \n", seq_len, input.size(1));
-
-	seq_len = input.size(1);
+	    seq_len = input.size(1);
     	layer->SetSeqLength(seq_len);
     }
 
