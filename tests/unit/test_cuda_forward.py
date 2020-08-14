@@ -174,7 +174,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
-def run_forward(ds_config, atol=1e-2, verbose=False, test_bsz=None):
+def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
     set_seed(123)
     bert_encoder, ds_encoder = create_models(ds_config)
 
@@ -183,10 +183,12 @@ def run_forward(ds_config, atol=1e-2, verbose=False, test_bsz=None):
     # prepare test data
     kwargs = kwargs_fp16 if ds_config.fp16 else kwargs_fp32
     hidden_states = torch.randn(bsz,
-                                ds_config.max_seq_length,
+                                seq_len, #ds_config.max_seq_length,
                                 ds_config.hidden_size,
                                 **kwargs)
-    input_mask = torch.randn(bsz, 1, 1, ds_config.max_seq_length, **kwargs)
+    input_mask = torch.randn(bsz, 1, 1,
+                             seq_len, #ds_config.max_seq_length,
+                             **kwargs)
 
     # run baseline
     base_results = bert_encoder(hidden_states,
@@ -209,7 +211,9 @@ def run_forward(ds_config, atol=1e-2, verbose=False, test_bsz=None):
                          [
                              (64,1024,128,16,3,True,False),
                              (64,1024,128,16,3,True,True),
+                             (64,1024,128,16,3,True,True),
                              (8,1024,384,16,3,True,False),
+                             (8,1024,384,16,3,True,True),
                              (8,1024,384,16,3,True,True),
                              (8,1024,512,16,3,True,False),
                              (8,1024,512,16,3,True,True),
@@ -242,7 +246,7 @@ def test_forward(batch_size,
     ds_config.layer_id = None
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
-    ds_config.max_seq_length = seq_len
+    ds_config.max_seq_length = 128  #seq_len
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
     ds_config.hidden_dropout_ratio = 0.0
@@ -251,7 +255,7 @@ def test_forward(batch_size,
     ds_config.initializer_range = 0.02
     ds_config.fp16 = use_fp16
 
-    run_forward(ds_config, atol=2e-2)
+    run_forward(ds_config, seq_len, atol=2e-2)
 
 
 @pytest.mark.parametrize('batch_size, small_bsz, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16',
@@ -287,7 +291,7 @@ def test_forward_with_small_bsz(batch_size,
     ds_config.initializer_range = 0.02
     ds_config.fp16 = use_fp16
 
-    run_forward(ds_config, atol=2e-2, test_bsz=small_bsz)
+    run_forward(ds_config, seq_len, atol=2e-2, test_bsz=small_bsz)
 
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16',
                          [
@@ -322,4 +326,4 @@ def test_forward_stochastic(batch_size,
     ds_config.fp16 = use_fp16
     ds_config.stochastic_mode = True
 
-    run_forward(ds_config, atol=7e-2)
+    run_forward(ds_config, seq_len, atol=7e-2)
