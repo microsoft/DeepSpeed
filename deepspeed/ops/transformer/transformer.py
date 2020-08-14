@@ -184,7 +184,9 @@ class DeepSpeedTransformerFunction(Function):
          ff2_inp,
          attn_prob_dropout_mask,
          attn_output_dropout_mask,
-         layer_output_dropout_mask) = forward_func(config.layer_id,
+         layer_output_dropout_mask,
+         norm2_var, norm2_mean,
+         norm3_var, norm3_mean) = forward_func(config.layer_id,
                                                    input,
                                                    input_mask,
                                                    attn_qkvw,
@@ -288,6 +290,10 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
             ctx.attn_output_dropout_mask = attn_output_dropout_mask
             ctx.layer_output_dropout_mask = layer_output_dropout_mask
+            ctx.norm2_var = norm2_var
+            ctx.norm2_mean = norm2_mean
+            ctx.norm3_var = norm3_var
+            ctx.norm3_mean = norm3_mean
 
         return output
 
@@ -364,6 +370,10 @@ class DeepSpeedTransformerFunction(Function):
              ctx.attn_prob_dropout_mask,
              ctx.attn_output_dropout_mask,
              ctx.layer_output_dropout_mask,
+             ctx.norm2_var,
+             ctx.norm2_mean,
+             ctx.norm3_var,
+             ctx.norm3_mean,
              (ctx.inp_norm if (ctx.config.pre_layer_norm
                                and ctx.config.normalize_invertible) else input),
              input_mask,

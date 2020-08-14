@@ -82,15 +82,11 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
                                                        seq_length,
                                                        hidden_size,
                                                        true,
-                                                       false,
-                                                       false,
                                                        !normalize_invertible)),
       _norm_layer3(typename Normalize_Layer<T>::Config(batch_size,
                                                        seq_length,
                                                        hidden_size,
                                                        true,
-                                                       false,
-                                                       false,
                                                        !normalize_invertible)),
       _ff1(typename FeedForward<T>::Config(batch_size * seq_length,
                                            intermediate_size,
@@ -196,17 +192,18 @@ void BertTransformerLayer<T>::Forward(int bsz,
     if (_normalize_invertible) add_res_ptr = buf_1 + 3 * small_buf_size;
     if (_attn_dropout_checkpoint) ctx_bufB_ptr = buf_1 + 4 * small_buf_size;
 
+    int bsz_seq = bsz * _seq_length;
     if (_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
             _norm_layer3.ForwardCheckpoint(
-                bsz, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
+                bsz_seq, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
 
         else
             _norm_layer3.Forward(
-                bsz, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
+                bsz_seq, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
     }
 
-    int bsz_seq = bsz * _seq_length;
+
 
     if (_pre_or_postLayerNorm)
         _qkv_linear.Forward(bsz_seq, inp_norm_ptr, attn_qkvw_ptr, buf_0, _cublasHandle);
@@ -249,17 +246,17 @@ void BertTransformerLayer<T>::Forward(int bsz,
     if (_pre_or_postLayerNorm) {
         if (_norm_layer2.UseMean())
             _norm_layer2.ForwardCheckpoint(
-                bsz, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
+                bsz_seq, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
         else
             _norm_layer2.Forward(
-                bsz, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
+                bsz_seq, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
     } else {
         if (_norm_layer2.UseMean())
             _norm_layer2.ForwardCheckpoint(
-                bsz, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
+                bsz_seq, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
         else
             _norm_layer2.Forward(
-                bsz, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
+                bsz_seq, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
     }
 
     _ff1.Forward(bsz_seq,
@@ -268,7 +265,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
                  (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                  _cublasHandle);
 
-    _gelu.ForwardWithBiasAdd(bsz,
+    _gelu.ForwardWithBiasAdd(bsz_seq,
                              (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                              inter_b_ptr,
                              (_gelu_checkpoint ? ctx_bufB_ptr : ff2_inp_ptr),
@@ -291,9 +288,9 @@ void BertTransformerLayer<T>::Forward(int bsz,
     if (!_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
             _norm_layer3.ForwardCheckpoint(
-                bsz, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
+                bsz_seq, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
         else
-            _norm_layer3.Forward(bsz, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
+            _norm_layer3.Forward(bsz_seq, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
     }
 }
 
@@ -359,7 +356,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
 
     if (!_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
-            _norm_layer3.Backward(bsz,
+            _norm_layer3.Backward(bsz_seq,
                                   grad_output_ptr,
                                   norm_w_ptr,
                                   grad_norm_w_ptr,
@@ -369,7 +366,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                   inp_norm_ptr);
 
         else
-            _norm_layer3.Backward(bsz,
+            _norm_layer3.Backward(bsz_seq,
                                   grad_output_ptr,
                                   norm_w_ptr,
                                   norm_b_ptr,
@@ -389,7 +386,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                      ? buf_0
                                      : (_pre_or_postLayerNorm ? grad_output_ptr : buf_1);
 
-    if (_gelu_checkpoint) _gelu.ForwardWithBiasAdd(bsz, ff2_inp_ptr, inter_b_ptr, buf_2, _stream);
+    if (_gelu_checkpoint) _gelu.ForwardWithBiasAdd(bsz_seq, ff2_inp_ptr, inter_b_ptr, buf_2, _stream);
     _ff2.Backward(bsz_seq,
                   layer_dropout_buf,
                   (_gelu_checkpoint ? buf_2 : ff2_inp_ptr),
@@ -401,7 +398,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                   ff2_buf);
 
     _gelu.Backward(
-        bsz, ff2_buf, (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr), inter_b_ptr, _stream);
+        bsz_seq, ff2_buf, (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr), inter_b_ptr, _stream);
 
     _ff1.Backward(bsz_seq,
                   ff2_buf,
@@ -418,7 +415,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
 
     if (_pre_or_postLayerNorm) {
         if (_norm_layer2.UseMean())
-            _norm_layer2.BackwardFusedAdd(bsz,
+            _norm_layer2.BackwardFusedAdd(bsz_seq,
                                           buf_3,
                                           grad_output_ptr,
                                           attn_nw_ptr,
@@ -429,7 +426,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                           add_res_ptr);
 
         else
-            _norm_layer2.BackwardFusedAdd(bsz,
+            _norm_layer2.BackwardFusedAdd(bsz_seq,
                                           buf_3,
                                           grad_output_ptr,
                                           attn_nw_ptr,
@@ -441,7 +438,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                           ff1_inp_ptr);
     } else {
         if (_norm_layer2.UseMean())
-            _norm_layer2.Backward(bsz,
+            _norm_layer2.Backward(bsz_seq,
                                   buf_2,
                                   attn_nw_ptr,
                                   grad_attn_nw_ptr,
@@ -451,7 +448,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                   add_res_ptr);
 
         else
-            _norm_layer2.Backward(bsz,
+            _norm_layer2.Backward(bsz_seq,
                                   buf_2,
                                   attn_nw_ptr,
                                   attn_nb_ptr,
@@ -525,7 +522,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
 
     if (_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
-            _norm_layer3.BackwardFusedAdd(bsz,
+            _norm_layer3.BackwardFusedAdd(bsz_seq,
                                           buf_2,
                                           buf_0,
                                           norm_w_ptr,
@@ -536,7 +533,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                           input_ptr);
 
         else
-            _norm_layer3.BackwardFusedAdd(bsz,
+            _norm_layer3.BackwardFusedAdd(bsz_seq,
                                           buf_2,
                                           buf_0,
                                           norm_w_ptr,
@@ -562,11 +559,18 @@ void BertTransformerLayer<T>::SetTrainingMode(bool training)
 template <typename T>
 void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                                      uint8_t* attn_output_dropout_mask_ptr,
-                                                     uint8_t* layer_output_dropout_mask_ptr)
+                                                     uint8_t* layer_output_dropout_mask_ptr,
+						     T *norm2Var, T* norm2Mean,
+						     T *norm3Var, T* norm3Mean)
 {
     _attn_prob_dropout.SetMask(attn_prob_dropout_mask_ptr);
     _attn_output_dropout.SetMask(attn_output_dropout_mask_ptr);
     _layer_output_dropout.SetMask(layer_output_dropout_mask_ptr);
+
+    _norm_layer2.SetVar(norm2Var);
+    _norm_layer2.SetMean(norm2Mean);
+    _norm_layer3.SetVar(norm3Var);
+    _norm_layer3.SetMean(norm3Mean);
 }
 
 template <typename T>
@@ -687,6 +691,12 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
 
+    if(input.size(1) != layer->GetSeqLength())
+    {
+    	printf("Info: changing sequence-length from %d to %d \n", layer->GetSeqLength(), input.size(1));
+    	layer->SetSeqLength(input.size(1));
+    }
+
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
     auto add_res = (normalize_invertible ? inp_norm : torch::empty_like(input));
     auto attn_o_inp = torch::empty_like(input);
@@ -699,6 +709,11 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
         torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
     auto layer_output_dropout_mask =
         torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
+
+    auto norm2Var = torch::empty({(bsz * layer->GetSeqLength())}, options);
+    auto norm2Mean = torch::empty({(bsz * layer->GetSeqLength())}, options);
+    auto norm3Var = torch::empty({(bsz * layer->GetSeqLength())}, options);
+    auto norm3Mean = torch::empty({(bsz * layer->GetSeqLength())}, options);
 
     T* inp_norm_ptr = (T*)inp_norm.data_ptr();
     T* add_res_ptr = (T*)add_res.data_ptr();
@@ -734,7 +749,11 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     layer->SetTrainingMode(training_mode);
     layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr(),
                                   (uint8_t*)attn_output_dropout_mask.data_ptr(),
-                                  (uint8_t*)layer_output_dropout_mask.data_ptr());
+                                  (uint8_t*)layer_output_dropout_mask.data_ptr(),
+				  (T*)norm2Var.data_ptr(),
+				  (T*)norm2Mean.data_ptr(),
+				  (T*)norm3Var.data_ptr(),
+				  (T*)norm3Mean.data_ptr());
 
     layer->Forward(bsz,
                    input_ptr,
@@ -776,7 +795,9 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
             ff2_inp,
             attn_prob_dropout_mask,
             attn_output_dropout_mask,
-            layer_output_dropout_mask};
+            layer_output_dropout_mask,
+    	    norm2Var, norm2Mean,
+    	    norm3Var, norm3Mean};
 }
 
 template <typename T>
@@ -795,6 +816,10 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
                                                    const torch::Tensor& attn_prob_dropout_mask,
                                                    const torch::Tensor& attn_output_dropout_mask,
                                                    const torch::Tensor& layer_output_dropout_mask,
+						   const torch::Tensor& norm2Var,
+						   const torch::Tensor& norm2Mean,
+						   const torch::Tensor& norm3Var,
+						   const torch::Tensor& norm3Mean,
                                                    const torch::Tensor& input,
                                                    const torch::Tensor& input_mask,
                                                    const torch::Tensor& attn_qkvw,
@@ -838,9 +863,10 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
     CHECK_INPUT(norm_b);
 
     int bsz = g_output.size(0);
+
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
-
+    
     auto grad_input = torch::empty_like(input);
     auto grad_attn_qkvw = torch::empty_like(attn_qkvw);
     auto grad_attn_qkvb = torch::empty_like(attn_qkvb);
@@ -900,7 +926,9 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
 
     layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr(),
                                   (uint8_t*)attn_output_dropout_mask.data_ptr(),
-                                  (uint8_t*)layer_output_dropout_mask.data_ptr());
+                                  (uint8_t*)layer_output_dropout_mask.data_ptr(),
+				  (T*)norm2Var.data_ptr(), (T*)norm2Mean.data_ptr(),
+				  (T*)norm3Var.data_ptr(), (T*)norm3Mean.data_ptr());
 
     layer->Backward(bsz,
                     grad_output_ptr,
