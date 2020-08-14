@@ -127,16 +127,8 @@ public:
     inline int GetBatchSize() const { return _batch_size; }
     inline int GetNumHeads() const { return _heads; }
     inline int GetSeqLength() const { return _seq_length; }
-    int SetSeqLength(int seq_len) { 
-	    _softmax.SetSeqlen(seq_len);
-	    _seq_length = seq_len; 
-	    _attn_scores.SetConfig(_seq_length,
-                                   _seq_length,
-                                   _hidden_size / _heads);
-	    _attn_context.SetConfig(_hidden_size / _heads,
-			    	    _seq_length,
-                                    _seq_length);
-    }
+
+    void SetSeqLength(int seq_len); 
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
 

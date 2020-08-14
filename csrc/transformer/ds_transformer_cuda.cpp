@@ -193,6 +193,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
     if (_attn_dropout_checkpoint) ctx_bufB_ptr = buf_1 + 4 * small_buf_size;
 
     int bsz_seq = bsz * _seq_length;
+
     if (_pre_or_postLayerNorm) {
         if (_norm_layer3.UseMean())
             _norm_layer3.ForwardCheckpoint(
@@ -574,6 +575,21 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 }
 
 template <typename T>
+void BertTransformerLayer<T>::SetSeqLength(int seq_len)
+{
+	_seq_length = seq_len;
+
+	_softmax.SetSeqlen(_seq_length);
+	_attn_prob_dropout.SetDimension(_seq_length);
+	_attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
+	_attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
+
+	Context::Instance().GenWorkSpace(get_workspace_size<T>(
+	        _batch_size, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
+}
+
+
+template <typename T>
 int create_transformer_layer(int layer_id,
                              int batch_size,
                              int hidden_dim,
@@ -691,57 +707,60 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
 
-    if(input.size(1) != layer->GetSeqLength())
+    int seq_len = layer->GetSeqLength();
+    if(input.size(1) != seq_len)
     {
-    	printf("Info: changing sequence-length from %d to %d \n", layer->GetSeqLength(), input.size(1));
-    	layer->SetSeqLength(input.size(1));
+    	printf("Info: changing sequence-length from %d to %d \n", seq_len, input.size(1));
+
+	seq_len = input.size(1);
+    	layer->SetSeqLength(seq_len);
     }
 
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
     auto add_res = (normalize_invertible ? inp_norm : torch::empty_like(input));
     auto attn_o_inp = torch::empty_like(input);
-    auto qkv_tf = torch::empty({(bsz * layer->GetSeqLength()), output_w.size(0) * 3}, options);
+    auto qkv_tf = torch::empty({(bsz * seq_len), output_w.size(0) * 3}, options);
 
     auto attn_prob_dropout_mask =
-        torch::empty({(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()},
+        torch::empty({(bsz * layer->GetNumHeads() * seq_len), seq_len},
                      uint8_options);
     auto attn_output_dropout_mask =
-        torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
+        torch::empty({(bsz * seq_len), layer->GetHiddenSize()}, uint8_options);
     auto layer_output_dropout_mask =
-        torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
+        torch::empty({(bsz * seq_len), layer->GetHiddenSize()}, uint8_options);
 
-    auto norm2Var = torch::empty({(bsz * layer->GetSeqLength())}, options);
-    auto norm2Mean = torch::empty({(bsz * layer->GetSeqLength())}, options);
-    auto norm3Var = torch::empty({(bsz * layer->GetSeqLength())}, options);
-    auto norm3Mean = torch::empty({(bsz * layer->GetSeqLength())}, options);
+    auto norm2Var = torch::empty({(bsz * seq_len)}, options);
+    auto norm2Mean = torch::empty({(bsz * seq_len)}, options);
+    auto norm3Var = torch::empty({(bsz * seq_len)}, options);
+    auto norm3Mean = torch::empty({(bsz * seq_len)}, options);
 
     T* inp_norm_ptr = (T*)inp_norm.data_ptr();
     T* add_res_ptr = (T*)add_res.data_ptr();
     T* q_tf_ptr = (T*)qkv_tf.data_ptr();
     T* k_tf_ptr =
-        q_tf_ptr + (bsz * layer->GetSeqLength() * output_w.size(0));  //(T*)k_tf.data_ptr();
+        q_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)k_tf.data_ptr();
     T* v_tf_ptr =
-        k_tf_ptr + (bsz * layer->GetSeqLength() * output_w.size(0));  //(T*)v_tf.data_ptr();
+        k_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)v_tf.data_ptr();
     T* attn_o_inp_ptr = (T*)attn_o_inp.data_ptr();
 
     torch::Tensor ff2_inp =
-        torch::empty({(bsz * layer->GetSeqLength()), output_w.size(1)}, options);
+        torch::empty({(bsz * seq_len), output_w.size(1)}, options);
     torch::Tensor gelu_inp =
         (gelu_checkpoint
              ? ff2_inp
-             : torch::empty({(bsz * layer->GetSeqLength()), output_w.size(1)}, options));
+             : torch::empty({(bsz * seq_len), output_w.size(1)}, options));
     auto ff1_inp = torch::empty_like(input);
     T* ff2_inp_ptr = (T*)ff2_inp.data_ptr();
     T* gelu_inp_ptr = (T*)gelu_inp.data_ptr();
     T* ff1_inp_ptr = (T*)ff1_inp.data_ptr();
 
     torch::Tensor soft_out = torch::empty(
-        {(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()}, options);
+        {(bsz * layer->GetNumHeads() * seq_len), seq_len}, options);
     torch::Tensor ctx_bufB =
         (attn_dropout_checkpoint
              ? soft_out
              : torch::empty(
-                   {(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()},
+                   {(bsz * layer->GetNumHeads() * seq_len), seq_len},
                    options));
     T* soft_out_ptr = (T*)soft_out.data_ptr();
     T* ctx_bufB_ptr = (T*)ctx_bufB.data_ptr();
