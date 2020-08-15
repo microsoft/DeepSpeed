@@ -304,10 +304,13 @@ void launch_gelu(const T* input,
     gelu_kernel<<<grid_dims, block_dims, 0, stream>>>(input, output, intermediate_size);
 }
 
-template void
-launch_bias_gelu<float>(const float*, const float*, float*, int, int, cudaStream_t);
-template void
-launch_bias_gelu<__half>(const __half*, const __half*, __half*, int, int, cudaStream_t);
+template void launch_bias_gelu<float>(const float*, const float*, float*, int, int, cudaStream_t);
+template void launch_bias_gelu<__half>(const __half*,
+                                       const __half*,
+                                       __half*,
+                                       int,
+                                       int,
+                                       cudaStream_t);
 
 template void launch_gelu<float>(const float*, float*, int, int, cudaStream_t);
 template void launch_gelu<__half>(const __half*, __half*, int, int, cudaStream_t);
@@ -329,5 +332,4 @@ void launch_d_gelu(T* d_output,
 }
 
 template void launch_d_gelu<float>(float*, const float*, const float*, int, int, cudaStream_t);
-template void
-launch_d_gelu<__half>(__half*, const __half*, const __half*, int, int, cudaStream_t);
+template void launch_d_gelu<__half>(__half*, const __half*, const __half*, int, int, cudaStream_t);
