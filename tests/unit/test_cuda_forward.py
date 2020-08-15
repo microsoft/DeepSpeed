@@ -246,7 +246,7 @@ def test_forward(batch_size,
     ds_config.layer_id = None
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
-    ds_config.max_seq_length = 128 #seq_len
+    ds_config.max_seq_length = 128  #seq_len
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
     ds_config.hidden_dropout_ratio = 0.0

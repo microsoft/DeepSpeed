@@ -122,13 +122,16 @@ public:
     void SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                 uint8_t* attn_output_dropout_mask_ptr,
                                 uint8_t* layer_output_dropout_mask_ptr,
-				T*, T*, T*, T*);
+                                T*,
+                                T*,
+                                T*,
+                                T*);
 
     inline int GetBatchSize() const { return _batch_size; }
     inline int GetNumHeads() const { return _heads; }
     inline int GetSeqLength() const { return _seq_length; }
 
-    void SetSeqLength(int seq_len); 
+    void SetSeqLength(int seq_len);
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
 

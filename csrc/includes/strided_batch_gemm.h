@@ -38,11 +38,11 @@ public:
               gemm_algos(algos)
         {
         }
-	    void SetConfig(int mm, int nn, int kk) 
-        { 
-            m = mm; 
-            n = nn; 
-            k = kk; 
+        void SetConfig(int mm, int nn, int kk)
+        {
+            m = mm;
+            n = nn;
+            k = kk;
         }
     };
 

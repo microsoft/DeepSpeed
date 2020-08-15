@@ -511,59 +511,23 @@ void launch_bias_residual_layer_norm<float>(float* vals,
 
     // There are some limitations to call below functions, now just enumerate the situations.
     if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<768, 3><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<768, 3><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<512, 2><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<512, 2><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<1024, 4><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars);
+        fused_bias_residual_layer_norm<1024, 4><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<1536, 6><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars);
+        fused_bias_residual_layer_norm<1536, 6><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<2048, 8><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars);
+        fused_bias_residual_layer_norm<2048, 8><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<2560, 10><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                     residual,
-                                                                                     gamma,
-                                                                                     beta,
-                                                                                     epsilon,
-                                                                                     preLayerNorm,
-                                                                                     training,
-                                                                                     vars);
+        fused_bias_residual_layer_norm<2560, 10><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else
         throw std::runtime_error("Unsupport hidden_dim.");
 }
@@ -588,59 +552,23 @@ void launch_bias_residual_layer_norm<__half>(__half* vals,
 
     // There are some limitations to call below functions, now just enumerate the situations.
     if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<384, 3><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<384, 3><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<256, 2><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<256, 2><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<512, 4><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<512, 4><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<768, 6><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars);
+        fused_bias_residual_layer_norm<768, 6><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<1024, 8><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars);
+        fused_bias_residual_layer_norm<1024, 8><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<1280, 10><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                     residual,
-                                                                                     gamma,
-                                                                                     beta,
-                                                                                     epsilon,
-                                                                                     preLayerNorm,
-                                                                                     training,
-                                                                                     vars);
+        fused_bias_residual_layer_norm<1280, 10><<<grid_dim, block_dim, 0, stream>>>(
+            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars);
     else
         throw std::runtime_error("Unsupport hidden_dim.");
 }

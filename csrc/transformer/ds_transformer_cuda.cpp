@@ -198,8 +198,6 @@ void BertTransformerLayer<T>::Forward(int bsz,
                 bsz_seq, inp_norm_ptr, input_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
     }
 
-
-
     if (_pre_or_postLayerNorm)
         _qkv_linear.Forward(bsz_seq, inp_norm_ptr, attn_qkvw_ptr, buf_0, _cublasHandle);
     else
@@ -285,7 +283,8 @@ void BertTransformerLayer<T>::Forward(int bsz,
             _norm_layer3.ForwardCheckpoint(
                 bsz_seq, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
         else
-            _norm_layer3.Forward(bsz_seq, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
+            _norm_layer3.Forward(
+                bsz_seq, out_ptr, inp_norm_ptr, norm_w_ptr, norm_b_ptr, _stream, true);
     }
 }
 
@@ -381,7 +380,8 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                      ? buf_0
                                      : (_pre_or_postLayerNorm ? grad_output_ptr : buf_1);
 
-    if (_gelu_checkpoint) _gelu.ForwardWithBiasAdd(bsz_seq, ff2_inp_ptr, inter_b_ptr, buf_2, _stream);
+    if (_gelu_checkpoint)
+        _gelu.ForwardWithBiasAdd(bsz_seq, ff2_inp_ptr, inter_b_ptr, buf_2, _stream);
     _ff2.Backward(bsz_seq,
                   layer_dropout_buf,
                   (_gelu_checkpoint ? buf_2 : ff2_inp_ptr),
@@ -555,8 +555,10 @@ template <typename T>
 void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                                      uint8_t* attn_output_dropout_mask_ptr,
                                                      uint8_t* layer_output_dropout_mask_ptr,
-						     T *norm2Var, T* norm2Mean,
-						     T *norm3Var, T* norm3Mean)
+                                                     T* norm2Var,
+                                                     T* norm2Mean,
+                                                     T* norm3Var,
+                                                     T* norm3Mean)
 {
     _attn_prob_dropout.SetMask(attn_prob_dropout_mask_ptr);
     _attn_output_dropout.SetMask(attn_output_dropout_mask_ptr);
@@ -571,17 +573,16 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 template <typename T>
 void BertTransformerLayer<T>::SetSeqLength(int seq_len)
 {
-	_seq_length = seq_len;
+    _seq_length = seq_len;
 
-	_softmax.SetSeqlen(_seq_length);
-	_attn_prob_dropout.SetDimension(_seq_length);
-	_attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
-	_attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
+    _softmax.SetSeqlen(_seq_length);
+    _attn_prob_dropout.SetDimension(_seq_length);
+    _attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
+    _attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
 
-	Context::Instance().GenWorkSpace(get_workspace_size<T>(
-	        _batch_size, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
+    Context::Instance().GenWorkSpace(get_workspace_size<T>(
+        _batch_size, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
 }
-
 
 template <typename T>
 int create_transformer_layer(int layer_id,
@@ -702,11 +703,10 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
 
     int seq_len = layer->GetSeqLength();
-    if(input.size(1) != seq_len)
-    {
-    	printf("Info: changing sequence-length from %d to %d \n", seq_len, input.size(1));
-	    seq_len = input.size(1);
-    	layer->SetSeqLength(seq_len);
+    if (input.size(1) != seq_len) {
+        printf("Info: changing sequence-length from %d to %d \n", seq_len, input.size(1));
+        seq_len = input.size(1);
+        layer->SetSeqLength(seq_len);
     }
 
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
@@ -715,8 +715,7 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     auto qkv_tf = torch::empty({(bsz * seq_len), output_w.size(0) * 3}, options);
 
     auto attn_prob_dropout_mask =
-        torch::empty({(bsz * layer->GetNumHeads() * seq_len), seq_len},
-                     uint8_options);
+        torch::empty({(bsz * layer->GetNumHeads() * seq_len), seq_len}, uint8_options);
     auto attn_output_dropout_mask =
         torch::empty({(bsz * seq_len), layer->GetHiddenSize()}, uint8_options);
     auto layer_output_dropout_mask =
@@ -730,31 +729,24 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     T* inp_norm_ptr = (T*)inp_norm.data_ptr();
     T* add_res_ptr = (T*)add_res.data_ptr();
     T* q_tf_ptr = (T*)qkv_tf.data_ptr();
-    T* k_tf_ptr =
-        q_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)k_tf.data_ptr();
-    T* v_tf_ptr =
-        k_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)v_tf.data_ptr();
+    T* k_tf_ptr = q_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)k_tf.data_ptr();
+    T* v_tf_ptr = k_tf_ptr + (bsz * seq_len * output_w.size(0));  //(T*)v_tf.data_ptr();
     T* attn_o_inp_ptr = (T*)attn_o_inp.data_ptr();
 
-    torch::Tensor ff2_inp =
-        torch::empty({(bsz * seq_len), output_w.size(1)}, options);
+    torch::Tensor ff2_inp = torch::empty({(bsz * seq_len), output_w.size(1)}, options);
     torch::Tensor gelu_inp =
-        (gelu_checkpoint
-             ? ff2_inp
-             : torch::empty({(bsz * seq_len), output_w.size(1)}, options));
+        (gelu_checkpoint ? ff2_inp : torch::empty({(bsz * seq_len), output_w.size(1)}, options));
     auto ff1_inp = torch::empty_like(input);
     T* ff2_inp_ptr = (T*)ff2_inp.data_ptr();
     T* gelu_inp_ptr = (T*)gelu_inp.data_ptr();
     T* ff1_inp_ptr = (T*)ff1_inp.data_ptr();
 
-    torch::Tensor soft_out = torch::empty(
-        {(bsz * layer->GetNumHeads() * seq_len), seq_len}, options);
+    torch::Tensor soft_out =
+        torch::empty({(bsz * layer->GetNumHeads() * seq_len), seq_len}, options);
     torch::Tensor ctx_bufB =
         (attn_dropout_checkpoint
              ? soft_out
-             : torch::empty(
-                   {(bsz * layer->GetNumHeads() * seq_len), seq_len},
-                   options));
+             : torch::empty({(bsz * layer->GetNumHeads() * seq_len), seq_len}, options));
     T* soft_out_ptr = (T*)soft_out.data_ptr();
     T* ctx_bufB_ptr = (T*)ctx_bufB.data_ptr();
 
@@ -762,10 +754,10 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr(),
                                   (uint8_t*)attn_output_dropout_mask.data_ptr(),
                                   (uint8_t*)layer_output_dropout_mask.data_ptr(),
-				  (T*)norm2Var.data_ptr(),
-				  (T*)norm2Mean.data_ptr(),
-				  (T*)norm3Var.data_ptr(),
-				  (T*)norm3Mean.data_ptr());
+                                  (T*)norm2Var.data_ptr(),
+                                  (T*)norm2Mean.data_ptr(),
+                                  (T*)norm3Var.data_ptr(),
+                                  (T*)norm3Mean.data_ptr());
 
     layer->Forward(bsz,
                    input_ptr,
@@ -808,8 +800,10 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
             attn_prob_dropout_mask,
             attn_output_dropout_mask,
             layer_output_dropout_mask,
-    	    norm2Var, norm2Mean,
-    	    norm3Var, norm3Mean};
+            norm2Var,
+            norm2Mean,
+            norm3Var,
+            norm3Mean};
 }
 
 template <typename T>
@@ -828,10 +822,10 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
                                                    const torch::Tensor& attn_prob_dropout_mask,
                                                    const torch::Tensor& attn_output_dropout_mask,
                                                    const torch::Tensor& layer_output_dropout_mask,
-						   const torch::Tensor& norm2Var,
-						   const torch::Tensor& norm2Mean,
-						   const torch::Tensor& norm3Var,
-						   const torch::Tensor& norm3Mean,
+                                                   const torch::Tensor& norm2Var,
+                                                   const torch::Tensor& norm2Mean,
+                                                   const torch::Tensor& norm3Var,
+                                                   const torch::Tensor& norm3Mean,
                                                    const torch::Tensor& input,
                                                    const torch::Tensor& input_mask,
                                                    const torch::Tensor& attn_qkvw,
@@ -878,7 +872,7 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
 
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
-    
+
     auto grad_input = torch::empty_like(input);
     auto grad_attn_qkvw = torch::empty_like(attn_qkvw);
     auto grad_attn_qkvb = torch::empty_like(attn_qkvb);
@@ -939,8 +933,10 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
     layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr(),
                                   (uint8_t*)attn_output_dropout_mask.data_ptr(),
                                   (uint8_t*)layer_output_dropout_mask.data_ptr(),
-				  (T*)norm2Var.data_ptr(), (T*)norm2Mean.data_ptr(),
-				  (T*)norm3Var.data_ptr(), (T*)norm3Mean.data_ptr());
+                                  (T*)norm2Var.data_ptr(),
+                                  (T*)norm2Mean.data_ptr(),
+                                  (T*)norm3Var.data_ptr(),
+                                  (T*)norm3Mean.data_ptr());
 
     layer->Backward(bsz,
                     grad_output_ptr,

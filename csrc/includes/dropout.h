@@ -18,7 +18,7 @@ public:
         }
 
         float RATIO() const { return training ? ratio : 0.0; }
-	inline void SetDim(uint32_t d) { dim = d; }
+        inline void SetDim(uint32_t d) { dim = d; }
     };
 
     Dropout(const Config& config) : _config(config), _mask(nullptr) {}

@@ -18,11 +18,7 @@ public:
         float epsilon;
         bool training;
         bool useMean;
-        Config(uint32_t batch,
-               uint32_t seq,
-               uint32_t h,
-               bool training,
-               bool useMean = true)
+        Config(uint32_t batch, uint32_t seq, uint32_t h, bool training, bool useMean = true)
             : batchSize(batch),
               seqLength(seq),
               hiddenDim(h),
@@ -33,13 +29,14 @@ public:
         }
     };
 
-    Normalize_Layer(Config config) : config_(config), vars(nullptr), means(nullptr), vals_hat(nullptr)
-    {}
+    Normalize_Layer(Config config)
+        : config_(config), vars(nullptr), means(nullptr), vals_hat(nullptr)
+    {
+    }
 
-    ~Normalize_Layer()
-    {}
+    ~Normalize_Layer() {}
 
-    void ForwardCheckpoint(int bsz, //batch * seq
+    void ForwardCheckpoint(int bsz,  // batch * seq
                            T* vals,
                            const T* residual,
                            const T* gamma,
@@ -124,7 +121,7 @@ public:
                                   bsz,
                                   config_.hiddenDim,
                                   stream,
-				  !config_.useMean,
+                                  !config_.useMean,
                                   betta);
     }
 
@@ -174,19 +171,23 @@ public:
                                             bsz,
                                             config_.hiddenDim,
                                             stream,
-				  	    !config_.useMean,
+                                            !config_.useMean,
                                             betta);
     }
 
     inline bool UseMean() const { return config_.useMean; }
 
-    inline void SetVar(T *variance) { 
-	    if (!variance) { throw std::runtime_error("Normalize variance is null."); }
-	    vars = variance; }
+    inline void SetVar(T* variance)
+    {
+        if (!variance) { throw std::runtime_error("Normalize variance is null."); }
+        vars = variance;
+    }
 
-    inline void SetMean(T *mean) { 
-	    if (!mean) { throw std::runtime_error("Normalize mean is null."); }
-	    means = mean; }
+    inline void SetMean(T* mean)
+    {
+        if (!mean) { throw std::runtime_error("Normalize mean is null."); }
+        means = mean;
+    }
 
 private:
     Config config_;
