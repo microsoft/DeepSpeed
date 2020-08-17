@@ -180,7 +180,12 @@ if [ "$third_party_install" == "1" ]; then
     git submodule update --init --recursive
 
     echo "Building apex wheel"
-    cd third_party/apex
+    if [ ! -e "/opt/rocm" ]; then
+        apex_path="third_party/apex"
+    else
+        apex_path="third_party/apex_rocm"
+    fi
+    cd $apex_path
 
     if [ "$apex_commit" != "" ]; then
         echo "Installing a non-standard version of apex at commit: $apex_commit"
@@ -193,7 +198,7 @@ if [ "$third_party_install" == "1" ]; then
 
     echo "Installing apex locally so that deepspeed will build"
     $PIP_SUDO pip uninstall -y apex
-    $PIP_SUDO $PIP_INSTALL third_party/apex/dist/apex*.whl
+    $PIP_SUDO $PIP_INSTALL ${apex_path}/dist/apex*.whl
 fi
 if [ "$deepspeed_install" == "1" ]; then
     echo "Building deepspeed wheel"
