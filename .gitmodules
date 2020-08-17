@@ -5,3 +5,6 @@
 	path = DeepSpeedExamples
 	url = https://github.com/microsoft/DeepSpeedExamples
 	branch = master
+[submodule "third_party/apex_rocm"]
+	path = third_party/apex_rocm
+	url = https://github.com/ROCmSoftwarePlatform/apex.git
