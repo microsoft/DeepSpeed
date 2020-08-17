@@ -239,6 +239,9 @@ def main(args=None):
         resource_pool['localhost'] = device_count
         args.master_addr = "127.0.0.1"
         multi_node_exec = False
+    elif len(resource_pool) == 1:
+        # Only launching on 1 node
+        multi_node_exec = False
 
     if not multi_node_exec and args.num_nodes > 1:
         raise ValueError("Num nodes is >1 but no extra nodes available via hostfile")
