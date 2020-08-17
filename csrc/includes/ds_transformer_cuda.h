@@ -131,7 +131,7 @@ public:
     inline int GetNumHeads() const { return _heads; }
     inline int GetSeqLength() const { return _seq_length; }
 
-    void SetSeqLength(int seq_len);
+    void SetSeqLength(int seq_len, int bsz);
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
 

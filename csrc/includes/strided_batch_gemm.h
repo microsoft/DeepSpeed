@@ -3,6 +3,7 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
+#include "context.h"
 
 template <typename T>
 class StridedBatchGemm {
