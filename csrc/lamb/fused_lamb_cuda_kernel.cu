@@ -14,7 +14,11 @@
 #include <iostream>
 
 //#include <helper_functions.h>
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#include <hip/hip_cooperative_groups.h>
+#else
 #include <cooperative_groups.h>
+#endif
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
@@ -76,7 +80,11 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
     T a_sum = s_a[tid];
     T b_sum = s_b[tid];
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     // do reduction in shared mem
     if ((blockSize >= 512) && (tid < 256)) {
@@ -84,21 +92,33 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 256];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 256) && (tid < 128)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 128];
         s_b[tid] = b_sum = b_sum + s_b[tid + 128];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 128) && (tid < 64)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 64];
         s_b[tid] = b_sum = b_sum + s_b[tid + 64];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
 #if (__CUDA_ARCH__ >= 300)
     if (tid < 32) {
@@ -122,42 +142,66 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 32];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 32) && (tid < 16)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 16];
         s_b[tid] = b_sum = b_sum + s_b[tid + 16];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 16) && (tid < 8)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 8];
         s_b[tid] = b_sum = b_sum + s_b[tid + 8];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 8) && (tid < 4)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 4];
         s_b[tid] = b_sum = b_sum + s_b[tid + 4];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 4) && (tid < 2)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 2];
         s_b[tid] = b_sum = b_sum + s_b[tid + 2];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
     if ((blockSize >= 2) && (tid < 1)) {
         s_a[tid] = a_sum = a_sum + s_a[tid + 1];
         s_b[tid] = b_sum = b_sum + s_b[tid + 1];
     }
 
+#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+    cta.sync();
+#else
     cg::sync(cta);
+#endif
 
 #endif
 
