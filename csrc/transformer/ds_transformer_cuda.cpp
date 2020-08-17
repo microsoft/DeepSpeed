@@ -577,7 +577,7 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 }
 
 template <typename T>
-void BertTransformerLayer<T>::SetSeqLength(int seq_len)
+void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
 {
     _seq_length = seq_len;
 
@@ -586,8 +586,8 @@ void BertTransformerLayer<T>::SetSeqLength(int seq_len)
     _attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
     _attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
 
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(
-        _batch_size, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
+    Context::Instance().GenWorkSpace(
+        get_workspace_size<T>(bsz, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
 }
 
 template <typename T>
@@ -710,9 +710,8 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
 
     int seq_len = layer->GetSeqLength();
     if (input.size(1) != seq_len) {
-        printf("Info: changing sequence-length from %d to %d \n", seq_len, input.size(1));
         seq_len = input.size(1);
-        layer->SetSeqLength(seq_len);
+        layer->SetSeqLength(seq_len, bsz);
     }
 
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
