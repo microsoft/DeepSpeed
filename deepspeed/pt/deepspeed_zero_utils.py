@@ -2,6 +2,7 @@ import torch
 from torch.autograd import Variable
 import collections
 
+
 def async_migrate_to(obj, dev, main_stream=None):
     if torch.is_tensor(obj):
         obj = Variable(obj)

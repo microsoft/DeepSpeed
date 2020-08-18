@@ -98,6 +98,7 @@ def move_to_cpu(tensor_list):
 def print_rank_msg(msg):
     print(f"rank {dist.get_rank()} - {msg}")
 
+
 #jie:asyn move to target device
 def async_migrate_to(obj, dev, main_stream=None):
     if torch.is_tensor(obj):
@@ -127,6 +128,7 @@ def async_copy_to(obj, dev, main_stream=None):
         return {k: async_copy_to(o, dev, main_stream) for k, o in obj.items()}
     elif isinstance(obj, collections.Sequence):
         return [async_copy_to(o, dev, main_stream) for o in obj]
+
 
 class FP16_DeepSpeedZeroOptimizer(object):
     """
@@ -289,11 +291,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # a partition of the fp32 master weights that will be updated by this process
             if self.cpu_offload:
                 self.single_partition_of_fp32_groups.append(
-                    async_copy_to(self.parallel_partitioned_fp16_groups[i]
-                    [partition_id], 'cpu').float()
-                    )
-                self.averaged_gradients_on_cpu[i] = [torch.empty_like(self.parallel_partitioned_fp16_groups[i][partition_id],
-                    device='cpu')]
+                    async_copy_to(self.parallel_partitioned_fp16_groups[i][partition_id],
+                                  'cpu').float())
+                self.averaged_gradients_on_cpu[i] = [
+                    torch.empty_like(
+                        self.parallel_partitioned_fp16_groups[i][partition_id],
+                        device='cpu')
+                ]
             else:
                 self.single_partition_of_fp32_groups.append(
                     self.parallel_partitioned_fp16_groups[i]
@@ -499,12 +503,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload is False:
             for i, _ in enumerate(self.fp16_groups):
                 self.averaged_gradients[i] = self.get_flat_partition(
-                            self.params_in_partition[i],
-                            self.first_offset[i],
-                            self.partition_size[i],
-                            dtype=torch.half,
-                            device=torch.cuda.current_device(),
-                            return_tensor_list=True)
+                    self.params_in_partition[i],
+                    self.first_offset[i],
+                    self.partition_size[i],
+                    dtype=torch.half,
+                    device=torch.cuda.current_device(),
+                    return_tensor_list=True)
 
         self._release_ipg_buffers()
 
@@ -641,7 +645,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #jie:
             if self.cpu_offload:
                 with stream(self.migration_stream):
-                    averaged_gradients_on_cpu[i][param_id] = async_copy_to(new_grad_tensor.data.view_as(param.grad),
+                    averaged_gradients_on_cpu[i][param_id] = async_copy_to(
+                        new_grad_tensor.data.view_as(param.grad),
                         'cpu',
                         self.cpu_computation_stream)
             else:
@@ -767,8 +772,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             else:
             '''
             self.grads_in_partition = torch.empty(int(total_size),
-                                                      dtype=torch.half,
-                                                      device=torch.cuda.current_device())
+                                                  dtype=torch.half,
+                                                  device=torch.cuda.current_device())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
         #The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
@@ -1217,7 +1222,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         self.single_partition_of_fp32_groups[i].dtype)
             else:
                 single_grad_partition = _flatten_dense_tensors(
-                    self.averaged_gradients_on_cpu[i]).to(
+                    self.averaged_gradients[i]).to(
                         self.single_partition_of_fp32_groups[i].dtype)
             assert single_grad_partition.numel() == self.partition_size[i], \
                 "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
@@ -1226,7 +1231,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(self.params_in_partition[i])
 
-            self.averaged_gradients[i] = notneeded
+            if self.cpu_offload is False:
+                self.averaged_gradients[i] = None
 
             single_partition_grad_groups.append(single_grad_partition)
 
@@ -1240,9 +1246,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload:
             with torch.cuda.stream(self.migration_stream):
                 for averaged_gradients_cpu, fp32_partition in zip(self.averaged_gradients_on_cpu, self.single_partition_of_fp32_groups):
-                    averaged_gradients_cpu[0] = async_copy_to(fp32_partition, torch.cuda.current_divice(),self.migration_stream)
+                    averaged_gradients_cpu = async_copy_to(fp32_partition,
+                                                           torch.cuda.current_device(),
+                                                           self.migration_stream)
                 for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                    fp16_partitions[partition_id] = async_copy_to(fp32_partition, torch.cuda.current_divice(),torch.cuda.main_stream())
+                    fp16_partitions[partition_id] = async_copy_to(
+                        fp32_partition,
+                        torch.cuda.current_device(),
+                        torch.cuda.main_stream())
         else:
             for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                 fp16_partitions[partition_id].data.copy_(fp32_partition.data)
@@ -1503,9 +1514,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.single_partition_of_fp32_groups)
         state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
 
-
         if self.cpu_offload:
-            state_dict_tmp = async_copy_to(state_dict, 'cpu', torch.cuda.current_stream())
+            state_dict_tmp = async_copy_to(state_dict,
+                                           'cpu',
+                                           torch.cuda.current_stream())
             state_dict = None
             state_dict = state_dict_tmp
 

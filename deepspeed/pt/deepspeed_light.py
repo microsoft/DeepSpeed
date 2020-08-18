@@ -169,7 +169,8 @@ class DeepSpeedLight(Module):
         self.optimizer = None
         self.lr_scheduler = None
         if model_parameters or optimizer:
-            if "torch.optim" in self.optimizer_name():
+            optimizer_name = self.optimizer_name()
+            if optimizer_name is not None and "torch.optim" in optimizer_name:
                 self.zero_set_cpu_offload()
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
@@ -263,7 +264,6 @@ class DeepSpeedLight(Module):
 
     def train_batch_size(self):
         return self._config.train_batch_size
-
 
     def train_micro_batch_size_per_gpu(self):
         return self._config.train_micro_batch_size_per_gpu
@@ -501,11 +501,11 @@ class DeepSpeedLight(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         #jie:
-        if self.zero_cpu_offload():
+        if client_optimizer is not None and self.zero_cpu_offload():
             optimizer_parameters = self.optimizer_params()
             basic_optimizer = torch.optim.Adam(client_optimizer.param_groups,
-                                      **optimizer_parameters)
-            logger.info('Using CPU Optimizer as basic optimizer'
+                                               **optimizer_parameters)
+            logger.info('Using CPU Optimizer as basic optimizer')
         elif client_optimizer is not None:
             basic_optimizer = client_optimizer
             logger.info('Using client Optimizer as basic optimizer')
@@ -547,8 +547,8 @@ class DeepSpeedLight(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-                from apex.optimizers.fused_adam import FusedAdam
-                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            from apex.optimizers.fused_adam import FusedAdam
+            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
