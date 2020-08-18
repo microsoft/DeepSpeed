@@ -269,8 +269,6 @@ class DeepSpeedLight(Module):
         return self._config.train_micro_batch_size_per_gpu
 
     def optimizer_name(self):
-        print("===========================")
-        print(self._config.optimizer_name)
         return self._config.optimizer_name
 
     def optimizer_params(self):
