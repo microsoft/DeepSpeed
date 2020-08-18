@@ -135,6 +135,13 @@ rm_if_exist() {
     fi
 }
 
+# Apex path
+if [ ! -e "/opt/rocm" ]; then
+    apex_path="third_party/apex"
+else
+    apex_path="third_party/apex_rocm"
+fi
+
 if [ "$no_clean" == "0" ]; then
     # remove deepspeed build files
     rm_if_exist deepspeed/git_version_info.py
@@ -142,9 +149,9 @@ if [ "$no_clean" == "0" ]; then
     rm_if_exist build
     rm_if_exist deepspeed.egg-info
     # remove apex build files
-    rm_if_exist third_party/apex/dist
-    rm_if_exist third_party/apex/build
-    rm_if_exist third_party/apex/apex.egg-info
+    rm_if_exist ${apex_path}/dist
+    rm_if_exist ${apex_path}/build
+    rm_if_exist ${apex_path}/apex.egg-info
 fi
 
 echo "Updating git hash/branch info"
@@ -180,11 +187,6 @@ if [ "$third_party_install" == "1" ]; then
     git submodule update --init --recursive
 
     echo "Building apex wheel"
-    if [ ! -e "/opt/rocm" ]; then
-        apex_path="third_party/apex"
-    else
-        apex_path="third_party/apex_rocm"
-    fi
     cd $apex_path
 
     if [ "$apex_commit" != "" ]; then
@@ -235,7 +237,7 @@ else
     fi
     if [ "$third_party_install" == "1" ]; then
         pdsh -w $hosts "$PIP_SUDO pip uninstall -y apex"
-        pdcp -w $hosts third_party/apex/dist/apex*.whl $tmp_wheel_path/
+        pdcp -w $hosts ${apex_path}/dist/apex*.whl $tmp_wheel_path/
         pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL $tmp_wheel_path/apex*.whl"
         pdsh -w $hosts 'python -c "import apex"'
     fi
