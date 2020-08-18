@@ -217,16 +217,8 @@ def test_adamw_fp16_empty_grad(tmpdir):
     _test_adamw_fp16_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [
-                             (1,
-                              False),
-                             (2,
-                              False),
-                             (2,
-                              True),
-                         ])
-def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offload):
+@pytest.mark.parametrize("zero_stage", [0, 1, 2])
+def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage):
     config_dict = {
         "train_batch_size": 1,
         "steps_per_print": 1,
@@ -254,8 +246,7 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage,
-            "cpu_offload": use_cpu_offload
+            "stage": zero_stage
         }
     }
 
@@ -283,17 +274,8 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
                                                 hidden_dim=hidden_dim)
 
 
-#@pytest.mark.parametrize("zero_stage", [1, 2])
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [
-                             (1,
-                              False),
-                             (2,
-                              False),
-                             (2,
-                              True),
-                         ])
-def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
+@pytest.mark.parametrize("zero_stage", [1, 2])
+def test_zero_static_scale(tmpdir, zero_stage):
     config_dict = {
         "train_batch_size": 4,
         "steps_per_print": 1,
@@ -308,8 +290,7 @@ def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
             "loss_scale": 138.
         },
         "zero_optimization": {
-            "stage": zero_stage,
-            "zero_cpu_offload": use_cpu_offload
+            "stage": zero_stage
         }
     }
     args = args_from_dict(tmpdir, config_dict)
@@ -352,7 +333,8 @@ def test_zero_static_scale_deprecated_format(tmpdir):
         "fp16": {
             "enabled": True,
             "loss_scale": 138.
-        }
+        },
+        "zero_optimization": True
     }
     args = args_from_dict(tmpdir, config_dict)
 
@@ -381,16 +363,8 @@ def test_zero_static_scale_deprecated_format(tmpdir):
     _test_zero_static_scale(args)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [
-                             (1,
-                              False),
-                             (2,
-                              False),
-                             (2,
-                              True),
-                         ])
-def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
+@pytest.mark.parametrize("zero_stage", [1, 2])
+def test_zero_allow_untested_optimizer(tmpdir, zero_stage):
     config_dict = {
         "train_batch_size": 4,
         "steps_per_print": 1,
@@ -398,8 +372,7 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
             "enabled": True,
         },
         "zero_optimization": {
-            "stage": zero_stage,
-            "cpu_offload": use_cpu_offload
+            "stage": zero_stage
         },
         "zero_allow_untested_optimizer": False
     }
@@ -419,16 +392,8 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
     _test_zero_allow_untested_optimizer(args)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                         [
-                             (1,
-                              False),
-                             (2,
-                              False),
-                             (2,
-                              True),
-                         ])
-def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
+@pytest.mark.parametrize("zero_stage", [1, 2])
+def test_zero_empty_partition(tmpdir, zero_stage):
     config_dict = {
         "train_micro_batch_size_per_gpu": 1,
         "gradient_accumulation_steps": 1,
@@ -443,8 +408,7 @@ def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
             }
         },
         "zero_optimization": {
-            "stage": zero_stage,
-            "cpu_offload": use_cpu_offload
+            "stage": zero_stage
         }
     }
     args = args_from_dict(tmpdir, config_dict)
