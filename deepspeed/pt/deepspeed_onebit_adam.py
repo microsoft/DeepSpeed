@@ -12,6 +12,7 @@ import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.pt.log_utils import logger
+from mpi4py import MPI
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements LAMB algorithm. Currently GPU-only.  Requires DeepSpeed adapted Apex to be installed via
@@ -87,6 +88,18 @@ class OnebitAdam(torch.optim.Optimizer):
             for idx in range(size):
                 if idx != rank:
                     req.append(comm.Irecv(recbuf[idx], source=idx))
+                else:
+                    recbuf[rank] = sendbuf
+        else:
+            req.append(comm.Isend(sendbuf, dest=root))
+        return req
+
+    def myIgather_new(self, rank, size, comm, sendbuf, recbuf, root):
+        req = []
+        if rank == root:
+            for idx in range(size):
+                if idx != rank:
+                    req.append(comm.Irecv(recbuf[idx], source=idx))
         else:
             comm.Send(sendbuf, dest=root)
         return req
@@ -126,7 +139,7 @@ class OnebitAdam(torch.optim.Optimizer):
         cuda_aware = True
         my_igather = True
         #print('In the very begining of Com_allreduce',flush = True)
-        from mpi4py import MPI
+
         #logger.info("----------------------------- calling mpi ----------------")
         all_start_time = time.time()
         original_size = buffer_m.numel()
@@ -153,7 +166,18 @@ class OnebitAdam(torch.optim.Optimizer):
                                        dtype=cupy_sign_list_packed[0].dtype)
         cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
         
+        requests = []
+
         gather_start = time.time()
+        for idx in range(world_size):
+            req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+            requests += req_sign
+        for idx in range(world_size):
+            req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+            requests += req_scale
+        MPI.Request.Waitall(requests)
+        gather_end = time.time()
+
         if cuda_aware == False:
             numpy_recvbuf_sign = np.zeros([world_size, cupy_sign_list_packed[rank].size],
                                                        dtype=cupy_sign_list_packed[0].dtype)
@@ -173,27 +197,27 @@ class OnebitAdam(torch.optim.Optimizer):
 
         requests = []
 
-        for idx in range(world_size):
-            requests = []
+        #for idx in range(world_size):
+        #    requests = []
             #print ("igather1 queued at idx, rank, sizes,", idx, rank, cupy_sign_list_packed[idx].size, cupy_recvbuf_sign.size, flush=True)
-            if cuda_aware:
-                if my_igather:
-                    req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
-                    requests += req_sign
-                else:
-                    req_sign = comm.Gather(cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
-            else:
+        #    if cuda_aware:
+        #        if my_igather:
+        #            req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+        #            requests += req_sign
+        #        else:
+        #            req_sign = comm.Gather(cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+        #    else:
                 # 2. use numpy buffers for communication
-                if my_igather:
-                    req_sign = self.myIgather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
-                    requests += req_sign
-                else:
-                    #print("calling Gather on numpy arrays")
-                    comm.Gather(numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
+        #        if my_igather:
+        #            req_sign = self.myIgather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
+        #            requests += req_sign
+        #        else:
+        #            #print("calling Gather on numpy arrays")
+        #            comm.Gather(numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
 
-            if my_igather:
+        #    if my_igather:
                 #print (f"waitall called at rank {rank}", flush=True)   
-                MPI.Request.Waitall(requests)
+        #       MPI.Request.Waitall(requests)
             
             #print(f"---> gather1 completed at rank {rank}", flush=True)
         
@@ -214,24 +238,24 @@ class OnebitAdam(torch.optim.Optimizer):
             cupy.cuda.get_current_stream().synchronize()
 
         requests = []
-        for idx in range(world_size):
+        #for idx in range(world_size):
             #logger.info ("igather 2 start")
             #req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-            if cuda_aware:
-                if my_igather:
-                    req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
-                else:
-                    req_scale = comm.Igather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
-            else:
-                if my_igather:
-                    req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-                else:
-                    req_scale = comm.Igather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-            requests += req_scale
+        #    if cuda_aware:
+        #        if my_igather:
+        #            req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+        #        else:
+        #            req_scale = comm.Igather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+        #    else:
+        #        if my_igather:
+        #            req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
+        #        else:
+        #            req_scale = comm.Igather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
+        #    requests += req_scale
 
-        MPI.Request.Waitall(requests)
-        comm.Barrier()
-        gather_end = time.time()
+        #MPI.Request.Waitall(requests)
+        #comm.Barrier()
+        #gather_end = time.time()
 
         #print("gather took:", (gather_end - gather_start)*1e3, flush=True)
         #logger.info("gather 2 completed")
