@@ -246,7 +246,7 @@ def main(args=None):
     active_resources = parse_inclusion_exclusion(resource_pool,
                                                  args.include,
                                                  args.exclude)
-    
+
     env = os.environ.copy()
 
     if not args.master_addr:
@@ -276,7 +276,7 @@ def main(args=None):
     world_info_base64 = encode_world_info(active_resources)
 
     multi_node_exec = len(active_resources) > 1
-    
+
     if multi_node_exec and not shutil.which('pdsh'):
         raise RuntimeError("pdsh is not installed, unable to proceed")
 
