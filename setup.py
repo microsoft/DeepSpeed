@@ -40,81 +40,104 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-ext_modules = [
+is_rocm_pytorch = False
+if torch.__version__ >= '1.5':
+    from torch.utils.cpp_extension import ROCM_HOME
+    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
+
+if is_rocm_pytorch:
+    import shutil
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+#    with hipify_python.GeneratedFileCleaner(keep_intermediates=True) as clean_ctx:
+    hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
+                                show_detailed=True, is_pytorch_extension=True) #, clean_ctx=clean_ctx)
+    shutil.copy("csrc/type_shim.h", "csrc/hip/type_shim.h")
+
+ext_modules = []
+
+# deepspeed_lamb_cuda extension
+sources=['csrc/lamb/fused_lamb_cuda.cpp']
+nvcc_flags=['-O3'] + version_dependent_macros
+if is_rocm_pytorch:
+    sources.extend(['csrc/lamb/hip/fused_lamb_hip_kernel.hip'])
+else:
+    sources.extend(['csrc/lamb/fused_lamb_cuda_kernel.cu'])
+    nvcc_flags.extend(['--use_fast_math'])
+
+ext_modules.append(
     CUDAExtension(
         name='deepspeed_lamb_cuda',
-        sources=['csrc/lamb/fused_lamb_cuda.cpp',
-                 'csrc/lamb/fused_lamb_cuda_kernel.cu'],
+        sources=sources,
         include_dirs=['csrc/includes'],
         extra_compile_args={
             'cxx': [
                 '-O3',
             ] + version_dependent_macros,
-            'nvcc': ['-O3',
-                     '--use_fast_math'] + version_dependent_macros
-        }),
+            'nvcc': nvcc_flags
+        })
+)
+
+# deepspeed_transformer_cuda extension
+sources=['csrc/transformer/ds_transformer_cuda.cpp']
+nvcc_flags=['-O3',
+            '-std=c++14',
+           ]
+if is_rocm_pytorch:
+    sources.extend(['csrc/transformer/hip/cublas_wrappers.hip',
+                    'csrc/transformer/hip/transform_kernels.hip',
+                    'csrc/transformer/hip/gelu_kernels.hip',
+                    'csrc/transformer/hip/dropout_kernels.hip',
+                    'csrc/transformer/hip/normalize_kernels.hip',
+                    'csrc/transformer/hip/softmax_kernels.hip',
+                    'csrc/transformer/hip/general_kernels.hip'
+                   ])
+else:
+    sources.extend(['csrc/transformer/cublas_wrappers.cu',
+                    'csrc/transformer/transform_kernels.cu',
+                    'csrc/transformer/gelu_kernels.cu',
+                    'csrc/transformer/dropout_kernels.cu',
+                    'csrc/transformer/normalize_kernels.cu',
+                    'csrc/transformer/softmax_kernels.cu',
+                    'csrc/transformer/general_kernels.cu'
+                   ])
+    nvcc_flags.extend(['--use_fast_math',
+                       '-gencode',
+                       'arch=compute_61,code=compute_61',
+                       '-gencode',
+                       'arch=compute_70,code=compute_70',
+                       '-std=c++14',
+                       '-U__CUDA_NO_HALF_OPERATORS__',
+                       '-U__CUDA_NO_HALF_CONVERSIONS__',
+                       '-U__CUDA_NO_HALF2_OPERATORS__'
+                      ])
+
+ext_modules.append(
     CUDAExtension(name='deepspeed_transformer_cuda',
-                  sources=[
-                      'csrc/transformer/ds_transformer_cuda.cpp',
-                      'csrc/transformer/cublas_wrappers.cu',
-                      'csrc/transformer/transform_kernels.cu',
-                      'csrc/transformer/gelu_kernels.cu',
-                      'csrc/transformer/dropout_kernels.cu',
-                      'csrc/transformer/normalize_kernels.cu',
-                      'csrc/transformer/softmax_kernels.cu',
-                      'csrc/transformer/general_kernels.cu'
-                  ],
+                  sources=sources,
                   include_dirs=['csrc/includes'],
                   extra_compile_args={
                       'cxx': ['-O3',
                               '-std=c++14',
                               '-g',
                               '-Wno-reorder'],
-                      'nvcc': [
-                          '-O3',
-                          '--use_fast_math',
-                          '-gencode',
-                          'arch=compute_61,code=compute_61',
-                          '-gencode',
-                          'arch=compute_70,code=compute_70',
-                          '-std=c++14',
-                          '-U__CUDA_NO_HALF_OPERATORS__',
-                          '-U__CUDA_NO_HALF_CONVERSIONS__',
-                          '-U__CUDA_NO_HALF2_OPERATORS__'
-                      ]
-                  }),
+                      'nvcc': nvcc_flags
+                  })
+)
+
+# deepspeed_stochastic_transformer_cuda extension
+nvcc_flags.extend(['-D__STOCHASTIC_MODE__'])
+ext_modules.append(
     CUDAExtension(name='deepspeed_stochastic_transformer_cuda',
-                  sources=[
-                      'csrc/transformer/ds_transformer_cuda.cpp',
-                      'csrc/transformer/cublas_wrappers.cu',
-                      'csrc/transformer/transform_kernels.cu',
-                      'csrc/transformer/gelu_kernels.cu',
-                      'csrc/transformer/dropout_kernels.cu',
-                      'csrc/transformer/normalize_kernels.cu',
-                      'csrc/transformer/softmax_kernels.cu',
-                      'csrc/transformer/general_kernels.cu'
-                  ],
+                  sources=sources,
                   include_dirs=['csrc/includes'],
                   extra_compile_args={
                       'cxx': ['-O3',
                               '-std=c++14',
                               '-g',
                               '-Wno-reorder'],
-                      'nvcc': [
-                          '-O3',
-                          '--use_fast_math',
-                          '-gencode',
-                          'arch=compute_61,code=compute_61',
-                          '-gencode',
-                          'arch=compute_70,code=compute_70',
-                          '-std=c++14',
-                          '-U__CUDA_NO_HALF_OPERATORS__',
-                          '-U__CUDA_NO_HALF_CONVERSIONS__',
-                          '-U__CUDA_NO_HALF2_OPERATORS__',
-                          '-D__STOCHASTIC_MODE__'
-                      ]
+                      'nvcc': nvcc_flags
                   }),
-]
+)
 
 setup(name='deepspeed',
       version='0.2.0',
