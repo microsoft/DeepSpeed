@@ -8,11 +8,11 @@ import torch
 import importlib
 import numpy as np
 import time
-import cupy
+#import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.pt.log_utils import logger
-from mpi4py import MPI
+#from mpi4py import MPI
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements LAMB algorithm. Currently GPU-only.  Requires DeepSpeed adapted Apex to be installed via
