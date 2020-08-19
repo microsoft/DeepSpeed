@@ -160,7 +160,6 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     # exp_avg_sq.add_(v_diff).addcmul_(1 - beta2, grad, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                     grad = None
-
                     # v_diff = None
 
                 else:
@@ -183,8 +182,7 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
 
 
         if self.adam_freeze_key is False:
-            # if False:
-            if state['step'] > self.freeze_step:
+            if state['step'] >= self.freeze_step:
             # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
