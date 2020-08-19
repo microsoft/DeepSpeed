@@ -22,6 +22,7 @@ from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
 from deepspeed.pt.deepspeed_onebit_adam import OnebitAdam
+from deepspeed.pt.deepspeed_fp32_onebit_adam import FP32_OnebitAdam
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
@@ -542,6 +543,8 @@ class DeepSpeedLight(Module):
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == "OnebitAdam":
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
+        elif self.optimizer_name() == "FP32_OnebitAdam":
+            optimizer = FP32_OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
