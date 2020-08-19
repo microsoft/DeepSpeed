@@ -16,7 +16,7 @@ from deepspeed.pt.log_utils import logger
 TENSOR_CORE_ALIGN_SIZE = 8
 ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
-DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER, 'OnebitAdam']
+DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER, 'OnebitAdam', 'FP32_OnebitAdam']
 
 
 def get_amp_enabled(param_dict):
