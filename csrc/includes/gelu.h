@@ -9,13 +9,8 @@ template <typename T>
 class Gelu {
 public:
     struct Config {
-        uint32_t batch_size;
-        uint32_t seq_length;
         uint32_t intermediate_size;
-        Config(uint32_t batch, uint32_t seq, uint32_t inter_size)
-            : batch_size(batch), seq_length(seq), intermediate_size(inter_size)
-        {
-        }
+        Config(uint32_t inter_size) : intermediate_size(inter_size) {}
     };
 
     Gelu(const Config& config) : _config(config) {}
