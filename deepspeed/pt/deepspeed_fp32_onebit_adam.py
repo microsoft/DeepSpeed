@@ -46,6 +46,7 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                  params,
                  deepspeed=None,
                  lr=1e-3,
+                 freeze_step = 10000000,
                  bias_correction=True,
                  betas=(0.9,
                         0.999),
@@ -64,18 +65,19 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                         eps=eps,
                         weight_decay=weight_decay,
                         max_grad_norm=max_grad_norm)
-        super(OnebitAdam, self).__init__(params, defaults)
+        super(FP32_OnebitAdam, self).__init__(params, defaults)
         self.eps_mode = 0 if eps_inside_sqrt else 1
+        self.freeze_step = int(freeze_step)
 
         self.comm_time = 0.0
         self.step_time = 0.0
         self.ave_step = 1
         self.bk_time = 0.0
-        self.divider = int(self.size * 8 / np.gcd(self.size, 8))
         self.deepspeed = deepspeed
         self.adam_freeze_key = False
         self.threshold = threshold
         self.initialize = False
+        self.freeze_step = freeze_step
 
     def tenary_compress(self, buffer_m, error):
         buffer_m.add_(error)
@@ -157,11 +159,7 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     # v_diff_buffer += v_diff.norm() / exp_avg_sq.norm() / state['tensor_size']
                     # exp_avg_sq.add_(v_diff).addcmul_(1 - beta2, grad, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
-<<<<<<< HEAD
-                    #grad = None
-=======
                     grad = None
->>>>>>> 91d8d9cb47466ef56a89349f5ede3e362360fbdc
 
                     # v_diff = None
 
@@ -169,11 +167,7 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     worker_error = state['worker_error']
                     server_error = state['server_error']
                     exp_avg.mul_(beta1).add_(1 - beta1, grad)
-<<<<<<< HEAD
-                    #grad = None
-=======
                     grad = None
->>>>>>> 91d8d9cb47466ef56a89349f5ede3e362360fbdc
                     self.tenary_compress(exp_avg,worker_error)
                     dist.all_reduce(exp_avg)
                     exp_avg.mul_(1/dist.get_world_size())
@@ -187,9 +181,10 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     p.add_(-group['lr'] * update)
 
 
+
         if self.adam_freeze_key is False:
             # if False:
-            if state['step'] > 200:
+            if state['step'] > self.freeze_step:
             # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
