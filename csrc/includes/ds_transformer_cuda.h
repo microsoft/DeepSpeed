@@ -122,10 +122,10 @@ public:
     void SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                 uint8_t* attn_output_dropout_mask_ptr,
                                 uint8_t* layer_output_dropout_mask_ptr,
-                                T*,
-                                T*,
-                                T*,
-                                T*);
+                                T* layer_norm_var,
+                                T* layer_norm_mean,
+                                T* attn_layer_norm_var,
+                                T* attn_layer_norm_mean);
 
     inline int GetBatchSize() const { return _batch_size; }
     inline int GetNumHeads() const { return _heads; }
@@ -156,8 +156,8 @@ private:
     // layers
     FeedForward<T> _qkv_linear;
     FeedForward<T> _attn_out_linear;
-    Normalize_Layer<T> _norm_layer2;
-    Normalize_Layer<T> _norm_layer3;
+    Normalize_Layer<T> _attn_layer_norm;
+    Normalize_Layer<T> _layer_norm;
     Normalize_Layer<T>* _last_normalize;
     FeedForward<T> _ff1, _ff2;
     Softmax<T> _softmax;

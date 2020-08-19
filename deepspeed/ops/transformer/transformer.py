@@ -185,29 +185,29 @@ class DeepSpeedTransformerFunction(Function):
          attn_prob_dropout_mask,
          attn_output_dropout_mask,
          layer_output_dropout_mask,
-         norm2_var,
-         norm2_mean,
-         norm3_var,
-         norm3_mean) = forward_func(config.layer_id,
-                                    input,
-                                    input_mask,
-                                    attn_qkvw,
-                                    attn_qkvb,
-                                    attn_ow,
-                                    attn_ob,
-                                    attn_nw,
-                                    attn_nb,
-                                    inter_w,
-                                    inter_b,
-                                    output_w,
-                                    output_b,
-                                    norm_w,
-                                    norm_b,
-                                    config.training,
-                                    config.pre_layer_norm,
-                                    config.attn_dropout_checkpoint,
-                                    config.normalize_invertible,
-                                    config.gelu_checkpoint)
+         attn_layer_norm_var,
+         attn_layer_norm_mean,
+         layer_norm_var,
+         layer_norm_mean) = forward_func(config.layer_id,
+                                         input,
+                                         input_mask,
+                                         attn_qkvw,
+                                         attn_qkvb,
+                                         attn_ow,
+                                         attn_ob,
+                                         attn_nw,
+                                         attn_nb,
+                                         inter_w,
+                                         inter_b,
+                                         output_w,
+                                         output_b,
+                                         norm_w,
+                                         norm_b,
+                                         config.training,
+                                         config.pre_layer_norm,
+                                         config.attn_dropout_checkpoint,
+                                         config.normalize_invertible,
+                                         config.gelu_checkpoint)
 
         # For testing only.
         if grads is not None:
@@ -284,6 +284,9 @@ class DeepSpeedTransformerFunction(Function):
             if not config.normalize_invertible:
                 ctx.add_res = add_res
 
+            ctx.attn_layer_norm_mean = attn_layer_norm_mean
+            ctx.layer_norm_mean = layer_norm_mean
+
             ctx.ff1_inp = ff1_inp
             if not config.gelu_checkpoint:
                 ctx.gelu_inp = gelu_inp
@@ -292,10 +295,8 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
             ctx.attn_output_dropout_mask = attn_output_dropout_mask
             ctx.layer_output_dropout_mask = layer_output_dropout_mask
-            ctx.norm2_var = norm2_var
-            ctx.norm2_mean = norm2_mean
-            ctx.norm3_var = norm3_var
-            ctx.norm3_mean = norm3_mean
+            ctx.attn_layer_norm_var = attn_layer_norm_var
+            ctx.layer_norm_var = layer_norm_var
 
         return output
 
@@ -372,10 +373,10 @@ class DeepSpeedTransformerFunction(Function):
              ctx.attn_prob_dropout_mask,
              ctx.attn_output_dropout_mask,
              ctx.layer_output_dropout_mask,
-             ctx.norm2_var,
-             ctx.norm2_mean,
-             ctx.norm3_var,
-             ctx.norm3_mean,
+             ctx.attn_layer_norm_var,
+             ctx.attn_layer_norm_mean,
+             ctx.layer_norm_var,
+             ctx.layer_norm_mean,
              (ctx.inp_norm if (ctx.config.pre_layer_norm
                                and ctx.config.normalize_invertible) else input),
              input_mask,

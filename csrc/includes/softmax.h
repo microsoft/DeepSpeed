@@ -53,7 +53,7 @@ public:
 
     inline size_t GetSeqLength() const { return config_.seq_length; }
 
-    inline void SetSeqlen(size_t seq_len) { config_.seq_length = seq_len; }
+    inline void SetSeqLength(size_t seq_len) { config_.seq_length = seq_len; }
 
 private:
     Config config_;

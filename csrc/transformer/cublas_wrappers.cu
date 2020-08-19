@@ -35,7 +35,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
 
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr,
-                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error : %d) \n",
+                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error: %d) \n",
                 m,
                 n,
                 k,
@@ -80,7 +80,7 @@ int cublas_gemm_ex(cublasHandle_t handle,
 
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr,
-                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error : %d) \n",
+                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error: %d) \n",
                 m,
                 n,
                 k,
@@ -133,7 +133,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
 
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr,
-                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error : %d) \n",
+                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error: %d) \n",
                 m,
                 n,
                 k,
@@ -186,7 +186,7 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
 
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr,
-                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error : %d) \n",
+                "!!!! kernel execution error. (m: %d, n: %d, k: %d, error: %d) \n",
                 m,
                 n,
                 k,
