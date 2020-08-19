@@ -157,7 +157,11 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     # v_diff_buffer += v_diff.norm() / exp_avg_sq.norm() / state['tensor_size']
                     # exp_avg_sq.add_(v_diff).addcmul_(1 - beta2, grad, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+<<<<<<< HEAD
                     #grad = None
+=======
+                    grad = None
+>>>>>>> 91d8d9cb47466ef56a89349f5ede3e362360fbdc
 
                     # v_diff = None
 
@@ -165,7 +169,11 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     worker_error = state['worker_error']
                     server_error = state['server_error']
                     exp_avg.mul_(beta1).add_(1 - beta1, grad)
+<<<<<<< HEAD
                     #grad = None
+=======
+                    grad = None
+>>>>>>> 91d8d9cb47466ef56a89349f5ede3e362360fbdc
                     self.tenary_compress(exp_avg,worker_error)
                     dist.all_reduce(exp_avg)
                     exp_avg.mul_(1/dist.get_world_size())

@@ -12,6 +12,7 @@ import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.pt.log_utils import logger
+from mpi4py import MPI
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements LAMB algorithm. Currently GPU-only.  Requires DeepSpeed adapted Apex to be installed via
@@ -87,6 +88,18 @@ class OnebitAdam(torch.optim.Optimizer):
             for idx in range(size):
                 if idx != rank:
                     req.append(comm.Irecv(recbuf[idx], source=idx))
+                else:
+                    recbuf[rank] = sendbuf
+        else:
+            req.append(comm.Isend(sendbuf, dest=root))
+        return req
+
+    def myIgather_new(self, rank, size, comm, sendbuf, recbuf, root):
+        req = []
+        if rank == root:
+            for idx in range(size):
+                if idx != rank:
+                    req.append(comm.Irecv(recbuf[idx], source=idx))
         else:
             comm.Send(sendbuf, dest=root)
         return req
@@ -122,9 +135,11 @@ class OnebitAdam(torch.optim.Optimizer):
         return sign_list_packed
 
     def Compressed_Allreduce(self, buffer_m: torch.tensor, worker_error, server_error, rank, world_size, comm):
-        cuda_aware = False
+        #print('In the very begining of Com_allreduce',flush = True)
+        cuda_aware = True
         my_igather = True
-        from mpi4py import MPI
+        #print('In the very begining of Com_allreduce',flush = True)
+
         #logger.info("----------------------------- calling mpi ----------------")
         all_start_time = time.time()
         original_size = buffer_m.numel()
@@ -133,9 +148,9 @@ class OnebitAdam(torch.optim.Optimizer):
             empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m), device=buffer_m.device)
             buffer_m = torch.cat([buffer_m, empty_tensor])
 
-        buffer_m.add_(worker_error.float())
+        buffer_m.add_(worker_error)
         worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
-        worker_error.set_( (buffer_m - worker_scale * buffer_m.sign()).half() )
+        worker_error.set_( (buffer_m - worker_scale * buffer_m.sign()) )
 
         compensated_buffer_m = buffer_m
         compensated_buffer_m.sign_()
@@ -151,7 +166,18 @@ class OnebitAdam(torch.optim.Optimizer):
                                        dtype=cupy_sign_list_packed[0].dtype)
         cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
         
+        requests = []
+
         gather_start = time.time()
+        for idx in range(world_size):
+            req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+            requests += req_sign
+        for idx in range(world_size):
+            req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+            requests += req_scale
+        MPI.Request.Waitall(requests)
+        gather_end = time.time()
+
         if cuda_aware == False:
             numpy_recvbuf_sign = np.zeros([world_size, cupy_sign_list_packed[rank].size],
                                                        dtype=cupy_sign_list_packed[0].dtype)
@@ -171,27 +197,27 @@ class OnebitAdam(torch.optim.Optimizer):
 
         requests = []
 
-        for idx in range(world_size):
-            requests = []
+        #for idx in range(world_size):
+        #    requests = []
             #print ("igather1 queued at idx, rank, sizes,", idx, rank, cupy_sign_list_packed[idx].size, cupy_recvbuf_sign.size, flush=True)
-            if cuda_aware:
-                if my_igather:
-                    req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
-                    requests += req_sign
-                else:
-                    req_sign = comm.Gather(cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
-            else:
+        #    if cuda_aware:
+        #        if my_igather:
+        #            req_sign = self.myIgather(rank, world_size, comm, cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+        #            requests += req_sign
+        #        else:
+        #            req_sign = comm.Gather(cupy_sign_list_packed[idx], cupy_recvbuf_sign, root=idx)
+        #    else:
                 # 2. use numpy buffers for communication
-                if my_igather:
-                    req_sign = self.myIgather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
-                    requests += req_sign
-                else:
-                    #print("calling Gather on numpy arrays")
-                    comm.Gather(numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
+        #        if my_igather:
+        #            req_sign = self.myIgather(rank, world_size, comm, numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
+        #            requests += req_sign
+        #        else:
+        #            #print("calling Gather on numpy arrays")
+        #            comm.Gather(numpy_sign_list_packed[idx], numpy_recvbuf_sign, root=idx)
 
-            if my_igather:
+        #    if my_igather:
                 #print (f"waitall called at rank {rank}", flush=True)   
-                MPI.Request.Waitall(requests)
+        #       MPI.Request.Waitall(requests)
             
             #print(f"---> gather1 completed at rank {rank}", flush=True)
         
@@ -212,24 +238,24 @@ class OnebitAdam(torch.optim.Optimizer):
             cupy.cuda.get_current_stream().synchronize()
 
         requests = []
-        for idx in range(world_size):
+        #for idx in range(world_size):
             #logger.info ("igather 2 start")
             #req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-            if cuda_aware:
-                if my_igather:
-                    req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
-                else:
-                    req_scale = comm.Igather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
-            else:
-                if my_igather:
-                    req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-                else:
-                    req_scale = comm.Igather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
-            requests += req_scale
+        #    if cuda_aware:
+        #        if my_igather:
+        #            req_scale = self.myIgather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+        #        else:
+        #            req_scale = comm.Igather(rank, world_size, comm, cupy_worker_scale, cupy_recvbuf_scale, root=idx)
+        #    else:
+        #        if my_igather:
+        #            req_scale = self.myIgather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
+        #        else:
+        #            req_scale = comm.Igather(rank, world_size, comm, numpy_worker_scale, numpy_recvbuf_scale, root=idx)
+        #    requests += req_scale
 
-        MPI.Request.Waitall(requests)
-        comm.Barrier()
-        gather_end = time.time()
+        #MPI.Request.Waitall(requests)
+        #comm.Barrier()
+        #gather_end = time.time()
 
         #print("gather took:", (gather_end - gather_start)*1e3, flush=True)
         #logger.info("gather 2 completed")
@@ -389,7 +415,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 10000
+                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 100
 
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
@@ -398,13 +424,14 @@ class OnebitAdam(torch.optim.Optimizer):
                         state['corrected_tensor_size'] += (
                                 (self.size * self.divider) - (state['tensor_size'] % (self.size * self.divider)))
                     state['server_chunk_size'] = state['corrected_tensor_size'] // self.size
-
-                    if not self.initialize or (self.adam_freeze_key and 'worker_error' not in state.keys()):
+                    
+                    #print('Step is {}, )
+                if not self.initialize or (self.adam_freeze_key and 'worker_error' not in state.keys()):
                         if torch.distributed.get_rank() == 0:
                             print("Allocating worker_error and setting exp_avg_sq to half")
                         torch.cuda.empty_cache()
-                        state['exp_avg_sq'] = state['exp_avg_sq'].sqrt().half()
-                        state['worker_error'] = torch.zeros(state['corrected_tensor_size'], device=p.device).half()
+                        #state['exp_avg_sq'] = state['exp_avg_sq']
+                        state['worker_error'] = torch.zeros(state['corrected_tensor_size'], device=p.device)
                         state['server_error'] = torch.zeros(state['server_chunk_size'], device=p.device)
                         torch.cuda.empty_cache()
                         # see_memory_usage("After emptying cache")
@@ -432,17 +459,20 @@ class OnebitAdam(torch.optim.Optimizer):
 
                 else:
                     exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                    grad = None
-                    # torch.cuda.synchronize()
-                    # cupy.cuda.get_current_stream().synchronize()
+                    #grad = None
+                    torch.cuda.synchronize()
+                    cupy.cuda.get_current_stream().synchronize()
                     if self.size > 1:
+                        #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
+                        #print('worker error is: ',state['worker_error'][0:10])
                         exp_avg = self.Compressed_Allreduce(
                             exp_avg,
                             state['worker_error'],
                             state['server_error'],
                             self.rank,
                             self.size, self.comm)
-                    update = exp_avg / (exp_avg_sq.float() + group['eps'])
+                    #print('Finished rge Compre',flush=True)
+                    update = exp_avg / (exp_avg_sq + group['eps'])
                         # logger.info('Rank is {}, Inside the optimizer the step is: {}'.format(self.rank, state['step']))
                         # cupy._default_memory_pool.free_all_blocks()
                         # torch.cuda.synchronize()
@@ -453,10 +483,11 @@ class OnebitAdam(torch.optim.Optimizer):
                 with torch.no_grad():
                     p.add_(-group['lr'] * update)
 
-                if not self.initialize:
-                    state.pop('worker_error')
-                    state.pop('server_error')
-                    state['exp_avg_sq'] = state['exp_avg_sq'].float()
+            if not self.initialize:
+                print('Pop out errors',flush=True )
+                state.pop('worker_error')
+                state.pop('server_error')
+                    #state['exp_avg_sq'] = state['exp_avg_sq'].float()
 
         # print(f"Before initialze at rant {torch.distributed.get_rank()}")
         if not self.initialize:
@@ -467,7 +498,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         if self.adam_freeze_key is False:
             # if False:
-            if state['step'] > 200:
+            if state['step'] >= 50:
             # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False

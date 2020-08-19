@@ -543,7 +543,7 @@ class DeepSpeedLight(Module):
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == "OnebitAdam":
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
-        elif self.optimizer_name() == "Fp32_OnebitAdam":
+        elif self.optimizer_name() == "FP32_OnebitAdam":
             optimizer = FP32_OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
