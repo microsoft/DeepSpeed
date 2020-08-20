@@ -12,7 +12,6 @@ import os
 import torch
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
-from torch.utils.hipify import hipify_python
 
 cmdclass = {}
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
@@ -48,6 +47,7 @@ if torch.__version__ >= '1.5':
 
 if is_rocm_pytorch:
     import shutil
+    from torch.utils.hipify import hipify_python
     this_dir = os.path.dirname(os.path.abspath(__file__))
     with hipify_python.GeneratedFileCleaner(keep_intermediates=True) as clean_ctx:
         hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
