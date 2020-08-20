@@ -51,7 +51,7 @@ if is_rocm_pytorch:
     this_dir = os.path.dirname(os.path.abspath(__file__))
     with hipify_python.GeneratedFileCleaner(keep_intermediates=True) as clean_ctx:
         hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
-                                    show_detailed=True, is_pytorch_extension=True) , clean_ctx=clean_ctx)
+                                    show_detailed=True, is_pytorch_extension=True , clean_ctx=clean_ctx)
 
 ext_modules = []
 
