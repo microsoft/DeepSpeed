@@ -12,6 +12,7 @@ import os
 import torch
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+from torch.utils.hipify import hipify_python
 
 cmdclass = {}
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
