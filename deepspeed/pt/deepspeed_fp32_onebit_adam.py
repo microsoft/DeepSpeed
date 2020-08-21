@@ -77,7 +77,7 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
         self.adam_freeze_key = False
         self.threshold = threshold
         self.initialize = False
-        self.freeze_step = freeze_step
+        # self.freeze_step = freeze_step
 
     def tenary_compress(self, buffer_m, error):
         buffer_m.add_(error)
@@ -163,14 +163,22 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     # v_diff = None
 
                 else:
-                    worker_error = state['worker_error']
-                    server_error = state['server_error']
-                    exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                    grad = None
-                    self.tenary_compress(exp_avg,worker_error)
-                    dist.all_reduce(exp_avg)
-                    exp_avg.mul_(1/dist.get_world_size())
-                    self.tenary_compress(exp_avg, server_error)
+                    if group['no_freeze'] is False:
+                        worker_error = state['worker_error']
+                        server_error = state['server_error']
+                        exp_avg.mul_(beta1).add_(1 - beta1, grad)
+                        grad = None
+                        self.tenary_compress(exp_avg,worker_error)
+                        dist.all_reduce(exp_avg)
+                        exp_avg.mul_(1/dist.get_world_size())
+                        self.tenary_compress(exp_avg, server_error)
+                    else:
+                        dist.all_reduce(grad)
+                        grad.mul_(1/dist.get_world_size())
+                        exp_avg.mul_(beta1).add_(1 - beta1, grad)
+                        exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+                        grad = None
+
 
                 update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
 
@@ -178,7 +186,6 @@ class FP32_OnebitAdam(torch.optim.Optimizer):
                     update += group['weight_decay'] * p.data
                 with torch.no_grad():
                     p.add_(-group['lr'] * update)
-
 
 
         if self.adam_freeze_key is False:
