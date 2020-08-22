@@ -137,7 +137,7 @@ def test_replace_model_self_attention_with_sparse_self_attention_module_availabi
     return True
 
 
-def test_replace_self_attention_layer_with_sparse_self_attention_layer_modules_availability(
+def test_replace_self_attention_layer_with_sparse_self_attention_layer_module_availability(
 ):
     try:
         from deepspeed.pt.sparse_transformer import replace_self_attention_layer_with_sparse_self_attention_layer
@@ -145,6 +145,24 @@ def test_replace_self_attention_layer_with_sparse_self_attention_layer_modules_a
         print(
             "Sparse Transformer replace_self_attention_layer_with_sparse_self_attention_layer Module is not installed!"
         )
+        return False
+    return True
+
+
+def test_pad_to_block_size_module_availability():
+    try:
+        from deepspeed.pt.sparse_transformer import pad_to_block_size
+    except ImportError:
+        print("Sparse Transformer pad_to_block_size Module is not installed!")
+        return False
+    return True
+
+
+def test_unpad_sequence_output_module_availability():
+    try:
+        from deepspeed.pt.sparse_transformer import unpad_sequence_output
+    except ImportError:
+        print("Sparse Transformer  unpad_sequence_output Module is not installed!")
         return False
     return True
 

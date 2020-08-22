@@ -17,8 +17,7 @@ class BertSparseSelfAttention(nn.Module):
         self,
         config,
         # SparsityConfig parameters needs to be set accordingly
-        sparsity_config=FixedSparsityConfig(num_heads=4,
-                                            seq_len=1024)):
+        sparsity_config=FixedSparsityConfig(num_heads=4)):
         """Initialize the bert sparse self attention layer.
 
         Note) you can use any of the provided sparsity configs or simply add yours!

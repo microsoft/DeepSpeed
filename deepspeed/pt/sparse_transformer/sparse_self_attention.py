@@ -20,8 +20,7 @@ class SparseSelfAttention(nn.Module):
     def __init__(
         self,
         # SparsityConfig parameters needs to be set accordingly
-        sparsity_config=SparsityConfig(num_heads=4,
-                                       seq_len=1024),
+        sparsity_config=SparsityConfig(num_heads=4),
         key_padding_mask_mode='add',
         attn_mask_mode='mul'):
         """Initialize the sparse self attention layer.
@@ -45,20 +44,20 @@ class SparseSelfAttention(nn.Module):
     def get_ops(self, H, L):
         import sys
         if L not in SparseSelfAttention.ops:
-            sparse_dot_sdd_nt = MatMul(self.sparsity_config.layout,
+            sparsity_layout = self.sparsity_config.make_layout(L)
+            sparse_dot_sdd_nt = MatMul(sparsity_layout,
                                        self.sparsity_config.block,
                                        'sdd',
                                        trans_a=False,
                                        trans_b=True)
 
-            sparse_dot_dsd_nn = MatMul(self.sparsity_config.layout,
+            sparse_dot_dsd_nn = MatMul(sparsity_layout,
                                        self.sparsity_config.block,
                                        'dsd',
                                        trans_a=False,
                                        trans_b=False)
 
-            sparse_softmax = Softmax(self.sparsity_config.layout,
-                                     self.sparsity_config.block)
+            sparse_softmax = Softmax(sparsity_layout, self.sparsity_config.block)
 
             SparseSelfAttention.ops[L] = (sparse_dot_sdd_nt,
                                           sparse_dot_dsd_nn,
