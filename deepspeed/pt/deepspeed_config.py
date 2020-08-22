@@ -158,6 +158,177 @@ def get_gradient_clipping(param_dict):
     return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
 
 
+def get_sparse_self_attention(param_dict):
+    if SPARSE_SELF_ATTENTION in param_dict.keys():
+        sparsity = param_dict[SPARSE_SELF_ATTENTION]
+        mode = get_sparse_self_attention_mode(sparsity)
+
+        if (mode == SPARSE_DENSE_MODE):
+            return get_sparse_dense_config(sparsity)
+        elif (mode == SPARSE_FIXED_MODE):
+            return get_sparse_fixed_config(sparsity)
+        elif (mode == SPARSE_VARIABLE_MODE):
+            return get_sparse_variable_config(sparsity)
+        elif (mode == SPARSE_BIGBIRD_MODE):
+            return get_sparse_bigbird_config(sparsity)
+        elif (mode == SPARSE_BSLONGFORMER_MODE):
+            return get_sparse_bslongformer_config(sparsity)
+        else:
+            raise NotImplementedError(
+                f'Given sparsity mode, {mode}, has not been implemented yet!')
+
+    else:
+        return None
+
+
+def get_sparse_dense_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    return {SPARSE_MODE: SPARSE_DENSE_MODE, SPARSE_BLOCK: block}
+
+
+def get_sparse_fixed_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT)
+    num_local_blocks = get_scalar_param(sparsity,
+                                        SPARSE_NUM_LOCAL_BLOCKS,
+                                        SPARSE_NUM_LOCAL_BLOCKS_DEFAULT)
+    num_global_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_GLOBAL_BLOCKS,
+                                         SPARSE_NUM_GLOBAL_BLOCKS_DEFAULT)
+    attention = get_scalar_param(sparsity,
+                                 SPARSE_ATTENTION_TYPE,
+                                 SPARSE_ATTENTION_TYPE_DEFAULT)
+    horizontal_global_attention = get_scalar_param(
+        sparsity,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION_DEFAULT)
+    num_differnt_global_patterns = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS_DEFAULT)
+
+    return {
+        SPARSE_MODE: SPARSE_FIXED_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_LOCAL_BLOCKS: num_local_blocks,
+        SPARSE_NUM_GLOBAL_BLOCKS: num_global_blocks,
+        SPARSE_ATTENTION_TYPE: attention,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION: horizontal_global_attention,
+        SPARSE_NUM_DIFFERENT_GLOBAL_PATTERNS: num_differnt_global_patterns
+    }
+
+
+def get_sparse_variable_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT)
+    num_random_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_RANDOM_BLOCKS,
+                                         SPARSE_NUM_RANDOM_BLOCKS_DEFAULT)
+    local_window_blocks = get_scalar_param(sparsity,
+                                           SPARSE_LOCAL_WINDOW_BLOCKS,
+                                           SPARSE_LOCAL_WINDOW_BLOCKS_DEFAULT)
+    global_block_indices = get_scalar_param(sparsity,
+                                            SPARSE_GLOBAL_BLOCK_INDICES,
+                                            SPARSE_GLOBAL_BLOCK_INDICES_DEFAULT)
+    global_block_end_indices = get_scalar_param(sparsity,
+                                                SPARSE_GLOBAL_BLOCK_END_INDICES,
+                                                SPARSE_GLOBAL_BLOCK_END_INDICES_DEFAULT)
+    attention = get_scalar_param(sparsity,
+                                 SPARSE_ATTENTION_TYPE,
+                                 SPARSE_ATTENTION_TYPE_DEFAULT)
+    horizontal_global_attention = get_scalar_param(
+        sparsity,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION_DEFAULT)
+
+    return {
+        SPARSE_MODE: SPARSE_VARIABLE_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_RANDOM_BLOCKS: num_random_blocks,
+        SPARSE_LOCAL_WINDOW_BLOCKS: local_window_blocks,
+        SPARSE_GLOBAL_BLOCK_INDICES: global_block_indices,
+        SPARSE_GLOBAL_BLOCK_END_INDICES: global_block_end_indices,
+        SPARSE_ATTENTION_TYPE: attention,
+        SPARSE_HORIZONTAL_GLOBAL_ATTENTION: horizontal_global_attention
+    }
+
+
+def get_sparse_bigbird_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT)
+    num_random_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_RANDOM_BLOCKS,
+                                         SPARSE_NUM_RANDOM_BLOCKS_DEFAULT)
+    num_sliding_window_blocks = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS_DEFAULT)
+    num_global_blocks = get_scalar_param(sparsity,
+                                         SPARSE_NUM_GLOBAL_BLOCKS,
+                                         SPARSE_NUM_GLOBAL_BLOCKS_DEFAULT)
+
+    return {
+        SPARSE_MODE: SPARSE_BIGBIRD_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_RANDOM_BLOCKS: num_random_blocks,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS: num_sliding_window_blocks,
+        SPARSE_NUM_GLOBAL_BLOCKS: num_global_blocks
+    }
+
+
+def get_sparse_bslongformer_config(sparsity):
+    block = get_scalar_param(sparsity, SPARSE_BLOCK, SPARSE_BLOCK_DEFAULT)
+    different_layout_per_head = get_scalar_param(
+        sparsity,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD_DEFAULT)
+    num_sliding_window_blocks = get_scalar_param(
+        sparsity,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS_DEFAULT)
+    global_block_indices = get_scalar_param(sparsity,
+                                            SPARSE_GLOBAL_BLOCK_INDICES,
+                                            SPARSE_GLOBAL_BLOCK_INDICES_DEFAULT)
+    global_block_end_indices = get_scalar_param(sparsity,
+                                                SPARSE_GLOBAL_BLOCK_END_INDICES,
+                                                SPARSE_GLOBAL_BLOCK_END_INDICES_DEFAULT)
+
+    return {
+        SPARSE_MODE: SPARSE_BSLONGFORMER_MODE,
+        SPARSE_BLOCK: block,
+        SPARSE_DIFFERENT_LAYOUT_PER_HEAD: different_layout_per_head,
+        SPARSE_NUM_SLIDING_WINDOW_BLOCKS: num_sliding_window_blocks,
+        SPARSE_GLOBAL_BLOCK_INDICES: global_block_indices,
+        SPARSE_GLOBAL_BLOCK_END_INDICES: global_block_end_indices
+    }
+
+
+def get_sparse_self_attention_mode(param_dict):
+    if SPARSE_MODE in param_dict.keys():
+        return param_dict[SPARSE_MODE]
+    else:
+        return SPARSE_MODE_DEFAULT
+
+
+def get_sparse_self_attention_type(param_dict):
+    if SPARSE_ATTENTION_TYPE in param_dict.keys():
+        return param_dict[SPARSE_ATTENTION_TYPE]
+    else:
+        return SPARSE_ATTENTION_TYPE_DEFAULT
+
+
 def get_optimizer_name(param_dict):
     if OPTIMIZER in param_dict.keys() and \
             TYPE in param_dict[OPTIMIZER].keys():
@@ -357,6 +528,8 @@ class DeepSpeedConfig(object):
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
+
+        self.sparse_self_attention = get_sparse_self_attention(param_dict)
 
     def _batch_assertion(self):
 
