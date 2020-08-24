@@ -8,11 +8,11 @@ import torch
 import importlib
 import numpy as np
 import time
-#import cupy
+import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.pt.log_utils import logger
-#from mpi4py import MPI
+from mpi4py import MPI
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements LAMB algorithm. Currently GPU-only.  Requires DeepSpeed adapted Apex to be installed via
@@ -277,6 +277,7 @@ class OnebitAdam(torch.optim.Optimizer):
         worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1/world_size)
         compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
         unpacked_sign = None
+        #print(compensated_server_m[0:10])
         # del unpacked_sign
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
@@ -286,10 +287,14 @@ class OnebitAdam(torch.optim.Optimizer):
         compensated_server_m = compensated_server_m.add_(1).bool()
         cupy_server_scale = self.torch2cupy(server_scale)
         cupy_compensated_server_m = self.torch2cupy(compensated_server_m)
+        #print(cupy_compensated_server_m[0:10])
         compensated_server_m = None
         # del compensated_server_m
 
         cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
+        #print('rank is : {}, the tesnor before  allgather is {}'.format(rank, cupy_server_sign_packed[0][0:10]))
+        #print(cupy.unpackbits(cupy_server_sign_packed[0][0]))
+        cupy.cuda.get_current_stream().synchronize()
 
         cupy_recvbuf_sign_server = cupy.zeros([world_size, cupy_server_sign_packed[0].size],
                                               dtype=cupy_sign_list_packed[0].dtype)
@@ -336,9 +341,10 @@ class OnebitAdam(torch.optim.Optimizer):
             t_convert = (time.time() - t_convert2) + t_convert
 
         #print("allgather and tconvert took:", (allgather_end - allgather_start)*1e3, t_convert*1e3, flush=True)
-
+        #print('rank is {}, after the allgather in the buffer is {}'.format(rank,cupy_recvbuf_sign_server[0][0:10]))
         cupy_server_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign_server.flatten())).reshape(world_size, -1)
         cupy_recvbuf_sign_server = None
+        #print(cupy_server_unpacked_sign[0:10])
         # del cupy_recvbuf_sign_server
         server_unpacked_sign = self.cupy2torch(cupy_server_unpacked_sign)
         cupy_server_unpacked_sign = None
