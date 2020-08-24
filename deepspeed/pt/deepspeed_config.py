@@ -16,7 +16,8 @@ from deepspeed.pt.log_utils import logger
 TENSOR_CORE_ALIGN_SIZE = 8
 ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
-DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER]
+TORCH_ADAM_OPTIMIZER = 'torch_adam'
+DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER, TORCH_ADAM_OPTIMIZER]
 
 
 def get_amp_enabled(param_dict):
@@ -457,11 +458,17 @@ class DeepSpeedConfig(object):
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
+            if self.zero_config.cpu_offload is True:
+                assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
 
         assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
 
-        assert self.gradient_accumulation_steps, 'DeepSpeedConfig: {} is not defined'.format(
+        assert self.gradient_accumulation_steps, "DeepSpeedConfig: {} is not defined".format(
             GRADIENT_ACCUMULATION_STEPS)
+
+        if self.optimizer_name == TORCH_ADAM_OPTIMIZER:
+            assert self.zero_enabled, "ZeRO is not enabled with using TORCH_ADAM_OPTIMIZER"
+            assert self.zero_config.cpu_offload, " cpu_offload is not enabled with using TORCH_ADAM_OPTIMIZER"
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
