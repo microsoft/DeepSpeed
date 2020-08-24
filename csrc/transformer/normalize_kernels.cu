@@ -27,6 +27,7 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
                                                const float* beta,
                                                float epsilon,
                                                bool preLayerNorm,
+                                               int hidden_dim,
                                                bool training = false,
                                                float* vars = nullptr,
                                                float* means = nullptr,
@@ -108,6 +109,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                const __half* beta,
                                                float epsilon,
                                                bool preLayerNorm,
+                                               int hidden_dim,
                                                bool training = false,
                                                __half* vars = nullptr,
                                                __half* means = nullptr,
@@ -119,7 +121,6 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
 
-    int row = blockIdx.x;
     int id = threadIdx.x;
     int gid = id >> 5;
 
@@ -130,10 +131,13 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
     const __half2* residual_cast = reinterpret_cast<const __half2*>(residual);
 
+    residual_cast += (blockIdx.x * row_stride);
+    vals_cast += (blockIdx.x * row_stride);
+
     float sum = 0.f;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_f[i] = __half22float2(residual_cast[row * row_stride + i * iteration_stride + id]);
+        vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
     }
@@ -183,8 +187,8 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
     if (training && g.thread_rank() == 0) {
-        vars[row] = __float2half(variance);
-        means[row] = __float2half(mean);
+        vars[blockIdx.x] = __float2half(variance);
+        means[blockIdx.x] = __float2half(mean);
     }
 
     for (int i = 0; i < iterations; i++) {
@@ -192,7 +196,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         vals_arr[i] = (vals_arr[i] - mean_h) * h2rsqrt(variance_h);
         vals_arr[i] = vals_arr[i] * gamma_cast[i * iteration_stride + id] +
                       beta_cast[i * iteration_stride + id];
-        vals_cast[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        vals_cast[i * iteration_stride + id] = vals_arr[i];
     }
 #endif
 }
@@ -399,7 +403,6 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
 
-    int row = blockIdx.x;
     int id = threadIdx.x;
     int gid = id >> 5;
 
@@ -410,10 +413,13 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
     const __half2* residual_cast = reinterpret_cast<const __half2*>(residual);
 
+    vals_cast += (blockIdx.x * row_stride);
+    residual_cast += (blockIdx.x * row_stride);
+
     float sum = 0.f;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_f[i] = __half22float2(residual_cast[row * row_stride + i * iteration_stride + id]);
+        vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
     }
@@ -462,14 +468,14 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) vars[row] = __float2half(variance);
+    if (training && g.thread_rank() == 0) vars[blockIdx.x] = __float2half(variance);
 
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] = __float22half2_rn(vals_f[i]);
         vals_arr[i] = (vals_arr[i] - mean_h) * h2rsqrt(variance_h);
         vals_arr[i] = vals_arr[i] * gamma_cast[i * iteration_stride + id] +
                       beta_cast[i * iteration_stride + id];
-        vals_cast[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        vals_cast[i * iteration_stride + id] = vals_arr[i];
     }
 #endif
 }

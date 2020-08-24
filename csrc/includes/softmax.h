@@ -30,13 +30,34 @@ public:
         }
     };
 
-    Softmax(Config config) : config_(config) {}
+    Softmax(Config config) : config_(config) {
+        cudaMalloc(&_masked_softmax, 
+                (size_t)ceil((float)(config.batchSize * config.heads * config.seq_length * config.seq_length * 15) / 100.0) * sizeof(T));
+    }
 
-    ~Softmax() {}
+    ~Softmax() {
+        cudaFree(_masked_softmax);
+    }
+
+    void Forward_fused_dropout(int bsz, T * vals, const T * attn_mask, uint8_t* mask, float ratio, cudaStream_t &stream, int threads)
+    {
+        launch_attn_softmax_dropout<T>(vals, attn_mask, mask, _masked_softmax,
+                                ratio, bsz, config_.heads, config_.seq_length, stream, threads);
+    }
+
+    void Backward_fused_dropout(int bsz, T *out_grad, const T* soft_out, uint8_t* mask, float ratio, cudaStream_t stream, int threads)
+    {
+        launch_attn_softmax_dropout_grad<T>(out_grad, soft_out, mask, _masked_softmax, ratio, bsz, config_.heads, config_.seq_length, stream, threads);
+    }
 
     void Forward(int bsz, T* vals, const T* attn_mask, cudaStream_t& stream)
     {
-        launch_attn_softmax_v3<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+        launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+    }
+
+    void Forward1(int bsz, T* vals, const T* attn_mask, cudaStream_t& stream, int threads = 512, int blocks = 512, int reduce_threads = 32)
+    {
+        launch_attn_softmax_v2<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream, threads, blocks, reduce_threads);
     }
 
     void Backward(int bsz, T* out_grad, const T* soft_out, cudaStream_t stream)
@@ -54,5 +75,6 @@ public:
     inline int GetSeqLength() const { return config_.seq_length; }
 
 private:
+    T *_masked_softmax;
     Config config_;
 };

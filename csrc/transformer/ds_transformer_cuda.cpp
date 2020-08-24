@@ -10,8 +10,10 @@
 #include "custom_cuda_layers.h"
 #include "ds_transformer_cuda.h"
 
-#define PERF_TEST
-
+//#define PERF_TEST
+#include <iostream>
+using namespace std;
+static std::unordered_map<int, std::shared_ptr<void>> s_LayerNormalize_layers;
 static std::unordered_map<int, std::shared_ptr<void>> s_transformer_layers;
 static std::unordered_map<int, std::shared_ptr<void>> s_bias_residual_dropout_layers;
 static std::unordered_map<int, std::shared_ptr<void>> s_mlp_layers;
@@ -249,6 +251,9 @@ void BertTransformerLayer<T>::Forward(int bsz,
 
     // attn prob dropout.
     _attn_prob_dropout.Forward(bsz_heads * _seq_length, ctx_bufB_ptr, soft_out_ptr, _stream);
+
+    //_softmax.Forward_fused_dropout(bsz, soft_out_ptr, input_mask_ptr, 
+    //            _attn_prob_dropout.GetMask(), _attn_prob_dropout.GetRatio(), _stream, 512);
 
     // attention context
     _attn_context.Forward(bsz_heads, buf_1, v_tf_ptr, ctx_bufB_ptr, _cublasHandle);
@@ -521,6 +526,9 @@ void BertTransformerLayer<T>::Backward(int bsz,
 
     _softmax.Backward(bsz, ff2_buf, soft_out_ptr, _stream);
 
+    //_softmax.Backward_fused_dropout(bsz, ff2_buf, soft_out_ptr, 
+      //      _attn_prob_dropout.GetMask(), _attn_prob_dropout.GetRatio(), _stream, 1024);
+
     _attn_scores.Backward(bsz_heads, ff2_buf, k_tf_ptr, q_tf_ptr, _cublasHandle, buf_2, buf_1);
 
     launch_transform4d_0213(ff2_buf, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 3);
@@ -762,12 +770,6 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
                                   (uint8_t*)attn_output_dropout_mask.data_ptr(),
                                   (uint8_t*)layer_output_dropout_mask.data_ptr());
 
-    if(layer_id == 0)
-        if(checkpoint_disabled)
-            Context::Instance().RestoreRandOffset();
-        else
-            Context::Instance().StoreRandOffset();
-
     layer->Forward(bsz,
                    input_ptr,
                    input_mask_ptr,
@@ -1004,7 +1006,6 @@ BertMlpLayer<T>::BertMlpLayer(int layer_id,
                               int num_heads,
                               int intermediate_size,
                               int seq_length,
-                              float hidden_output_dropout_ratio,
                               const std::vector<std::array<int, 3>>& gemm_algos,
                               bool gelu_checkpoint,
                               bool stochastic_mode)
@@ -1027,26 +1028,16 @@ BertMlpLayer<T>::BertMlpLayer(int layer_id,
                                            hidden_size,
                                            _intermediate_size,
                                            gemm_algos[2])),
-      _gelu(typename Gelu<T>::Config(_batch_size, _seq_length, _intermediate_size)),
-      _layer_output_dropout(typename Dropout<T>::Config(hidden_output_dropout_ratio,
-                                                        _batch_size * _seq_length,
-                                                        _hidden_size))
+      _gelu(typename Gelu<T>::Config(_batch_size, _seq_length, _intermediate_size))
 {
     assert(_hidden_size % _heads == 0);
     assert(_seq_length <= 1024);
-
     Initialize();
 }
 
 template <typename T>
 BertMlpLayer<T>::~BertMlpLayer()
 {
-#ifdef PERF_TEST
-    std::cout << "MLP forward elapsed:\n";
-    for(int i = 0;i < 3;i++)std::cout << timing_forward[i]/100 << std::endl;
-    std::cout << "MLP backward elapsed:\n";
-    for(int i = 0;i < 3;i++)std::cout << timing_backward[i]/100 << std::endl;
-#endif
 }
 
 template <typename T>
@@ -1056,11 +1047,12 @@ void BertMlpLayer<T>::Initialize()
         _batch_size, _seq_length, _hidden_size, _heads, _training, _gelu_checkpoint));
 
     if (std::is_same<T, __half>::value) cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
-
+#ifdef PERF_TEST
     for(int i = 0;i < 3;i++)
         timing_forward[i] = 0;
     for(int i = 0;i < 3;i++)
         timing_backward[i] = 0;
+#endif
 }
 
 template <typename T>
@@ -1075,7 +1067,7 @@ void BertMlpLayer<T>::Forward(int bsz,
                               T* ff2_inp_ptr)
 {
     cublasSetStream(_cublasHandle, _stream);
-
+    int local_rank = Context::Instance().Get_local_rank();
     if (!_stochastic_mode) cudaStreamSynchronize(_stream);
 
     T* workspace = static_cast<T*>(Context::Instance().GetWorkSpace());
@@ -1099,7 +1091,9 @@ void BertMlpLayer<T>::Forward(int bsz,
                  (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                  _cublasHandle);
 #ifdef PERF_TEST
+    if(local_rank == 0)cout << "MLPLayer FWD: \n";
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 
@@ -1113,6 +1107,7 @@ void BertMlpLayer<T>::Forward(int bsz,
                              _stream);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 
@@ -1126,12 +1121,9 @@ void BertMlpLayer<T>::Forward(int bsz,
                  _cublasHandle);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
-    // layer output dropout.
-    //_layer_output_dropout.ForwardWithBias(
-    //        bsz_seq, out_ptr, out_ptr, add_res_ptr, output_b_ptr, _stream);
-
 }
 
 template <typename T>
@@ -1151,6 +1143,7 @@ void BertMlpLayer<T>::Backward(int bsz,
                                T* grad_output_b_ptr)
 {
     cublasSetStream(_cublasHandle, _stream);
+    int local_rank = Context::Instance().Get_local_rank();
 #ifdef PERF_TEST
     int index = 0;
     float delay;
@@ -1178,7 +1171,9 @@ void BertMlpLayer<T>::Backward(int bsz,
                   _stream,
                   buf_1);
 #ifdef PERF_TEST
+    if(local_rank == 0)cout << "MLPLayer BWD: \n";
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1188,6 +1183,7 @@ void BertMlpLayer<T>::Backward(int bsz,
         bsz, buf_1, (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr), inter_b_ptr, _stream);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1204,24 +1200,10 @@ void BertMlpLayer<T>::Backward(int bsz,
                   grad_input_ptr);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 }
-
-
-template <typename T>
-void BertMlpLayer<T>::SetTrainingMode(bool training)
-{
-    // Dropout will be skipped when not in training model.
-    _layer_output_dropout.SetTrainingMode(training);
-}
-
-template <typename T>
-void BertMlpLayer<T>::SetIntermediateBuffers(uint8_t* layer_output_dropout_mask_ptr)
-{
-    _layer_output_dropout.SetMask(layer_output_dropout_mask_ptr);
-}
-
 
 template <typename T>
 int create_mlp_layer(int layer_id,
@@ -1230,23 +1212,23 @@ int create_mlp_layer(int layer_id,
                              int num_heads,
                              int intermediate_size,
                              int seq_length,
-                             float hidden_dropout_ratio,
                              int seed,
                              bool test_gemm,
                              bool gelu_checkpoint,
-                             bool stochastic_mode)
+                             bool stochastic_mode,
+                             int local_rank)
 {
     Context::Instance().SetSeed(seed);
     Context::Instance().TestGemmFP16(
         test_gemm, batch_size, seq_length, num_heads, hidden_dim / num_heads);
-
+    
+    Context::Instance().Set_local_rank(local_rank);
     auto layer = std::make_shared<BertMlpLayer<T>>(layer_id,
                                                    batch_size,
                                                    hidden_dim,
                                                    num_heads,
                                                    intermediate_size,
                                                    seq_length,
-                                                   hidden_dropout_ratio,
                                                    Context::Instance().GetGemmAlgos(),
                                                    gelu_checkpoint,
                                                    stochastic_mode);
@@ -1294,12 +1276,6 @@ std::vector<torch::Tensor> ds_mlp_forward(int layer_id,
                        .layout(torch::kStrided)
                        .device(torch::kCUDA)
                        .requires_grad(true);
-
-    auto uint8_options = torch::TensorOptions()
-                             .dtype(torch::kInt8)
-                             .layout(torch::kStrided)
-                             .device(torch::kCUDA)
-                             .requires_grad(false);
 
     std::shared_ptr<BertMlpLayer<T>> layer =
         std::static_pointer_cast<BertMlpLayer<T>>(s_mlp_layers[layer_id]);
@@ -1422,7 +1398,6 @@ Self_attentionLayer<T>::Self_attentionLayer(int layer_id,
                                               int selfattention_size,
                                               int seq_length,
                                               float attn_prob_dropout_ratio,
-                                              float hidden_output_dropout_ratio,
                                               bool pre_or_postLayerNorm,
                                               const std::vector<std::array<int, 3>>& gemm_algos,
                                               bool attn_dropout_checkpoint,
@@ -1474,19 +1449,13 @@ Self_attentionLayer<T>::Self_attentionLayer(int layer_id,
 {
     assert(_hidden_size % _heads == 0);
     assert(_seq_length <= 1024);
-
     Initialize();
 }
 
 template <typename T>
 Self_attentionLayer<T>::~Self_attentionLayer()
 {
-#ifdef PERF_TEST
-    std::cout << "Self-Attention forward elapsed:\n";
-    for(int i = 0;i < 8;i++)std::cout << timing_forward[i]/100 << std::endl;
-    std::cout << "Self-Attention backward elapsed:\n";
-    for(int i = 0;i < 8;i++)std::cout << timing_backward[i]/100 << std::endl;
-#endif
+    //cout << "SOFTMAX BACKWARD: " << soft_backward << endl;
 }
 
 template <typename T>
@@ -1495,10 +1464,13 @@ void Self_attentionLayer<T>::Initialize()
     Context::Instance().GenWorkSpace(get_workspace_size<T>(_batch_size, _seq_length, _hidden_size, _heads, _training));
 
     if (std::is_same<T, __half>::value) cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
+#ifdef PERF_TEST
     for(int i = 0;i < 8;i++)
         timing_forward[i] = 0;
+
     for(int i = 0;i < 8;i++)
         timing_backward[i] = 0;
+#endif
 }
 
 template <typename T>
@@ -1520,10 +1492,11 @@ void Self_attentionLayer<T>::Forward(int bsz,
     cublasSetStream(_cublasHandle, _stream);
 #ifdef PERF_TEST
     int index = 0;
-    float delay;
+    float delay = 0;
     GPUTimer t1;
 #endif
     if (!_stochastic_mode) cudaStreamSynchronize(_stream);
+    int local_rank = Context::Instance().Get_local_rank();
 
     T* workspace = static_cast<T*>(Context::Instance().GetWorkSpace());
     size_t small_buf_size = bsz * _seq_length * _hidden_size;
@@ -1539,7 +1512,9 @@ void Self_attentionLayer<T>::Forward(int bsz,
 #endif
     _qkv_linear.Forward(bsz_seq, input_ptr, attn_qkvw_ptr, buf_0, _cublasHandle);
 #ifdef PERF_TEST
+    if(local_rank == 0)cout << "Self_attentionLayer FWD: \n";
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1549,6 +1524,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
         q_tf_ptr, buf_0, attn_qkvb_ptr, bsz, _seq_length, _selfattention_size, _heads, _stream, 3);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
     int bsz_heads = bsz * _heads;
@@ -1559,15 +1535,19 @@ void Self_attentionLayer<T>::Forward(int bsz,
     _attn_scores.Forward(bsz_heads, soft_out_ptr, k_tf_ptr, q_tf_ptr, _cublasHandle);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
     t1.Record();
 #endif
     // Softmax + Mask
-    _softmax.Forward(bsz, soft_out_ptr, nullptr, _stream);
+    _softmax.Forward1(bsz, soft_out_ptr, nullptr, _stream);
+    //_softmax.Forward_fused_dropout(bsz, soft_out_ptr, input_mask_ptr, 
+      //          _attn_prob_dropout.GetMask(), _attn_prob_dropout.GetRatio(), _stream, _threads);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1577,6 +1557,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
     _attn_prob_dropout.Forward(bsz_heads * _seq_length, ctx_bufB_ptr, soft_out_ptr, _stream);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1586,6 +1567,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
     _attn_context.Forward(bsz_heads, buf_1, v_tf_ptr, ctx_bufB_ptr, _cublasHandle);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1595,6 +1577,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
         attn_o_inp_ptr, buf_1, bsz, _heads, _seq_length, _selfattention_size, _stream, 1);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1603,6 +1586,7 @@ void Self_attentionLayer<T>::Forward(int bsz,
     _attn_out_linear.Forward(bsz_seq, attn_o_inp_ptr, attn_ow_ptr, out_ptr, _cublasHandle);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif 
 }
@@ -1631,7 +1615,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     cublasSetStream(_cublasHandle, _stream);
 
     if (!_stochastic_mode) cudaStreamSynchronize(_stream);
-
+    int local_rank = Context::Instance().Get_local_rank();
     T* workspace = static_cast<T*>(Context::Instance().GetWorkSpace());
     size_t small_buf_size = bsz * _seq_length * _selfattention_size;
     T* buf_0 = workspace;
@@ -1664,7 +1648,9 @@ void Self_attentionLayer<T>::Backward(int bsz,
                               _stream,
                               buf_1);
 #ifdef PERF_TEST
+    //if(local_rank == 0)cout << "Self_attentionLayer BWD: \n";
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1673,6 +1659,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     launch_transform_0213<T>(buf_2, buf_1, bsz, _seq_length, _selfattention_size, _heads, _stream);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1695,6 +1682,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
                                 soft_out_ptr, _cublasHandle, buf_3, ff2_buf);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1703,14 +1691,19 @@ void Self_attentionLayer<T>::Backward(int bsz,
     _attn_prob_dropout.Backward(bsz_heads * _seq_length, ff2_buf, _stream);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
     t1.Record();
 #endif
     _softmax.Backward(bsz, ff2_buf, soft_out_ptr, _stream);
+    //_softmax.Backward_fused_dropout(bsz, ff2_buf, soft_out_ptr, 
+      //      _attn_prob_dropout.GetMask(), _attn_prob_dropout.GetRatio(), _stream, _threads);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    soft_backward += delay;
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1719,6 +1712,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     _attn_scores.Backward(bsz_heads, ff2_buf, k_tf_ptr, q_tf_ptr, _cublasHandle, buf_2, buf_1);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1727,6 +1721,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
     launch_transform4d_0213(ff2_buf, buf_1, bsz, _heads, _seq_length, _selfattention_size, _stream, 3);
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 #ifdef PERF_TEST
@@ -1744,6 +1739,7 @@ void Self_attentionLayer<T>::Backward(int bsz,
                     
 #ifdef PERF_TEST
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 }
@@ -1770,18 +1766,19 @@ int create_self_attention_layer(int layer_id,
                              int num_heads,
                              int seq_length,
                              float attn_dropout_ratio,
-                             float hidden_dropout_ratio,
                              int seed,
                              bool pre_or_postLayerNorm,
                              bool test_gemm,
                              bool attn_dropout_checkpoint,
                              bool normalize_invertible,
-                             bool stochastic_mode)
+                             bool stochastic_mode,
+                             int local_rank)
 {
     Context::Instance().SetSeed(seed);
     Context::Instance().TestGemmFP16(
         test_gemm, batch_size, seq_length, num_heads, hidden_dim / num_heads);
-
+    
+    Context::Instance().Set_local_rank(local_rank);
     auto layer = std::make_shared<Self_attentionLayer<T>>(layer_id,
                                                            batch_size,
                                                            hidden_dim,
@@ -1789,7 +1786,6 @@ int create_self_attention_layer(int layer_id,
                                                            selfattention_size,
                                                            seq_length,
                                                            attn_dropout_ratio,
-                                                           hidden_dropout_ratio,
                                                            pre_or_postLayerNorm,
                                                            Context::Instance().GetGemmAlgos(),
                                                            attn_dropout_checkpoint,
@@ -1816,7 +1812,8 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
                                                   const torch::Tensor& attn_ob,
                                                   bool training_mode,
                                                   bool prelayernorm,
-                                                  bool attn_dropout_checkpoint)
+                                                  bool attn_dropout_checkpoint,
+                                                  bool grad_enable)
 {
     CHECK_INPUT(input);
     CHECK_INPUT(input_mask);
@@ -1826,6 +1823,8 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
     CHECK_INPUT(attn_ob);
 
     int bsz = input.size(0);
+
+    Context::Instance().Enable_Grad(grad_enable);
 
     const T* input_ptr = (const T*)input.data_ptr();
     const T* input_mask_ptr = (const T*)input_mask.data_ptr();
@@ -1855,9 +1854,9 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
     auto attn_o_inp = torch::empty_like(input);
     auto qkv_tf = torch::empty({(bsz * 3), layer->GetNumHeads(), layer->GetSeqLength(), (layer->GetSelfAttentionSize() / layer->GetNumHeads())}, options);
 
-    auto attn_prob_dropout_mask =
-        torch::empty({(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()},
-                     uint8_options);
+    //auto attn_prob_dropout_mask =
+    //    torch::empty({(bsz * layer->GetNumHeads() * layer->GetSeqLength()), layer->GetSeqLength()},
+    //                 uint8_options);
 
     T* q_tf_ptr = (T*)qkv_tf.data_ptr();
     T* k_tf_ptr =
@@ -1878,7 +1877,7 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
     T* ctx_bufB_ptr = (T*)ctx_bufB.data_ptr();
 
     layer->SetTrainingMode(training_mode);
-    layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr());
+    //layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr());
 
     layer->Forward(bsz,
                    input_ptr,
@@ -1899,8 +1898,8 @@ std::vector<torch::Tensor> ds_self_attention_forward(int layer_id,
             qkv_tf,
             soft_out,
             ctx_bufB,
-            attn_o_inp,
-            attn_prob_dropout_mask};
+            attn_o_inp};
+            //attn_prob_dropout_mask};
 }
 
 template <typename T>
@@ -1911,7 +1910,7 @@ std::vector<torch::Tensor> ds_self_attention_backward(int layer_id,
                                                    const torch::Tensor& soft_out,
                                                    const torch::Tensor& ctx_bufB,
                                                    const torch::Tensor& attn_o_inp,
-                                                   const torch::Tensor& attn_prob_dropout_mask,
+                                                   //const torch::Tensor& attn_prob_dropout_mask,
                                                    const torch::Tensor& input,
                                                    const torch::Tensor& input_mask,
                                                    const torch::Tensor& attn_qkvw,
@@ -1966,7 +1965,7 @@ std::vector<torch::Tensor> ds_self_attention_backward(int layer_id,
     T* grad_attn_ow_ptr = (T*)grad_attn_ow.data_ptr();
     T* grad_attn_ob_ptr = (T*)grad_attn_ob.data_ptr();
 
-    layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr());
+    //layer->SetIntermediateBuffers((uint8_t*)attn_prob_dropout_mask.data_ptr());
 
     layer->Backward(bsz,
                     grad_output_ptr,
@@ -2020,10 +2019,12 @@ BiasResidualDropout<T>::BiasResidualDropout(int layer_id,
 {
     assert(_hidden_size % _heads == 0);
     assert(_seq_length <= 1024);
+#ifdef PERF_TEST
     for(int i = 0;i < 1;i++)
         timing_forward[i] = 0;
     for(int i = 0;i < 1;i++)
         timing_backward[i] = 0;
+#endif
 }
 
 template<typename T>
@@ -2045,6 +2046,7 @@ void BiasResidualDropout<T>::Forward(int bsz,
                  T* out_ptr)
 {
     if (!_stochastic_mode) cudaStreamSynchronize(_stream);
+    int local_rank = Context::Instance().Get_local_rank();
 #ifdef PERF_TEST
     int index = 0;
     float delay;
@@ -2056,7 +2058,9 @@ void BiasResidualDropout<T>::Forward(int bsz,
     _dropout.ForwardWithBias(
             (bsz * _seq_length), out_ptr, input_ptr, residual_ptr, b_ptr, _stream);
 #ifdef PERF_TEST
+    if(local_rank == 0)cout << "BiasResidualDropout FWD: \n";
     t1.Elapsed(delay);
+    if(local_rank == 0)cout << delay << endl;
     timing_forward[index++] += delay;
 #endif
 }
@@ -2067,6 +2071,7 @@ void BiasResidualDropout<T>::Backward(int bsz,
                   T* grad_input_ptr)
 {
     if (!_stochastic_mode) cudaStreamSynchronize(_stream);
+    int local_rank = Context::Instance().Get_local_rank();
 #ifdef PERF_TEST
     int index = 0;
     float delay;
@@ -2077,7 +2082,9 @@ void BiasResidualDropout<T>::Backward(int bsz,
 #endif
     _dropout.Backward((bsz * _seq_length), grad_input_ptr, grad_output_ptr, _stream);
 #ifdef PERF_TEST
+    //if(local_rank == 0)cout << "BiasResidualDropout BWD: \n";
     t1.Elapsed(delay);
+    //if(local_rank == 0)cout << delay << endl;
     timing_backward[index++] += delay;
 #endif
 }
@@ -2105,12 +2112,14 @@ int create_bias_residual_dropout_layer(int layer_id,
                              float dropout_ratio,
                              int seed,
                              bool test_gemm,
-                             bool stochastic_mode)
+                             bool stochastic_mode,
+                             int local_rank)
 {
     Context::Instance().SetSeed(seed);
     Context::Instance().TestGemmFP16(
         test_gemm, batch_size, seq_length, num_heads, hidden_dim / num_heads);
-
+    
+    Context::Instance().Set_local_rank(local_rank);
     auto layer = std::make_shared<BiasResidualDropout<T>>(layer_id,
                                                    batch_size,
                                                    hidden_dim,
@@ -2134,13 +2143,16 @@ std::vector<torch::Tensor> ds_bias_residual_dropout_forward(int layer_id,
                                           const torch::Tensor& input,
                                           const torch::Tensor& residual,
                                           const torch::Tensor& bias,
-                                          bool training_mode)
+                                          bool training_mode,
+                                          bool grad_enable)
 {
     CHECK_INPUT(input);
     CHECK_INPUT(residual);
     CHECK_INPUT(bias);
    
     int bsz = input.size(0);
+
+    Context::Instance().Enable_Grad(grad_enable);
 
     const T* input_ptr = (const T*)input.data_ptr();
     const T* residual_ptr = (const T*)residual.data_ptr();
@@ -2164,13 +2176,13 @@ std::vector<torch::Tensor> ds_bias_residual_dropout_forward(int layer_id,
     std::shared_ptr<BiasResidualDropout<T>> layer =
         std::static_pointer_cast<BiasResidualDropout<T>>(s_bias_residual_dropout_layers[layer_id]);
     
-    auto dropout_mask =
-        torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
+    //auto dropout_mask =
+    //    torch::empty({(bsz * layer->GetSeqLength()), layer->GetHiddenSize()}, uint8_options);
         
     //cout << "***************\t" << bsz << ' ' << layer->GetSeqLength() << ' ' << layer->GetHiddenSize() << ' ' << (int*)dropout_mask.data_ptr() << endl;
     
     layer->SetTrainingMode(training_mode);
-    layer->SetIntermediateBuffers((uint8_t*)dropout_mask.data_ptr());
+    //layer->SetIntermediateBuffers((uint8_t*)dropout_mask.data_ptr());
 
 
     layer->Forward(bsz,
@@ -2179,14 +2191,14 @@ std::vector<torch::Tensor> ds_bias_residual_dropout_forward(int layer_id,
                    bias_ptr,
                    out_ptr);
 
-    return {output, dropout_mask};
+    return {output}; //, dropout_mask};
 }
 
 
 template <typename T>
 std::vector<torch::Tensor> ds_bias_residual_dropout_backward(int layer_id,
-                                           const torch::Tensor& grad_output,
-                                           const torch::Tensor& dropout_mask)
+                                           const torch::Tensor& grad_output)
+                                           //const torch::Tensor& dropout_mask)
 {
     auto g_output = grad_output.contiguous();
     CHECK_INPUT(g_output);
@@ -2207,7 +2219,7 @@ std::vector<torch::Tensor> ds_bias_residual_dropout_backward(int layer_id,
     // inputs.
     const T* grad_output_ptr = (const T*)g_output.data_ptr();
 
-    layer->SetIntermediateBuffers((uint8_t*)dropout_mask.data_ptr());
+    //layer->SetIntermediateBuffers((uint8_t*)dropout_mask.data_ptr());
 
     // outputs.
     T* grad_input_ptr = (T*)grad_input.data_ptr();
@@ -2218,6 +2230,208 @@ std::vector<torch::Tensor> ds_bias_residual_dropout_backward(int layer_id,
 
     return {grad_input};
 }
+
+
+
+
+template<typename T>
+LayerNormalize<T>::LayerNormalize(int layer_id,
+                                   int batch_size,
+                                   int hidden_size,
+                                   int num_heads,
+                                   int seq_length,
+                                   bool normalize_invertible,
+                                   bool stochastic_mode) : _layer_id(layer_id),
+      _batch_size(batch_size),
+      _hidden_size(hidden_size),
+      _seq_length(seq_length),
+      _training(true),
+      _stochastic_mode(stochastic_mode),
+      _stream(Context::Instance().GetCurrentStream()),
+      _norm_layer(typename Normalize_Layer<T>::Config(batch_size,
+                                                      seq_length,
+                                                      hidden_size,
+                                                      true,
+                                                      false,
+                                                      false,
+                                                      !normalize_invertible))
+{
+    assert(_hidden_size % _heads == 0);
+    assert(_seq_length <= 1024);
+}
+
+template<typename T>
+LayerNormalize<T>::~LayerNormalize()
+{
+}
+
+template<typename T>
+void LayerNormalize<T>::Forward(int bsz,
+                                const T* input_ptr,
+                                const T* gamma_ptr,
+                                const T* betta_ptr,
+                                T* out_ptr)
+{
+    if (!_stochastic_mode) cudaStreamSynchronize(_stream);
+    
+    if (_norm_layer.UseMean())
+        _norm_layer.ForwardCheckpoint(
+            bsz, out_ptr, input_ptr, gamma_ptr, betta_ptr, _stream, true);
+    else
+        _norm_layer.Forward(
+            bsz, out_ptr, input_ptr, gamma_ptr, betta_ptr, _stream, true);
+}
+
+template<typename T>
+void LayerNormalize<T>::Backward(int bsz,
+                                 const T* grad_output_ptr,
+                                 const T* inout,
+                                 const T* gamma_ptr, 
+                                 const T* betta_ptr,
+                                 T* grad_input_ptr,
+                                 T* grad_gamma_ptr,
+                                 T* grad_betta_ptr)
+{
+    if (!_stochastic_mode) cudaStreamSynchronize(_stream);
+    cudaStream_t streams[2] = {_stream, _stream};
+
+    if (_norm_layer.UseMean())
+            _norm_layer.Backward(bsz,
+                                  grad_output_ptr,
+                                  gamma_ptr,
+                                  grad_gamma_ptr,
+                                  grad_betta_ptr,
+                                  streams,
+                                  grad_input_ptr,
+                                  inout);
+
+        else
+            _norm_layer.Backward(bsz,
+                                 grad_output_ptr,
+                                 gamma_ptr,
+                                 betta_ptr,
+                                 grad_gamma_ptr,
+                                 grad_betta_ptr,
+                                 streams,
+                                 grad_input_ptr,
+                                 inout);
+}
+
+template <typename T>
+int create_LayerNormalize_layer(int layer_id,
+                                int batch_size,
+                                int hidden_dim,
+                                int num_heads,
+                                int seq_length,
+                                bool normalize_invertible,
+                                int seed,
+                                bool test_gemm,
+                                bool stochastic_mode)
+{
+    Context::Instance().SetSeed(seed);
+    Context::Instance().TestGemmFP16(
+        test_gemm, batch_size, seq_length, num_heads, hidden_dim / num_heads);
+
+    auto layer = std::make_shared<LayerNormalize<T>>(layer_id,
+                                                   batch_size,
+                                                   hidden_dim,
+                                                   num_heads,
+                                                   seq_length,
+                                                   normalize_invertible,
+                                                   stochastic_mode);
+
+    s_LayerNormalize_layers[layer_id] = layer;
+
+    std::string dtype = (std::is_same<T, __half>::value) ? "half" : "float";
+
+    std::cout << "layer #" << layer_id << " is created with date type [" << dtype << "]."
+              << std::endl;
+
+    return 0;
+}
+
+template <typename T>
+std::vector<torch::Tensor> ds_LayerNormalize_forward(int layer_id,
+                                                     const torch::Tensor& input,
+                                                     const torch::Tensor& gamma,
+                                                     const torch::Tensor& betta)
+{
+    CHECK_INPUT(input);
+    CHECK_INPUT(gamma);
+    CHECK_INPUT(betta);
+   
+    int bsz = input.size(0);
+
+    const T* input_ptr = (const T*)input.data_ptr();
+    const T* gamma_ptr = (const T*)gamma.data_ptr();
+    const T* betta_ptr = (const T*)betta.data_ptr();
+
+    std::shared_ptr<LayerNormalize<T>> layer =
+        std::static_pointer_cast<LayerNormalize<T>>(s_LayerNormalize_layers[layer_id]);
+
+    auto output = torch::empty_like(input);
+    T* out_ptr = (T*)output.data_ptr();
+
+    layer->Forward(bsz,
+                   input_ptr,
+                   gamma_ptr,
+                   betta_ptr,
+                   out_ptr);
+
+    return {output};
+}
+
+
+template <typename T>
+std::vector<torch::Tensor> ds_LayerNormalize_backward(int layer_id,
+                                                      const torch::Tensor& grad_output,
+                                                      const torch::Tensor& inout,
+                                                      const torch::Tensor& gamma,
+                                                      const torch::Tensor& betta)
+{
+    auto g_output = grad_output.contiguous();
+    CHECK_INPUT(g_output);
+    CHECK_INPUT(gamma);
+    CHECK_INPUT(betta);
+    CHECK_INPUT(inout);
+
+    int bsz = g_output.size(0);
+
+    std::shared_ptr<LayerNormalize<T>> layer =
+        std::static_pointer_cast<LayerNormalize<T>>(s_LayerNormalize_layers[layer_id]);
+
+    auto grad_input = torch::empty_like(grad_output);
+    auto grad_gamma = torch::empty_like(gamma);
+    auto grad_betta = torch::empty_like(betta);
+
+    // inputs.
+    const T* grad_output_ptr = (const T*)g_output.data_ptr();
+    const T* gamma_ptr = (const T*)gamma.data_ptr();
+    const T* betta_ptr = (const T*)betta.data_ptr();
+    const T* inout_ptr = (const T*)inout.data_ptr();
+
+    // outputs.
+    T* grad_input_ptr = (T*)grad_input.data_ptr();
+    T* grad_gamma_ptr = (T*)grad_gamma.data_ptr();
+    T* grad_betta_ptr = (T*)grad_betta.data_ptr();
+
+    layer->Backward(bsz,
+                    grad_output_ptr,
+                    inout_ptr,
+                    gamma_ptr,
+                    betta_ptr,
+                    grad_input_ptr,
+                    grad_gamma_ptr,
+                    grad_betta_ptr);
+
+    return {grad_input,
+            grad_gamma,
+            grad_betta};
+}
+
+void store_rand_state() { Context::Instance().StoreRandOffset(); }
+
+void restore_rand_state(bool grad_enable) { Context::Instance().RestoreRandOffset(grad_enable); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -2293,4 +2507,28 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("create_bias_residual_dropout_layer_fp16",
           &create_bias_residual_dropout_layer<__half>,
           "Create DeepSpeed bias_residual_dropout Layer with fp16 (CUDA)");
+    m.def("forward_LayerNormalize_fp32",
+          &ds_LayerNormalize_forward<float>,
+          "DeepSpeed LayerNormalize forward with fp32 (CUDA)");
+    m.def("forward_LayerNormalize_fp16",
+          &ds_LayerNormalize_forward<__half>,
+          "DeepSpeed LayerNormalize forward with fp16 (CUDA)");
+    m.def("backward_LayerNormalize_fp32",
+          &ds_LayerNormalize_backward<float>,
+          "DeepSpeed LayerNormalize backward with fp32 (CUDA)");
+    m.def("backward_LayerNormalize_fp16",
+          &ds_LayerNormalize_backward<__half>,
+          "DeepSpeed LayerNormalize backward with fp16 (CUDA)");
+    m.def("create_LayerNormalize_layer_fp32",
+          &create_LayerNormalize_layer<float>,
+          "Create DeepSpeed LayerNormalize Layer with fp32 (CUDA)");
+    m.def("create_LayerNormalize_layer_fp16",
+          &create_LayerNormalize_layer<__half>,
+          "Create DeepSpeed LayerNormalize Layer with fp16 (CUDA)");
+    m.def("store_random_state",
+          &store_rand_state,
+          "store random state");
+    m.def("restore_random_state",
+          &restore_rand_state,
+          "restore random state");
 }   

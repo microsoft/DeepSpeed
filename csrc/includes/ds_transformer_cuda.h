@@ -177,13 +177,13 @@ private:
 template <typename T>
 class BertMlpLayer {
 public:
+
     BertMlpLayer(int layer_id,
                          int batch_size,
                          int hidden_size,
                          int num_heads,
                          int intermediate_size,
                          int seq_length,
-                         float hidden_output_dropout_ratio,
                          const std::vector<std::array<int, 3>>& gemm_algos,
                          bool gelu_checkpoint,
                          bool stochastic_mode);
@@ -215,13 +215,10 @@ public:
                   T* grad_output_w_ptr,
                   T* grad_output_b_ptr);
 
-    void SetIntermediateBuffers(uint8_t* layer_output_dropout_mask_ptr);
-
     inline int GetBatchSize() const { return _batch_size; }
     inline int GetNumHeads() const { return _heads; }
     inline int GetSeqLength() const { return _seq_length; }
     inline int GetHiddenSize() const { return _hidden_size; }
-    void SetTrainingMode(bool training);
 
 private:
     void Initialize();
@@ -244,7 +241,6 @@ private:
     // layers
     FeedForward<T> _ff1, _ff2;
     Gelu<T> _gelu;
-    Dropout<T> _layer_output_dropout;
 
     bool _training;
 
@@ -270,7 +266,6 @@ public:
                          int selfattention_size,
                          int seq_length,
                          float attn_dropout_ratio,
-                         float hidden_output_dropout_ratio,
                          bool pre_or_postLayerNorm,
                          const std::vector<std::array<int, 3>>& gemm_algos,
                          bool attn_dropout_checkpoint,
@@ -419,4 +414,58 @@ private:
     bool _stochastic_mode;
     float timing_forward[1];
     float timing_backward[1];
+};
+
+
+template <typename T>
+class LayerNormalize {
+public:
+    LayerNormalize(int layer_id,
+                   int batch_size,
+                   int hidden_size,
+                   int num_heads,
+                   int seq_length,
+                   bool normalize_invertible,
+                   bool stochastic_mode);
+
+    virtual ~LayerNormalize();
+
+    void Forward(int bsz,
+                 const T* input_ptr,
+                 const T* gamma_ptr,
+                 const T* betta_ptr,
+                 T* out_ptr);
+
+    void Backward(int bsz,
+                  const T* grad_output_ptr,
+                  const T* inout,
+                  const T* gamma_ptr, 
+                  const T* betta_ptr,
+                  T* grad_input_ptr,
+                  T* grad_gamma_ptr,
+                  T* grad_betta_ptr);
+
+    inline int GetBatchSize() const { return _batch_size; }
+    inline int GetNumHeads() const { return _heads; }
+    inline int GetSeqLength() const { return _seq_length; }
+    inline int GetHiddenSize() const { return _hidden_size; }
+    
+private:
+    // Params
+    int _layer_id;
+    int _batch_size;
+    int _hidden_size;
+    int _heads;
+    int _size_per_head;
+    int _seq_length;
+
+    cudaStream_t _stream;
+
+    // layers
+    
+    Normalize_Layer<T> _norm_layer;
+    bool _training;
+
+    // High Performace flags
+    bool _stochastic_mode;
 };

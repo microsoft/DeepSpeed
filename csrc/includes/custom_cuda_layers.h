@@ -190,7 +190,7 @@ template <typename T>
 void launch_attn_softmax_v2(T * vals, const T * attn_mask, 
                                  int batch_size, int heads, 
                                  int sequence_length, 
-                                 cudaStream_t stream);
+                                 cudaStream_t stream, int threads, int blocks, int reduce_threads);
 template <typename T>
 void launch_attn_softmax_v3(T * vals, const T * attn_mask, 
                                  int batch_size, int heads,
@@ -276,3 +276,16 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
                                        int rows,
                                        int cols,
                                        cudaStream_t stream);
+
+
+
+
+template <typename T>
+void launch_attn_softmax_dropout(T * vals, const T * attn_mask, uint8_t* mask, uint32_t* offsets, 
+                         uint32_t* counters, T* masked_softmax, float ratio,
+                         int batch_size, int heads, int sequence_length, cudaStream_t stream, int threads);
+
+
+template <typename T>
+void launch_attn_softmax_dropout_grad(T *out_grad, const T *soft_inp, uint8_t* mask, const uint32_t* offsets, T *masked_softmax, float ratio,
+                         int batch_size, int heads, int sequence_length, cudaStream_t stream, int threads);

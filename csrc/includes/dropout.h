@@ -69,6 +69,15 @@ public:
         _mask = mask;
     }
 
+    uint8_t* GetMask()
+    {
+        return _mask;
+    }
+    float GetRatio()
+    {
+        return _config.RATIO();
+    }
+
     Config GetConfig() const { return _config; }
 
 private:

@@ -9,6 +9,7 @@
 #include "cuda.h"
 #include "curand.h"
 #include "gemm_test.h"
+#include <stack>
 
 #define WARP_SIZE 32
 
@@ -41,7 +42,7 @@ inline int DS_GET_BLOCKS(const int N)
 
 class Context {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _prev_offset(0), _offset_stored(false)
+    Context() : _workspace(nullptr), _seed(42), _curr_offset(0), _prev_offset(0), _offset_stored(false), _grad_enable(true)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
@@ -92,19 +93,47 @@ public:
 
     std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc)
     {
+        //if(_local_rank == 0)printf("current offset is %lu\n", _curr_offset);
         uint64_t offset = _curr_offset;
+        if(_grad_enable)
+            _backward_offsets.push(_curr_offset);
         _curr_offset += offset_inc;
         return std::pair<uint64_t, uint64_t>(_seed, offset);
     }
 
-    inline void StoreRandOffset() { 
-        _offset_stored = true; 
-        _prev_offset = _curr_offset; 
-    }
+    std::pair<uint64_t, uint64_t> RestoreBackwardRandOffset() { 
+        if(_backward_offsets.empty())        
+            throw std::runtime_error("Can't restore random offset!");
 
-    inline void RestoreRandOffset() { 
-        if(_offset_stored)_curr_offset = _prev_offset; 
-        _offset_stored = false; 
+        auto offset = _backward_offsets.top();
+        _backward_offsets.pop(); 
+        return std::pair<uint64_t, uint64_t>(_seed, offset);
+    }
+    
+    inline void Enable_Grad(bool grad_enable) { _grad_enable = grad_enable;}
+
+    inline void StoreRandOffset() { 
+        //if(_local_rank == 0)printf("storing offset %lu\n", _curr_offset);
+        _prev_offset = _curr_offset; }
+
+    inline void RestoreRandOffset(bool grad_enable) { 
+        if(grad_enable)
+        {
+            if(!_offsets.empty()){
+                _curr_offset = _offsets.top();
+                _offsets.pop();
+                _offset_stored = _offsets.empty();
+            }
+        }
+        else
+        {
+            if(_offset_stored){
+               // if(_local_rank == 0)printf("offset restored from %lu to %lu\n", _curr_offset, _prev_offset);
+                _curr_offset = _prev_offset; 
+                _offset_stored = false; 
+            }
+            _offsets.push(_curr_offset);
+        }
     }
 
     void SetSeed(uint64_t new_seed) { _seed = new_seed; }
@@ -173,7 +202,8 @@ public:
             _gemm_algos.push_back(std::array<int, 3>({99, 99, 99}));
         }
     }
-
+    inline int Get_local_rank() const { return _local_rank; }
+    inline void Set_local_rank(int local_rank) { _local_rank = local_rank; }
     const std::vector<std::array<int, 3>>& GetGemmAlgos() const { return _gemm_algos; }
 
 private:
@@ -184,6 +214,10 @@ private:
     uint64_t _curr_offset;
     size_t _workSpaceSize;
     uint64_t _prev_offset;
+    std::stack<uint64_t> _offsets;
+    std::stack<uint64_t> _backward_offsets;
     bool _offset_stored;
+    bool _grad_enable;
+    int _local_rank;
     std::vector<std::array<int, 3>> _gemm_algos;
 };

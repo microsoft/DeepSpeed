@@ -528,8 +528,6 @@ class DeepSpeedTransformerLayer(nn.Module):
                                                   self.norm_b,
                                                   self.config)
 
-
-
 class DeepSpeedSelfAttentionFunction(Function):
     @staticmethod
     def forward(ctx,
@@ -556,8 +554,7 @@ class DeepSpeedSelfAttentionFunction(Function):
          qkv_tf,
          soft_inp,
          ctx_bufB,
-         attn_o_inp,
-         attn_prob_dropout_mask) = forward_func(config.layer_id,
+         attn_o_inp) = forward_func(config.layer_id,
                                                 input,
                                                 input_mask,
                                                 attn_qkvw,
@@ -566,8 +563,11 @@ class DeepSpeedSelfAttentionFunction(Function):
                                                 attn_ob,
                                                 config.training,
                                                 config.pre_layer_norm,
-                                                config.attn_dropout_checkpoint)
-
+                                                config.attn_dropout_checkpoint,
+                                                config.is_grad_enabled)
+        #if torch.distributed.get_rank() == 0:
+        #    print ("grad enable is ", self.config.is_grad_enabled)
+        #    print ("attention mask: ", attn_prob_dropout_mask)
         # For testing only.
         if False: #grads is not None:
             for i in [2]:
@@ -627,7 +627,6 @@ class DeepSpeedSelfAttentionFunction(Function):
         #    if not config.normalize_invertible:
         #        ctx.add_res = add_res
 #
-            ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
         #    ctx.attn_output_dropout_mask = attn_output_dropout_mask
             ctx.input = input
         #ctx.norm_w = norm_w
@@ -686,7 +685,6 @@ class DeepSpeedSelfAttentionFunction(Function):
              ctx.soft_inp,
              (ctx.soft_inp if ctx.config.attn_dropout_checkpoint else ctx.ctx_bufB),
              ctx.attn_o_inp,
-             ctx.attn_prob_dropout_mask,
              ctx.input,
              ctx.input, #input_mask,
              ctx.attn_qkvw,
@@ -767,13 +765,13 @@ class DeepSpeedSelfAttentionLayer(nn.Module):
                           self.config.heads,
                           self.config.max_seq_length,
                           self.config.attn_dropout_ratio,
-                          self.config.hidden_dropout_ratio,
                           self.config.seed,
                           self.config.pre_layer_norm,
                           self.config.test_gemm,
                           self.config.attn_dropout_checkpoint,
                           self.config.normalize_invertible,
-                          self.config.stochastic_mode)
+                          self.config.stochastic_mode,
+                          torch.distributed.get_rank())
 
     def init_transformer_weights(self, adjust_init_range=False):
         num_layers = self.config.num_hidden_layers
@@ -800,7 +798,6 @@ class DeepSpeedSelfAttentionLayer(nn.Module):
                                                   self.attn_ow,
                                                   self.attn_ob,
                                                   self.config)
-
 
 class DeepSpeedMLPFunction(Function):
     @staticmethod
@@ -951,11 +948,11 @@ class DeepSpeedMLPLayer(nn.Module):
                           self.config.heads,
                           self.config.intermediate_size,
                           self.config.max_seq_length,
-                          self.config.hidden_dropout_ratio,
                           self.config.seed,
                           self.config.test_gemm,
                           self.config.gelu_checkpoint,
-                          self.config.stochastic_mode)
+                          self.config.stochastic_mode,
+                          torch.distributed.get_rank())
 
     def init_transformer_weights(self, adjust_init_range=False):
         num_layers = self.config.num_hidden_layers
@@ -982,7 +979,6 @@ class DeepSpeedMLPLayer(nn.Module):
                                           self.output_b,
                                           self.config)
 
-
 class DeepSpeedBiasResidualDropoutFunction(Function):
     @staticmethod
     def forward(ctx,
@@ -1002,20 +998,19 @@ class DeepSpeedBiasResidualDropoutFunction(Function):
         cuda_module = ds_stochastic_transformer_cuda if config.stochastic_mode else ds_transformer_cuda
         forward_func = cuda_module.forward_bias_residual_dropout_fp16 if config.fp16 else cuda_module.forward_bias_residual_dropout_fp32
 
-        (output,
-         dropout_mask) = forward_func(config.layer_id,
+        output = forward_func(config.layer_id,
                                                    input,
                                                    residual,
                                                    bias,
-                                                   config.training)
-
+                                                   config.training,
+                                                   config.is_grad_enabled)
+        #if torch.distributed.get_rank() == 0:
+        #    print ("grad enable is ", self.config.is_grad_enabled)
+        #    print ("FWD biasdropout mask: ", dropout_mask)
         if config.is_grad_enabled:
-
             ctx.config = config
             
-            ctx.dropout_mask = dropout_mask
-
-        return output
+        return output[0]
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -1028,11 +1023,12 @@ class DeepSpeedBiasResidualDropoutFunction(Function):
 
         cuda_module = ds_stochastic_transformer_cuda if ctx.config.stochastic_mode else ds_transformer_cuda
         backward_func = cuda_module.backward_bias_residual_dropout_fp16 if ctx.config.fp16 else cuda_module.backward_bias_residual_dropout_fp32
-
+        
+        #if torch.distributed.get_rank() == 0:
+        #    print ("BWD biasdropout mask: ", ctx.dropout_mask)
         grad_input = backward_func(
              ctx.config.layer_id,
-             grad_output,
-             ctx.dropout_mask)
+             grad_output)
 
         return (grad_input[0],
                 grad_output,
@@ -1081,7 +1077,8 @@ class DeepSpeedBiasResidualDropoutLayer(nn.Module):
                           self.config.hidden_dropout_ratio,
                           self.config.seed,
                           self.config.test_gemm,
-                          self.config.stochastic_mode)
+                          self.config.stochastic_mode,
+                          torch.distributed.get_rank())
 
     def forward(self, input, residual, bias, grads=None):
         self.config.training = self.training
@@ -1093,8 +1090,6 @@ class DeepSpeedBiasResidualDropoutLayer(nn.Module):
                                                           self.config.layer_id,
                                                           bias,
                                                           self.config)
-
-
 
 
 class DeepSpeedLayerNormalizeFunction(Function):
@@ -1228,3 +1223,9 @@ class DeepSpeedLayerNormalizeLayer(nn.Module):
                                                       self.gamma,
                                                       self.betta,
                                                       self.config)
+
+def DeepSpeedStoreRandState():
+    ds_transformer_cuda.store_random_state()
+
+def DeepSpeedRestoreRandState():
+    ds_transformer_cuda.restore_random_state(torch.is_grad_enabled())

@@ -632,8 +632,8 @@ class BertLayer(nn.Module):
         self.biases = biases
 
     def forward(self, hidden_states, attention_mask, grads, collect_all_grads=False):
-        input_layer_norm = self.PreAttentionLayerNorm(hidden_states)
-        attention_output = self.attention(input_layer_norm, attention_mask)
+        #input_layer_norm = self.PreAttentionLayerNorm(hidden_states)
+        attention_output = self.attention(hidden_states, attention_mask)
         #print ("hidden shape is :", hidden_states.shape)
         intermediate_input = hidden_states + attention_output
 

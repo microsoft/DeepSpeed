@@ -11,6 +11,8 @@ from deepspeed.pt.deepspeed_cuda import DeepSpeedSelfAttentionLayer
 from deepspeed.pt.deepspeed_cuda import DeepSpeedMLPLayer
 from deepspeed.pt.deepspeed_cuda import DeepSpeedBiasResidualDropoutLayer
 from deepspeed.pt.deepspeed_cuda import DeepSpeedLayerNormalizeLayer
+from deepspeed.pt.deepspeed_cuda import DeepSpeedStoreRandState
+from deepspeed.pt.deepspeed_cuda import DeepSpeedRestoreRandState
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig
 
 import deepspeed.pt.deepspeed_checkpointing as checkpointing
