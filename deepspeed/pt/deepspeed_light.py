@@ -22,7 +22,7 @@ from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+    ADAM_OPTIMIZER, LAMB_OPTIMIZER, TORCH_ADAM_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
 from deepspeed.pt.deepspeed_dataloader import DeepSpeedDataLoader
 from deepspeed.pt.deepspeed_constants import \
@@ -169,9 +169,6 @@ class DeepSpeedLight(Module):
         self.optimizer = None
         self.lr_scheduler = None
         if model_parameters or optimizer:
-            optimizer_name = self.optimizer_name()
-            if optimizer_name is not None and "torch.optim" in optimizer_name:
-                self.zero_set_cpu_offload()
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
@@ -297,9 +294,6 @@ class DeepSpeedLight(Module):
 
     def zero_cpu_offload(self):
         return self._config.zero_config.cpu_offload
-
-    def zero_set_cpu_offload(self):
-        self._config.zero_config.cpu_offload = True
 
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
@@ -500,13 +494,8 @@ class DeepSpeedLight(Module):
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
-        #jie:
-        if client_optimizer is not None and self.zero_cpu_offload():
-            optimizer_parameters = self.optimizer_params()
-            basic_optimizer = torch.optim.Adam(client_optimizer.param_groups,
-                                               **optimizer_parameters)
-            logger.info('Using CPU Optimizer as basic optimizer')
-        elif client_optimizer is not None:
+
+        if client_optimizer is not None:
             basic_optimizer = client_optimizer
             logger.info('Using client Optimizer as basic optimizer')
         else:
@@ -519,13 +508,21 @@ class DeepSpeedLight(Module):
 
         if self.zero_optimization():
             assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-            if self.optimizer_name() != ADAM_OPTIMIZER:
+            if self.optimizer_name() not in [ADAM_OPTIMIZER, TORCH_ADAM_OPTIMIZER]:
                 assert self.zero_allow_untested_optimizer(), \
                     'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
                 logger.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                 )
+            if self.zero_cpu_offload():
+                if self.optimizer_name() != TORCH_ADAM_OPTIMIZER:
+                    assert self.zero_allow_untested_optimizer(), \
+                        'You are using ZeRO-Offload with an untested Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
+
+                    logger.warning(
+                        "**** You are using ZeRO-Offload with an untested optimizer, proceed with caution *****"
+                    )
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
         elif self.amp_enabled():
             assert not self.fp16_enabled(), "Cannot enable both amp with (legacy) fp16 mode"
@@ -551,6 +548,8 @@ class DeepSpeedLight(Module):
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == TORCH_ADAM_OPTIMIZER:
+            optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)

@@ -1244,16 +1244,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.optimizer.step()
 
         if self.cpu_offload:
+            stream = torch.cuda.current_stream()
             with torch.cuda.stream(self.migration_stream):
-                for averaged_gradients_cpu, fp32_partition in zip(self.averaged_gradients_on_cpu, self.single_partition_of_fp32_groups):
-                    averaged_gradients_cpu = async_copy_to(fp32_partition,
-                                                           torch.cuda.current_device(),
-                                                           self.migration_stream)
                 for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                     fp16_partitions[partition_id] = async_copy_to(
                         fp32_partition,
                         torch.cuda.current_device(),
-                        torch.cuda.main_stream())
+                        stream)
+                #for averaged_gradients_cpu, fp32_partition in zip(self.averaged_gradients_on_cpu, self.single_partition_of_fp32_groups):
+                #    averaged_gradients_cpu = [fp32_partition]
         else:
             for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                 fp16_partitions[partition_id].data.copy_(fp32_partition.data)
@@ -1415,7 +1414,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
-
+        torch.cuda.empty_cache()
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
     def check_overflow(self, partition_gradients=True):
