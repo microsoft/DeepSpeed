@@ -1,15 +1,18 @@
-from hank_compressed_scatter_gather import *
 from mpi4py import MPI
 import time
 import torch
 import torch.distributed as dist
 import numpy as np
+import deepspeed
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 
 torch.distributed.init_process_group(backend='nccl', init_method='tcp://worker-0:2345', world_size=size, rank=rank)
+
+dummy_model = torch.nn.Linear(10,10)
+dummy_optim = deepspeed.OnebitAdam(dummy_model)
 
 device = torch.device('cuda',rank)
 
@@ -38,7 +41,7 @@ server_error = torch.zeros(server_size, device=device)
 a_torch = torch_sim(a)
 
 
-a_after = Hank_cupy_compression_com_reduce(a, worker_error, server_error, rank, size, comm)
+a_after = dummy_optim.Compressed_Allreduce(a, worker_error, server_error, rank, size, comm)
 print('a becomes ',a)
 if rank == 0:
     print('a_after is: ', a_after)
