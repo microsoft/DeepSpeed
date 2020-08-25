@@ -1291,7 +1291,7 @@ void attn_softmax_v2(__half* vals,
     {
         if(iter_offset < total_count)
         {
-            int seq_id = ((iter_offset + (threadIdx.x >> 5)) % (seq_length << 2));
+            int seq_id = iter_offset % (seq_length << 2);
             int seq_id_4 = seq_id % 4;
             seq_id >>= 2;
 
@@ -1397,7 +1397,6 @@ void attn_softmax_v2(__half* vals,
                 sum = g.shfl(max_val, threadIdx.x / tbSize);
             }
             sum += 1e-6;
-            __half2 sum_h = __float2half2_rn(sum);
 
             for(int i = 0;i < tbSeq;i++)
             {
@@ -1407,11 +1406,13 @@ void attn_softmax_v2(__half* vals,
                     float2 result_f;
                     __half2* result_h = reinterpret_cast<__half2*>(&result_f);
 
+                    low_data[i].x /= sum;
+                    low_data[i].y /= sum;
+                    high_data[i].x /= sum;
+                    high_data[i].y /= sum;
+
                     result_h[0] = __float22half2_rn(low_data[i]);
                     result_h[1] = __float22half2_rn(high_data[i]);
-
-                    result_h[0] /= sum_h;
-                    result_h[1] /= sum_h;
 
                     val_cast[data_id] = result_f;
                 }
