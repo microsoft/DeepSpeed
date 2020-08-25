@@ -464,21 +464,28 @@ class OnebitAdam(torch.optim.Optimizer):
                     # v_diff = None
 
                 else:
-                    exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                    #grad = None
-                    torch.cuda.synchronize()
-                    cupy.cuda.get_current_stream().synchronize()
-                    if self.size > 1:
-                        #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
-                        #print('worker error is: ',state['worker_error'][0:10])
-                        exp_avg = self.Compressed_Allreduce(
-                            exp_avg,
-                            state['worker_error'],
-                            state['server_error'],
-                            self.rank,
-                            self.size, self.comm)
-                    #print('Finished rge Compre',flush=True)
-                    update = exp_avg / (exp_avg_sq + group['eps'])
+                    if 'non_freeze' in group.keys() and group['non_freeze'] is True:
+                        dist.all_reduce(grad)
+                        grad.mul_(1/dist.get_world_size())
+                        exp_avg.mul_(beta1).add(1 - beta1, grad)
+                        exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+                        grad = None
+                    else:
+                        exp_avg.mul_(beta1).add_(1 - beta1, grad)
+                        grad = None
+                        #torch.cuda.synchronize()
+                        #cupy.cuda.get_current_stream().synchronize()
+                        if self.size > 1:
+                            #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
+                            #print('worker error is: ',state['worker_error'][0:10])
+                            exp_avg = self.Compressed_Allreduce(
+                                exp_avg,
+                                state['worker_error'],
+                                state['server_error'],
+                                self.rank,
+                                self.size, self.comm)
+                        #print('Finished rge Compre',flush=True)
+                    update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
                         # logger.info('Rank is {}, Inside the optimizer the step is: {}'.format(self.rank, state['step']))
                         # cupy._default_memory_pool.free_all_blocks()
                         # torch.cuda.synchronize()
