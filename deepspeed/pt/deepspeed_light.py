@@ -658,8 +658,8 @@ class DeepSpeedLight(Module):
         data_parallel_world_size = None
         data_parallel_rank = None
         if self.mpu is not None:
-            data_parallel_world_size = mpu.get_data_parallel_world_size()
-            data_parallel_rank = mpu.get_data_parallel_rank()
+            data_parallel_world_size = self.mpu.get_data_parallel_world_size()
+            data_parallel_rank = self.mpu.get_data_parallel_rank()
 
         return DeepSpeedDataLoader(dataset=dataset,
                                    batch_size=batch_size,
@@ -1025,10 +1025,10 @@ class DeepSpeedLight(Module):
                 # rank is reducing the same size. In some cases it may make
                 # sense in the future to support the ability to average not
                 # w.r.t. world size but with a different value.
-                grads.append(
-                    torch.zeros(param.size(),
-                                dtype=param.dtype,
-                                device=param.device))
+                param.grad = torch.zeros(param.size(),
+                                         dtype=param.dtype,
+                                         device=param.device)
+                grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
                 if self.sparse_gradients_enabled(
