@@ -21,6 +21,7 @@ DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON"]
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
+PDSH_MAX_FAN_OUT = 1024
 
 
 def parse_args(args=None):
@@ -246,9 +247,6 @@ def main(args=None):
                                                  args.include,
                                                  args.exclude)
 
-    if multi_node_exec and not shutil.which('pdsh'):
-        raise RuntimeError("pdsh is not installed, unable to proceed")
-
     env = os.environ.copy()
 
     if not args.master_addr:
@@ -277,6 +275,11 @@ def main(args=None):
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
+    multi_node_exec = len(active_resources) > 1
+
+    if multi_node_exec and not shutil.which('pdsh'):
+        raise RuntimeError("pdsh is not installed, unable to proceed")
+
     if not multi_node_exec:
         deepspeed_launch = [
             sys.executable,
@@ -294,7 +297,9 @@ def main(args=None):
         active_workers = ",".join(active_resources.keys())
         logger.info("Running on the following workers: %s" % active_workers)
 
-        pdsh_cmd_args = ['pdsh', '-w', active_workers]
+        # PDSH flags for max node fan out and specific hosts to launch on
+        # See https://linux.die.net/man/1/pdsh for flag details
+        pdsh_cmd_args = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
 
         num_nodes = len(active_resources.keys())
         num_gpus_per_node = None
