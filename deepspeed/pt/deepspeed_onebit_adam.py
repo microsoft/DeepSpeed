@@ -47,6 +47,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  params,
                  deepspeed=None,
                  lr=1e-3,
+                 freeze_step = 10000000,
                  bias_correction=True,
                  betas=(0.9,
                         0.999),
@@ -81,6 +82,7 @@ class OnebitAdam(torch.optim.Optimizer):
         self.adam_freeze_key = False
         self.threshold = threshold
         self.initialize = False
+        self.freeze_step = freeze_step
 
     def myIgather(self, rank, size, comm, sendbuf, recbuf, root):
         req = []
@@ -368,7 +370,7 @@ class OnebitAdam(torch.optim.Optimizer):
             grads (list of tensors, optional): weight gradient to use for the
                 optimizer update. If gradients have type torch.half, parameters
                 are expected to be in type torch.float. (default: None)
-            output params (list of tensors, optional): A reduced precision copy
+            output params (list of tensors, optional): A reduced recision copy
                 of the updated weights written out in addition to the regular
                 updated weights. Have to be of same type as gradients. (default: None)
             scale (float, optional): factor to divide gradient tensor values
@@ -421,7 +423,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 100
+                    state['exp_avg_sq'] = torch.zeros_like(p.data)
 
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
@@ -460,7 +462,8 @@ class OnebitAdam(torch.optim.Optimizer):
                     # exp_avg_sq.add_(v_diff).addcmul_(1 - beta2, grad, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                     grad = None
-                    update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
+                    if self.initialize:
+                        update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
                     # v_diff = None
 
                 else:
@@ -471,30 +474,35 @@ class OnebitAdam(torch.optim.Optimizer):
                         exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                         grad = None
                     else:
-                        exp_avg.mul_(beta1).add_(1 - beta1, grad)
+                        if self.initialize is True:
+                            exp_avg.mul_(beta1).add_(1 - beta1, grad)
                         grad = None
                         #torch.cuda.synchronize()
                         #cupy.cuda.get_current_stream().synchronize()
                         if self.size > 1:
                             #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
                             #print('worker error is: ',state['worker_error'][0:10])
-                            exp_avg = self.Compressed_Allreduce(
+
+                            exp_avg.set_(self.Compressed_Allreduce(
                                 exp_avg,
                                 state['worker_error'],
                                 state['server_error'],
                                 self.rank,
-                                self.size, self.comm)
+                                self.size, self.comm))
+                            #if not self.initialize:
+                                #print('After Initialize the exp_avg is: ',exp_avg)
                         #print('Finished rge Compre',flush=True)
-                    update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
+                    if self.initialize:
+                        update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
                         # logger.info('Rank is {}, Inside the optimizer the step is: {}'.format(self.rank, state['step']))
                         # cupy._default_memory_pool.free_all_blocks()
                         # torch.cuda.synchronize()
                         # cupy.cuda.get_current_stream().synchronize()
-
-                if group['weight_decay'] > 0.0:
-                    update += group['weight_decay'] * p.data
-                with torch.no_grad():
-                    p.add_(-group['lr'] * update)
+                if self.initialize:
+                    if group['weight_decay'] > 0.0:
+                        update += group['weight_decay'] * p.data
+                    with torch.no_grad():
+                        p.add_(-group['lr'] * update)
 
             if not self.initialize:
                 print('Pop out errors',flush=True )
@@ -511,7 +519,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         if self.adam_freeze_key is False:
             # if False:
-            if state['step'] >= 50:
+            if state['step'] >= self.freeze_step:
             # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
