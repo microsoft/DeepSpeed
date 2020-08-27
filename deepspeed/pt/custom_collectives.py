@@ -1,3 +1,4 @@
+from mpi4py import MPI
 
 def myIgather(rank, size, comm, sendbuf, recbuf, root):
     req = []
@@ -102,22 +103,21 @@ def gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign
 def gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale):
     cuda_aware = True
     if cuda_aware:
-        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = 
-            gather_cuda(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
+        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_cuda(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
     else:
-        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = 
-            gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
+        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
     
     return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
 
-def allgather(comm, cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server):
+def allgather(comm, cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server):
+    cuda_aware = True
     if cuda_aware:
-        comm.Allgather(cupy_server_sign_packed[0], cupy_recvbuf_sign_server)
+        comm.Allgather(cupy_server_sign_packed, cupy_recvbuf_sign_server)
         comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
     else:
         # 1. Convert cupy to numpy
-        numpy_recvbuf_sign_server = np.zeros([world_size, cupy_server_sign_packed[0].size],
-                                                                dtype=cupy_sign_list_packed[0].dtype)
+        numpy_recvbuf_sign_server = np.zeros([world_size, cupy_server_sign_packed.size],
+                                                                dtype=cupy_sign_list_packed.dtype)
         numpy_recvbuf_scale_server = np.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
         
         numpy_server_sign_packed = cupy.asnumpy(cupy_server_sign_packed[0])
@@ -136,11 +136,11 @@ def allgather(comm, cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_s
         comm.Barrier()
         
         # 3. Convert numpy back to cupy
-        cupy_server_sign_packed = cupy.array(numpy_server_sign_packed[0])
+        cupy_server_sign_packed = cupy.array(numpy_server_sign_packed)
         cupy_recvbuf_sign_server = cupy.array(numpy_recvbuf_sign_server)
         cupy_server_scale = cupy.array(numpy_server_scale)
         cupy_recvbuf_scale_server = cupy.array(numpy_recvbuf_scale_server)
         cupy.cuda.get_current_stream().synchronize()
         
-    return cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server
+    return cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server
     

@@ -10,7 +10,9 @@ import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.pt.log_utils import logger
+
 from mpi4py import MPI
+from deepspeed.pt.custom_collectives import gather, allgather
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.  
@@ -128,8 +130,7 @@ class OnebitAdam(torch.optim.Optimizer):
         
         # Communication Phase 1
         gather_start = time.time()
-        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale =
-                custom_collectives.gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
+        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
         gather_end = time.time()
 
         cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(world_size, -1)
@@ -166,8 +167,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         # Communication Phase 2
         
-        cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server =
-                    custom_collectives.allgather(comm, cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server)
+        cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather(comm, cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server)
         
         #print("allgather and tconvert took:", (allgather_end - allgather_start)*1e3, t_convert*1e3, flush=True)
         #print('rank is {}, after the allgather in the buffer is {}'.format(rank,cupy_recvbuf_sign_server[0][0:10]))
@@ -250,7 +250,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 100
 
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
