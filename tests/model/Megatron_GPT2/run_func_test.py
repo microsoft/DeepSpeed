@@ -8,7 +8,7 @@ import subprocess
 import os
 import time
 import re
-from .test_common import BaseTestCase
+from test_common import BaseTestCase
 
 LAYERS = 2
 HIDDEN_SIZE = 128
@@ -295,15 +295,15 @@ class GPT2FuncTestCase(BaseTestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero1'))
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero1'))
-    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero1'))
-    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero1'))
+    # suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero1'))
+    # suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero1'))
+    # suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero1'))
+    # suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero1'))
 
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2'))
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2'))
+    # suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2'))
+    # suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2'))
     suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2'))
-    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2'))
+    # suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2'))
 
     suite.addTest(GPT2FuncTestCase('test_optimizer_scheduler'))
     return suite
