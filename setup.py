@@ -40,9 +40,12 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-ext_modules = [
+ext_modules = []
+
+## Lamb ##
+ext_modules.append(
     CUDAExtension(
-        name='deepspeed_lamb_cuda',
+        name='deepspeed.ops.lamb.fused_lamb_cuda',
         sources=['csrc/lamb/fused_lamb_cuda.cpp',
                  'csrc/lamb/fused_lamb_cuda_kernel.cu'],
         include_dirs=['csrc/includes'],
@@ -52,8 +55,11 @@ ext_modules = [
             ] + version_dependent_macros,
             'nvcc': ['-O3',
                      '--use_fast_math'] + version_dependent_macros
-        }),
-    CUDAExtension(name='deepspeed_transformer_cuda',
+        }))
+
+## Transformer ##
+ext_modules.append(
+    CUDAExtension(name='deepspeed.ops.transformer.transformer_cuda',
                   sources=[
                       'csrc/transformer/ds_transformer_cuda.cpp',
                       'csrc/transformer/cublas_wrappers.cu',
@@ -82,8 +88,9 @@ ext_modules = [
                           '-U__CUDA_NO_HALF_CONVERSIONS__',
                           '-U__CUDA_NO_HALF2_OPERATORS__'
                       ]
-                  }),
-    CUDAExtension(name='deepspeed_stochastic_transformer_cuda',
+                  }))
+ext_modules.append(
+    CUDAExtension(name='deepspeed.ops.transformer.stochastic_transformer_cuda',
                   sources=[
                       'csrc/transformer/ds_transformer_cuda.cpp',
                       'csrc/transformer/cublas_wrappers.cu',
@@ -113,15 +120,17 @@ ext_modules = [
                           '-U__CUDA_NO_HALF2_OPERATORS__',
                           '-D__STOCHASTIC_MODE__'
                       ]
-                  }),
-    CppExtension(name='deepspeed_sparse_transformer_util',
+                  }))
+
+## Sparse transformer ##
+ext_modules.append(
+    CppExtension(name='deepspeed.ops.sparse_transformer.cpp_util',
                  sources=['csrc/sparse_transformer/utils.cpp'],
                  extra_compile_args={'cxx': ['-O2',
-                                             '-fopenmp']})
-]
+                                             '-fopenmp']}))
 
 setup(name='deepspeed',
-      version='0.2.0',
+      version='0.3.0',
       description='DeepSpeed library',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
@@ -129,7 +138,7 @@ setup(name='deepspeed',
       packages=find_packages(exclude=["docker",
                                       "third_party",
                                       "csrc"]),
-      package_data={'': ['trsrc/sparse_transformer/*.tr']},
+      package_data={'deepspeed.ops.sparse_transformer.trsrc': ['*.tr']},
       scripts=['bin/deepspeed',
                'bin/deepspeed.pt',
                'bin/ds',

@@ -2,14 +2,13 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
-from deepspeed.pt.deepspeed_light import DeepSpeedLight
-from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
-from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
-from deepspeed.pt.log_utils import logger
-from deepspeed.pt.deepspeed_cuda import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from deepspeed.pt.deepspeed_config import DeepSpeedConfig
-
-import deepspeed.pt.deepspeed_checkpointing as checkpointing
+from deepspeed.runtime.engine import DeepSpeedEngine
+from deepspeed.runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
+from deepspeed.runtime.lr_schedules import add_tuning_arguments
+from deepspeed.runtime.config import DeepSpeedConfig
+from deepspeed.runtime.activation_checkpointing import checkpointing
+from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from deepspeed.utils import logger
 
 try:
     from deepspeed.git_version_info import git_hash, git_branch
@@ -19,7 +18,7 @@ except ImportError:
 
 # Export version information
 __version_major__ = 0
-__version_minor__ = 2
+__version_minor__ = 3
 __version_patch__ = 0
 __version__ = '.'.join(
     map(str,
@@ -90,16 +89,16 @@ def initialize(args,
             __git_branch__),
     )
 
-    engine = DeepSpeedLight(args=args,
-                            model=model,
-                            optimizer=optimizer,
-                            model_parameters=model_parameters,
-                            training_data=training_data,
-                            lr_scheduler=lr_scheduler,
-                            mpu=mpu,
-                            dist_init_required=dist_init_required,
-                            collate_fn=collate_fn,
-                            config_params=config_params)
+    engine = DeepSpeedEngine(args=args,
+                             model=model,
+                             optimizer=optimizer,
+                             model_parameters=model_parameters,
+                             training_data=training_data,
+                             lr_scheduler=lr_scheduler,
+                             mpu=mpu,
+                             dist_init_required=dist_init_required,
+                             collate_fn=collate_fn,
+                             config_params=config_params)
 
     return_items = [
         engine,

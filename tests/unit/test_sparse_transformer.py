@@ -9,7 +9,7 @@ import torch
 
 def test_sparse_transformer_module_availability():
     try:
-        from deepspeed.pt import sparse_transformer
+        from deepspeed.ops import sparse_transformer
     except ImportError:
         print("Sparse Transformer Module is not installed!")
         return False
@@ -18,7 +18,7 @@ def test_sparse_transformer_module_availability():
 
 def test_matmul_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import MatMul
+        from deepspeed.ops.sparse_transformer import MatMul
     except ImportError:
         print("Sparse Transformer MatMul Module is not installed!")
         return False
@@ -27,7 +27,7 @@ def test_matmul_module_availability():
 
 def test_softmax_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import Softmax
+        from deepspeed.ops.sparse_transformer import Softmax
     except ImportError:
         print("Sparse Transformer Softmax Module is not installed!")
         return False
@@ -36,7 +36,7 @@ def test_softmax_module_availability():
 
 def test_sparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import SparsityConfig
+        from deepspeed.ops.sparse_transformer import SparsityConfig
     except ImportError:
         print("SparsityConfig Module is not installed!")
         return False
@@ -45,7 +45,7 @@ def test_sparsityconfig_module_availability():
 
 def test_densesparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import DenseSparsityConfig
+        from deepspeed.ops.sparse_transformer import DenseSparsityConfig
     except ImportError:
         print("DenseSparsityConfig Module is not installed!")
         return False
@@ -54,7 +54,7 @@ def test_densesparsityconfig_module_availability():
 
 def test_fixedsparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import FixedSparsityConfig
+        from deepspeed.ops.sparse_transformer import FixedSparsityConfig
     except ImportError:
         print("FixedSparsityConfig Module is not installed!")
         return False
@@ -63,7 +63,7 @@ def test_fixedsparsityconfig_module_availability():
 
 def test_variablesparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import VariableSparsityConfig
+        from deepspeed.ops.sparse_transformer import VariableSparsityConfig
     except ImportError:
         print("VariableSparsityConfig Module is not installed!")
         return False
@@ -72,7 +72,7 @@ def test_variablesparsityconfig_module_availability():
 
 def test_bigbirdsparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import BigBirdSparsityConfig
+        from deepspeed.ops.sparse_transformer import BigBirdSparsityConfig
     except ImportError:
         print("BigBirdSparsityConfig Module is not installed!")
         return False
@@ -81,7 +81,7 @@ def test_bigbirdsparsityconfig_module_availability():
 
 def test_bslongformersparsityconfig_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import BSLongformerSparsityConfig
+        from deepspeed.ops.sparse_transformer import BSLongformerSparsityConfig
     except ImportError:
         print("BSLongformerSparsityConfig Module is not installed!")
         return False
@@ -90,7 +90,7 @@ def test_bslongformersparsityconfig_module_availability():
 
 def test_sparseselfattention_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import SparseSelfAttention
+        from deepspeed.ops.sparse_transformer import SparseSelfAttention
     except ImportError:
         print("SparseSelfAttention Module is not installed!")
         return False
@@ -99,7 +99,7 @@ def test_sparseselfattention_module_availability():
 
 def test_bertsparseselfattention_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import BertSparseSelfAttention
+        from deepspeed.ops.sparse_transformer import BertSparseSelfAttention
     except ImportError:
         print("BertSparseSelfAttention Module is not installed!")
         return False
@@ -108,7 +108,7 @@ def test_bertsparseselfattention_module_availability():
 
 def test_extend_position_embedding_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import extend_position_embedding
+        from deepspeed.ops.sparse_transformer import extend_position_embedding
     except ImportError:
         print("Sparse Transformer extend_position_embedding Module is not installed!")
         return False
@@ -117,7 +117,7 @@ def test_extend_position_embedding_module_availability():
 
 def test_update_tokenizer_model_max_length_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import update_tokenizer_model_max_length
+        from deepspeed.ops.sparse_transformer import update_tokenizer_model_max_length
     except ImportError:
         print(
             "Sparse Transformer update_tokenizer_model_max_length Module is not installed!"
@@ -128,7 +128,7 @@ def test_update_tokenizer_model_max_length_module_availability():
 
 def test_replace_model_self_attention_with_sparse_self_attention_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import replace_model_self_attention_with_sparse_self_attention
+        from deepspeed.ops.sparse_transformer import replace_model_self_attention_with_sparse_self_attention
     except ImportError:
         print(
             "Sparse Transformer replace_model_self_attention_with_sparse_self_attention Module is not installed!"
@@ -140,7 +140,7 @@ def test_replace_model_self_attention_with_sparse_self_attention_module_availabi
 def test_replace_self_attention_layer_with_sparse_self_attention_layer_module_availability(
 ):
     try:
-        from deepspeed.pt.sparse_transformer import replace_self_attention_layer_with_sparse_self_attention_layer
+        from deepspeed.ops.sparse_transformer import replace_self_attention_layer_with_sparse_self_attention_layer
     except ImportError:
         print(
             "Sparse Transformer replace_self_attention_layer_with_sparse_self_attention_layer Module is not installed!"
@@ -151,7 +151,7 @@ def test_replace_self_attention_layer_with_sparse_self_attention_layer_module_av
 
 def test_pad_to_block_size_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import pad_to_block_size
+        from deepspeed.ops.sparse_transformer import pad_to_block_size
     except ImportError:
         print("Sparse Transformer pad_to_block_size Module is not installed!")
         return False
@@ -160,7 +160,7 @@ def test_pad_to_block_size_module_availability():
 
 def test_unpad_sequence_output_module_availability():
     try:
-        from deepspeed.pt.sparse_transformer import unpad_sequence_output
+        from deepspeed.ops.sparse_transformer import unpad_sequence_output
     except ImportError:
         print("Sparse Transformer  unpad_sequence_output Module is not installed!")
         return False
@@ -224,7 +224,7 @@ def run_softmax_reference(x, scale, dx, kp_mask, attn_mask, layout, block):
 
 
 def run_softmax_st(x, scale, dx, kp_mask, attn_mask, layout, block):
-    from deepspeed.pt.sparse_transformer import Softmax
+    from deepspeed.ops.sparse_transformer import Softmax
     sparse_softmax = Softmax(layout, block, bench=False)
     dx = dense_to_sparse(dx, layout, block)
     x = dense_to_sparse(x, layout, block)
@@ -274,12 +274,21 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
     return layout, x, dx, bool_attn_mask, fp_attn_mask, kp_mask
 
 
-@pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 7,
-                    reason="needs minimum compute capability 7; v100")
+def _skip_on_cuda_compatability():
+    if torch.cuda.get_device_capability()[0] != 7:
+        pytest.skip("needs compute capability 7; v100")
+    cuda_major = int(torch.version.cuda.split('.')[0]) * 10
+    cuda_minor = int(torch.version.cuda.split('.')[1])
+    cuda_version = cuda_major + cuda_minor
+    if cuda_version != 101 and cuda_version != 102:
+        pytest.skip("requires cuda 10.1 or 10.2")
+
+
 @pytest.mark.parametrize("block", [16, 32])
 @pytest.mark.parametrize("width", [256, 576])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_softmax(block, width, dtype):
+    _skip_on_cuda_compatability()
     Z = 2
     H = 4
     scale = 0.4
@@ -313,7 +322,7 @@ def run_matmul_reference(x, w, mode, trans_a, trans_b, layout, block, dy):
 
 
 def run_matmul_st(x, w, mode, trans_a, trans_b, layout, block, dy):
-    from deepspeed.pt.sparse_transformer import MatMul
+    from deepspeed.ops.sparse_transformer import MatMul
     x = dense_to_sparse(x, layout, block) if mode == 'dsd' else x
     w = dense_to_sparse(w, layout, block) if mode == 'dds' else w
     dy = dense_to_sparse(dy, layout, block) if mode == 'sdd' else dy
@@ -359,10 +368,9 @@ testdata = [
    ]
 
 
-@pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 7,
-                    reason="needs minimum compute capability 7; v100")
 @pytest.mark.parametrize("block, dtype, mode, trans_a, trans_b", testdata)
 def test_matmul(block, dtype, mode, trans_a, trans_b):
+    _skip_on_cuda_compatability()
     Z = 3
     H = 2
     M = 128
