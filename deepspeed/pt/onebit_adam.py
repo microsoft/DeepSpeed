@@ -98,13 +98,13 @@ class OnebitAdam(torch.optim.Optimizer):
 
 
     
-    def Compressed_Allreduce(self, buffer_m: torch.tensor, worker_error, server_error, rank, world_size, comm):
+    def Compressed_Allreduce(self, buffer_m: torch.tensor, worker_error, server_error, rank, world_size, comm, local_rank):
         cuda_aware = True
         my_igather = True
     
         all_start_time = time.time()
         original_size = buffer_m.numel()
-        cupy.cuda.Device(rank % torch.cuda.device_count()).use()
+        cupy.cuda.Device(local_rank).use()
         
         if torch.numel(buffer_m) != torch.numel(worker_error):
             empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m), device=buffer_m.device)
@@ -112,7 +112,11 @@ class OnebitAdam(torch.optim.Optimizer):
 
         buffer_m.add_(worker_error)
         worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
-        worker_error.set_( (buffer_m - worker_scale * buffer_m.sign()) )
+        sign_buffer_m = buffer_m.sign().add_(1).bool()
+        sign_buffer_m = sign_buffer_m.float()
+        sign_buffer_m.add_(-0.5).mul_(2.0)
+        worker_error.set_( (buffer_m - worker_scale * sign_buffer_m) )
+        sign_buffer_m = None
 
         compensated_buffer_m = buffer_m
         compensated_buffer_m.sign_()
@@ -147,7 +151,11 @@ class OnebitAdam(torch.optim.Optimizer):
         # del unpacked_sign
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
-        server_error.set_(compensated_server_m - server_scale * compensated_server_m.sign())
+        sign_server_m = compensated_server_m.sign().add_(1).bool()
+        sign_server_m = sign_server_m.float()
+        sign_server_m.add_(-0.5).mul_(2.0)
+        server_error.set_(compensated_server_m - server_scale * sign_server_m)
+        sign_server_m = None
 
         compensated_server_m.sign_()
         compensated_server_m = compensated_server_m.add_(1).bool()
@@ -315,7 +323,7 @@ class OnebitAdam(torch.optim.Optimizer):
                                 state['worker_error'],
                                 state['server_error'],
                                 self.rank,
-                                self.size, self.comm))
+                                self.size, self.comm, self.deepspeed.local_rank))
                             #if not self.initialize:
                                 #print('After Initialize the exp_avg is: ',exp_avg)
                         #print('Finished rge Compre',flush=True)
