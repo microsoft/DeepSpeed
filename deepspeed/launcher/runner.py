@@ -285,7 +285,7 @@ def main(args=None):
             sys.executable,
             "-u",
             "-m",
-            "deepspeed.runtime.launch",
+            "deepspeed.launcher.launch",
             "--world_info={}".format(world_info_base64),
             "--master_addr={}".format(args.master_addr),
             "--master_port={}".format(args.master_port)
@@ -328,7 +328,7 @@ def main(args=None):
             sys.executable,
             "-u",
             "-m",
-            "deepspeed.runtime.launch",
+            "deepspeed.launcher.launch",
             '--world_info={}'.format(world_info_base64),
             "--node_rank=%n",
             "--master_addr={}".format(args.master_addr),
