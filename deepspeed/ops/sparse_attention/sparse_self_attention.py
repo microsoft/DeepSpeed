@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.nn.functional import *
 import torch
 from collections import namedtuple
-from deepspeed.ops.sparse_transformer import MatMul, Softmax, SparsityConfig
+from deepspeed.ops.sparse_attention import MatMul, Softmax, SparsityConfig
 import sys
 
 

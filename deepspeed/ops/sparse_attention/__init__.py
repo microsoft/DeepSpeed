@@ -3,4 +3,4 @@ from .softmax import Softmax
 from .matmul import MatMul
 from .sparse_self_attention import SparseSelfAttention
 from .bert_sparse_self_attention import BertSparseSelfAttention
-from .utils import extend_position_embedding, update_tokenizer_model_max_length, replace_model_self_attention_with_sparse_self_attention, replace_self_attention_layer_with_sparse_self_attention_layer, pad_to_block_size, unpad_sequence_output
+from .sparse_attention_utils import SparseAttentionUtils

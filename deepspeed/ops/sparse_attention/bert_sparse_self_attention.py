@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 
 from torch import nn
-from deepspeed.ops.sparse_transformer import SparseSelfAttention, FixedSparsityConfig
+from deepspeed.ops.sparse_attention import SparseSelfAttention, FixedSparsityConfig
 
 
 class BertSparseSelfAttention(nn.Module):

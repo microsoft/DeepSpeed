@@ -18,9 +18,9 @@ TRAIN_BATCH_SIZE = "train_batch_size"
 TRAIN_BATCH_SIZE_DEFAULT = None
 
 #############################################
-# Sparse self attention
+# Sparse attention
 #############################################
-SPARSE_SELF_ATTENTION = "sparse_self_attention"
+SPARSE_ATTENTION = "sparse_attention"
 SPARSE_DENSE_MODE = "dense"
 SPARSE_FIXED_MODE = "fixed"
 SPARSE_VARIABLE_MODE = "variable"

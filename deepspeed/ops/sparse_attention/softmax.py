@@ -1,10 +1,10 @@
-# DeepSpeed note, code taken & adapted from commit beddcc3eda6d3df1b34f74c2e10139e4317d0e7f
+# DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 
 import triton
 import torch
 import math
-from deepspeed.ops.sparse_transformer.trsrc import softmax_fwd, softmax_bwd
+from deepspeed.ops.sparse_attention.trsrc import softmax_fwd, softmax_bwd
 
 fwd_kernels = dict()
 bwd_kernels = dict()

@@ -158,10 +158,10 @@ def get_gradient_clipping(param_dict):
     return get_scalar_param(param_dict, GRADIENT_CLIPPING, GRADIENT_CLIPPING_DEFAULT)
 
 
-def get_sparse_self_attention(param_dict):
-    if SPARSE_SELF_ATTENTION in param_dict.keys():
-        sparsity = param_dict[SPARSE_SELF_ATTENTION]
-        mode = get_sparse_self_attention_mode(sparsity)
+def get_sparse_attention(param_dict):
+    if SPARSE_ATTENTION in param_dict.keys():
+        sparsity = param_dict[SPARSE_ATTENTION]
+        mode = get_sparse_attention_mode(sparsity)
 
         if (mode == SPARSE_DENSE_MODE):
             return get_sparse_dense_config(sparsity)
@@ -315,14 +315,14 @@ def get_sparse_bslongformer_config(sparsity):
     }
 
 
-def get_sparse_self_attention_mode(param_dict):
+def get_sparse_attention_mode(param_dict):
     if SPARSE_MODE in param_dict.keys():
         return param_dict[SPARSE_MODE]
     else:
         return SPARSE_MODE_DEFAULT
 
 
-def get_sparse_self_attention_type(param_dict):
+def get_sparse_attention_type(param_dict):
     if SPARSE_ATTENTION_TYPE in param_dict.keys():
         return param_dict[SPARSE_ATTENTION_TYPE]
     else:
@@ -529,7 +529,7 @@ class DeepSpeedConfig(object):
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
 
-        self.sparse_self_attention = get_sparse_self_attention(param_dict)
+        self.sparse_attention = get_sparse_attention(param_dict)
 
     def _batch_assertion(self):
 

@@ -1,6 +1,5 @@
-// DeepSpeed note, code taken & adapted from commit c368a9fd1b2c9dee4cc94de9a6bb0be3d447be41
-// https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
-// https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/attention.py
+// DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
+// https://github.com/ptillet/torch-blocksparse/blob/master/csrc/utils.cpp
 
 #include <torch/extension.h>
 #include <string>

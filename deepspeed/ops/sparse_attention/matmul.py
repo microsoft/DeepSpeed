@@ -1,10 +1,10 @@
-# DeepSpeed note, code taken & adapted from commit c368a9fd1b2c9dee4cc94de9a6bb0be3d447be41
+# DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 import importlib
 import triton
 import torch
 import math
-from deepspeed.ops.sparse_transformer.trsrc import matmul
+from deepspeed.ops.sparse_attention.trsrc import matmul
 
 
 ##############
@@ -79,8 +79,8 @@ class _sparse_matmul(torch.autograd.Function):
     ##########################
     # SPARSE = DENSE x DENSE #
     ##########################
-    cpp_util = importlib.import_module('deepspeed.ops.sparse_transformer.cpp_util')
-    sdd_segment = cpp_util.sdd_segment
+    cpp_utils = importlib.import_module('deepspeed.ops.sparse_attention.cpp_utils')
+    sdd_segment = cpp_utils.sdd_segment
 
     @staticmethod
     def make_sdd_lut(layout, block, dtype, device):

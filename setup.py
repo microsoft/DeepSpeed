@@ -124,8 +124,8 @@ ext_modules.append(
 
 ## Sparse transformer ##
 ext_modules.append(
-    CppExtension(name='deepspeed.ops.sparse_transformer.cpp_util',
-                 sources=['csrc/sparse_transformer/utils.cpp'],
+    CppExtension(name='deepspeed.ops.sparse_attention.cpp_utils',
+                 sources=['csrc/sparse_attention/utils.cpp'],
                  extra_compile_args={'cxx': ['-O2',
                                              '-fopenmp']}))
 
@@ -138,7 +138,7 @@ setup(name='deepspeed',
       packages=find_packages(exclude=["docker",
                                       "third_party",
                                       "csrc"]),
-      package_data={'deepspeed.ops.sparse_transformer.trsrc': ['*.tr']},
+      package_data={'deepspeed.ops.sparse_attention.trsrc': ['*.tr']},
       scripts=['bin/deepspeed',
                'bin/deepspeed.pt',
                'bin/ds',
