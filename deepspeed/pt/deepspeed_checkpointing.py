@@ -686,7 +686,7 @@ def configure(
 
     if mpu_ is not None:
         mpu = mpu_
-    
+
     if deepspeed_config is not None:
         _configure_using_config_file(deepspeed_config, mpu=mpu)
 
