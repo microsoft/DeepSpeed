@@ -16,8 +16,7 @@ from deepspeed.pt.log_utils import logger
 TENSOR_CORE_ALIGN_SIZE = 8
 ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
-TORCH_ADAM_OPTIMIZER = 'torch_adam'
-DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER, TORCH_ADAM_OPTIMIZER]
+DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER]
 
 
 def get_amp_enabled(param_dict):
@@ -465,10 +464,6 @@ class DeepSpeedConfig(object):
 
         assert self.gradient_accumulation_steps, "DeepSpeedConfig: {} is not defined".format(
             GRADIENT_ACCUMULATION_STEPS)
-
-        if self.optimizer_name == TORCH_ADAM_OPTIMIZER:
-            assert self.zero_enabled, "ZeRO is not enabled with using TORCH_ADAM_OPTIMIZER"
-            assert self.zero_config.cpu_offload, " cpu_offload is not enabled with using TORCH_ADAM_OPTIMIZER"
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled

@@ -28,25 +28,25 @@ def compare_model_states(saved_model, loaded_model):
     compare_deepspeed_states(saved_model, loaded_model)
 
     for p0, p1 in zip(saved_model.module.parameters(), loaded_model.module.parameters()):
-        assert torch.allclose(p0,p1,atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
+        assert torch.allclose(p0, p1, atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
 
     if isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer):
         for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups, loaded_model.optimizer.single_partition_of_fp32_groups):
-            assert torch.allclose(p0,p1,atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
+            assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer_Stage1):
         for partition0, partition1 in zip(saved_model.optimizer.local_sub_partitions_of_fp32_groups, loaded_model.optimizer.local_sub_partitions_of_fp32_groups):
             for p0, p1 in zip(partition0, partition1):
-                assert torch.allclose(p0,p1,atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
+                assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_Optimizer):
         for p0, p1 in zip(saved_model.optimizer.fp32_groups_flat, loaded_model.optimizer.fp32_groups_flat):
-            assert torch.allclose(p0,p1,atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
+            assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_UnfusedOptimizer):
         for params0, params1 in zip(saved_model.optimizer.fp32_groups, loaded_model.optimizer.fp32_groups):
             for p0, p1 in zip(params0, params1):
-                assert torch.allclose(p0,p1,atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
+                assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
     elif isinstance(saved_model.optimizer, torch.optim.Optimizer):
         pass
     else:
@@ -97,9 +97,9 @@ def checkpoint_correctness_verification(args,
                                         load_lr_scheduler_states=False,
                                         fp16=True):
     dtype = torch.half if fp16 else torch.float32
-    ds_model, _, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+    ds_model, _, _, _ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
     data_loader = random_dataloader(model=ds_model,
                                     total_samples=50,
                                     hidden_dim=hidden_dim,
@@ -117,9 +117,9 @@ def checkpoint_correctness_verification(args,
 
     trained_model.save_checkpoint(save_folder, save_tag)
 
-    loaded_model, _, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+    loaded_model, _, _, _ = deepspeed.initialize(args=args,
+                                                 model=model,
+                                                 model_parameters=model.parameters())
 
     loaded_model.load_checkpoint(save_folder,
                                  save_tag,
@@ -235,26 +235,21 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-'''
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, optimizer_type',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              True,
-                              "torch_adam"),
+                              True),
                          ])
-#@pytest.mark.parametrize("zero_stage", [1, 2])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, optimizer_type):
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": optimizer_type,
+            "type": "Adam",
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -288,31 +283,23 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, optimize
                                     model=model,
                                     hidden_dim=hidden_dim,
                                     load_optimizer_states=True)
-'''
 
 
-#@pytest.mark.parametrize("zero_stage", [1, 2])
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, optimizer_type',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              True,
-                              "torch_adam"),
+                              True),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir,
-                                      zero_stage,
-                                      use_cpu_offload,
-                                      optimizer_type):
+def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": optimizer_type,
+            "type": "Adam",
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -351,28 +338,23 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                                        load_optimizer_states=False)
 
 
-#@pytest.mark.parametrize("zero_stage", [0, 1, 2])
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, optimizer_type',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              "adam"),
+                              False),
                              (1,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              True,
-                              "torch_adam"),
+                              True),
                          ])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, optimizer_type):
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": optimizer_type,
+            "type": "Adam",
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -423,28 +405,23 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, optimizer_
                                   load_lr_scheduler_states=True)
 
 
-#@pytest.mark.parametrize("zero_stage", [0, 1, 2])
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, optimizer_type',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              "adam"),
+                              False),
                              (1,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              False,
-                              "adam"),
+                              False),
                              (2,
-                              True,
-                              "torch_adam"),
+                              True),
                          ])
-def cpu_offload_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, optimizer_type):
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": optimizer_type,
+            "type": "Adam",
             "params": {
                 "lr": 1e-5
             }
@@ -471,11 +448,11 @@ def cpu_offload_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, optimizer_type
     model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[2])
-    def _cpu_offload_lr_scheduler(args,
-                                  model,
-                                  hidden_dim,
-                                  load_optimizer_states,
-                                  load_lr_scheduler_states):
+    def _test_checkpoint_no_lr_scheduler(args,
+                                         model,
+                                         hidden_dim,
+                                         load_optimizer_states,
+                                         load_lr_scheduler_states):
         checkpoint_correctness_verification(
             args,
             model,
