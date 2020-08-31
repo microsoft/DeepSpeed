@@ -446,7 +446,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             torch.cuda.synchronize()
 
         for i, _ in enumerate(self.fp16_groups):
-            if self.averaged_gradients[i] is None:
+            if not i in self.averaged_gradients or self.averaged_gradients[i] is None:
                 self.averaged_gradients[i] = self.get_flat_partition(
                     self.params_in_partition[i],
                     self.first_offset[i],
@@ -467,7 +467,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         return_tensor_list=True)
                 
                 for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i],avg_new):
-                    accumulated_grad.add_(new_avg_new)
+                    accumulated_grad.add_(new_avg_grad)
             
         self._release_ipg_buffers()
         
@@ -1122,7 +1122,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.overflow:
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad()
-            self.averaged_gradients[i] = None
+            for key in self.averaged_gradients:
+                self.averaged_gradients[key] = None
+                
             see_memory_usage('After overflow after clearing gradients')
 
             logger.info(
