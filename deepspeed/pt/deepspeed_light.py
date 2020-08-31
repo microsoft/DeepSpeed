@@ -721,7 +721,7 @@ class DeepSpeedLight(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
-        
+
         #Zero stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
@@ -736,8 +736,7 @@ class DeepSpeedLight(Module):
                     gradient_average=self.gradient_average)
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
-        
-            
+
     def backward(self, loss, allreduce_gradients=True):
         r"""Execute backward pass on the loss
 

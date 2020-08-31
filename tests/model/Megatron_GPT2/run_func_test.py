@@ -212,7 +212,6 @@ class GPT2FuncTestCase(BaseTestCase):
             "deepspeed": True,
             "json": "ds_config_func_bs8_zero2_gas10.json",
             "baseline": "ds_config_func_bs8_zero0_gas10.json",
-            
         }
 
         succ = self.run_test(test_config, 0.01)
@@ -247,8 +246,8 @@ class GPT2FuncTestCase(BaseTestCase):
         baseline_prefix = "gpt2_func_"
         prefix = "gpt2_partition_activation_"
 
-        deepspeed_config=test_config["json"]
-        baseline_deepspeed_config=False
+        deepspeed_config = test_config["json"]
+        baseline_deepspeed_config = False
 
         # baseline run...
         # turnoff deepspeed if baseline deepspeed config
@@ -260,7 +259,9 @@ class GPT2FuncTestCase(BaseTestCase):
             baseline_prefix += test_config["json"][0:-5]
             baseline_deepspeed_config = True
 
-        base_file = self.gen_output_name(test_config, baseline_prefix, baseline_config=baseline_deepspeed_config)    
+        base_file = self.gen_output_name(test_config,
+                                         baseline_prefix,
+                                         baseline_config=baseline_deepspeed_config)
 
         # skip baseline run if it exists.
         if not self.has_loss_data(base_file):
@@ -285,11 +286,11 @@ class GPT2FuncTestCase(BaseTestCase):
 
         prefix = "gpt2_func"
 
-        deepspeed_config=test_config["json"]
+        deepspeed_config = test_config["json"]
         baseline_deepspeed_config = False
-        
+
         # baseline run...
-        # turn off deepspeed if a baseline deepspeed config 
+        # turn off deepspeed if a baseline deepspeed config
         # is not provided
         if not "baseline" in test_config:
             test_config["deepspeed"] = False
@@ -297,9 +298,11 @@ class GPT2FuncTestCase(BaseTestCase):
             test_config["json"] = test_config["baseline"]
             baseline_prefix = prefix + test_config["json"][0:-5]
             baseline_deepspeed_config = True
-        
+
         # baseline run...
-        base_file = self.gen_output_name(test_config, baseline_prefix, baseline_config = baseline_deepspeed_config)
+        base_file = self.gen_output_name(test_config,
+                                         baseline_prefix,
+                                         baseline_config=baseline_deepspeed_config)
 
         # skip baseline run if it exists.
         if not self.has_loss_data(base_file):
@@ -357,7 +360,7 @@ def suite():
     suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_gas'))
 
     suite.addTest(GPT2FuncTestCase('test_optimizer_scheduler'))
-    
+
     return suite
 
 
