@@ -65,7 +65,7 @@ jobs:
 
   - script: |
       source activate $(conda_env)
-      pytest --forked --verbose tests/unit/
+      pytest --durations=0 --forked --verbose tests/unit/
     displayName: 'Unit tests'
 
   - script: |
@@ -75,7 +75,7 @@ jobs:
       cd tests/model/
       rm -rf BingBertSquad/baseline
       rm -rf Megatron_GPT2/baseline
-      pytest -s run_sanity_check.py
+      pytest --durations=0 -s run_sanity_check.py
     condition: and(succeeded(), eq(variables['runmodeltests'], true))
     displayName: 'Model tests'
 
