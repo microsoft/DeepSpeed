@@ -285,6 +285,7 @@ class GPT2FuncTestCase(BaseTestCase):
         print("{0}: starting......".format(self.id()))
 
         prefix = "gpt2_func"
+        baseline_prefix = prefix
 
         deepspeed_config = test_config["json"]
         baseline_deepspeed_config = False
