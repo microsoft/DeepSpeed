@@ -22,7 +22,7 @@ from deepspeed.pt.fp16_optimizer import FP16_Optimizer
 from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
 from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, TORCH_ADAM_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+    ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
 from deepspeed.pt.deepspeed_dataloader import DeepSpeedDataLoader
 from deepspeed.pt.deepspeed_constants import \
@@ -508,21 +508,14 @@ class DeepSpeedLight(Module):
 
         if self.zero_optimization():
             assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-            if self.optimizer_name() not in [ADAM_OPTIMIZER, TORCH_ADAM_OPTIMIZER]:
+            if self.optimizer_name() not in [ADAM_OPTIMIZER]:
                 assert self.zero_allow_untested_optimizer(), \
                     'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
                 logger.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                 )
-            if self.zero_cpu_offload():
-                if self.optimizer_name() != TORCH_ADAM_OPTIMIZER:
-                    assert self.zero_allow_untested_optimizer(), \
-                        'You are using ZeRO-Offload with an untested Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
-                    logger.warning(
-                        "**** You are using ZeRO-Offload with an untested optimizer, proceed with caution *****"
-                    )
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
         elif self.amp_enabled():
             assert not self.fp16_enabled(), "Cannot enable both amp with (legacy) fp16 mode"
@@ -544,12 +537,13 @@ class DeepSpeedLight(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            from apex.optimizers.fused_adam import FusedAdam
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            if self.zero_cpu_offload():
+                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+            else:
+                from apex.optimizers.fused_adam import FusedAdam
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == TORCH_ADAM_OPTIMIZER:
-            optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)

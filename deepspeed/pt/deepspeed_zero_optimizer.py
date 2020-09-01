@@ -128,6 +128,8 @@ def async_copy_to(obj, dev, main_stream=None):
         return {k: async_copy_to(o, dev, main_stream) for k, o in obj.items()}
     elif isinstance(obj, collections.Sequence):
         return [async_copy_to(o, dev, main_stream) for o in obj]
+    else:
+        return obj
 
 
 class FP16_DeepSpeedZeroOptimizer(object):
@@ -1466,12 +1468,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _get_state_without_padding(self, state_with_padding, padding):
         lean_state = {}
         for key, value in state_with_padding.items():
-            #jie: torch.optim.Adam() has "step" has a key in state_dict
-            if key == "step":
-                lean_state[key] = value
-            else:
+            if torch.is_tensor(value):
                 lean_length = value.numel() - padding
                 lean_state[key] = value[:lean_length]
+            else:
+                lean_state[key] = value
 
         return lean_state
 
@@ -1517,7 +1518,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             state_dict_tmp = async_copy_to(state_dict,
                                            'cpu',
                                            torch.cuda.current_stream())
-            state_dict = None
             state_dict = state_dict_tmp
 
         return state_dict
@@ -1556,11 +1556,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _partition_base_optimizer_state(self, state_key, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)
-        flat_merged_partitions = flatten_dense_tensors_aligned(
-            all_partition_states,
-            alignment)
-        dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
-        return dp_partitions[partition_id]
+
+        if torch.is_tensor(all_partition_states[0]):
+            flat_merged_partitions = flatten_dense_tensors_aligned(
+                all_partition_states,
+                alignment)
+            dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
+            return dp_partitions[partition_id]
+        else:
+            return all_partition_states[partition_id]
 
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
@@ -1585,8 +1589,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i, group in enumerate(self.optimizer.param_groups):
             p = group['params'][0]
             for key, saved in base_optimizer_group_states[i].items():
-                current = self.optimizer.state[p][key]
-                current.data.copy_(saved.data)
+                if torch.is_tensor(self.optimizer.state[p][key]):
+                    self.optimizer.state[p][key].data.copy_(saved.data)
+                else:
+                    self.optimizer.state[p][key] = saved
 
     def load_state_dict(self,
                         state_dict_list,
