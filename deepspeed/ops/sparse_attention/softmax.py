@@ -1,7 +1,11 @@
 # DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 
-import triton
+import warnings
+try:
+    import triton
+except ImportError:
+    warnings.warn("Unable to import triton, sparse attention will not be accessible")
 import torch
 import math
 from deepspeed.ops.sparse_attention.trsrc import softmax_fwd, softmax_bwd

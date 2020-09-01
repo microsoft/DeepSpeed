@@ -13,20 +13,23 @@ from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransf
 from deepspeed.utils import logger
 
 try:
-    from deepspeed.git_version_info import git_hash, git_branch
+    from deepspeed.git_version_info import version, git_hash, git_branch
 except ImportError:
+    version = "0.0.0+unknown"
     git_hash = None
     git_branch = None
 
 # Export version information
-__version_major__ = 0
-__version_minor__ = 3
-__version_patch__ = 0
+version, __version_tag__ = version.split('+')
+__version_major__ = int(version.split('.')[0])
+__version_minor__ = int(version.split('.')[1])
+__version_patch__ = int(version.split('.')[2])
 __version__ = '.'.join(
     map(str,
         [__version_major__,
          __version_minor__,
          __version_patch__]))
+__version__ = f"{__version__}+{__version_tag__}"
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
