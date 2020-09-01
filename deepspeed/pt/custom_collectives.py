@@ -53,7 +53,7 @@ def gather_cuda(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign
 
     MPI.Request.Waitall(requests)
 
-    return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
+    #return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
 
 def gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale):
     numpy_recvbuf_sign = np.zeros([world_size, cupy_sign_list_packed[rank].size],
@@ -98,7 +98,7 @@ def gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign
             
     #print("igather and conversion completed at rank ", rank, flush=True)
     
-    return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
+    #return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
 
 def gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale):
     cuda_aware = True
@@ -107,7 +107,7 @@ def gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cup
     else:
         cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
     
-    return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
+    #return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
 
 def allgather(comm, cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server):
     cuda_aware = True
@@ -142,5 +142,5 @@ def allgather(comm, cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_serv
         cupy_recvbuf_scale_server = cupy.array(numpy_recvbuf_scale_server)
         cupy.cuda.get_current_stream().synchronize()
         
-    return cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server
+    #return cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server
     
