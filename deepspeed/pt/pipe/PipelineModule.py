@@ -1,5 +1,4 @@
 import os
-import logging
 import enum
 
 import re as regex
@@ -14,6 +13,7 @@ import torch.distributed as dist
 
 from numpy import prod
 
+from deepspeed.pt.log_utils import logger
 import deepspeed.pt.deepspeed_utils as ds_utils
 import deepspeed.pt.deepspeed_checkpointing as checkpointing
 
@@ -69,7 +69,7 @@ class LayerSpec:
     def build(self, log=False):
         """Build the stored specification."""
         if log:
-            logging.info(f'RANK={self.global_rank} building {repr(self)}')
+            logger.info(f'RANK={self.global_rank} building {repr(self)}')
 
         return self.typename(*self.module_args, **self.module_kwargs)
 
@@ -301,17 +301,7 @@ class PipelineModule(nn.Module, ABC):
                         else:
                             ds_utils.set_random_seed(new_seed)
 
-                    #print(f'RANK={dist.get_rank()} layer={self.curr_layer} BEFORE inputs={inputs}')
-                    try:
-                        params = [p.flatten()[0:2].tolist() for p in layer.parameters()]
-                        #print(f'RANK={dist.get_rank()} layer={self.curr_layer} params={params}')
-                    except AttributeError:
-                        pass
-
-                    #ds_utils.memory_status(msg=f'BEFORE FWD layer={self.curr_layer}', reset_max=True, print_rank=-1)
                     inputs = layer(inputs)
-                    #ds_utils.memory_status(msg=f'AFTER FWD layer={self.curr_layer}', reset_max=False, print_rank=-1)
-                    #print(f'RANK={dist.get_rank()} layer={self.curr_layer} AFTER inputs={inputs}')
                 return inputs
 
             return exec_func
@@ -346,8 +336,7 @@ class PipelineModule(nn.Module, ABC):
         stage_id = self._topo.get_coord(self.global_rank).pipe
 
         if self.global_rank == 0:
-            print(f'PARTITIONING by method {method}')
-            logging.info(f'Partitioning pipeline stages with method {method}')
+            logger.info(f'Partitioning pipeline stages with method {method}')
 
         method = method.lower()
 
@@ -358,8 +347,6 @@ class PipelineModule(nn.Module, ABC):
                                                     num_parts=num_stages)
         elif method == 'parameters':
             param_counts = self._count_layer_params()
-            if self.global_rank == 0:
-                print(f'PARAM_COUNTS: {param_counts}')
             self.parts = ds_utils.partition_balanced(weights=param_counts,
                                                      num_parts=num_stages)
         elif method.startswith('type:'):
@@ -397,8 +384,6 @@ class PipelineModule(nn.Module, ABC):
                         print(f'    {idx+start:2d}: {layer.typename.__name__}')
                     else:
                         print(f'    {idx+start:2d}: {layer}')
-            print(f'PARTITIONING complete. Parts: {self.parts}')
-            logging.info(f'PARTITIONING complete. Parts: {self.parts}')
 
         self._set_bounds(start=self.parts[stage_id], stop=self.parts[stage_id + 1])
 
@@ -451,7 +436,6 @@ class PipelineModule(nn.Module, ABC):
                                 self._grid.stage_to_global(stage_id=s,
                                                            data=dp))
                     group = dist.new_group(ranks=tied_ranks)
-                    dist.barrier()
                     # Record this tied module if we own a local copy of it.
                     if dp == self._grid.data_parallel_id and key in self.tied_modules:
                         tied_comms[key] = {
@@ -464,8 +448,10 @@ class PipelineModule(nn.Module, ABC):
                         if self.global_rank != tied_ranks[0]:
                             for p in self.tied_modules[key].parameters():
                                 p.model_parallel = False
+        '''
         if len(tied_comms) > 0:
             print(f'RANK={self.global_rank} tied_comms={tied_comms}')
+        '''
 
         return tied_comms
 
@@ -486,8 +472,6 @@ class PipelineModule(nn.Module, ABC):
         exclusive. The default of None for both results in all layers being built
         locally.
         """
-        logging.info(
-            f'RANK={dist.get_rank()} [{start}, {stop}) {self.layer_specs()[start:stop]}')
         self._local_start = start
         self._local_stop = stop
 
@@ -540,33 +524,28 @@ class PipelineModule(nn.Module, ABC):
         layer_offset = self._local_start
         for idx, layer in enumerate(self.forward_funcs):
             model_ckpt_path = self.ckpt_layer_path(save_dir, idx)
-            try:
-                torch.save(layer.state_dict(), model_ckpt_path)
-                print(f'  Saved {model_ckpt_path}')
-            except AttributeError:
-                # Functions, etc. will not have state_dicts
-                print(f'  Skipping layer={idx+layer_offset} - no state_dict().')
-                pass
+            if not hasattr(layer, 'state_dict'):
+                continue
+            torch.save(layer.state_dict(), model_ckpt_path)
 
     def load_state_dir(self, load_dir, strict=True):
         rank = dist.get_rank()
 
         layer_offset = self._local_start
         for idx, layer in enumerate(self.forward_funcs):
+            # Functions, etc. will not have state_dicts
+            if not hasattr(layer, 'load_state_dict'):
+                continue
+
             model_ckpt_path = self.ckpt_layer_path(load_dir, idx)
-            try:
-                #layer = layer.detach()
-                layer.load_state_dict(torch.load(model_ckpt_path), strict=strict)
-                if self._grid.data_parallel_id == 0:
-                    print(
-                        f'    rank={dist.get_rank()} Loaded layer={idx+layer_offset} file={model_ckpt_path}'
-                    )
-            except AttributeError:
-                # Functions, etc. will not have state_dicts
-                if self._grid.data_parallel_id == 0:
-                    print(
-                        f'    rank={dist.get_rank()} Skipped layer idx={idx+layer_offset} file={model_ckpt_path} - no state_dict().'
-                    )
+            layer.load_state_dict(torch.load(model_ckpt_path,
+                                             map_location=lambda storage,
+                                             loc: storage),
+                                  strict=strict)
+            if self._grid.data_parallel_id == 0:
+                logger.info(
+                    f'RANK={self.global_rank} Loaded layer={idx+layer_offset} file={model_ckpt_path}'
+                )
 
         self._synchronize_tied_weights()
 

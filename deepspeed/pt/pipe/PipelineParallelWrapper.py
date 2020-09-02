@@ -80,7 +80,7 @@ class PipelineEngine(DeepSpeedLight):
 
         # Later stages need fewer buffers because less time between fwd/bwd passes
         self.num_sim_stages = 1
-        self.num_sim_buffers = self.num_sim_stages - self.stage_id + 1
+        self.num_sim_buffers = max(self.num_sim_stages - self.stage_id + 1, 0)
         if self.is_last_stage:
             self.num_sim_buffers = 2
         self.num_buffers = max(
@@ -88,9 +88,10 @@ class PipelineEngine(DeepSpeedLight):
                 self.micro_batches),
             2)
         self.num_buffers = max(self.num_buffers, self.num_sim_buffers)
-        print(
-            f'RANK={self.global_rank} STAGE={self.stage_id} num_buffers={self.num_buffers} num_sim_buffers={self.num_sim_buffers}'
-        )
+        if self.grid.data_parallel_id == 0 and self.num_sim_stages > self.num_stages:
+            print(
+                f'RANK={self.global_rank} STAGE={self.stage_id} num_buffers={self.num_buffers} num_sim_buffers={self.num_sim_buffers}'
+            )
         self.alloced_sim_buffers = False
 
         self.data_iterator = None
@@ -188,6 +189,18 @@ class PipelineEngine(DeepSpeedLight):
 
         self.prev_sample_id = None
 
+        # Initialize pipeline communicators. Just send total_loss
+        if is_even(self.stage_id):
+            if not self.is_last_stage:
+                p2p.send(self.total_loss, self.next_stage)
+            if not self.is_first_stage:
+                p2p.recv(self.total_loss, self.prev_stage)
+        else:
+            if not self.is_first_stage:
+                p2p.recv(self.total_loss, self.prev_stage)
+            if not self.is_last_stage:
+                p2p.send(self.total_loss, self.next_stage)
+
         # XXX look into timer reporting timing
         # Initialize some timers because of early weirdness.
         if self.wall_clock_breakdown():
@@ -246,7 +259,8 @@ class PipelineEngine(DeepSpeedLight):
                 self.agg_loss /= self.dp_world_size
 
             assert self.global_rank in self.grid.pp_group
-            dist.broadcast(tensor=self.agg_loss,
+            losses = torch.Tensor([self.dp_group_loss, self.agg_loss]).to(self.device)
+            dist.broadcast(tensor=losses,
                            src=self.global_rank,
                            group=self.mpu.get_pipe_parallel_group())
 
@@ -254,23 +268,26 @@ class PipelineEngine(DeepSpeedLight):
             # Get loss from last stage
             src_rank = self.grid.stage_to_global(self.num_stages - 1)
             assert src_rank in self.grid.pp_group
-            #print(f'RANK={self.global_rank} bcast src={src_rank} group={self.grid.pp_group}', flush=True)
-            dist.broadcast(tensor=self.agg_loss,
+            losses = torch.Tensor([0., 0.]).to(self.device)
+            dist.broadcast(tensor=losses,
                            src=src_rank,
                            group=self.grid.get_pipe_parallel_group())
+            self.dp_group_loss = losses[0].clone().detach()
+            self.agg_loss = losses[1].clone().detach()
 
         # Tensorboard
         if self.tensorboard_enabled():
             if self.global_rank == 0:
                 self.summary_events = [(f'Train/Samples/train_loss',
                                         self.agg_loss.mean().item(),
-                                        self.sample_count)]
+                                        self.global_samples)]
                 for event in self.summary_events:  # write_summary_events
                     self.summary_writer.add_scalar(event[0], event[1], event[2])
                 if self.global_steps % self.steps_per_print() == 0:
                     self.summary_writer.flush()
 
-        if self.wall_clock_breakdown():
+        if self.wall_clock_breakdown(
+        ) and self.global_steps % self.steps_per_print() == 0:
             self.timers.log([
                 'pipe_send_output',
                 'pipe_send_grad',
@@ -278,14 +295,8 @@ class PipelineEngine(DeepSpeedLight):
                 'pipe_recv_grad'
             ])
 
-        if self.is_last_stage and self.global_steps % self.steps_per_print() == 0:
-            print(
-                f'LOSS={self.dp_group_loss.item()} DP={self.grid.data_parallel_id} global_steps={self.global_steps}',
-                flush=True)
-
-        if self.global_rank == 0 and self.global_steps % self.steps_per_print() == 0:
-            print('TB:', self.agg_loss.mean().item())
-        return self.dp_group_loss
+        # TODO: should return precisely what loss returned and allow others to be queried?
+        return self.agg_loss
 
     def set_dataloader(self, loader):
         """ Store a DataLoader for the first and last stages of the pipeline. """
@@ -324,14 +335,8 @@ class PipelineEngine(DeepSpeedLight):
                     flush=True)
 
     def tput_log(self, *msg):
-        if self.global_rank == 0:
-            print(
-                f'RANK={self.global_rank} '
-                f'PIPE-ID={self.stage_id} '
-                f'DATA-ID={self.grid.data_parallel_id} '
-                '::',
-                *msg,
-                flush=True)
+        if self.global_rank == 0 and self.global_steps % self.steps_per_print() == 0:
+            print(*msg)
 
     def _next_batch(self):
         if self.is_model_parallel:
@@ -352,6 +357,10 @@ class PipelineEngine(DeepSpeedLight):
             except StopIteration:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
+            '''
+            if self.global_rank == 0:
+                print(f'STEP={self.global_steps} SAMPLES={self.global_samples} BATCH={batch}')
+            '''
 
         # All MP ranks participate in batch_fn, where they might broadcast the data.
         if self.batch_fn:
@@ -380,6 +389,9 @@ class PipelineEngine(DeepSpeedLight):
 
         if not self.is_first_stage and not self.is_last_stage:
             return
+
+        if self.wall_clock_breakdown():
+            self.timers('batch_input').start()
 
         batch = self._next_batch()
 
@@ -413,6 +425,9 @@ class PipelineEngine(DeepSpeedLight):
                     tmp.append(x)
                 if isinstance(batch[1], tuple):
                     self.labels[buf_idx] = tuple(tmp)
+
+        if self.wall_clock_breakdown():
+            self.timers('batch_input').stop()
 
     def run_step(self, step_id, is_last_step=False):
         step_id = int(step_id)
@@ -493,13 +508,14 @@ class PipelineEngine(DeepSpeedLight):
 
                 p2p.recv(buffer, sender_stage)
                 self.in_layers[buf_idx][idx] = buffer.clone().detach()
-                if self.in_layers[buf_idx][idx].is_floating_point():
-                    self.in_layers[buf_idx][idx].requires_grad = True
 
             # NCCL does not like to send torch.BoolTensor types, so un-cast the
             # attention mask
             if self.module.__class__.__name__ == 'GPT2ModelPipe':
                 self.in_layers[buf_idx][-1] = self.in_layers[buf_idx][-1].bool()
+
+            for idx, buffer in enumerate(self.in_layers[buf_idx]):
+                buffer.requires_grad = buffer.is_floating_point()
 
             self.in_layers[buf_idx] = tuple(self.in_layers[buf_idx])
 
@@ -540,6 +556,8 @@ class PipelineEngine(DeepSpeedLight):
                 self.grad_layer = self._allocate_buffers(sizes, num_buffers=1)[0]
 
             # Count size of buffers
+            # Useful for performance debugging.
+            '''
             grad_bytes = 0
             if isinstance(self.grad_layer, torch.Tensor):
                 grad_bytes += _tensor_bytes(self.grad_layer)
@@ -547,15 +565,18 @@ class PipelineEngine(DeepSpeedLight):
                 for tensor in self.grad_layer:
                     grad_bytes += _tensor_bytes(tensor)
             grad_bytes /= 1024**2
-            print(
-                f'RANK={self.global_rank} STAGE={self.stage_id} grad_buffer_size={grad_bytes:0.2f}MB'
-            )
+            if self.grid.data_parallel_id == 0:
+                print(
+                    f'RANK={self.global_rank} STAGE={self.stage_id} grad_buffer_size={grad_bytes:0.2f}MB'
+                )
+            '''
 
         if isinstance(self.grad_layer, torch.Tensor):
             p2p.recv(self.grad_layer, sender_stage)
         else:
             assert isinstance(self.out_layers[buf_idx], tuple)
             for idx, buffer in enumerate(self.grad_layer):
+                # XXX GPT-2 hack
                 if self.is_grad_partitioned and idx == 0 and buffer.dtype != torch.long:
                     buffer.data = torch.zeros(buffer.size(),
                                               dtype=torch.long,
@@ -608,15 +629,24 @@ class PipelineEngine(DeepSpeedLight):
                 send_ndims = torch.LongTensor(data=[len(tensor.size())]).to(self.device)
                 p2p.send(send_ndims, recv_stage)
                 p2p.send(send_shape, recv_stage)
+                # Useful for performance debugging.
+                '''
                 new_bytes = _tensor_bytes(tensor)
                 send_bytes += _tensor_bytes(tensor)
-                print(
-                    f'RANK={self.global_rank} pipe-send-volume[{idx}]: shape={send_shape} {new_bytes/1024**2:0.2f}MB'
-                )
+                # Useful for performance debugging.
+                if self.grid.data_parallel_id == 0:
+                    print(
+                        f'STAGE={self.stage_id} pipe-send-volume[{idx}]: shape={send_shape} {new_bytes/1024**2:0.2f}MB'
+                    )
+                '''
         else:
             raise NotImplementedError(f'Could not send meta type {type(buffer)}')
 
-        print(f'RANK={self.global_rank} pipe-send-volume: {send_bytes/1024**2:0.2f}MB')
+        # Useful for performance debugging.
+        '''
+        if self.grid.data_parallel_id == 0:
+            print(f'STAGE={self.stage_id} pipe-send-volume: {send_bytes/1024**2:0.2f}MB')
+        '''
 
     def _recv_tensor_meta(self, send_stage):
         """Receive metadata about upcoming p2p transfers and return allocated buffers.
@@ -680,7 +710,8 @@ class PipelineEngine(DeepSpeedLight):
         buf_idx = self._buffer_idx(sample_id)
 
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
-        # We could do char, but with half() we can flatten with other fp16 messages.
+        # We could do char, but with half() we can eventually flatten with other fp16
+        # messages (TODO)
         if self.module.__class__.__name__ == 'GPT2ModelPipe':
             self.out_layers[buf_idx] = list(self.out_layers[buf_idx])
             self.out_layers[buf_idx][-1] = self.out_layers[buf_idx][-1].half()
@@ -694,14 +725,12 @@ class PipelineEngine(DeepSpeedLight):
             p2p.send(self.out_layers[buf_idx], receiver_stage)
         elif isinstance(self.out_layers[buf_idx], tuple):
             for idx, buffer in enumerate(self.out_layers[buf_idx]):
-                #print(f'{self.global_rank} START sending={buffer.__class__} {buffer}')
                 p2p.send(buffer, receiver_stage)
-                #print(f'{self.global_rank} END sending={buffer.__class__} {buffer}')
         else:
             raise NotImplementedError('Could not send output of type '
                                       f'{type(self.out_layers[buf_idx])}')
 
-        # uncast the half
+        # Restore the boolean tensor
         if self.module.__class__.__name__ == 'GPT2ModelPipe':
             self.out_layers[buf_idx] = list(self.out_layers[buf_idx])
             self.out_layers[buf_idx][-1] = self.out_layers[buf_idx][-1].bool()
@@ -800,8 +829,8 @@ class PipelineEngine(DeepSpeedLight):
 
         # Aggregate gradients
         if self.wall_clock_breakdown():
-            self.timers('backward_allreduce_microstep').start()
-            self.timers('backward_allreduce').start()
+            self.timers('backward_tied_allreduce_microstep').start()
+            self.timers('backward_tied_allreduce').start()
 
         self.module.allreduce_tied_weight_gradients()
         if self.is_data_parallel:
@@ -810,12 +839,12 @@ class PipelineEngine(DeepSpeedLight):
                 elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
 
         if self.wall_clock_breakdown():
-            self.timers('backward_allreduce').stop()
-            self.timers('backward_allreduce_microstep').stop()
+            self.timers('backward_tied_allreduce').stop()
+            self.timers('backward_tied_allreduce_microstep').stop()
 
-        if self.global_steps < 10:
-            self.mem_status('BEFORE STEP', reset_max=True)
+        self.mem_status('BEFORE STEP', reset_max=True)
         '''
+        # Just some debugging
         torch.cuda.synchronize()
         for rank in range(dist.get_world_size()):
             if rank == self.global_rank:
@@ -856,14 +885,13 @@ class PipelineEngine(DeepSpeedLight):
             dist.barrier()
         '''
 
-        if self.global_steps < 10:
-            self.mem_status('AFTER STEP')
+        self.mem_status('AFTER STEP')
 
         if self.tensorboard_enabled():
             if self.global_rank == 0:
                 self.summary_events = [(f'Train/Samples/lr',
                                         self.get_lr()[0],
-                                        self.sample_count)]
+                                        self.global_samples)]
                 for event in self.summary_events:  # write_summary_events
                     self.summary_writer.add_scalar(event[0], event[1], event[2])
 
@@ -872,15 +900,19 @@ class PipelineEngine(DeepSpeedLight):
         if self.wall_clock_breakdown():
             self.timers('step_microstep').stop()
             self.timers('step').stop()
-            self.timers.log([
-                'forward_microstep',
-                'backward_microstep',
-                'backward_inner_microstep',
-                'backward_allreduce_microstep',
-                'step_microstep'
-            ])
+            if self.global_steps % self.steps_per_print() == 0:
+                self.timers.log([
+                    'batch_input',
+                    'forward_microstep',
+                    'backward_microstep',
+                    'backward_inner_microstep',
+                    'backward_allreduce_microstep',
+                    'backward_tied_allreduce_microstep',
+                    'step_microstep'
+                ])
             # Log timing
             if self.tensorboard_enabled():
+                pass
                 '''
                 if self.global_rank == 0:
                     self.summary_events = [(f'Train/Samples/stage-{self.stage_id}/elapsed_time_ms_forward', self.timers('forward').elapsed(reset=False) * 1000.0, self.sample_count), \
@@ -891,23 +923,15 @@ class PipelineEngine(DeepSpeedLight):
                                             ]
                     for event in self.summary_events:  # write_summary_events
                         self.summary_writer.add_scalar(event[0], event[1], event[2])
-            '   '''
-            self.timers.log(
-                ['forward',
-                 'backward',
-                 'backward_inner',
-                 'backward_allreduce',
-                 'step'])
-
+                '''
             if self.global_steps % self.steps_per_print() == 0:
-                if self.mpu.get_data_parallel_rank() == 0:
-                    max_alloc = torch.cuda.max_memory_allocated() / 1024**3
-                    max_cache = torch.cuda.max_memory_cached() / 1024**3
-                    print(
-                        f'MEMSTATS STAGE={self.stage_id} RANK={self.global_rank} '
-                        f'max-alloc: {max_alloc:0.2f}GB '
-                        f'max-cache: {max_cache:0.2f}GB',
-                        flush=True)
+                self.timers.log([
+                    'forward',
+                    'backward',
+                    'backward_inner',
+                    'backward_allreduce',
+                    'step'
+                ])
 
     def compute(self, is_forward):
         if is_forward:
@@ -952,8 +976,7 @@ class PipelineEngine(DeepSpeedLight):
 
         self.tput_timer.start()
         self.log_for_device(f'FORWARD sample={sample_id}')
-        if self.global_steps == 0 or self.global_steps == 9:
-            self.mem_status('BEFORE FWD', reset_max=True)
+        self.mem_status('BEFORE FWD', reset_max=True)
 
         buf_idx = self._buffer_idx(sample_id)
 
@@ -1008,18 +1031,15 @@ class PipelineEngine(DeepSpeedLight):
             )
             self.alloced_sim_buffers = True
 
-        if self.global_steps == 0 or self.global_steps == 9:
-            self.mem_status('AFTER FWD')
+        self.mem_status('AFTER FWD')
 
         # Optionally compute loss on the last device
         if self.is_last_stage:
             if self.loss_model is not None:
-                if self.global_steps == 0 or self.global_steps == 9:
-                    self.mem_status('BEFORE LOSS', reset_max=True)
+                self.mem_status('BEFORE LOSS', reset_max=True)
                 self.loss = self.loss_model(self.out_layers[buf_idx],
                                             self.labels[buf_idx])
-                if self.global_steps == 0 or self.global_steps == 9:
-                    self.mem_status('AFTER LOSS')
+                self.mem_status('AFTER LOSS')
             else:
                 # Some models just return loss from forward()
                 self.loss = self.out_layers[buf_idx]
@@ -1036,15 +1056,13 @@ class PipelineEngine(DeepSpeedLight):
 
         buf_idx = self._buffer_idx(sample_id)
 
-        if self.global_steps == 0 or self.global_steps == 9:
-            self.mem_status('BEFORE BWD', reset_max=True)
+        self.mem_status('BEFORE BWD', reset_max=True)
 
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
         if self.is_last_stage:
             super().backward(self.loss, allreduce_gradients=False)
-            if self.global_steps == 0 or self.global_steps == 9:
-                self.mem_status('AFTER BWD')
+            self.mem_status('AFTER BWD')
             return
 
         if self.wall_clock_breakdown():
@@ -1107,8 +1125,7 @@ class PipelineEngine(DeepSpeedLight):
             self.timers('backward').stop()
             self.timers('backward_microstep').stop()
 
-        if self.global_steps == 0 or self.global_steps == 9:
-            self.mem_status('AFTER BWD')
+        self.mem_status('AFTER BWD')
 
     def _allocate_zeros(self, shape, fp16=None, **kwargs):
         """ Allocate a tensor of zeros on the engine's device.
@@ -1178,9 +1195,14 @@ class PipelineEngine(DeepSpeedLight):
     def mem_status(self, msg, print_rank=-1, reset_max=False):
         return
         global mem_alloced, mem_cached
+        if not self.global_steps == 0 or not self.global_steps == 9:
+            #return
+            pass
+        if self.mpu.get_data_parallel_rank() != 0:
+            return
 
-        #if self.local_rank != 0:
-        #    return
+        if self.global_rank != 0:
+            return
 
         rank = self.global_rank
         if print_rank != -1 and rank != print_rank:

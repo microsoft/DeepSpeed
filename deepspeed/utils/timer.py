@@ -12,9 +12,9 @@ from deepspeed.utils import logger
 def print_rank_0(message):
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
-            logger.info(message)
+            print(message)
     else:
-        logger.info(message)
+        print(message)
 
 
 class SynchronizedWallClockTimer:
@@ -94,8 +94,7 @@ class SynchronizedWallClockTimer:
 
         # TODO: use our logging utilitied to selectively print. Useful for model
         # parallelism because rank=0 is too restrictive.
-        #print_rank_0(string)
-        print(string, flush=True)
+        print_rank_0(string)
 
 
 class ThroughputTimer():

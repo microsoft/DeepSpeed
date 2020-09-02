@@ -329,6 +329,20 @@ def get_sparse_attention_type(param_dict):
         return SPARSE_ATTENTION_TYPE_DEFAULT
 
 
+def get_pipeline_config(param_dict):
+    '''Parses pipeline engine configuration. '''
+    default_pipeline = {
+        'stages': 'auto',
+        'partition': 'best',
+        'seed_layers': False,
+        'activation_checkpoint_interval': 0
+    }
+    config = default_pipeline
+    for key, val in param_dict.get('pipeline', {}).items():
+        config[key] = val
+    return config
+
+
 def get_optimizer_name(param_dict):
     if OPTIMIZER in param_dict.keys() and \
             TYPE in param_dict[OPTIMIZER].keys():
@@ -452,20 +466,6 @@ class DeepSpeedConfigWriter:
             json.dump(self.data, outfile)
 
 
-def get_pipeline_config(param_dict):
-    '''Parses pipeline engine configuration. '''
-    default_pipeline = {
-        'stages': 'auto',
-        'partition': 'best',
-        'seed_layers': False,
-        'activation_checkpoint_interval': 0
-    }
-    config = default_pipeline
-    for key, val in param_dict.get('pipeline', {}).items():
-        config[key] = val
-    return config
-
-
 class DeepSpeedConfig(object):
     def __init__(self, json_file, mpu=None, param_dict=None):
         super(DeepSpeedConfig, self).__init__()
@@ -517,7 +517,6 @@ class DeepSpeedConfig(object):
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
-        self.fp16_fused_optimizer = param_dict['fp16'].get('fused_optimizer', True)
         self.amp_enabled = get_amp_enabled(param_dict)
         self.amp_params = get_amp_params(param_dict)
         self.loss_scale = get_loss_scale(param_dict)

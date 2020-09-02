@@ -353,8 +353,6 @@ class FP16_UnfusedOptimizer(object):
         return repr(self.optimizer)
 
     def initialize_optimizer_states(self):
-        print(f'RANK={torch.distributed.get_rank()} initializing optimizer states.')
-
         for i, group in enumerate(self.fp16_groups):
             for param in group:
                 param.grad = torch.zeros(param.size(),

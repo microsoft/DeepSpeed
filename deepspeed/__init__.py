@@ -100,12 +100,11 @@ def initialize(args,
         * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
           if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
     """
-    logger.info(
-        "DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
-            __version__,
-            __git_hash__,
-            __git_branch__),
-    )
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+        __version__,
+        __git_hash__,
+        __git_branch__),
+             ranks=[0])
 
     if not isinstance(model, PipelineModule):
         engine = DeepSpeedEngine(args=args,
