@@ -166,6 +166,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {allgather_bucket_size}")
+            logger.info(f"CPU Offload: {cpu_offload}")
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -1564,7 +1565,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
             return dp_partitions[partition_id]
         else:
-            return all_partition_states[partition_id]
+            # Assume non-tensor states are not partitioned and equal across ranks, so return first one
+            return all_partition_states[0]
 
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
