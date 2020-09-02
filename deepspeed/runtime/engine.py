@@ -106,7 +106,6 @@ class DeepSpeedEngine(Module):
                  collate_fn=None,
                  config_params=None):
         super(DeepSpeedEngine, self).__init__()
-
         self.client_optimizer = optimizer
         self.client_model_parameters = model_parameters
         self.client_lr_scheduler = lr_scheduler
@@ -291,6 +290,9 @@ class DeepSpeedEngine(Module):
 
     def zero_overlap_comm(self):
         return self._config.zero_config.overlap_comm
+
+    def zero_cpu_offload(self):
+        return self._config.zero_config.cpu_offload
 
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
@@ -491,6 +493,7 @@ class DeepSpeedEngine(Module):
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
+
         if client_optimizer is not None:
             basic_optimizer = client_optimizer
             logger.info('Using client Optimizer as basic optimizer')
@@ -504,13 +507,14 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization():
             assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-            if self.optimizer_name() != ADAM_OPTIMIZER:
+            if self.optimizer_name() not in [ADAM_OPTIMIZER]:
                 assert self.zero_allow_untested_optimizer(), \
                     'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
                 logger.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                 )
+
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
         elif self.amp_enabled():
             assert not self.fp16_enabled(), "Cannot enable both amp with (legacy) fp16 mode"
@@ -522,8 +526,8 @@ class DeepSpeedEngine(Module):
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
-
-        # logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer))
+        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
@@ -532,8 +536,11 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            from apex.optimizers.fused_adam import FusedAdam
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            if self.zero_cpu_offload():
+                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+            else:
+                from apex.optimizers.fused_adam import FusedAdam
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
@@ -610,6 +617,7 @@ class DeepSpeedEngine(Module):
                 dp_process_group=self.data_parallel_group,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=self.zero_overlap_comm(),
+                cpu_offload=self.zero_cpu_offload(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor())
@@ -844,7 +852,6 @@ class DeepSpeedEngine(Module):
                     master_params = amp.master_params(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                    max_norm=self.gradient_clipping())
-
             self.optimizer.step()
 
             #zero grad in basic optimizer could be unreliable and may not exhibit
@@ -946,6 +953,9 @@ class DeepSpeedEngine(Module):
 
     def get_lr(self):
         return self._get_optimizer_param('lr')
+
+    def get_type(self):
+        return self._get_optimizer_param('type')
 
     def get_mom(self):
         return self._get_optimizer_param('betas')

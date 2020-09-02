@@ -630,10 +630,12 @@ class DeepSpeedConfig(object):
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
+            if self.zero_config.cpu_offload is True:
+                assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
 
         assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
 
-        assert self.gradient_accumulation_steps, 'DeepSpeedConfig: {} is not defined'.format(
+        assert self.gradient_accumulation_steps, "DeepSpeedConfig: {} is not defined".format(
             GRADIENT_ACCUMULATION_STEPS)
 
     def _do_warning_check(self):
