@@ -8,6 +8,7 @@ Helper functions and classes from multiple sources.
 
 import torch
 from torch._six import inf
+import torch.distributed as dist
 
 from deepspeed.utils import logger
 
@@ -32,6 +33,11 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
             overflow = overflow_gpu[0].item()
+        else:
+            cuda_overflow = torch.cuda.FloatTensor([overflow])
+            dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MAX)
+            dist.barrier()
+            overflow = cuda_overflow[0].item()
 
         return bool(overflow)
 

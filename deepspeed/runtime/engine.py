@@ -19,6 +19,10 @@ from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+
+from deepspeed.pt.onebit_adam import OnebitAdam
+from deepspeed.pt.deepspeed_fp32_onebit_adam import FP32_OnebitAdam
+
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
@@ -122,6 +126,7 @@ class DeepSpeedEngine(Module):
         self.config_params = config_params
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
+        self.enable_backward_allreduce = True
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -527,6 +532,7 @@ class DeepSpeedEngine(Module):
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
+        # print(optimizer_parameters.keys())
         if 'max_grad_norm' in optimizer_parameters.keys():
             raise ValueError(
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
@@ -536,6 +542,10 @@ class DeepSpeedEngine(Module):
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == "OnebitAdam":
+            optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
+        elif self.optimizer_name() == "FP32_OnebitAdam":
+            optimizer = FP32_OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -545,7 +555,7 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        if self.optimizer_name() == ADAM_OPTIMIZER:
+        if self.optimizer_name() == ADAM_OPTIMIZER or self.optimizer_name() == 'OnebitAdam':
             if self.dynamic_loss_scale():
                 logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
@@ -734,7 +744,7 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    def backward(self, loss, allreduce_gradients=True):
+    def backward(self, loss, allreduce_gradients=True, release_loss = False):
         r"""Execute backward pass on the loss
 
         Arguments:
@@ -796,7 +806,7 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce_microstep').start()
             self.timers('backward_allreduce').start()
 
-        if allreduce_gradients:
+        if allreduce_gradients and self.enable_backward_allreduce:
             self.allreduce_gradients()
 
         if self.wall_clock_breakdown():
@@ -804,6 +814,10 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce_microstep').stop()
             self.timers('backward').stop()
             self.timers('backward_microstep').stop()
+
+        if release_loss:
+            # loss.data = None
+            pass
 
         return loss
 
