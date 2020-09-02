@@ -611,8 +611,8 @@ class DeepSpeedLight(Module):
                 dp_process_group=self.data_parallel_group,
                 mpu=self.mpu)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
-            assert self.gradient_accumulation_steps(
-            ) == 1, "ZeRO stage 2 does not support gradient accumulation, if you need gradient accumulation please use stage 1"
+            #assert self.gradient_accumulation_steps(
+            #) == 1, "ZeRO stage 2 does not support gradient accumulation, if you need gradient accumulation please use stage 1"
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=self.timers,
@@ -629,7 +629,8 @@ class DeepSpeedLight(Module):
                 cpu_offload=self.zero_cpu_offload(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor())
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps())
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
@@ -787,6 +788,7 @@ class DeepSpeedLight(Module):
             self.timers('backward_inner').start()
 
         if self.zero_optimization():
+            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
             self.optimizer.backward(loss)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries

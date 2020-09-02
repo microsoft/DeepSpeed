@@ -141,8 +141,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  clip_grad=0.0,
                  allreduce_always_fp32=False,
                  postscale_gradients=True,
-                 gradient_predivide_factor=1.0,
-                 gradient_accumulation_steps=1):
+                 gradient_predivide_factor=1.0):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -185,7 +184,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.allreduce_always_fp32 = allreduce_always_fp32
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
-        self.gradient_accumulation_steps = gradient_accumulation_steps
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -312,13 +310,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
 
-
-
-        
         #simplified param id
         self.param_id = {}
 
-        largest_param_numel = 0
         count = 0
         for i, params_group in enumerate(self.fp16_groups):
             for param in params_group:
@@ -326,8 +320,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.param_id[unique_id] = count
                 self.param_dict[count] = param
                 self.params_already_reduced.append(False)
-                if param.numel() > largest_param_numel:
-                    largest_param_numel = param.numel()
                 count = count + 1
 
         for param_group in self.params_in_partition:
@@ -337,16 +329,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for param_group in self.params_not_in_partition:
             for param in param_group:
                 self.is_param_in_current_partition[self.get_param_id(param)] = False
-
-        if self.cpu_offload:
-            self.accumulated_grads_in_cpu={} 
-            self.norm_for_param_grads={}
-            self.local_overflow=False
-            self.grad_position = {}
-            self.temp_grad_buffer_for_cpu_offload = torch.zeros(largest_param_numel).half()
-            for i, params_group in enumerate(self.fp16_groups):
-                self.get_grad_position(i,self.params_in_partition[i],self.first_offset[i], self.partition_size[i])
-
 
         #mapping from parameter to partition that it belongs to
         self.param_to_partition_ids = {}
@@ -425,9 +407,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.optimizer.step()
 
-        if not self.cpu_offload:
-            for group in self.single_partition_of_fp32_groups:
-                group.grad = None
+        for group in self.single_partition_of_fp32_groups:
+            group.grad = None
 
         return
 
@@ -725,120 +706,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             for handle in async_handles:
                 handle.wait()
-    ##############################################################################
-    ############################# CPU Offload Methods#############################
-    ##############################################################################
-    def get_grad_position(self, group_id, tensor_list, first_offset, partition_size):
-        current_offset = 0
-
-        for i, tensor in enumerate(tensor_list):
-            param_id = self.get_param_id(tensor)
-            param_start_offset = 0
-
-            num_elements = tensor.numel()
-            tensor_offset = 0
-
-            #we need to offset to get to the right element
-            if i == 0 and first_offset > 0:
-                tensor_offset = first_offset
-                num_elements = num_elements - tensor_offset
-                param_start_offset = first_offset
-
-            #we dont need all elements of the tensor
-            if num_elements > (partition_size - current_offset):
-                num_elements = partition_size - current_offset
-
-            self.grad_position[param_id] = [group_id, param_start_offset, current_offset, num_elements]
-            current_offset +=  num_elements
-
-
-    def update_overflow_tracker_for_param_grad(self, param):
-        if param.grad is not None and self._has_inf_or_nan(param.grad.data):
-            self.local_overflow = True 
-            
-    def async_accumulate_grad_in_cpu(self, param):
-        param_id = self.get_param_id(param)
-
-        #copy to a preexisiting buffer to avoid memory allocation penalty
-        dest_buffer = self.temp_grad_buffer_for_cpu_offload.view(-1).narrow(0, 0, param.numel()) 
-        dest_buffer.copy_(param.grad.view(-1))
-        
-        if param_id not in self.accumulated_grads_in_cpu:
-            self.accumulated_grads_in_cpu[param_id] = torch.zeros(param.numel(),dtype=param.dtype)
-
-        self.accumulated_grads_in_cpu[param_id].add_(dest_buffer)
-
-    def set_norm_for_param_grad(self, param):
-        param_id = self.get_param_id(param)
-        accumulated_grad = self.accumulated_grads_in_cpu[param_id] if self.gradient_accumulation_steps > 1 else param.grad
-        
-        [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
-        
-        start = source_offset
-        accumulated_grad = accumulated_grad.view(-1).narrow(0, start, num_elements)
-        
-        self.norm_for_param_grads[param_id] = accumulated_grad.data.double().norm(2)  
-    
-    def async_inplace_copy_grad_to_fp32_buffer(self, param):
-        param_id = self.get_param_id(param)
-        
-        [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
-
-        dest_tensor = self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(0, dest_offset, num_elements) 
-        if self.gradient_accumulation_steps > 1:
-            src_tensor = self.accumulated_grads_in_cpu[param_id].view(-1).narrow(0, source_offset, num_elements)
-        else:
-            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
-        dest_tensor.copy_(src_tensor)
-       
-    def complete_grad_norm_calculation_for_cpu_offload(self, params):
-        total_norm = 0.0
-        norm_type = 2.0
-        for p in params:
-            if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
-                param_id = self.get_param_id(p)
-                param_norm = self.norm_for_param_grads[param_id]
-                total_norm += param_norm.item()**2
-        
-        # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-
-        torch.distributed.all_reduce(total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.SUM,
-                                        group=self.dp_process_group)
-
-        self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.SUM)
-
-        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
-
-        if total_norm == float(
-                'inf') or total_norm == -float('inf') or total_norm != total_norm:
-            total_norm = -1
-
-        return total_norm
-
-    ############################################################################################
 
     def copy_grads_in_partition(self, param):
         if self.cpu_offload:
-            #print(f"GAS: {self.gradient_accumulation_steps}")
-            #print(f"GAS: {self.is_gradient_accumulation_boundary}")
             with torch.cuda.stream(self.migration_stream):
-                
-                self.update_overflow_tracker_for_param_grad(param)
-                
-                if self.gradient_accumulation_steps > 1:
-                    self.async_accumulate_grad_in_cpu(param)
-                
-                if self.is_gradient_accumulation_boundary:
-                    self.set_norm_for_param_grad(param)
-                    self.async_inplace_copy_grad_to_fp32_buffer(param)
-                    
-                #new_grad_tensor = async_copy_to(param.grad.view(-1),
-                #                                'cpu',
-                #                                self.cpu_computation_stream)
-            #param.grad.data = new_grad_tensor.data.view_as(param.grad)
+                new_grad_tensor = async_copy_to(param.grad.view(-1),
+                                                'cpu',
+                                                self.cpu_computation_stream)
+            param.grad.data = new_grad_tensor.data.view_as(param.grad)
             return
 
         if self.grads_in_partition is None:
@@ -855,7 +730,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
         #The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
-        new_grad_tensor = self.grads_in_partition.view(-1).narrow(0,
+        new_grad_tensor = self.grads_in_partition.narrow(0,
                                                          self.grads_in_partition_offset,
                                                          param.numel())
         new_grad_tensor.copy_(param.grad.view(-1))
@@ -1238,19 +1113,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
             p.grad = None
-    
-    def reset_cpu_buffers(self):
-        self.norm_for_param_grads = {}
-        with torch.cuda.stream(self.migration_stream):
-            for key, value in self.accumulated_grads_in_cpu.items():
-                value.mul_(0.0)
 
     def step(self, closure=None):
         """
         Not supporting closure.
         """
         if self.cpu_offload:
-            torch.cuda.current_stream().wait_stream(self.migration_stream)
+            self.cpu_computation_stream.wait_stream(self.migration_stream)
 
         see_memory_usage(f"In step before checking overflow")
 
@@ -1282,55 +1151,47 @@ class FP16_DeepSpeedZeroOptimizer(object):
         skip = False
         partition_id = dist.get_rank(group=self.dp_process_group)
         for i, group in enumerate(self.fp16_groups):
-            if self.cpu_offload:
-                norm_groups.append(
-                        self.complete_grad_norm_calculation_for_cpu_offload(self.params_in_partition[i]))
-                single_grad_partition = self.single_partition_of_fp32_groups[i].grad
+
+            norm_groups.append(
+                self.get_grad_norm_direct(self.averaged_gradients[i],
+                                          self.params_in_partition[i]))
+
+            #free gradients for all the prameters that are not updated by this process
+            self.free_grad_in_param_list(self.params_not_in_partition[i])
+
+            #create a flat gradients for parameters updated by this process
+            # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
+            if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
+                single_grad_partition = flatten_dense_tensors_aligned(
+                    self.averaged_gradients[i],
+                    int(self.partition_size[i])).to(
+                        self.single_partition_of_fp32_groups[i].dtype)
             else:
-                norm_groups.append(
-                    self.get_grad_norm_direct(self.averaged_gradients[i],
-                                            self.params_in_partition[i]))
+                single_grad_partition = _flatten_dense_tensors(
+                    self.averaged_gradients[i]).to(
+                        self.single_partition_of_fp32_groups[i].dtype)
+            assert single_grad_partition.numel() == self.partition_size[i], \
+                "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
-                #free gradients for all the prameters that are not updated by this process
-                self.free_grad_in_param_list(self.params_not_in_partition[i])
+            self.single_partition_of_fp32_groups[i].grad = single_grad_partition
+            #release all the gradient since we have already created a necessary copy in dp_grad_partition
+            self.free_grad_in_param_list(self.params_in_partition[i])
 
-                #create a flat gradients for parameters updated by this process
-                # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
-                if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
-                    single_grad_partition = flatten_dense_tensors_aligned(
-                        self.averaged_gradients[i],
-                        int(self.partition_size[i])).to(
-                            self.single_partition_of_fp32_groups[i].dtype)
-                else:
-                    single_grad_partition = _flatten_dense_tensors(
-                        self.averaged_gradients[i]).to(
-                            self.single_partition_of_fp32_groups[i].dtype)
-                assert single_grad_partition.numel() == self.partition_size[i], \
-                    "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
-
-                self.single_partition_of_fp32_groups[i].grad = single_grad_partition
-                #release all the gradient since we have already created a necessary copy in dp_grad_partition
-                self.free_grad_in_param_list(self.params_in_partition[i])
-
-                self.averaged_gradients[i] = None
+            self.averaged_gradients[i] = None
 
             single_partition_grad_groups.append(single_grad_partition)
 
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
-        torch.set_num_threads(12)
+
         timers('optimizer_step').start()
-        self.optimizer.step()
+        #self.optimizer.step()
         #get rid of the fp32 gradients. Not needed anymore
-        if not self.cpu_offload:
-            for group in self.single_partition_of_fp32_groups:
-                group.grad = None
+        for group in self.single_partition_of_fp32_groups:
+            group.grad = None
 
         for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
             fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         timers('optimizer_step').stop()
-        
-        if self.cpu_offload:
-            self.reset_cpu_buffers()
 
         timers('optimizer_allgather').start()
         #gather the updated weights from everyone
@@ -1409,7 +1270,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 return True
 
         return False
-    
+
     def has_overflow_partitioned_grads_serial(self):
         for i in range(len(self.fp16_groups)):
             for j, grad in enumerate(self.averaged_gradients[i]):
@@ -1419,7 +1280,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
-            overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial()
+            overflow = self.has_overflow_partitioned_grads_serial()
             overflow_gpu = torch.cuda.ByteTensor([overflow])
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -1472,9 +1333,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        if self.cpu_offload:
-            torch.cuda.current_stream().wait_stream(self.migration_stream)
-
         if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(self.reduce_bucket_size,
