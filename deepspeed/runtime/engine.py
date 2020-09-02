@@ -18,10 +18,9 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+    ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
-from deepspeed.pt.onebit_adam import OnebitAdam
-from deepspeed.pt.deepspeed_fp32_onebit_adam import FP32_OnebitAdam
+from deepspeed.runtime.fp16.onebit_adam import OnebitAdam
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
@@ -542,10 +541,8 @@ class DeepSpeedEngine(Module):
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == "OnebitAdam":
+        elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
-        elif self.optimizer_name() == "FP32_OnebitAdam":
-            optimizer = FP32_OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)

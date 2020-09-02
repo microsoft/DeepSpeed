@@ -9,10 +9,10 @@ import time
 import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
-from deepspeed.pt.log_utils import logger
+from deepspeed.utils.logging import logger
 
 from mpi4py import MPI
-from deepspeed.pt.custom_collectives import gather, allgather
+from deepspeed.runtime.custom_collectives import gather, allgather
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.  
