@@ -2,12 +2,13 @@
 .idea/
 *~
 *.swp
+*.log
 deepspeed/git_version_info.py
 
 # Build + installation data
 build/
 dist/
-fused_lamb_*.so
+*.so
 deepspeed.egg-info/
 
 # Website
@@ -19,4 +20,5 @@ docs/code-docs/build
 .jekyll-cache/
 .jekyll-metadata
 
+# Testing data
 tests/unit/saved_checkpoint/

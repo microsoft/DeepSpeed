@@ -8,23 +8,32 @@ DeepSpeed is a deep learning optimization library that makes distributed trainin
 efficient, and effective.
 
 <p align="center"><i><b>10x Larger Models</b></i></p>
-<p align="center"><i><b>5x Faster Training</b></i></p>
+<p align="center"><i><b>10x Faster Training</b></i></p>
 <p align="center"><i><b>Minimal Code Change</b></i></p>
 
 DeepSpeed can train DL models with over a hundred billion parameters on current
-generation of GPU clusters, while achieving over 5x in system performance
+generation of GPU clusters, while achieving over 10x in system performance
 compared to the state-of-art. Early adopters of DeepSpeed have already produced
 a language model (LM) with over 17B parameters called
 [Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
 establishing a new SOTA in the LM category.
 
+DeepSpeed is an important part of Microsoft’s new
+[AI at Scale](https://www.microsoft.com/en-us/research/project/ai-at-scale/)
+initiative to enable next-generation AI capabilities at scale, where you can find more
+information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale).
+
 # What's New?
 {% assign news = site.posts | where: "sneak_preview", "false" %}
 {% for post in news limit:5 %}
   {% if post.link %}
-  * [{{ post.title }}]({{ post.link }})
+    {% if post.image %}
+* [{{ post.date | date: "%Y/%m/%d"  }}] [ {{ post.title }} {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %} ![]({{ post.image }}) ]({{ post.link }})
+    {% else %}
+* [{{ post.date | date: "%Y/%m/%d"  }}] [{{ post.title }}]({{ post.link }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
+    {% endif %}
   {% else %}
-  * [{{ post.title }}]({{ post.url }})
+* [{{ post.date | date: "%Y/%m/%d"}}] [{{ post.title }}]({{ post.url }}) {% if post.new_post %} <span style="color:dodgerblue">**NEW!**</span> {% endif %}
   {% endif %}
 {% endfor %}
 
@@ -54,19 +63,20 @@ DeepSpeed achieves high performance and fast convergence through a combination o
 efficiency optimizations on compute/communication/memory/IO and effectiveness
 optimizations on advanced hyperparameter tuning and optimizers. For example:
 
-* DeepSpeed trains BERT-large to parity in 14 hours using 64 GPUs (4 DGX-2 boxes) and in
-  3.7 hours using 256 GPUs (16 DGX-2 boxes).
+* <span style="color:dodgerblue">DeepSpeed trains BERT-large to parity in 44
+  mins using 1024 V100 GPUs (64 DGX-2 boxes) and in 2.4 hours using 256 GPUs
+  (16 DGX-2 boxes).</span>
 
   **BERT-large Training Times**
 
-  | Devices       | Source    | Training Time (hours) |
-  | ------------- | --------- | ---------------------:|
-  | 64 TPUs       | Google    |                    96 |
-  | 64 V100 GPUs  | DeepSpeed |                **14** |
-  | 256 V100 GPUs | NVIDIA    |                   3.9 |
-  | 256 V100 GPUs | DeepSpeed |               **3.7** |
+  | Devices        | Source    |        Training Time  |
+  | -------------- | --------- | ---------------------:|
+  | 1024 V100 GPUs | DeepSpeed |             **44** min|
+  | 256 V100 GPUs  | DeepSpeed |             **2.4** hr|
+  | 64 V100 GPUs   | DeepSpeed |            **8.68** hr|
+  | 16 V100 GPUs   | DeepSpeed |           **33.22** hr|
 
-  *BERT Tutorial*: Coming Soon
+  *BERT codes and tutorials will be available soon.*
 
 * DeepSpeed trains GPT2 (1.5 billion parameters) 3.75x faster than state-of-art, NVIDIA
   Megatron on Azure GPUs.
@@ -77,37 +87,42 @@ optimizations on advanced hyperparameter tuning and optimizers. For example:
 
 ## Memory efficiency
 DeepSpeed provides memory-efficient data parallelism and enables training models without
-model parallelism. For example, DeepSpeed can train models with up to 6 billion parameters on
+model parallelism. For example, DeepSpeed can train models with up to 13 billion parameters on
 NVIDIA V100 GPUs with 32GB of device memory. In comparison, existing frameworks (e.g.,
-PyTorch's Distributed Data Parallel) run out of memory with 1.5 billion parameter models.
+PyTorch's Distributed Data Parallel) run out of memory with 1.4 billion parameter models.
 
 DeepSpeed reduces the training memory footprint through a novel solution called Zero
 Redundancy Optimizer (ZeRO). Unlike basic data parallelism where memory states are
-replicated across data-parallel processes, ZeRO partitions model states to save
-significant memory. The current implementation (stage 1 of ZeRO) reduces memory by up to
-4x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054).
+replicated across data-parallel processes, ZeRO partitions model states and gradients to save
+significant memory. Furthermore, it also reduces activation memory and fragmented memory.
+The current implementation (ZeRO-2) reduces memory by up to
+8x relative to the state-of-art. You can read more about ZeRO in our [paper](https://arxiv.org/abs/1910.02054), and
+in our blog posts related to
+[ZeRO-1](https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/). <!-- and [ZeRO-2](linklink). -->
 
 With this impressive memory reduction, early adopters of DeepSpeed have already
 produced  a language model (LM) with over 17B parameters called
-[Turing-NLG](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft),
+<a href="https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft">
+<span style="color:dodgerblue">Turing-NLG</span></a>,
 establishing a new SOTA in the LM category.
 
 
 ## Scalability
 DeepSpeed supports efficient data parallelism, model parallelism, and their
 combination. ZeRO boosts the scaling capability and efficiency further.
-* DeepSpeed provides system support to run models up to 100 billion parameters,
-  10x larger than the state-of-art (8 billion NVIDIA GPT, 11 billion Google T5).
-* DeepSpeed can run large models more efficiently, up to 6x faster for models with
-  various sizes spanning 1.5B to 100B.  More specifically, the data parallelism powered by ZeRO
+* <span style="color:dodgerblue">DeepSpeed provides system support to run models up to 170 billion parameters,
+  10x larger than the state-of-art (8 billion NVIDIA GPT, 11 billion Google T5).</span>
+* <span style="color:dodgerblue">DeepSpeed can run large models more efficiently, up to 10x
+  faster for models with
+  various sizes spanning 1.5B to 170B.</span> More specifically, the data parallelism powered by ZeRO
   is complementary and can be combined with different types of model parallelism.  It allows
   DeepSpeed to fit models using lower degree of model parallelism and higher batch size, offering
   significant performance gains compared to using model parallelism alone.
 
-  *Read more*: [technical report](https://arxiv.org/abs/1910.02054),
+  *Read more*: [ZeRO paper](https://arxiv.org/abs/1910.02054),
   and [GPT tutorial](/tutorials/megatron).
 
-![DeepSpeed-vs-Megatron](/assets/images/DeepSpeed-vs-Megatron.png)
+![DeepSpeed Speedup](/assets/images/deepspeed-speedup.png)
 <p align="center">
 <em>The figure depicts system throughput improvements of DeepSpeed (combining ZeRO-powered data parallelism with model parallelism of NVIDIA Megatron-LM) over using Megatron-LM alone.</em>
 </p>
@@ -123,39 +138,44 @@ convergence to desired accuracy.
 
 
 ## Good Usability
-Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to six billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.3 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custom model parallelisms, such as tensor slicing of NVIDIA's Megatron-LM.
+Only a few lines of code changes are needed to enable a PyTorch model to use DeepSpeed and ZeRO. Compared to current model parallelism libraries, DeepSpeed does not require a code redesign or model refactoring. It also does not put limitations on model dimensions (such as number of attention heads, hidden sizes, and others), batch size, or any other training parameters. For models of up to 13 billion parameters, you can use ZeRO-powered data parallelism conveniently without requiring model parallelism, while in contrast, standard data parallelism will run out of memory for models with more than 1.4 billion parameters. In addition, DeepSpeed conveniently supports flexible combination of ZeRO-powered data parallelism with custom model parallelisms, such as tensor slicing of NVIDIA's Megatron-LM.
 
 
 ## Features
 
 Below we provide a brief feature list, see our detailed [feature
-overview](features) for descriptions and usage.
+overview](/features/) for descriptions and usage.
 
-* [Distributed Training with Mixed Precision](features.md#distributed-training-with-mixed-precision)
+* [Distributed Training with Mixed Precision](/features/#distributed-training-with-mixed-precision)
     * 16-bit mixed precision
     * Single-GPU/Multi-GPU/Multi-Node
-* [Model Parallelism](features.md#model-parallelism)
+* [Model Parallelism](/features/#model-parallelism)
     * Support for Custom Model Parallelism
     * Integration with Megatron-LM
-* [Memory and Bandwidth Optimizations](features.md#memory-and-bandwidth-optimizations)
-    * The Zero Redundancy Optimizer (ZeRO)
-    * Constant Buffer Optimization (CBO)
+* [The Zero Redundancy Optimizer (ZeRO)](/features/#the-zero-redundancy-optimizer)
+    * Optimizer State and Gradient Partitioning
+    * Activation Partitioning
+    * Constant Buffer Optimization
+    * Contiguous Memory Optimization
+* [Additional Memory and Bandwidth Optimizations](/features/#additional-memory-and-bandwidth-optimizations)
     * Smart Gradient Accumulation
-* [Training Features](features.md#training-features)
+    * Communication/Computation Overlap
+* [Training Features](/features/#training-features)
     * Simplified training API
+    * Activation Checkpointing API
     * Gradient Clipping
     * Automatic loss scaling with mixed precision
-* [Training Optimizers](features.md#training-optimizers)
+* [Training Optimizers](/features/#training-optimizers)
     * Fused Adam optimizer and arbitrary `torch.optim.Optimizer`
     * Memory bandwidth optimized FP16 Optimizer
     * Large Batch Training with LAMB Optimizer
     * Memory efficient Training with ZeRO Optimizer
-* [Training Agnostic Checkpointing](features.md#training-agnostic-checkpointing)
-* [Advanced Parameter Search](features.md#advanced-parameter-search)
+* [Training Agnostic Checkpointing](/features/#training-agnostic-checkpointing)
+* [Advanced Parameter Search](/features/#advanced-parameter-search)
     * Learning Rate Range Test
     * 1Cycle Learning Rate Schedule
-* [Simplified Data Loader](features.md#simplified-data-loader)
-* [Performance Analysis and Debugging](features.md#performance-analysis-and-debugging)
+* [Simplified Data Loader](/features/#simplified-data-loader)
+* [Performance Analysis and Debugging](/features/#performance-analysis-and-debugging)
 
 
 # Contributing

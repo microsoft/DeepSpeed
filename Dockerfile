@@ -9,6 +9,7 @@ RUN apt-get update && \
     openssh-client openssh-server \
     pdsh curl sudo net-tools \
     vim iputils-ping wget
+    #llvm-9-dev cmake
 
 ##############################################################################
 # Installation Latest Git
@@ -32,6 +33,7 @@ RUN apt-get install -y python3 python3-dev && \
     pip install --upgrade pip && \
     # Print python an pip version
     python -V && pip -V
+RUN pip install pyyaml
 
 ##############################################################################
 # TensorFlow
@@ -70,19 +72,22 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 # nv_peer_mem
 ##############################################################################
+ENV NV_PEER_MEM_VERSION=1.1
+ENV NV_PEER_MEM_TAG=1.1-0
 RUN mkdir -p ${STAGE_DIR} && \
-    git clone https://github.com/Mellanox/nv_peer_memory.git ${STAGE_DIR}/nv_peer_memory && \
+    git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory && \
     cd ${STAGE_DIR}/nv_peer_memory && \
     ./build_module.sh && \
     cd ${STAGE_DIR} && \
-    tar xzf ${STAGE_DIR}/nvidia-peer-memory_1.0.orig.tar.gz && \
-    cd ${STAGE_DIR}/nvidia-peer-memory-1.0 && \
+    tar xzf ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_VERSION}.orig.tar.gz && \
+    cd ${STAGE_DIR}/nvidia-peer-memory-${NV_PEER_MEM_VERSION} && \
+    apt-get update && \
     apt-get install -y dkms && \
     dpkg-buildpackage -us -uc && \
-    dpkg -i ${STAGE_DIR}/nvidia-peer-memory_1.0-9_all.deb
+    dpkg -i ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_TAG}_all.deb
 
 ##############################################################################
-## Ucomment and set SSH Daemon port
+## SSH daemon port inside container cannot conflict with host OS port
 ###############################################################################
 ENV SSH_PORT=2222
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \

@@ -71,25 +71,16 @@ html_context = {
 from unittest.mock import MagicMock
 sys.path.insert(0, os.path.abspath('../../../'))
 
+# Prepend module names to class descriptions?
+add_module_names = True
 
-class Mock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return MagicMock()
+autoclass_content = 'both'
 
-
-MOCK_MODULES = [
-    'torch',
-    'torch.utils',
-    'torch.utils.data',
-    'torch.utils.data.distributed',
-    'torch._utils',
-    'torch.cuda',
-    'torch.nn.modules',
-    'torch.nn',
-    'torch.distributed',
-    'torch.distributed.distributed_c10d',
-    'torch.optim',
-    'torch._six'
+autodoc_mock_imports = [
+    "torch",
+    "apex",
+    "mpi4py",
+    "tensorboardX",
+    "deepspeed_transformer_cuda",
+    "deepspeed_stochastic_transformer_cuda",
 ]
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)

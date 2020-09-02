@@ -34,10 +34,10 @@ The script `<client_entry.py>` will execute on the resources specified in `<host
 ## Model Parallelism
 
 ### Support for Custom Model Parallelism
-DeepSpeed is supports all forms of model parallelism including tensor slicing based
-approaches such as the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), or a
-pipelined parallelism approach such as
-[PipeDream](https://github.com/msr-fiddle/pipedream) or
+DeepSpeed supports all forms of model parallelism including tensor slicing based
+approaches such as the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), or
+pipelined parallelism approaches such as
+[PipeDream](https://github.com/msr-fiddle/pipedream) and
 [GPipe](https://github.com/kakaobrain/torchgpipe). It does so by only requiring the model
 parallelism framework to provide a *model parallelism unit* (`mpu`) that implements a few
 bookkeeping functionalities:
@@ -57,19 +57,33 @@ DeepSpeed is fully compatible with [Megatron](https://github.com/NVIDIA/Megatron
 Please see the [Megatron-LM tutorial](/tutorials/megatron/) for details.
 
 
-
-## Memory and Bandwidth Optimizations
-
-### The Zero Redundancy Optimizer (ZeRO)
-[ZeRO](https://arxiv.org/abs/1910.02054) is at the heart of DeepSpeed and
-enables large model training at a scale that is simply not possible with model
-parallelism alone. When enabled, ZeRO allows training models with
-over 6 billion parameters without any model parallelism, and up to 100 billion
-parameter models with model parallelism on current generation hardware.
+## The Zero Redundancy Optimizer
+The Zero Redundancy Optimizer ([ZeRO](https://arxiv.org/abs/1910.02054)) is at
+the heart of DeepSpeed and enables large model training at a scale that is
+simply not possible with model parallelism alone. When enabled, ZeRO allows
+training models with over 13 billion parameters without any model parallelism,
+and up to 200 billion parameter models with model parallelism on current
+generation hardware.
 
 For more details see the [ZeRO paper](https://arxiv.org/abs/1910.02054), [GPT
 tutorial](/tutorials/megatron/) on integration with
-DeepSpeed. Additional tutorials including *BERT Tutorial*: Coming Soon.
+DeepSpeed.
+
+### Optimizer State and Gradient Partitioning
+Optimizer State and Gradient Partitioning in ZeRO reduces the memory consumption of the
+model states (optimizer states, gradients and parmaeters) by 8x compared to standard
+data parallelism by partitioning these states across data parallel process instead of
+replicating them.
+
+### Activation Partitioning
+Activation Partitioning is a memory optimization in ZeRO that can reduce the memory
+consumed by activations during model parallel training (MP). In MP certain
+activations maybe required by all MP processes, resulting in a replication of
+activations across MP GPUs. Activation Partitioning stores these activations in a
+partitioned state once they are used for computation in the forward propagation. These
+activations are allgathered right before they are needed again during the backward propagation.
+By storing activations in a partitioned state, ZeRO in DeepSpeed can reduce the activation
+memory footprint proportional to the MP degree.
 
 ### Constant Buffer Optimization (CBO)
 CBO enables high network and memory throughput while restricting memory usage to a
@@ -79,6 +93,17 @@ all operands into a single large operand can enable great throughput at the expe
 unnecessary memory overhead. CBO in DeepSpeed fuses smaller operands into approximately a
 pre-defined sized buffer large enough to achieve great performance without the
 unnecessary memory overhead.
+
+### Contiguous Memory Optimization (CMO)
+CMO reduces memory fragmentation during training, preventing out of memory errors
+due to lack of contiguous memory. Memory fragmentation is a result of interleaving between
+short lived and long lived memory objects. During the forward propagation activation
+checkpoints are long lived but the activations that recomputed are short lived. Similarly,
+during the backward computation, the activation gradients are short lived while the parameter
+gradients are long lived. CMO transfers activation checkpoints and parameter gradients
+to contiguous buffers preventing memory fragmentation.
+
+## Additional Memory and Bandwidth Optimizations
 
 ### Smart Gradient Accumulation
 Gradient accumulation allows running larger batch size with limited memory by breaking an
@@ -90,6 +115,11 @@ averaged gradients for the effective batch across all GPUs. This strategy signif
 reduces the communication involved over the approach of averaging globally for each
 micro-batch, specially when the number of micro-batches per effective batch is large.
 
+### Communication Overlapping
+During back propagation, DeepSpeed can overlap the communication required for averaging
+parameter gradients that have already been computed with the ongoing gradient computation.
+This computation-communication overlap allows DeepSpeed to achieve higher throughput even
+at modest batch sizes.  
 
 ## Training Features
 
@@ -100,12 +130,23 @@ The DeepSpeed core API consists of just a handful of methods:
 * argument parsing: `add_config_arguments`
 * checkpointing : `load_checkpoint` and `store_checkpoint`
 
-DeepSpeed supports all the features described in this document, via the use of these API,
+DeepSpeed supports most of the features described in this document, via the use of these API,
 along with a `deepspeed_config` JSON file for enabling and disabling the features.
 Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
 
+### Activation Checkpointing API
+
+DeepSpeed's Activation Checkpoinitng API supports activation checkpoint partitioning,
+cpu checkpoiniting, and contiguous memory optimizations, while also allowing layerwise
+profiling. Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
+
 
 ### Gradient Clipping
+```json
+{
+  "gradient_clipping": 1.0
+}
+```
 DeepSpeed handles gradient clipping under the hood based on the max gradient norm
 specified by the user.
 Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
@@ -136,9 +177,9 @@ DeepSpeed makes it easy to train with large batch sizes by enabling the LAMB Opt
 For more details on LAMB, see the [LAMB paper](https://arxiv.org/pdf/1904.00962.pdf).
 
 ### Memory-Efficient Training with ZeRO Optimizer
-DeepSpeed can train models up with up to 6 billion parameters without parallelism, and
-models with up to 100 billion parameters with 16-way model parallelism. This leap in
-model size is possible though the memory efficiency achieved via the ZeRO Optimizer. For
+DeepSpeed can train models with up to 13 billion parameters without model parallelism, and
+models with up to 200 billion parameters with 16-way model parallelism. This leap in
+model size is possible through the memory efficiency achieved via the ZeRO Optimizer. For
 more details see [ZeRO paper](https://arxiv.org/abs/1910.02054) .
 
 
@@ -148,8 +189,7 @@ DeepSpeed can simplify checkpointing for you regardless of whether you are using
 parallel training, model parallel training, mixed-precision training, a mix of these
 three, or using the zero optimizer to enable larger model sizes.
 Please see the [Getting Started](/getting-started/) guide
-and the
-Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
+and the [core API doc](https://deepspeed.readthedocs.io/) for more details.
 
 ## Advanced parameter search
 DeepSpeed supports multiple Learning Rate Schedules to enable faster convergence for
@@ -169,11 +209,15 @@ can automatically handle batch creation appropriately.
 
 ## Performance Analysis and Debugging
 For performance debugging, DeepSpeed can give you a detailed breakdown of the time spent
-in different parts of the training with by simply enabling it in the `deepspeed_config`
+in different parts of the training by simply enabling it in the `deepspeed_config`
 file.
 Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
 ```json
 {
-  "wall_clock_breakdown": true
+  "wall_clock_breakdown": true,
+
+  "activation_checkpointing": {
+    "profile": true
+  }
 }
 ```

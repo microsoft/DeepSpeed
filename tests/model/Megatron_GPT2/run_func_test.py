@@ -10,6 +10,11 @@ import time
 import re
 from .test_common import BaseTestCase
 
+LAYERS = 2
+HIDDEN_SIZE = 128
+ATTN_HEADS = 8
+SEQ_LEN = 64
+
 
 def grep_loss_from_file(file_name):
     loss = 0.0
@@ -43,55 +48,127 @@ class GPT2FuncTestCase(BaseTestCase):
     def tearDown(self):
         os.chdir(self.save_dir)
 
-    def test_mp1_gpu1_node1(self):
+    def test_mp1_gpu1_node1_zero1(self):
         test_config = {
             "mp": 1,
             "gpus": 1,
             "nodes": 1,
             "bs": 4,
             "steps": 1000,
-            "layers": 12,
-            "hidden_size": 768,
-            "seq_length": 256,
-            "heads": 12,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
             "deepspeed": False,
-            "json": "ds_config_func_bs4.json",
+            "json": "ds_config_func_bs4_zero1.json",
         }
 
         succ = self.run_test(test_config, 0.01)
         self.assertTrue(succ)
 
-    def test_mp1_gpu2_node1(self):
+    def test_mp1_gpu2_node1_zero1(self):
         test_config = {
             "mp": 1,
             "gpus": 2,
             "nodes": 1,
             "bs": 8,
             "steps": 1000,
-            "layers": 12,
-            "hidden_size": 768,
-            "seq_length": 256,
-            "heads": 12,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
             "deepspeed": False,
-            "json": "ds_config_func_bs8.json",
+            "json": "ds_config_func_bs8_zero1.json",
         }
 
         succ = self.run_test(test_config, 0.01)
         self.assertTrue(succ)
 
-    def test_mp2_gpu4_node1(self):
+    def test_mp2_gpu4_node1_zero1(self):
         test_config = {
             "mp": 2,
             "gpus": 4,
             "nodes": 1,
             "bs": 8,
             "steps": 1000,
-            "layers": 12,
-            "hidden_size": 768,
-            "seq_length": 256,
-            "heads": 12,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
             "deepspeed": False,
-            "json": "ds_config_func_bs8.json",
+            "json": "ds_config_func_bs8_zero1.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp4_gpu4_node1_zero1(self):
+        test_config = {
+            "mp": 4,
+            "gpus": 4,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": False,
+            "json": "ds_config_func_bs8_zero1.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp1_gpu1_node1_zero2(self):
+        test_config = {
+            "mp": 1,
+            "gpus": 1,
+            "nodes": 1,
+            "bs": 4,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": False,
+            "json": "ds_config_func_bs4_zero2.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp1_gpu2_node1_zero2(self):
+        test_config = {
+            "mp": 1,
+            "gpus": 2,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": False,
+            "json": "ds_config_func_bs8_zero2.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp2_gpu4_node1_zero2(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 4,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": False,
+            "json": "ds_config_func_bs8_zero2.json",
         }
 
         succ = self.run_test(test_config, 0.01)
@@ -100,19 +177,41 @@ class GPT2FuncTestCase(BaseTestCase):
         succ = self.run_partition_activations_test(test_config, 0.01)
         self.assertTrue(succ)
 
-    def test_mp4_gpu4_node1(self):
+    def test_mp4_gpu4_node1_zero2(self):
         test_config = {
             "mp": 4,
             "gpus": 4,
             "nodes": 1,
             "bs": 8,
             "steps": 1000,
-            "layers": 12,
-            "hidden_size": 768,
-            "seq_length": 256,
-            "heads": 12,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
             "deepspeed": False,
-            "json": "ds_config_func_bs8.json",
+            "json": "ds_config_func_bs8_zero2.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+        succ = self.run_partition_activations_test(test_config, 0.01)
+        self.assertTrue(succ)
+
+    def test_mp2_gpu4_node1_zero2_gas(self):
+        test_config = {
+            "mp": 2,
+            "gpus": 4,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": True,
+            "json": "ds_config_func_bs8_zero2_gas3.json",
+            "baseline": "ds_config_func_bs8_zero0_gas3.json",
         }
 
         succ = self.run_test(test_config, 0.01)
@@ -128,10 +227,10 @@ class GPT2FuncTestCase(BaseTestCase):
             "nodes": 1,
             "bs": 4,
             "steps": 20,
-            "layers": 12,
-            "hidden_size": 768,
-            "seq_length": 256,
-            "heads": 12,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
             "deepspeed": False,
             "json": "ds_config_func_scheduler.json",
         }
@@ -144,11 +243,25 @@ class GPT2FuncTestCase(BaseTestCase):
         print("\n")
         print("{0}: starting......".format(self.id()))
 
+        baseline_prefix = "gpt2_func_"
         prefix = "gpt2_partition_activation_"
 
+        deepspeed_config = test_config["json"]
+        baseline_deepspeed_config = False
+
         # baseline run...
-        test_config["deepspeed"] = False
-        base_file = self.gen_output_name(test_config, prefix)
+        # turnoff deepspeed if baseline deepspeed config
+        # is not provided
+        if not "baseline" in test_config:
+            test_config["deepspeed"] = False
+        else:
+            test_config["json"] = test_config["baseline"]
+            baseline_prefix += test_config["json"][0:-5]
+            baseline_deepspeed_config = True
+
+        base_file = self.gen_output_name(test_config,
+                                         baseline_prefix,
+                                         baseline_config=baseline_deepspeed_config)
 
         # skip baseline run if it exists.
         if not self.has_loss_data(base_file):
@@ -159,7 +272,8 @@ class GPT2FuncTestCase(BaseTestCase):
 
         # DeepSpeed run...
         test_config["deepspeed"] = True
-        test_config["other_args"] = "--partition-activations"
+        test_config["other_args"] = "--deepspeed-activation-checkpointing"
+        test_config["json"] = deepspeed_config
         print("{0}: DeepSpeed run.".format(self.id()))
         test_file = self.gen_output_name(test_config, prefix)
         self.run_gpt2_test(test_config, test_file)
@@ -171,10 +285,25 @@ class GPT2FuncTestCase(BaseTestCase):
         print("{0}: starting......".format(self.id()))
 
         prefix = "gpt2_func"
+        baseline_prefix = prefix
+
+        deepspeed_config = test_config["json"]
+        baseline_deepspeed_config = False
 
         # baseline run...
-        test_config["deepspeed"] = False
-        base_file = self.gen_output_name(test_config, prefix)
+        # turn off deepspeed if a baseline deepspeed config
+        # is not provided
+        if not "baseline" in test_config:
+            test_config["deepspeed"] = False
+        else:
+            test_config["json"] = test_config["baseline"]
+            baseline_prefix = prefix + test_config["json"][0:-5]
+            baseline_deepspeed_config = True
+
+        # baseline run...
+        base_file = self.gen_output_name(test_config,
+                                         baseline_prefix,
+                                         baseline_config=baseline_deepspeed_config)
 
         # skip baseline run if it exists.
         if not self.has_loss_data(base_file):
@@ -185,6 +314,8 @@ class GPT2FuncTestCase(BaseTestCase):
 
         # DeepSpeed run...
         test_config["deepspeed"] = True
+        test_config["json"] = deepspeed_config
+
         print("{0}: DeepSpeed run.".format(self.id()))
         test_file = self.gen_output_name(test_config, prefix)
         self.run_gpt2_test(test_config, test_file)
@@ -217,11 +348,20 @@ class GPT2FuncTestCase(BaseTestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1'))
-    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1'))
-    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1'))
-    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1'))
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero1'))
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero1'))
+    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero1'))
+    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero1'))
+
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2'))
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2'))
+    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2'))
+    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2'))
+
+    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_gas'))
+
     suite.addTest(GPT2FuncTestCase('test_optimizer_scheduler'))
+
     return suite
 
 

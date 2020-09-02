@@ -29,6 +29,16 @@ collections:
   tutorials:
     output: true
     permalink: /:collection/:path/
+    order:
+      - getting-started.md
+      - azure.md
+      - cifar-10.md
+      - bert-pretraining.md
+      - bert-finetuning.md
+      - transformer_kernel.md
+      - megatron.md
+      - 1Cycle.md
+      - lrrt.md
 
 defaults:
   - scope:
@@ -55,6 +65,11 @@ defaults:
     values:
       layout: single
       share: true
+
+analytics:
+  provider: "google-gtag"
+  google:
+    tracking_id: "UA-169781858-1"
 
 timezone: America/Los_Angeles
 breadcrumbs: true
