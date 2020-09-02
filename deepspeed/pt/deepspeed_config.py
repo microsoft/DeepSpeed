@@ -466,9 +466,9 @@ class DeepSpeedConfig(object):
         assert self.gradient_accumulation_steps, "DeepSpeedConfig: {} is not defined".format(
             GRADIENT_ACCUMULATION_STEPS)
 
-        if self.optimizer_name == TORCH_ADAM_OPTIMIZER:
-            assert self.zero_enabled, "ZeRO is not enabled with using TORCH_ADAM_OPTIMIZER"
-            assert self.zero_config.cpu_offload, " cpu_offload is not enabled with using TORCH_ADAM_OPTIMIZER"
+        #if self.optimizer_name == TORCH_ADAM_OPTIMIZER:
+        #assert self.zero_enabled, "ZeRO is not enabled with using TORCH_ADAM_OPTIMIZER"
+        #assert self.zero_config.cpu_offload, " cpu_offload is not enabled with using TORCH_ADAM_OPTIMIZER"
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
