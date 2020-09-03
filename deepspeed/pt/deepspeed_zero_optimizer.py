@@ -1308,7 +1308,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.overflow:
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad()
-            self.reset_cpu_buffers()
+            if self.cpu_offload:
+                self.reset_cpu_buffers()
 
             see_memory_usage('After overflow after clearing gradients')
 
