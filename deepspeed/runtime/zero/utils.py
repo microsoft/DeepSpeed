@@ -1,6 +1,6 @@
 import torch
 import torch.distributed as dist
-
+import apex
 from deepspeed.utils import logger
 
 
@@ -20,3 +20,7 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
         if rank in ranks:
             my_group = group
     return my_group
+
+ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, apex.optimizers.FusedAdam]
+def is_supported_optimizer(optimizer):
+    return type(optimizer) in ZERO_SUPPORTED_OPTIMIZERS

@@ -60,6 +60,8 @@ def compare_optimizer_states(saved_model, loaded_model, hidden_dim, fp16=True):
     for state0, state1 in zip(saved_optimizer.state.values(),
                               loaded_optimizer.state.values()):
         for s0, s1 in zip(state0.values(), state1.values()):
+            print(f's0 = {s0}')
+            print(f's1 = {s1}')
             if isinstance(s0, torch.Tensor) and isinstance(s1, torch.Tensor):
                 assert torch.equal(s0, s1)
             else:
