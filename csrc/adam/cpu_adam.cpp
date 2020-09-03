@@ -1,26 +1,26 @@
+#include "cpu_adam.h"
+#include <cuda_runtime_api.h>
+#include <omp.h>
 #include <torch/extension.h>
 #include <x86intrin.h>
-#include <omp.h>
-#include "cpu_adam.h"
-#include <type_traits>
-#include <unordered_map>
 #include <iostream>
 #include <memory>
-#include "cuda.h"
+#include <type_traits>
+#include <unordered_map>
 #include "cublas_v2.h"
+#include "cuda.h"
 #include "curand.h"
-#include <cuda_runtime_api.h>
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
-void Adam_Optimizer::Step(float *_params, 
-                            float *grads, 
-                            float *_exp_avg, 
-                            float *_exp_avg_sq, 
-                            size_t _param_size, 
-                            __half* dev_params)
+void Adam_Optimizer::Step(float* _params,
+                          float* grads,
+                          float* _exp_avg,
+                          float* _exp_avg_sq,
+                          size_t _param_size,
+                          __half* dev_params)
 {
     _betta1_t *= _betta1;
     _betta2_t *= _betta2;
@@ -30,8 +30,8 @@ void Adam_Optimizer::Step(float *_params,
     __m512 betta1_4 = _mm512_set1_ps(_betta1);
     __m512 betta2_4 = _mm512_set1_ps(_betta2);
 
-    float betta1_minus1 = 1 - _betta1; 
-    float betta2_minus1 = 1 - _betta2; 
+    float betta1_minus1 = 1 - _betta1;
+    float betta2_minus1 = 1 - _betta2;
     __m512 betta1_minus1_4 = _mm512_set1_ps(betta1_minus1);
     __m512 betta2_minus1_4 = _mm512_set1_ps(betta2_minus1);
 
@@ -49,19 +49,16 @@ void Adam_Optimizer::Step(float *_params,
 
     size_t tile = 0;
 
-    #pragma omp parallel for
-    for(size_t i = 0;i < _param_size;i += SIMD_WIDTH)
-    {
+#pragma omp parallel for
+    for (size_t i = 0; i < _param_size; i += SIMD_WIDTH) {
         __m512 grad_4 = _mm512_loadu_ps(grads + i);
-        
+
         __m512 momntum_4 = _mm512_loadu_ps(_exp_avg + i);
         __m512 varianc_4 = _mm512_loadu_ps(_exp_avg_sq + i);
 
         __m512 param_4 = _mm512_loadu_ps(_params + i);
-        
 
-        if(_weight_decay > 0)
-        {
+        if (_weight_decay > 0) {
             __m512 weight_decay4 = _mm512_set1_ps(_weight_decay);
             grad_4 = _mm512_fmadd_ps(param_4, weight_decay4, grad_4);
         }
@@ -82,40 +79,35 @@ void Adam_Optimizer::Step(float *_params,
         _mm512_storeu_ps(_params + i, param_4);
         _mm512_storeu_ps(_exp_avg + i, momntum_4);
         _mm512_storeu_ps(_exp_avg_sq + i, varianc_4);
-        if(dev_params)
-        {
-            if((i + SIMD_WIDTH) % TILE == 0)
-            {
+        if (dev_params) {
+            if ((i + SIMD_WIDTH) % TILE == 0) {
                 size_t offset = tile * TILE;
-                #pragma omp parallel for
-                for(size_t j = 0;j < TILE;j+=4)
-                {
+#pragma omp parallel for
+                for (size_t j = 0; j < TILE; j += 4) {
                     _doubled_buffer[buf_index][j] = (__half)_params[offset + j];
-                    _doubled_buffer[buf_index][j+1] = (__half)_params[offset + j + 1];
-                    _doubled_buffer[buf_index][j+2] = (__half)_params[offset + j + 2];
-                    _doubled_buffer[buf_index][j+3] = (__half)_params[offset + j + 3];
+                    _doubled_buffer[buf_index][j + 1] = (__half)_params[offset + j + 1];
+                    _doubled_buffer[buf_index][j + 2] = (__half)_params[offset + j + 2];
+                    _doubled_buffer[buf_index][j + 3] = (__half)_params[offset + j + 3];
                 }
-                CUDA_CHECK(cudaMemcpyAsync(dev_params + tile * TILE, 
-                                _doubled_buffer[buf_index], 
-                                TILE * sizeof(__half), 
-                                cudaMemcpyHostToDevice, 
-                                Context::Instance().GetCurrentStream()));
+                CUDA_CHECK(cudaMemcpyAsync(dev_params + tile * TILE,
+                                           _doubled_buffer[buf_index],
+                                           TILE * sizeof(__half),
+                                           cudaMemcpyHostToDevice,
+                                           Context::Instance().GetCurrentStream()));
                 buf_index = !buf_index;
                 tile++;
             }
         }
     }
-    
 }
 
-void Adam_Optimizer::Step_4(float *_params, 
-                            float *grads, 
-                            float *_exp_avg, 
-                            float *_exp_avg_sq, 
-                            size_t _param_size, 
+void Adam_Optimizer::Step_4(float* _params,
+                            float* grads,
+                            float* _exp_avg,
+                            float* _exp_avg_sq,
+                            size_t _param_size,
                             __half* dev_params)
 {
-
     _betta1_t *= _betta1;
     _betta2_t *= _betta2;
 
@@ -125,8 +117,8 @@ void Adam_Optimizer::Step_4(float *_params,
     bool buf_index = 0;
     size_t tile = 0;
 
-    float betta1_minus1 = 1 - _betta1; 
-    float betta2_minus1 = 1 - _betta2; 
+    float betta1_minus1 = 1 - _betta1;
+    float betta2_minus1 = 1 - _betta2;
     __m512 betta1_minus1_4 = _mm512_set1_ps(betta1_minus1);
     __m512 betta2_minus1_4 = _mm512_set1_ps(betta2_minus1);
 
@@ -142,35 +134,33 @@ void Adam_Optimizer::Step_4(float *_params,
 
     __m512 bias2_sqrt = _mm512_sqrt_ps(bias_correction2_4);
 
-    #pragma omp parallel for
-    for(size_t i = 0;i < _param_size;i += (SIMD_WIDTH << 2))
-    {
+#pragma omp parallel for
+    for (size_t i = 0; i < _param_size; i += (SIMD_WIDTH << 2)) {
         __m512 grad_4[4];
         grad_4[0] = _mm512_loadu_ps(grads + i);
         grad_4[1] = _mm512_loadu_ps(grads + i + SIMD_WIDTH);
-        grad_4[2] = _mm512_loadu_ps(grads + i + (SIMD_WIDTH<<1));
+        grad_4[2] = _mm512_loadu_ps(grads + i + (SIMD_WIDTH << 1));
         grad_4[3] = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 3);
 
         __m512 momntum_4[2];
         momntum_4[0] = _mm512_loadu_ps(_exp_avg + i);
         momntum_4[1] = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH);
-        momntum_4[2] = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH<<1));
+        momntum_4[2] = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH << 1));
         momntum_4[3] = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 3);
 
         __m512 varianc_4[2];
         varianc_4[0] = _mm512_loadu_ps(_exp_avg_sq + i);
         varianc_4[1] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH);
-        varianc_4[2] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH<<1));
+        varianc_4[2] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1));
         varianc_4[3] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3);
 
         __m512 param_4[2];
         param_4[0] = _mm512_loadu_ps(_params + i);
         param_4[1] = _mm512_loadu_ps(_params + i + SIMD_WIDTH);
-        param_4[2] = _mm512_loadu_ps(_params + i + (SIMD_WIDTH<<1));
+        param_4[2] = _mm512_loadu_ps(_params + i + (SIMD_WIDTH << 1));
         param_4[3] = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 3);
 
-        if(_weight_decay > 0)
-        {
+        if (_weight_decay > 0) {
             __m512 weight_decay4 = _mm512_set1_ps(_weight_decay);
             grad_4[0] = _mm512_fmadd_ps(param_4[0], weight_decay4, grad_4[0]);
             grad_4[1] = _mm512_fmadd_ps(param_4[1], weight_decay4, grad_4[1]);
@@ -221,69 +211,61 @@ void Adam_Optimizer::Step_4(float *_params,
 
         _mm512_storeu_ps(_params + i, param_4[0]);
         _mm512_storeu_ps(_params + i + SIMD_WIDTH, param_4[1]);
-        _mm512_storeu_ps(_params + i + (SIMD_WIDTH<<1), param_4[2]);
+        _mm512_storeu_ps(_params + i + (SIMD_WIDTH << 1), param_4[2]);
         _mm512_storeu_ps(_params + i + SIMD_WIDTH * 3, param_4[3]);
 
         _mm512_storeu_ps(_exp_avg + i, momntum_4[0]);
         _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH, momntum_4[1]);
-        _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH<<1), momntum_4[2]);
+        _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH << 1), momntum_4[2]);
         _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 3, momntum_4[3]);
 
         _mm512_storeu_ps(_exp_avg_sq + i, varianc_4[0]);
         _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH, varianc_4[1]);
-        _mm512_storeu_ps(_exp_avg_sq + i + (SIMD_WIDTH<<1), varianc_4[2]);
+        _mm512_storeu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1), varianc_4[2]);
         _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3, varianc_4[3]);
-        if(dev_params)
-        {
-            if((i + (SIMD_WIDTH << 2)) % TILE == 0)
-            {
+        if (dev_params) {
+            if ((i + (SIMD_WIDTH << 2)) % TILE == 0) {
                 size_t offset = tile * TILE;
-                #pragma omp parallel for
-                for(size_t j = 0;j < TILE;j+=4)
-                {
+#pragma omp parallel for
+                for (size_t j = 0; j < TILE; j += 4) {
                     _doubled_buffer[buf_index][j] = (__half)_params[offset + j];
-                    _doubled_buffer[buf_index][j+1] = (__half)_params[offset + j + 1];
-                    _doubled_buffer[buf_index][j+2] = (__half)_params[offset + j + 2];
-                    _doubled_buffer[buf_index][j+3] = (__half)_params[offset + j + 3];
+                    _doubled_buffer[buf_index][j + 1] = (__half)_params[offset + j + 1];
+                    _doubled_buffer[buf_index][j + 2] = (__half)_params[offset + j + 2];
+                    _doubled_buffer[buf_index][j + 3] = (__half)_params[offset + j + 3];
                 }
-                CUDA_CHECK(cudaMemcpyAsync(dev_params + tile * TILE, 
-                                _doubled_buffer[buf_index], 
-                                TILE * sizeof(__half), 
-                                cudaMemcpyHostToDevice, 
-                                Context::Instance().GetCurrentStream()));
-                buf_index = !buf_index;            
+                CUDA_CHECK(cudaMemcpyAsync(dev_params + tile * TILE,
+                                           _doubled_buffer[buf_index],
+                                           TILE * sizeof(__half),
+                                           cudaMemcpyHostToDevice,
+                                           Context::Instance().GetCurrentStream()));
+                buf_index = !buf_index;
                 tile++;
             }
         }
-        
     }
 }
 
-int create_adam_optimizer(int optimizer_id, 
-                          float alpha = 1e-3, 
-                          float betta1 = 0.9, 
-                          float betta2 = 0.999, 
-                          float eps = 1e-8, 
+int create_adam_optimizer(int optimizer_id,
+                          float alpha = 1e-3,
+                          float betta1 = 0.9,
+                          float betta2 = 0.999,
+                          float eps = 1e-8,
                           float weight_decay = 0)
-                          
+
 {
-    auto opt = std::make_shared<Adam_Optimizer>(alpha, 
-                                                betta1,
-                                                betta2,
-                                                eps,   
-                                                weight_decay);
- 
+    auto opt = std::make_shared<Adam_Optimizer>(alpha, betta1, betta2, eps, weight_decay);
+
     s_optimizers[optimizer_id] = opt;
 
-    std::cout << "Adam Optimizer #" << optimizer_id << " is created." <<  std::endl;
+    std::cout << "Adam Optimizer #" << optimizer_id << " is created." << std::endl;
 
     return 0;
 }
 
 int ds_adam_step(int optimizer_id,
-                 torch::Tensor& params, 
-                 torch::Tensor& grads, 
-                 torch::Tensor& exp_avg, 
+                 torch::Tensor& params,
+                 torch::Tensor& grads,
+                 torch::Tensor& exp_avg,
                  torch::Tensor& exp_avg_sq)
 {
     auto params_c = params.contiguous();
@@ -296,8 +278,8 @@ int ds_adam_step(int optimizer_id,
     float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
     float* exp_avg_sq_ptr = (float*)exp_avg_sq_c.data_ptr();
 
-    std::shared_ptr<Adam_Optimizer> opt = 
-            std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
+    std::shared_ptr<Adam_Optimizer> opt =
+        std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
 
     opt->Step_4(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
@@ -305,9 +287,9 @@ int ds_adam_step(int optimizer_id,
 }
 
 int ds_adam_step_plus_copy(int optimizer_id,
-                           torch::Tensor& params, 
+                           torch::Tensor& params,
                            torch::Tensor& grads,
-                           torch::Tensor& exp_avg, 
+                           torch::Tensor& exp_avg,
                            torch::Tensor& exp_avg_sq,
                            torch::Tensor& gpu_params)
 {
@@ -323,17 +305,20 @@ int ds_adam_step_plus_copy(int optimizer_id,
     float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
     float* exp_avg_sq_ptr = (float*)exp_avg_sq_c.data_ptr();
 
-    std::shared_ptr<Adam_Optimizer> opt = 
-            std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
+    std::shared_ptr<Adam_Optimizer> opt =
+        std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
 
-    opt->Step_4(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
+    opt->Step_4(
+        params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 
     return 0;
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) 
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("adam_update", &ds_adam_step, "DeepSpeed CPU Adam update (C++)");
-    m.def("adam_update_copy", &ds_adam_step_plus_copy, "DeepSpeed CPU Adam update and param copy (C++)");
+    m.def("adam_update_copy",
+          &ds_adam_step_plus_copy,
+          "DeepSpeed CPU Adam update and param copy (C++)");
     m.def("create_adam", &create_adam_optimizer, "DeepSpeed CPU Adam (C++)");
 }

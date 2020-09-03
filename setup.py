@@ -47,7 +47,8 @@ DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
                                           0)) * DS_BUILD_SPARSE_ATTN_MASK
 
 # Final effective mask is the bitwise OR of each op
-BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN | DS_BUILD_ADAM)
+BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
+              | DS_BUILD_ADAM)
 
 install_ops = []
 if BUILD_MASK & DS_BUILD_LAMB:
@@ -111,21 +112,21 @@ if BUILD_MASK & DS_BUILD_LAMB:
 ## Adam ##
 if BUILD_MASK & DS_BUILD_ADAM:
     ext_modules.append(
-        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
-                      sources=[
-                          'csrc/adam/cpu_adam.cpp',
-                      ],
-                      include_dirs=['csrc/includes'],
-                      extra_compile_args={
-                          'cxx': [
-                              '-O3',
-                              '-std=c++14', 
-                              '-g', 
-                              '-Wno-reorder', 
-                              '-march=native', 
-                              '-fopenmp'
-                          ]
-                      }))
+        CUDAExtension(
+            name='deepspeed.ops.adam.cpu_adam_op',
+            sources=[
+                'csrc/adam/cpu_adam.cpp',
+            ],
+            include_dirs=['csrc/includes'],
+            extra_compile_args={
+                'cxx':
+                ['-O3',
+                 '-std=c++14',
+                 '-g',
+                 '-Wno-reorder',
+                 '-march=native',
+                 '-fopenmp']
+            }))
 
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
