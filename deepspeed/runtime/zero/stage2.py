@@ -11,14 +11,14 @@ from torch._six import inf
 from torch.autograd import Variable
 import collections
 
-from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
-from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
-from deepspeed.utils import logger
-
+from deepspeed.pt.loss_scaler import LossScaler, DynamicLossScaler
+from deepspeed.pt.deepspeed_utils import see_memory_usage, is_model_parallel_parameter
+from deepspeed.pt.deepspeed_zero_config import ZERO_OPTIMIZATION_GRADIENTS
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
 pg_correctness_test = False
+
+from deepspeed.pt.log_utils import logger
 
 try:
     from apex_C import flatten
@@ -128,8 +128,6 @@ def async_copy_to(obj, dev, main_stream=None):
         return {k: async_copy_to(o, dev, main_stream) for k, o in obj.items()}
     elif isinstance(obj, collections.Sequence):
         return [async_copy_to(o, dev, main_stream) for o in obj]
-    else:
-        return obj
 
 
 class FP16_DeepSpeedZeroOptimizer(object):
@@ -166,7 +164,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {allgather_bucket_size}")
-            logger.info(f"CPU Offload: {cpu_offload}")
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -505,34 +502,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.cpu_offload is False:
             for i, _ in enumerate(self.fp16_groups):
-                if not i in self.averaged_gradients or self.averaged_gradients[i] is None:
-                    self.averaged_gradients[i] = self.get_flat_partition(
-                        self.params_in_partition[i],
-                        self.first_offset[i],
-                        self.partition_size[i],
-                        dtype=torch.half,
-                        device=torch.cuda.current_device(),
-                        return_tensor_list=True)
-                else:
-                    #When gradient accumulation is greater that 1
-                    #This code path will be triggered and will add
-                    #to the accumulated averaged gradients
-                    avg_new = self.get_flat_partition(self.params_in_partition[i],
-                                                      self.first_offset[i],
-                                                      self.partition_size[i],
-                                                      dtype=torch.half,
-                                                      device=torch.cuda.current_device(),
-                                                      return_tensor_list=True)
-
-                    for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i],avg_new):
-                        accumulated_grad.add_(new_avg_grad)
+                self.averaged_gradients[i] = self.get_flat_partition(
+                    self.params_in_partition[i],
+                    self.first_offset[i],
+                    self.partition_size[i],
+                    dtype=torch.half,
+                    device=torch.cuda.current_device(),
+                    return_tensor_list=True)
 
         self._release_ipg_buffers()
 
-        # No need to keep the gradients anymore.
-        # All gradients required by the step
-        # are in self.averaged_gradients
-        self.zero_grad()
         see_memory_usage(f"End ipg_epilogue")
 
     # resets all partition to no reduced
@@ -1203,9 +1182,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.overflow:
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad()
-            for key in self.averaged_gradients:
-                self.averaged_gradients[key] = None
-
             see_memory_usage('After overflow after clearing gradients')
 
             logger.info(
@@ -1490,11 +1466,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _get_state_without_padding(self, state_with_padding, padding):
         lean_state = {}
         for key, value in state_with_padding.items():
-            if torch.is_tensor(value):
+            #jie: torch.optim.Adam() has "step" has a key in state_dict
+            if key == "step":
+                lean_state[key] = value
+            else:
                 lean_length = value.numel() - padding
                 lean_state[key] = value[:lean_length]
-            else:
-                lean_state[key] = value
 
         return lean_state
 
@@ -1540,6 +1517,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             state_dict_tmp = async_copy_to(state_dict,
                                            'cpu',
                                            torch.cuda.current_stream())
+            state_dict = None
             state_dict = state_dict_tmp
 
         return state_dict
@@ -1578,16 +1556,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _partition_base_optimizer_state(self, state_key, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)
-
-        if torch.is_tensor(all_partition_states[0]):
-            flat_merged_partitions = flatten_dense_tensors_aligned(
-                all_partition_states,
-                alignment)
-            dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
-            return dp_partitions[partition_id]
-        else:
-            # Assume non-tensor states are not partitioned and equal across ranks, so return first one
-            return all_partition_states[0]
+        flat_merged_partitions = flatten_dense_tensors_aligned(
+            all_partition_states,
+            alignment)
+        dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
+        return dp_partitions[partition_id]
 
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
@@ -1612,10 +1585,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i, group in enumerate(self.optimizer.param_groups):
             p = group['params'][0]
             for key, saved in base_optimizer_group_states[i].items():
-                if torch.is_tensor(self.optimizer.state[p][key]):
-                    self.optimizer.state[p][key].data.copy_(saved.data)
-                else:
-                    self.optimizer.state[p][key] = saved
+                current = self.optimizer.state[p][key]
+                current.data.copy_(saved.data)
 
     def load_state_dict(self,
                         state_dict_list,
