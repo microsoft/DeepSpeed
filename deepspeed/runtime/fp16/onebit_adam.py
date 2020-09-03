@@ -284,7 +284,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 100
+                    state['exp_avg_sq'] = torch.zeros_like(p.data)
 
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
