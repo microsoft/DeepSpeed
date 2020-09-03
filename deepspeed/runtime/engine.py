@@ -6,7 +6,6 @@ import os
 import torch
 import warnings
 import torch.distributed as dist
-
 from apex import amp
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -27,9 +26,7 @@ from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
-
 from deepspeed.ops.lamb import FusedLamb
-
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
@@ -618,7 +615,8 @@ class DeepSpeedEngine(Module):
                 cpu_offload=self.zero_cpu_offload(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor())
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps())
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
@@ -724,7 +722,6 @@ class DeepSpeedEngine(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
-
         #Zero stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
@@ -780,6 +777,8 @@ class DeepSpeedEngine(Module):
             self.timers('backward_inner').start()
 
         if self.zero_optimization():
+            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
+            )
             self.optimizer.backward(loss)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries
