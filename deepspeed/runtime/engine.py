@@ -22,7 +22,8 @@ from deepspeed.runtime.config import DeepSpeedConfig, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT, \
+    TORCH_DISTRIBUTED_DEFAULT_PORT
+from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
@@ -311,9 +312,6 @@ class DeepSpeedEngine(Module):
 
     def zero_load_from_fp32_weights(self):
         return self._config.zero_config.load_from_fp32_weights
-
-    def allgather_size(self):
-        return self._config.allgather_size
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
