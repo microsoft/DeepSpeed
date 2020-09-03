@@ -7,6 +7,7 @@ import torch
 import warnings
 import torch.distributed as dist
 
+import apex
 from apex import amp
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -266,7 +267,7 @@ class DeepSpeedEngine(Module):
         return self._config.train_micro_batch_size_per_gpu
 
     def optimizer_name(self):
-        return self._config.optimizer_name
+        return self.client_optimizer.__class__.__name__ if self.client_optimizer else self._config.optimizer_name
 
     def optimizer_params(self):
         return self._config.optimizer_params
@@ -553,7 +554,8 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        if self.optimizer_name() == ADAM_OPTIMIZER:
+
+        if isinstance(optimizer, apex.optimizers.FusedAdam):
             if self.dynamic_loss_scale():
                 logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None

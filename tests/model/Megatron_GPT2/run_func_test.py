@@ -48,6 +48,24 @@ class GPT2FuncTestCase(BaseTestCase):
     def tearDown(self):
         os.chdir(self.save_dir)
 
+    def test_mp1_gpu2_node1_fp16(self):
+        test_config = {
+            "mp": 1,
+            "gpus": 2,
+            "nodes": 1,
+            "bs": 8,
+            "steps": 1000,
+            "layers": LAYERS,
+            "hidden_size": HIDDEN_SIZE,
+            "seq_length": SEQ_LEN,
+            "heads": ATTN_HEADS,
+            "deepspeed": False,
+            "json": "ds_config_func_bs8_no_zero.json",
+        }
+
+        succ = self.run_test(test_config, 0.01)
+        self.assertTrue(succ)
+
     def test_mp1_gpu1_node1_zero1(self):
         test_config = {
             "mp": 1,
@@ -348,6 +366,9 @@ class GPT2FuncTestCase(BaseTestCase):
 
 def suite():
     suite = unittest.TestSuite()
+
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_fp16'))
+
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero1'))
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero1'))
     suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero1'))
