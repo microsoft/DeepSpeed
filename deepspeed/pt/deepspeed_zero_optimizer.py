@@ -751,7 +751,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if num_elements > (partition_size - current_offset):
                 num_elements = partition_size - current_offset
 
-            self.grad_position[param_id] = [group_id, param_start_offset, current_offset, num_elements]
+            self.grad_position[param_id] = [int(group_id), int(param_start_offset), int(current_offset), int(num_elements)]
             current_offset +=  num_elements
 
 
