@@ -18,12 +18,13 @@ from deepspeed.runtime.custom_collectives import gather, allgather
 class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
     For usage example please see, TODO DeepSpeed Tutorial
-    It has been proposed in TODO: add paper name and arXiv link.
+    It has been proposed in APMSqueeze (https://arxiv.org/abs/2008.11343)
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups.
         lr (float, optional): learning rate. (default: 1e-3)
+        freeze_step (int, optional): Number of steps for warmup (uncompressed) stage. (default 100000)
         betas (Tuple[float, float], optional): coefficients used for computing
             running averages of gradient and its square. (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
@@ -47,7 +48,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  params,
                  deepspeed=None,
                  lr=1e-3,
-                 freeze_step=10000000,
+                 freeze_step=100000,
                  bias_correction=True,
                  betas=(0.9,
                         0.999),
@@ -55,8 +56,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  eps_inside_sqrt=False,
                  weight_decay=0.,
                  max_grad_norm=0.,
-                 amsgrad=False,
-                 threshold=0.001):
+                 amsgrad=False):
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
@@ -81,7 +81,6 @@ class OnebitAdam(torch.optim.Optimizer):
         self.divider = int(self.size * 8 / np.gcd(self.size, 8))
         self.deepspeed = deepspeed
         self.adam_freeze_key = False
-        self.threshold = threshold
         self.initialize = False
         self.freeze_step = freeze_step
 
@@ -105,8 +104,6 @@ class OnebitAdam(torch.optim.Optimizer):
                              world_size,
                              comm,
                              local_rank):
-        cuda_aware = True
-        my_igather = True
 
         all_start_time = time.time()
         original_size = buffer_m.numel()
@@ -143,7 +140,6 @@ class OnebitAdam(torch.optim.Optimizer):
 
         # Communication Phase 1
         gather_start = time.time()
-        #cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale =
         gather(rank,
                world_size,
                comm,
@@ -157,16 +153,13 @@ class OnebitAdam(torch.optim.Optimizer):
             world_size,
             -1)
         cupy_recvbuf_sign = None
-        # del cupy_recvbuf_sign
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
         cupy_unpacked_sign = None
-        # del cupy_unpacked_sign
         unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
         worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / world_size)
         compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
         unpacked_sign = None
-        #print(compensated_server_m[0:10])
-        # del unpacked_sign
+
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(
             compensated_server_m.numel())
@@ -180,13 +173,9 @@ class OnebitAdam(torch.optim.Optimizer):
         compensated_server_m = compensated_server_m.add_(1).bool()
         cupy_server_scale = self.torch2cupy(server_scale)
         cupy_compensated_server_m = self.torch2cupy(compensated_server_m)
-        #print(cupy_compensated_server_m[0:10])
         compensated_server_m = None
-        # del compensated_server_m
 
         cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
-        #print('rank is : {}, the tensor before  allgather is {}'.format(rank, cupy_server_sign_packed[0][0:10]))
-        #print(cupy.unpackbits(cupy_server_sign_packed[0][0]))
 
         cupy_recvbuf_sign_server = cupy.zeros(
             [world_size,
@@ -197,30 +186,23 @@ class OnebitAdam(torch.optim.Optimizer):
                                                dtype=cupy_worker_scale.dtype)
 
         # Communication Phase 2
-
-        #cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server =
         allgather(comm,
                   cupy_server_sign_packed[0],
                   cupy_recvbuf_sign_server,
                   cupy_server_scale,
                   cupy_recvbuf_scale_server)
 
-        #print("allgather and tconvert took:", (allgather_end - allgather_start)*1e3, t_convert*1e3, flush=True)
-        #print('rank is {}, after the allgather in the buffer is {}'.format(rank,cupy_recvbuf_sign_server[0][0:10]))
         cupy_server_unpacked_sign = (cupy.unpackbits(
             cupy_recvbuf_sign_server.flatten())).reshape(world_size,
                                                          -1)
         cupy_recvbuf_sign_server = None
-        #print(cupy_server_unpacked_sign[0:10])
-        # del cupy_recvbuf_sign_server
+
         server_unpacked_sign = self.cupy2torch(cupy_server_unpacked_sign)
         cupy_server_unpacked_sign = None
-        # del cupy_server_unpacked_sign
+
         server_unpacked_sign = server_unpacked_sign.float().add_(-0.5).mul_(2.0)
         server_scale = self.cupy2torch(cupy_recvbuf_scale_server)
         buffer_m = server_unpacked_sign.mul_(server_scale).flatten()[0:original_size]
-
-        # cupy._default_memory_pool.free_all_blocks()
 
         return buffer_m
 
@@ -296,19 +278,16 @@ class OnebitAdam(torch.optim.Optimizer):
                     state['server_chunk_size'] = state[
                         'corrected_tensor_size'] // self.size
 
-                    #print('Step is {}, )
                 if not self.initialize or (self.adam_freeze_key
                                            and 'worker_error' not in state.keys()):
                     if torch.distributed.get_rank() == 0:
                         print("Allocating worker_error and setting exp_avg_sq to half")
                     torch.cuda.empty_cache()
-                    #state['exp_avg_sq'] = state['exp_avg_sq']
                     state['worker_error'] = torch.zeros(state['corrected_tensor_size'],
                                                         device=p.device)
                     state['server_error'] = torch.zeros(state['server_chunk_size'],
                                                         device=p.device)
                     torch.cuda.empty_cache()
-                    # see_memory_usage("After emptying cache")
                     self.adam_freeze_key = True
                     if not self.initialize and torch.distributed.get_rank() == 0:
                         print("Cupy Buffers Initialized")
@@ -318,17 +297,12 @@ class OnebitAdam(torch.optim.Optimizer):
 
                 state['step'] += 1
 
-                # logger.info('I am Here')
                 if self.adam_freeze_key is False:
                     exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                    # v_diff = -beta2 * exp_avg_sq + beta2 * grad * grad
-                    # v_diff_buffer += v_diff.norm() / exp_avg_sq.norm() / state['tensor_size']
-                    # exp_avg_sq.add_(v_diff).addcmul_(1 - beta2, grad, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                     grad = None
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
-                    # v_diff = None
 
                 else:
                     if 'non_freeze' in group.keys() and group['non_freeze'] is True:
@@ -341,12 +315,8 @@ class OnebitAdam(torch.optim.Optimizer):
                         if self.initialize is True:
                             exp_avg.mul_(beta1).add_(1 - beta1, grad)
                         grad = None
-                        #torch.cuda.synchronize()
-                        #cupy.cuda.get_current_stream().synchronize()
-                        if self.size > 1:
-                            #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
-                            #print('worker error is: ',state['worker_error'][0:10])
 
+                        if self.size > 1:
                             exp_avg.set_(
                                 self.Compressed_Allreduce(exp_avg,
                                                           state['worker_error'],
@@ -355,15 +325,9 @@ class OnebitAdam(torch.optim.Optimizer):
                                                           self.size,
                                                           self.comm,
                                                           self.deepspeed.local_rank))
-                            #if not self.initialize:
-                            #print('After Initialize the exp_avg is: ',exp_avg)
-                        #print('Finished rge Compre',flush=True)
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
-                        # logger.info('Rank is {}, Inside the optimizer the step is: {}'.format(self.rank, state['step']))
-                        # cupy._default_memory_pool.free_all_blocks()
-                        # torch.cuda.synchronize()
-                        # cupy.cuda.get_current_stream().synchronize()
+
                 if self.initialize:
                     if group['weight_decay'] > 0.0:
                         update += group['weight_decay'] * p.data
@@ -374,9 +338,7 @@ class OnebitAdam(torch.optim.Optimizer):
                 print('Pop out errors', flush=True)
                 state.pop('worker_error')
                 state.pop('server_error')
-                #state['exp_avg_sq'] = state['exp_avg_sq'].float()
 
-        # print(f"Before initialze at rant {torch.distributed.get_rank()}")
         if not self.initialize:
             self.adam_freeze_key = False
             self.initialize = True
@@ -386,9 +348,7 @@ class OnebitAdam(torch.optim.Optimizer):
             return loss
 
         if self.adam_freeze_key is False:
-            # if False:
             if state['step'] >= self.freeze_step:
-                # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
 
