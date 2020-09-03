@@ -436,18 +436,21 @@ class PipelineModule(nn.Module, ABC):
                                 self._grid.stage_to_global(stage_id=s,
                                                            data=dp))
                     group = dist.new_group(ranks=tied_ranks)
+
                     # Record this tied module if we own a local copy of it.
-                    if dp == self._grid.data_parallel_id and key in self.tied_modules:
-                        tied_comms[key] = {
-                            'ranks': tied_ranks,
-                            'group': group,
-                            'weight_attr': self.tied_weight_attrs[key],
-                            'module': self.tied_modules[key],
-                        }
-                        # Only count the tied module once in the eyes of the FP16 optimizer
-                        if self.global_rank != tied_ranks[0]:
-                            for p in self.tied_modules[key].parameters():
-                                p.model_parallel = False
+                    if self.global_rank in tied_ranks:
+                        assert key in self.tied_modules
+                        if key in self.tied_modules:
+                            tied_comms[key] = {
+                                'ranks': tied_ranks,
+                                'group': group,
+                                'weight_attr': self.tied_weight_attrs[key],
+                                'module': self.tied_modules[key],
+                            }
+                            # Only count the tied module once in the eyes of the FP16 optimizer
+                            if self.global_rank != tied_ranks[0]:
+                                for p in self.tied_modules[key].parameters():
+                                    p.model_parallel = False
         '''
         if len(tied_comms) > 0:
             print(f'RANK={self.global_rank} tied_comms={tied_comms}')

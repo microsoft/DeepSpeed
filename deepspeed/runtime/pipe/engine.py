@@ -893,6 +893,10 @@ class PipelineEngine(DeepSpeedEngine):
                 self.summary_events = [(f'Train/Samples/lr',
                                         self.get_lr()[0],
                                         self.global_samples)]
+                if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
+                    self.summary_events.append((f'Train/Samples/loss_scale',
+                                                self.optimizer.cur_scale,
+                                                self.global_samples))
                 for event in self.summary_events:  # write_summary_events
                     self.summary_writer.add_scalar(event[0], event[1], event[2])
 

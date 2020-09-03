@@ -380,7 +380,7 @@ class DeepSpeedEngine(Module):
             if self.global_rank == 0:
                 logger.warning('DeepSpeed using client LR scheduler')
             self.lr_scheduler = client_lr_scheduler
-        logger.info(f'DeepSpeed LR Scheduler = {self.lr_scheduler}')
+        log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
 
@@ -898,6 +898,12 @@ class DeepSpeedEngine(Module):
                                             self.global_samples)]
                     for event in self.summary_events:  # write_summary_events
                         self.summary_writer.add_scalar(event[0], event[1], event[2])
+                    if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
+                        self.summary_events.append((f'Train/Samples/loss_scale',
+                                                    self.optimizer.cur_scale,
+                                                    self.global_samples))
+                    for event in self.summary_events:  # write_summary_events
+                        self.summary_writer.add_scalar(event[0], event[1], event[2])
                     self.summary_writer.flush()
 
         if self.wall_clock_breakdown():
@@ -1179,7 +1185,7 @@ class DeepSpeedEngine(Module):
                 .format(load_path))
             return None, None
 
-        logger.info('Loading checkpoint: {}'.format(load_path))
+        logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
         checkpoint = torch.load(load_path, map_location=lambda storage, loc: storage)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
