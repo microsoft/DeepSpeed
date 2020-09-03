@@ -2,36 +2,34 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
-import torch
 import os
+import torch
 import warnings
 import torch.distributed as dist
+from apex import amp
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
-from apex import amp
 
 from tensorboardX import SummaryWriter
 
-from deepspeed.pt.deepspeed_timer import ThroughputTimer, SynchronizedWallClockTimer
-from deepspeed.pt.deepspeed_zero_optimizer import FP16_DeepSpeedZeroOptimizer
-from deepspeed.pt.zero_optimizer_stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
-from deepspeed.pt.log_utils import logger
-import deepspeed.pt.deepspeed_checkpointing as deepspeed_activation_checkpointing
-
-from deepspeed.pt.fp16_optimizer import FP16_Optimizer
-from deepspeed.pt.fp16_unfused_optimizer import FP16_UnfusedOptimizer
-from deepspeed.pt.deepspeed_fused_lamb import FusedLamb
-from deepspeed.pt.deepspeed_config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, TORCH_ADAM_OPTIMIZER, DEEPSPEED_OPTIMIZERS
-
-from deepspeed.pt.deepspeed_dataloader import DeepSpeedDataLoader
-from deepspeed.pt.deepspeed_constants import \
+from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
+from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
+from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
+from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
+from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+from deepspeed.runtime.config import DeepSpeedConfig, \
+    ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+from deepspeed.runtime.dataloader import DeepSpeedDataLoader
+from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT, \
+    TORCH_DISTRIBUTED_DEFAULT_PORT
+from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
-
-import deepspeed.pt.deepspeed_lr_schedules as lr_schedules
-from deepspeed.pt.deepspeed_csr_tensor import CSRTensor
+from deepspeed.runtime.csr_tensor import CSRTensor
+import deepspeed.runtime.lr_schedules as lr_schedules
+from deepspeed.ops.lamb import FusedLamb
+from deepspeed.utils import logger
+from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -92,7 +90,7 @@ def print_configuration(args, name):
         logger.info('  {} {} {}'.format(arg, dots, getattr(args, arg)))
 
 
-class DeepSpeedLight(Module):
+class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
     def __init__(self,
@@ -106,7 +104,7 @@ class DeepSpeedLight(Module):
                  dist_init_required=None,
                  collate_fn=None,
                  config_params=None):
-        super(DeepSpeedLight, self).__init__()
+        super(DeepSpeedEngine, self).__init__()
         self.client_optimizer = optimizer
         self.client_model_parameters = model_parameters
         self.client_lr_scheduler = lr_scheduler
@@ -313,8 +311,6 @@ class DeepSpeedLight(Module):
     def zero_load_from_fp32_weights(self):
         return self._config.zero_config.load_from_fp32_weights
 
-    def allgather_size(self):
-        return self._config.allgather_size
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -508,21 +504,14 @@ class DeepSpeedLight(Module):
 
         if self.zero_optimization():
             assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-            if self.optimizer_name() not in [ADAM_OPTIMIZER, TORCH_ADAM_OPTIMIZER]:
+            if self.optimizer_name() not in [ADAM_OPTIMIZER]:
                 assert self.zero_allow_untested_optimizer(), \
                     'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
                 logger.warning(
                     "**** You are using ZeRO with an untested optimizer, proceed with caution *****"
                 )
-            if self.zero_cpu_offload():
-                if self.optimizer_name() != TORCH_ADAM_OPTIMIZER:
-                    assert self.zero_allow_untested_optimizer(), \
-                        'You are using ZeRO-Offload with an untested Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
-                    logger.warning(
-                        "**** You are using ZeRO-Offload with an untested optimizer, proceed with caution *****"
-                    )
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
         elif self.amp_enabled():
             assert not self.fp16_enabled(), "Cannot enable both amp with (legacy) fp16 mode"
@@ -544,12 +533,13 @@ class DeepSpeedLight(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            from apex.optimizers.fused_adam import FusedAdam
-            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+            if self.zero_cpu_offload():
+                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+            else:
+                from apex.optimizers.fused_adam import FusedAdam
+                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == TORCH_ADAM_OPTIMIZER:
-            optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -611,8 +601,8 @@ class DeepSpeedLight(Module):
                 dp_process_group=self.data_parallel_group,
                 mpu=self.mpu)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
-            assert self.gradient_accumulation_steps(
-            ) == 1, "ZeRO stage 2 does not support gradient accumulation, if you need gradient accumulation please use stage 1"
+            #assert self.gradient_accumulation_steps(
+            #) == 1, "ZeRO stage 2 does not support gradient accumulation, if you need gradient accumulation please use stage 1"
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=self.timers,
@@ -629,7 +619,8 @@ class DeepSpeedLight(Module):
                 cpu_offload=self.zero_cpu_offload(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor())
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps())
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
@@ -735,15 +726,18 @@ class DeepSpeedLight(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
-        if self.is_gradient_accumulation_boundary():
+        #Zero stage 2 communicates during non gradient accumulation boundaries as well
+        if self.zero_optimization_partition_gradients():
+            self.optimizer.overlapping_partition_gradients_reduce_epilogue()
+            
+        #Communicate only at gradient accumulation boundaries
+        elif self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 assert self.zero_reduce_scatter()
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_average=self.gradient_average)
-            elif self.zero_optimization_partition_gradients():
-                self.optimizer.overlapping_partition_gradients_reduce_epilogue()
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
@@ -787,6 +781,7 @@ class DeepSpeedLight(Module):
             self.timers('backward_inner').start()
 
         if self.zero_optimization():
+            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
             self.optimizer.backward(loss)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries
@@ -1029,10 +1024,10 @@ class DeepSpeedLight(Module):
                 # rank is reducing the same size. In some cases it may make
                 # sense in the future to support the ability to average not
                 # w.r.t. world size but with a different value.
-                grads.append(
-                    torch.zeros(param.size(),
-                                dtype=param.dtype,
-                                device=param.device))
+                param.grad = torch.zeros(param.size(),
+                                         dtype=param.dtype,
+                                         device=param.device)
+                grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
                 if self.sparse_gradients_enabled(
