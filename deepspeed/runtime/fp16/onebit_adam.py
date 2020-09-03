@@ -24,7 +24,8 @@ class OnebitAdam(torch.optim.Optimizer):
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups.
         lr (float, optional): learning rate. (default: 1e-3)
-        freeze_step (int, optional): Number of steps for warmup (uncompressed) stage. (default 100000)
+        freeze_step (int, optional): Number of steps for warmup (uncompressed)
+        stage before we start using compressed communication. (default 100000)
         betas (Tuple[float, float], optional): coefficients used for computing
             running averages of gradient and its square. (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
