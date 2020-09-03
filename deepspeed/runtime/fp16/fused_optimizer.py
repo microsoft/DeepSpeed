@@ -105,12 +105,14 @@ class FP16_Optimizer(object):
 
     def initialize_optimizer_states(self):
         for i, group in enumerate(self.fp16_groups):
-            self.fp32_groups_flat[i].grad = torch.zeros(self.fp32_groups_flat[i].size(),device=self.fp32_groups_flat[i].device)
+            self.fp32_groups_flat[i].grad = torch.zeros(
+                self.fp32_groups_flat[i].size(),
+                device=self.fp32_groups_flat[i].device)
 
         self.optimizer.step()
 
         for i, group in enumerate(self.fp16_groups):
-              self.fp32_groups_flat[i].grad = None
+            self.fp32_groups_flat[i].grad = None
 
         return
 

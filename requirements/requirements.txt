@@ -3,3 +3,5 @@ torchvision>=0.4.0
 tqdm
 psutil
 tensorboardX==1.8
+cupy-cuda100
+mpi4py
