@@ -19,6 +19,7 @@ ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
 DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER]
 
+
 def get_amp_enabled(param_dict):
     if AMP in param_dict.keys():
         return get_scalar_param(param_dict[AMP], AMP_ENABLED, AMP_ENABLED_DEFAULT)

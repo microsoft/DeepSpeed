@@ -14,11 +14,12 @@ from deepspeed.utils.logging import logger
 from mpi4py import MPI
 from deepspeed.runtime.custom_collectives import gather, allgather
 
+
 class OnebitAdam(torch.optim.Optimizer):
-    """Implements the 1-bit Adam algorithm. Currently GPU-only.  
+    """Implements the 1-bit Adam algorithm. Currently GPU-only.
     For usage example please see, TODO DeepSpeed Tutorial
     It has been proposed in TODO: add paper name and arXiv link.
-    
+
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups.
@@ -46,7 +47,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  params,
                  deepspeed=None,
                  lr=1e-3,
-                 freeze_step = 10000000,
+                 freeze_step=10000000,
                  bias_correction=True,
                  betas=(0.9,
                         0.999),
@@ -55,7 +56,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  weight_decay=0.,
                  max_grad_norm=0.,
                  amsgrad=False,
-                 threshold = 0.001):
+                 threshold=0.001):
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
@@ -65,7 +66,7 @@ class OnebitAdam(torch.optim.Optimizer):
                         eps=eps,
                         weight_decay=weight_decay,
                         max_grad_norm=max_grad_norm)
-        
+
         super(OnebitAdam, self).__init__(params, defaults)
         from mpi4py import MPI
         self.eps_mode = 0 if eps_inside_sqrt else 1
@@ -96,18 +97,24 @@ class OnebitAdam(torch.optim.Optimizer):
         cupy.cuda.get_current_stream().synchronize()
         return sign_list_packed
 
-
-    
-    def Compressed_Allreduce(self, buffer_m: torch.tensor, worker_error, server_error, rank, world_size, comm, local_rank):
+    def Compressed_Allreduce(self,
+                             buffer_m: torch.tensor,
+                             worker_error,
+                             server_error,
+                             rank,
+                             world_size,
+                             comm,
+                             local_rank):
         cuda_aware = True
         my_igather = True
-    
+
         all_start_time = time.time()
         original_size = buffer_m.numel()
         cupy.cuda.Device(local_rank).use()
-        
+
         if torch.numel(buffer_m) != torch.numel(worker_error):
-            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m), device=buffer_m.device)
+            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m),
+                                       device=buffer_m.device)
             buffer_m = torch.cat([buffer_m, empty_tensor])
 
         buffer_m.add_(worker_error)
@@ -115,7 +122,7 @@ class OnebitAdam(torch.optim.Optimizer):
         sign_buffer_m = buffer_m.sign().add_(1).bool()
         sign_buffer_m = sign_buffer_m.float()
         sign_buffer_m.add_(-0.5).mul_(2.0)
-        worker_error.set_( (buffer_m - worker_scale * sign_buffer_m) )
+        worker_error.set_((buffer_m - worker_scale * sign_buffer_m))
         sign_buffer_m = None
 
         compensated_buffer_m = buffer_m
@@ -125,33 +132,44 @@ class OnebitAdam(torch.optim.Optimizer):
         cupy_compensated_buffer_m = self.torch2cupy(compensated_buffer_m)
         compensated_buffer_m = None
 
-        cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m, world_size)
+        cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
+                                                       world_size)
         cupy_compensated_buffer_m = None
 
-        cupy_recvbuf_sign = cupy.zeros([world_size, cupy_sign_list_packed[rank].size],
+        cupy_recvbuf_sign = cupy.zeros([world_size,
+                                        cupy_sign_list_packed[rank].size],
                                        dtype=cupy_sign_list_packed[0].dtype)
         cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
-        
+
         # Communication Phase 1
         gather_start = time.time()
-        #cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = 
-        gather(rank, world_size, comm, cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale)
+        #cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale =
+        gather(rank,
+               world_size,
+               comm,
+               cupy_sign_list_packed,
+               cupy_recvbuf_sign,
+               cupy_worker_scale,
+               cupy_recvbuf_scale)
         gather_end = time.time()
 
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(world_size, -1)
+        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
+            world_size,
+            -1)
         cupy_recvbuf_sign = None
         # del cupy_recvbuf_sign
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
         cupy_unpacked_sign = None
         # del cupy_unpacked_sign
         unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
-        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1/world_size)
+        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / world_size)
         compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
         unpacked_sign = None
         #print(compensated_server_m[0:10])
         # del unpacked_sign
         compensated_server_m.add_(server_error)
-        server_scale = torch.norm(compensated_server_m) / np.sqrt(compensated_server_m.numel())
+        server_scale = torch.norm(compensated_server_m) / np.sqrt(
+            compensated_server_m.numel())
         sign_server_m = compensated_server_m.sign().add_(1).bool()
         sign_server_m = sign_server_m.float()
         sign_server_m.add_(-0.5).mul_(2.0)
@@ -169,19 +187,29 @@ class OnebitAdam(torch.optim.Optimizer):
         cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
         #print('rank is : {}, the tensor before  allgather is {}'.format(rank, cupy_server_sign_packed[0][0:10]))
         #print(cupy.unpackbits(cupy_server_sign_packed[0][0]))
-        
-        cupy_recvbuf_sign_server = cupy.zeros([world_size, cupy_server_sign_packed[0].size],
-                                              dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale_server = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
+
+        cupy_recvbuf_sign_server = cupy.zeros(
+            [world_size,
+             cupy_server_sign_packed[0].size],
+            dtype=cupy_sign_list_packed[0].dtype)
+        cupy_recvbuf_scale_server = cupy.zeros([world_size,
+                                                1],
+                                               dtype=cupy_worker_scale.dtype)
 
         # Communication Phase 2
-        
-        #cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = 
-        allgather(comm, cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server)
-        
+
+        #cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server =
+        allgather(comm,
+                  cupy_server_sign_packed[0],
+                  cupy_recvbuf_sign_server,
+                  cupy_server_scale,
+                  cupy_recvbuf_scale_server)
+
         #print("allgather and tconvert took:", (allgather_end - allgather_start)*1e3, t_convert*1e3, flush=True)
         #print('rank is {}, after the allgather in the buffer is {}'.format(rank,cupy_recvbuf_sign_server[0][0:10]))
-        cupy_server_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign_server.flatten())).reshape(world_size, -1)
+        cupy_server_unpacked_sign = (cupy.unpackbits(
+            cupy_recvbuf_sign_server.flatten())).reshape(world_size,
+                                                         -1)
         cupy_recvbuf_sign_server = None
         #print(cupy_server_unpacked_sign[0:10])
         # del cupy_recvbuf_sign_server
@@ -196,10 +224,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         return buffer_m
 
-
-    def step(self,
-             closure=None,
-             grads=None):
+    def step(self, closure=None, grads=None):
         """Performs a single optimization step.
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
@@ -220,7 +245,6 @@ class OnebitAdam(torch.optim.Optimizer):
         gather_time = 0
         allgather_time = 0
         all_time = 0
-
 
         if self.adam_freeze_key is False:
             v_diff_buffer = 0.0
@@ -266,25 +290,28 @@ class OnebitAdam(torch.optim.Optimizer):
                     state['corrected_tensor_size'] = state['tensor_size']
 
                     if state['tensor_size'] % (self.size * self.divider) != 0:
-                        state['corrected_tensor_size'] += (
-                                (self.size * self.divider) - (state['tensor_size'] % (self.size * self.divider)))
-                    state['server_chunk_size'] = state['corrected_tensor_size'] // self.size
-                    
+                        state['corrected_tensor_size'] += ((self.size * self.divider) -
+                                                           (state['tensor_size'] %
+                                                            (self.size * self.divider)))
+                    state['server_chunk_size'] = state[
+                        'corrected_tensor_size'] // self.size
+
                     #print('Step is {}, )
-                if not self.initialize or (self.adam_freeze_key and 'worker_error' not in state.keys()):
-                        if torch.distributed.get_rank() == 0:
-                            print("Allocating worker_error and setting exp_avg_sq to half")
-                        torch.cuda.empty_cache()
-                        #state['exp_avg_sq'] = state['exp_avg_sq']
-                        state['worker_error'] = torch.zeros(state['corrected_tensor_size'], device=p.device)
-                        state['server_error'] = torch.zeros(state['server_chunk_size'], device=p.device)
-                        torch.cuda.empty_cache()
-                        # see_memory_usage("After emptying cache")
-                        self.adam_freeze_key = True
-                        if not self.initialize and torch.distributed.get_rank() == 0:
-                            print("Cupy Buffers Initialized")
-
-
+                if not self.initialize or (self.adam_freeze_key
+                                           and 'worker_error' not in state.keys()):
+                    if torch.distributed.get_rank() == 0:
+                        print("Allocating worker_error and setting exp_avg_sq to half")
+                    torch.cuda.empty_cache()
+                    #state['exp_avg_sq'] = state['exp_avg_sq']
+                    state['worker_error'] = torch.zeros(state['corrected_tensor_size'],
+                                                        device=p.device)
+                    state['server_error'] = torch.zeros(state['server_chunk_size'],
+                                                        device=p.device)
+                    torch.cuda.empty_cache()
+                    # see_memory_usage("After emptying cache")
+                    self.adam_freeze_key = True
+                    if not self.initialize and torch.distributed.get_rank() == 0:
+                        print("Cupy Buffers Initialized")
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 beta1, beta2 = group['betas']
@@ -306,7 +333,7 @@ class OnebitAdam(torch.optim.Optimizer):
                 else:
                     if 'non_freeze' in group.keys() and group['non_freeze'] is True:
                         dist.all_reduce(grad)
-                        grad.mul_(1/dist.get_world_size())
+                        grad.mul_(1 / dist.get_world_size())
                         exp_avg.mul_(beta1).add(1 - beta1, grad)
                         exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                         grad = None
@@ -320,14 +347,16 @@ class OnebitAdam(torch.optim.Optimizer):
                             #print('Inisde the 1bit adam rank is {}'.format(self.rank),flush=True)
                             #print('worker error is: ',state['worker_error'][0:10])
 
-                            exp_avg.set_(self.Compressed_Allreduce(
-                                exp_avg,
-                                state['worker_error'],
-                                state['server_error'],
-                                self.rank,
-                                self.size, self.comm, self.deepspeed.local_rank))
+                            exp_avg.set_(
+                                self.Compressed_Allreduce(exp_avg,
+                                                          state['worker_error'],
+                                                          state['server_error'],
+                                                          self.rank,
+                                                          self.size,
+                                                          self.comm,
+                                                          self.deepspeed.local_rank))
                             #if not self.initialize:
-                                #print('After Initialize the exp_avg is: ',exp_avg)
+                            #print('After Initialize the exp_avg is: ',exp_avg)
                         #print('Finished rge Compre',flush=True)
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
@@ -342,22 +371,24 @@ class OnebitAdam(torch.optim.Optimizer):
                         p.add_(-group['lr'] * update)
 
             if not self.initialize:
-                print('Pop out errors',flush=True )
+                print('Pop out errors', flush=True)
                 state.pop('worker_error')
                 state.pop('server_error')
-                    #state['exp_avg_sq'] = state['exp_avg_sq'].float()
+                #state['exp_avg_sq'] = state['exp_avg_sq'].float()
 
         # print(f"Before initialze at rant {torch.distributed.get_rank()}")
         if not self.initialize:
             self.adam_freeze_key = False
             self.initialize = True
-            print(f"Finished the initialization step at rant {torch.distributed.get_rank()}")
+            print(
+                f"Finished the initialization step at rant {torch.distributed.get_rank()}"
+            )
             return loss
 
         if self.adam_freeze_key is False:
             # if False:
             if state['step'] >= self.freeze_step:
-            # if v_diff_buffer >= self.threshold:
+                # if v_diff_buffer >= self.threshold:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
 
