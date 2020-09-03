@@ -612,12 +612,12 @@ def test_adam_amp_o2_empty_grad(tmpdir):
 
 
 @pytest.mark.parametrize('zero_stage, optimizer_constructor',
-[
-    (1, torch.optim.Adam),
-    (1, apex.optimizers.FusedAdam),
-    (2, torch.optim.Adam),
-    (2, apex.optimizers.FusedAdam)
-])
+                         [(1,
+                           apex.optimizers.FusedAdam),
+                          (2,
+                           torch.optim.Adam),
+                          (2,
+                           apex.optimizers.FusedAdam)])
 def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_constructor):
     config_dict = {
         "train_batch_size": 2,
@@ -634,7 +634,6 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
 
     model = SimpleModel(hidden_dim, empty_grad=False)
 
-
     @distributed_test(world_size=[1])
     def _test_zero_supported_client_optimizer(args, model, optimizer_constructor):
         client_optimizer = optimizer_constructor(params=model.parameters())
@@ -642,7 +641,6 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
                                                model=model,
                                                optimizer=client_optimizer)
 
-
     _test_zero_supported_client_optimizer(args=args,
-                                           model=model,
-                                           optimizer_constructor=optimizer_constructor)
+                                          model=model,
+                                          optimizer_constructor=optimizer_constructor)
