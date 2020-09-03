@@ -9,6 +9,9 @@ import copy
 from deepspeed import DeepSpeedCPUAdam
 
 def check_equal(first, second, atol=1e-2, verbose=False):
+    if verbos:
+        print(first)
+        print(second)
     x = first.detach().numpy()
     y = second.detach().numpy()
     if verbose:
@@ -23,17 +26,21 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                          ]) # yapf: disable
 def test_adam_opt(model_size):
     device = 'cpu'
-
-    param = torch.nn.Parameter(torch.ones(model_size, device=device))
-    param1 = torch.nn.Parameter(torch.ones(model_size, device=device))
+    rng_state = torch.get_rng_state()
+    param = torch.nn.Parameter(torch.randn(model_size, device=device))
+    torch.set_rng_state(rng_state)
+    param1 = torch.nn.Parameter(torch.randn(model_size, device=device))
 
     optimizer1 = torch.optim.Adam([param1])
     optimizer = DeepSpeedCPUAdam([param])
 
-    param.grad=torch.ones(model_size, device=device)
-    param1.grad=torch.ones(model_size, device=device)
+    for i in range(10):
+        rng_state = torch.get_rng_state()
+        param.grad=torch.randn(model_size, device=device)
+        torch.set_rng_state(rng_state)
+        param1.grad=torch.randn(model_size, device=device)
 
-    optimizer.step()
-    optimizer1.step()
+        optimizer.step()
+        optimizer1.step()
 
-    check_equal(param, param1)
+    check_equal(param, param1, atol = 1e-2, verbose=True)
