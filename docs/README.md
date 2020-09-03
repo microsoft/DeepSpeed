@@ -29,7 +29,7 @@ gem install jekyll bundler
 ```
 
 ### Start a local webserver
-First, install the required Ruby packages:
+We now need to install the required Ruby packages for the website. **NOTE**: this step frequently hangs when connected to a VPN (including MSVPN). Simply disconnect for the package installation.
 ```
 bundle install
 ```
