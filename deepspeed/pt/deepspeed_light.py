@@ -736,6 +736,9 @@ class DeepSpeedLight(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
+        if self.zero_optimization_partition_gradients():
+            self.optimizer.overlapping_partition_gradients_reduce_epilogue()
+            
         if self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 assert self.zero_reduce_scatter()
@@ -743,8 +746,6 @@ class DeepSpeedLight(Module):
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_average=self.gradient_average)
-            elif self.zero_optimization_partition_gradients():
-                self.optimizer.overlapping_partition_gradients_reduce_epilogue()
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 

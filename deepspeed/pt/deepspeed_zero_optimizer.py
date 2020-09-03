@@ -186,6 +186,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.micro_step_id = 0
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -343,7 +344,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.norm_for_param_grads={}
             self.local_overflow=False
             self.grad_position = {}
-            self.temp_grad_buffer_for_cpu_offload = torch.zeros(largest_param_numel).half()
+            self.temp_grad_buffer_for_cpu_offload = torch.zeros(largest_param_numel).half().pin_memory()
+            self.temp_grad_buffer_for_gpu_offload = torch.zeros(largest_param_numel, device=torch.cuda.current_device()).half()
+            
             for i, params_group in enumerate(self.fp16_groups):
                 self.get_grad_position(i,self.params_in_partition[i],self.first_offset[i], self.partition_size[i])
 
@@ -421,7 +424,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 int(self.partition_size[i]),
                 dtype=self.single_partition_of_fp32_groups[i].dtype,
                 device=self.device)
-            self.single_partition_of_fp32_groups[i].grad = single_grad_partition
+            self.single_partition_of_fp32_groups[i].grad = single_grad_partition.pin_memory() if self.cpu_offload else single_grad_partition
 
         self.optimizer.step()
 
@@ -761,16 +764,45 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #copy to a preexisiting buffer to avoid memory allocation penalty
         dest_buffer = self.temp_grad_buffer_for_cpu_offload.view(-1).narrow(0, 0, param.numel()) 
-        dest_buffer.copy_(param.grad.view(-1))
+        dest_buffer.copy_(param.grad.view(-1), non_blocking=True)
         
         if param_id not in self.accumulated_grads_in_cpu:
-            self.accumulated_grads_in_cpu[param_id] = torch.zeros(param.numel(),dtype=param.dtype)
+            self.accumulated_grads_in_cpu[param_id] = torch.zeros(param.numel(),dtype=param.dtype).pin_memory()
 
         self.accumulated_grads_in_cpu[param_id].add_(dest_buffer)
+
+    def async_accumulate_grad_in_cpu_via_gpu(self, param):
+        param_id = self.get_param_id(param)
+
+        #copy to a preexisiting buffer to avoid memory allocation penalty
+        dest_buffer = self.temp_grad_buffer_for_gpu_offload.view(-1).narrow(0, 0, param.numel()) 
+        
+        if param_id not in self.accumulated_grads_in_cpu:
+            self.accumulated_grads_in_cpu[param_id] = torch.zeros(param.numel(),dtype=param.dtype).pin_memory()
+
+        if self.micro_step_id > 0:
+            dest_buffer.copy_(self.accumulated_grads_in_cpu[param_id].view(-1), non_blocking=True)
+            param.grad.data.view(-1).add_(dest_buffer)
+
+        #at the boundary we will send 32bit directly
+        if not self.is_gradient_accumulation_boundary:
+            self.accumulated_grads_in_cpu[param_id].data.copy_(param.grad.data.view(-1), non_blocking=True)
+
 
     def set_norm_for_param_grad(self, param):
         param_id = self.get_param_id(param)
         accumulated_grad = self.accumulated_grads_in_cpu[param_id] if self.gradient_accumulation_steps > 1 else param.grad
+        
+        [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
+        
+        start = source_offset
+        accumulated_grad = accumulated_grad.view(-1).narrow(0, start, num_elements)
+        
+        self.norm_for_param_grads[param_id] = accumulated_grad.data.double().norm(2)  
+    
+    def set_norm_for_param_grad_in_gpu(self, param):
+        param_id = self.get_param_id(param)
+        accumulated_grad = param.grad
         
         [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
         
@@ -788,9 +820,19 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.gradient_accumulation_steps > 1:
             src_tensor = self.accumulated_grads_in_cpu[param_id].view(-1).narrow(0, source_offset, num_elements)
         else:
-            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
-        dest_tensor.copy_(src_tensor)
-       
+            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements).float()
+        dest_tensor.copy_(src_tensor,non_blocking=True)
+
+    def async_inplace_copy_grad_to_fp32_buffer_from_gpu(self, param):
+        param_id = self.get_param_id(param)
+        
+        [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
+
+        dest_tensor = self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(0, dest_offset, num_elements) 
+        
+        src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements).float()
+        dest_tensor.copy_(src_tensor,non_blocking=True)
+        
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
         norm_type = 2.0
@@ -824,17 +866,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload:
             #print(f"GAS: {self.gradient_accumulation_steps}")
             #print(f"GAS: {self.is_gradient_accumulation_boundary}")
-            with torch.cuda.stream(self.migration_stream):
+            #with torch.cuda.stream(torch.cuda.current_stream()):
                 
-                self.update_overflow_tracker_for_param_grad(param)
+            self.update_overflow_tracker_for_param_grad(param)
+            
+            if self.gradient_accumulation_steps > 1:
+                self.async_accumulate_grad_in_cpu_via_gpu(param)
+            
+            if self.is_gradient_accumulation_boundary:
+                self.set_norm_for_param_grad_in_gpu(param)
+                self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(param)
                 
-                if self.gradient_accumulation_steps > 1:
-                    self.async_accumulate_grad_in_cpu(param)
-                
-                if self.is_gradient_accumulation_boundary:
-                    self.set_norm_for_param_grad(param)
-                    self.async_inplace_copy_grad_to_fp32_buffer(param)
-                    
                 #new_grad_tensor = async_copy_to(param.grad.view(-1),
                 #                                'cpu',
                 #                                self.cpu_computation_stream)
@@ -1249,6 +1291,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         Not supporting closure.
         """
+        self.micro_step_id = 0
+        
         if self.cpu_offload:
             torch.cuda.current_stream().wait_stream(self.migration_stream)
 
@@ -1264,6 +1308,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.overflow:
             see_memory_usage('After overflow before clearing gradients')
             self.zero_grad()
+            self.reset_cpu_buffers()
+
             see_memory_usage('After overflow after clearing gradients')
 
             logger.info(
@@ -1317,7 +1363,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             single_partition_grad_groups.append(single_grad_partition)
 
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
-        torch.set_num_threads(12)
+        #torch.set_num_threads(12)
         timers('optimizer_step').start()
         self.optimizer.step()
         #get rid of the fp32 gradients. Not needed anymore
@@ -1477,20 +1523,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.contiguous_gradients:
             self.ipg_buffer = []
-            buf_0 = torch.empty(self.reduce_bucket_size,
+            buf_0 = torch.empty(int(self.reduce_bucket_size*4.5),
                                 dtype=torch.half,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
-                buf_1 = torch.empty(self.reduce_bucket_size,
+                buf_1 = torch.empty(int(self.reduce_bucket_size*4.5),
                                     dtype=torch.half,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        self.micro_step_id += 1
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
