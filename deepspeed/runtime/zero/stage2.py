@@ -477,9 +477,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.overlap_comm:
             torch.cuda.synchronize()
-
+            
         if self.cpu_offload is False:
             for i, _ in enumerate(self.fp16_groups):
+            
                 if not i in self.averaged_gradients or self.averaged_gradients[i] is None:
                     self.averaged_gradients[i] = self.get_flat_partition(
                         self.params_in_partition[i],
@@ -498,6 +499,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                     for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i],avg_new):
                         accumulated_grad.add_(new_avg_grad)
+            
+            
         self._release_ipg_buffers()
 
         # No need to keep the gradients anymore.
@@ -912,7 +915,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(param)
 
             return
-        print(f"ID {self.get_param_id(param)} grad norm {param.grad.norm()}")
+        #print(f"ID {self.get_param_id(param)} grad norm {param.grad.norm()}")
         if self.grads_in_partition is None:
             self.grads_in_partition_offset = 0
             total_size = 0
@@ -933,6 +936,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             param.numel())
         new_grad_tensor.copy_(param.grad.view(-1))
         param.grad.data = new_grad_tensor.data.view_as(param.grad)
+        #print(f"Grad norm after copy to contiguous_buffer {param.grad.data.norm()}")
         self.grads_in_partition_offset += param.numel()
 
     def reduce_ipg_grads(self):
@@ -1342,6 +1346,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.zero_grad()
             if self.cpu_offload:
                 self.reset_cpu_buffers()
+            else:
+                self.averaged_gradients = {}
 
             see_memory_usage('After overflow after clearing gradients')
 
