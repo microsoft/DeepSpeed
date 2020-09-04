@@ -15,7 +15,7 @@ First ensure that you have the necessary packages (e.g., `make` and `zlib`).
 sudo apt-get install build-essential zlib1g-dev ruby-full
 ```
 
-Add these lines to your `.bashrc` or equivalent to ensure you have permissions to install packages without `sudo`.
+Add these lines to your `.bashrc` or equivalent to ensure you have permissions to install Ruby packages without `sudo`.
 ```
 export GEM_HOME="$HOME/gems"
 export PATH="$HOME/gems/bin:$PATH"
