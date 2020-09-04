@@ -24,6 +24,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                             weight_decay=weight_decay,
                             amsgrad=amsgrad)
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
+
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
 
@@ -43,33 +44,37 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
-        for i, group in enumerate(self.param_groups):
-            for gid, p in enumerate(group['params']):
+        for group_id, group in enumerate(self.param_groups):
+            for param_id, p in enumerate(group['params']):
 
                 if p.grad is None:
                     continue
 
-                grad = p.grad
+                grad = p.grad.data
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
                     state['step'] = 0
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p, device='cpu')
+                    state['exp_avg'] = torch.zeros_like(p.data, device='cpu')
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p, device='cpu')
+                    state['exp_avg_sq'] = torch.zeros_like(p.data, device='cpu')
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 state['step'] += 1
 
                 if fp16_param_groups is not None:
-                    p_fp16 = fp16_param_groups[i][gid]
+                    p_fp16 = fp16_param_groups[group_id][param_id]
                     ds_opt_adam.adam_update_copy(self.opt_id,
-                                                 p,
+                                                 p.data,
                                                  grad,
                                                  exp_avg,
                                                  exp_avg_sq,
                                                  p_fp16)
                 else:
-                    ds_opt_adam.adam_update(self.opt_id, p, grad, exp_avg, exp_avg_sq)
+                    ds_opt_adam.adam_update(self.opt_id,
+                                            p.data,
+                                            grad,
+                                            exp_avg,
+                                            exp_avg_sq)
         return loss
