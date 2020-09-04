@@ -1,7 +1,8 @@
 import math
 import torch
-import deepspeed.ops.adam.cpu_adam_op as ds_opt_adam
+import importlib
 
+ds_opt_adam = None
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
@@ -24,6 +25,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
+
+        global ds_opt_adam
+        ds_opt_adam = importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
         ds_opt_adam.create_adam(self.opt_id, lr, bettas[0], bettas[1], eps, weight_decay)
 
     def __setstate__(self, state):

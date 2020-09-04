@@ -27,6 +27,12 @@ install_requires = fetch_requirements('requirements/requirements.txt')
 dev_requires = fetch_requirements('requirements/requirements-dev.txt')
 sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn.txt')
 
+# Constants for each op
+LAMB = "lamb"
+TRANSFORMER = "transformer"
+SPARSE_ATTN = "sparse-attn"
+ADAM = "cpu-adam"
+
 # Build environment variables for custom builds
 DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
@@ -50,15 +56,15 @@ DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
 BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
               | DS_BUILD_ADAM)
 
-install_ops = []
+install_ops = dict.fromkeys([LAMB, TRANSFORMER, SPARSE_ATTN, ADAM], False)
 if BUILD_MASK & DS_BUILD_LAMB:
-    install_ops.append('lamb')
+    install_ops[LAMB] = True
 if BUILD_MASK & DS_BUILD_ADAM:
-    install_ops.append('adam')
+    install_ops[ADAM] = True
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
-    install_ops.append('transformer')
+    install_ops[TRANSFORMER] = True
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
-    install_ops.append('sparse-attn')
+    install_ops[SPARSE_ATTN] = True
 if len(install_ops) == 0:
     print("Building without any cuda/cpp extensions")
 print(f'BUILD_MASK={BUILD_MASK}, install_ops={install_ops}')
@@ -196,14 +202,21 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
 
 
 def command_exists(cmd):
-    result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
+    if '|' in cmd:
+        cmds = cmd.split("|")
+    else:
+        cmds = [cmd]
+    valid = False
+    for cmd in cmds:
+        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        valid = valid or result.wait() == 0
+    return valid
 
 
 ## Sparse transformer ##
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
     # Check to see if llvm and cmake are installed since they are dependencies
-    required_commands = ['llc-9', 'cmake']
+    required_commands = ['llvm-config|llvm-config-9', 'cmake']
 
     command_status = list(map(command_exists, required_commands))
     if not all(command_status):
@@ -213,6 +226,8 @@ if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
         )
         warnings.warn(
             'Skipping sparse attention installation due to missing required packages')
+        # remove from installed ops list
+        install_ops[SPARSE_ATTN] = False
     elif TORCH_MAJOR == 1 and TORCH_MINOR >= 5:
         ext_modules.append(
             CppExtension(name='deepspeed.ops.sparse_attention.cpp_utils',
@@ -223,6 +238,8 @@ if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
         install_requires += sparse_attn_requires
     else:
         warnings.warn('Unable to meet requirements to install sparse attention')
+        # remove from installed ops list
+        install_ops[SPARSE_ATTN] = False
 
 # Add development requirements
 install_requires += dev_requires
@@ -243,6 +260,7 @@ with open('deepspeed/git_version_info.py', 'w') as fd:
     fd.write(f"version='{VERSION}+{git_hash}'\n")
     fd.write(f"git_hash='{git_hash}'\n")
     fd.write(f"git_branch='{git_branch}'\n")
+    fd.write(f"installed_ops={install_ops}\n")
 
 print(f'install_requires={install_requires}')
 

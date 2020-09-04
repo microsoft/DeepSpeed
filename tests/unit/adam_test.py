@@ -1,5 +1,5 @@
 import torch
-from deepspeed import DeepSpeedCPUAdam
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 import time
 
 device = 'cpu'
