@@ -649,3 +649,26 @@ def see_memory_usage(message):
         "Max cache Allocated %s GigaBytes",
         torch.cuda.max_memory_cached() / (1024 * 1024 * 1024),
     )
+
+
+def call_to_str(base, *args, **kwargs):
+    """Construct a string representation of a call.
+
+    Args:
+        base (str): name of the call
+        args (tuple, optional): args to ``base``
+        kwargs (dict, optional): kwargs supplied to ``base``
+
+    Returns:
+        str: A string representation of base(*args, **kwargs)
+    """
+    name = f'{base}('
+    if args:
+        name += ', '.join(repr(arg) for arg in args)
+        if kwargs:
+            name += ', '
+    if kwargs:
+        name += ', '.join(f'{key}={repr(arg)}' for key,
+                            arg in kwargs.items())
+    name += ')'
+    return name

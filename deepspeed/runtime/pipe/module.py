@@ -56,15 +56,7 @@ class LayerSpec:
             self.global_rank = -1
 
     def __repr__(self):
-        name = f'{self.typename.__name__}('
-        if self.module_args:
-            name += ', '.join(map(repr, self.module_args))
-        if self.module_kwargs:
-            name += ', '
-            name += ', '.join(f'{repr(key)}={repr(arg)}' for key,
-                              arg in self.module_kwargs.items())
-        name += ')'
-        return name
+        return ds_utils.call_to_str(self.typename.__name__, self.module_args, self.module_kwargs)
 
     def build(self, log=False):
         """Build the stored specification."""
