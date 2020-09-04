@@ -293,7 +293,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
 
-        self.contiguous_gradients = contiguous_gradients
+        # CPU-Offload requires contiguous gradients
+        self.contiguous_gradients = contiguous_gradients or cpu_offload
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
         self.elements_in_ipg_bucket = 0
