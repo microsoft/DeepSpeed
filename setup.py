@@ -31,13 +31,15 @@ sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn
 DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
 DS_BUILD_SPARSE_ATTN_MASK = 100
+DS_BUILD_ADAM_MASK = 1000
 
 # Allow for build_cuda to turn on or off all ops
-DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK
+DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_ADAM_MASK
 DS_BUILD_CUDA = int(os.environ.get('DS_BUILD_CUDA', 1)) * DS_BUILD_ALL_OPS
 
 # Set default of each op based on if build_cuda is set
 OP_DEFAULT = DS_BUILD_CUDA == DS_BUILD_ALL_OPS
+DS_BUILD_ADAM = int(os.environ.get('DS_BUILD_ADAM', OP_DEFAULT)) * DS_BUILD_ADAM_MASK
 DS_BUILD_LAMB = int(os.environ.get('DS_BUILD_LAMB', OP_DEFAULT)) * DS_BUILD_LAMB_MASK
 DS_BUILD_TRANSFORMER = int(os.environ.get('DS_BUILD_TRANSFORMER',
                                           OP_DEFAULT)) * DS_BUILD_TRANSFORMER_MASK
@@ -45,11 +47,14 @@ DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
                                           0)) * DS_BUILD_SPARSE_ATTN_MASK
 
 # Final effective mask is the bitwise OR of each op
-BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN)
+BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
+              | DS_BUILD_ADAM)
 
 install_ops = []
 if BUILD_MASK & DS_BUILD_LAMB:
     install_ops.append('lamb')
+if BUILD_MASK & DS_BUILD_ADAM:
+    install_ops.append('adam')
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     install_ops.append('transformer')
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
@@ -103,6 +108,25 @@ if BUILD_MASK & DS_BUILD_LAMB:
                           'nvcc': ['-O3',
                                    '--use_fast_math'] + version_dependent_macros
                       }))
+
+## Adam ##
+if BUILD_MASK & DS_BUILD_ADAM:
+    ext_modules.append(
+        CUDAExtension(
+            name='deepspeed.ops.adam.cpu_adam_op',
+            sources=[
+                'csrc/adam/cpu_adam.cpp',
+            ],
+            include_dirs=['csrc/includes'],
+            extra_compile_args={
+                'cxx':
+                ['-O3',
+                 '-std=c++14',
+                 '-g',
+                 '-Wno-reorder',
+                 '-march=native',
+                 '-fopenmp']
+            }))
 
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
