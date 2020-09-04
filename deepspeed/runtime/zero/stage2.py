@@ -263,7 +263,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # a partition of the fp32 master weights that will be updated by this process
             self.single_partition_of_fp32_groups.append(
                 self.parallel_partitioned_fp16_groups[i]
-                [partition_id].clone().float().detach().to(self.device))
+                [partition_id].to(self.device).clone().float().detach())
 
             # modify optimizer of have flat master weight
             self.single_partition_of_fp32_groups[
@@ -330,7 +330,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.local_overflow = False
             self.grad_position = {}
             self.temp_grad_buffer_for_cpu_offload = torch.zeros(
-                largest_param_numel).half().pin_memory()
+                largest_param_numel, device=self.device).half().pin_memory()
             self.temp_grad_buffer_for_gpu_offload = torch.zeros(
                 largest_param_numel,
                 device=torch.cuda.current_device()).half()
@@ -787,7 +787,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if param_id not in self.accumulated_grads_in_cpu:
             self.accumulated_grads_in_cpu[param_id] = torch.zeros(
                 param.numel(),
-                dtype=param.dtype).pin_memory()
+                dtype=param.dtype, device=self.device).pin_memory()
 
         self.accumulated_grads_in_cpu[param_id].add_(dest_buffer)
 
@@ -803,7 +803,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if param_id not in self.accumulated_grads_in_cpu:
             self.accumulated_grads_in_cpu[param_id] = torch.zeros(
                 param.numel(),
-                dtype=param.dtype).pin_memory()
+                dtype=param.dtype, device=self.device).pin_memory()
 
         if self.micro_step_id > 0:
             dest_buffer.copy_(self.accumulated_grads_in_cpu[param_id].view(-1),
