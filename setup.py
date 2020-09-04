@@ -202,14 +202,21 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
 
 
 def command_exists(cmd):
-    result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
+    if '|' in cmd:
+        cmds = cmd.split("|")
+    else:
+        cmds = [cmd]
+    valid = False
+    for cmd in cmds:
+        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        valid = valid or result.wait() == 0
+    return valid
 
 
 ## Sparse transformer ##
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
     # Check to see if llvm and cmake are installed since they are dependencies
-    required_commands = ['llvm-config', 'cmake']
+    required_commands = ['llvm-config|llvm-config-9', 'cmake']
 
     command_status = list(map(command_exists, required_commands))
     if not all(command_status):
