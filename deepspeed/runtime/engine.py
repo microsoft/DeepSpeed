@@ -20,8 +20,6 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, \
     ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 
-from deepspeed.runtime.fp16.onebit_adam import OnebitAdam
-
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
@@ -29,8 +27,6 @@ from deepspeed.runtime.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
-
-from deepspeed.ops.lamb import FusedLamb
 
 from deepspeed.utils import logger
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
@@ -540,8 +536,10 @@ class DeepSpeedEngine(Module):
             from apex.optimizers.fused_adam import FusedAdam
             optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
+            from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
+            from deepspeed.runtime.fp16.onebit_adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
