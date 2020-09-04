@@ -6,6 +6,8 @@ import os
 import torch
 import warnings
 import torch.distributed as dist
+
+import apex
 from apex import amp
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -13,6 +15,7 @@ from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
@@ -264,7 +267,7 @@ class DeepSpeedEngine(Module):
         return self._config.train_micro_batch_size_per_gpu
 
     def optimizer_name(self):
-        return self._config.optimizer_name
+        return self.client_optimizer.__class__.__name__ if self.client_optimizer else self._config.optimizer_name
 
     def optimizer_params(self):
         return self._config.optimizer_params
@@ -295,7 +298,7 @@ class DeepSpeedEngine(Module):
 
     def deepspeed_adam(self):
         return self._config.zero_config.deepspeed_adam
-        
+
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
 
@@ -506,7 +509,7 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization():
             assert not self.amp_enabled(), "Amp and ZeRO are not currently compatible, please use (legacy) fp16 mode which performs similar to amp opt_mode=O2"
-            if self.optimizer_name() not in [ADAM_OPTIMIZER]:
+            if not is_zero_supported_optimizer(basic_optimizer):
                 assert self.zero_allow_untested_optimizer(), \
                     'You are using an untested ZeRO Optimizer. Please add <"zero_allow_untested_optimizer": true> in the configuration file to use it.'
 
@@ -536,11 +539,13 @@ class DeepSpeedEngine(Module):
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.zero_cpu_offload():
-                if False: #self.deepspeed_adam():
-                    optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
+                if False:  #self.deepspeed_adam():
+                    optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                 **optimizer_parameters)
                 else:
-                    optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
-                
+                    optimizer = torch.optim.Adam(model_parameters,
+                                                 **optimizer_parameters)
+
             else:
                 from apex.optimizers.fused_adam import FusedAdam
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
@@ -555,7 +560,8 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        if self.optimizer_name() == ADAM_OPTIMIZER:
+
+        if isinstance(optimizer, apex.optimizers.FusedAdam):
             if self.dynamic_loss_scale():
                 logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None

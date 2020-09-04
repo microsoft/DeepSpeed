@@ -1,4 +1,5 @@
 import torch
+import apex
 import deepspeed
 import argparse
 import pytest
@@ -608,3 +609,38 @@ def test_adam_amp_o2_empty_grad(tmpdir):
             model.step()
 
     _test_adam_amp_o2_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize('zero_stage, optimizer_constructor',
+                         [(1,
+                           apex.optimizers.FusedAdam),
+                          (2,
+                           torch.optim.Adam),
+                          (2,
+                           apex.optimizers.FusedAdam)])
+def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_constructor):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[1])
+    def _test_zero_supported_client_optimizer(args, model, optimizer_constructor):
+        client_optimizer = optimizer_constructor(params=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                               model=model,
+                                               optimizer=client_optimizer)
+
+    _test_zero_supported_client_optimizer(args=args,
+                                          model=model,
+                                          optimizer_constructor=optimizer_constructor)

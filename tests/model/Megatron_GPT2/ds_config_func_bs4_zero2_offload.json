@@ -9,7 +9,6 @@
     "reduce_scatter": true,
     "cpu_offload": true
   },
-  "zero_allow_untested_optimizer": true,
   "gradient_clipping": 1.0,
   "fp16": {
     "enabled": true,
