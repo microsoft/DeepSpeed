@@ -20,7 +20,7 @@ Block-sparse computations handled by DeepSpeed Sparse Attention kernels are illu
 
 ![Sparse attention backward pass](/assets/images/sa_backward_pass.png){: .align-center}
 
-To learn more about Sparsity Config, and also how to use this library, please check our [tutorial](https://github.com/microsoft/DeepSpeed-internal/tree/master/docs/_tutorials/sparse_attention.md) that provides detailed information about it.
+To learn more about Sparsity Config, and also how to use this library, please check our [tutorial](https://www.deepspeed.ai/tutorials/sparse_attention/) that provides detailed information about it.
 
 ## Performance Results
 
@@ -49,12 +49,12 @@ DeepSpeed Sparse Attention suite does not target at any specific sparse structur
   * [Fixed](https://arxiv.org/pdf/1904.10509.pdf) (from OpenAI Sparse Transformer)
   * [BigBird](https://arxiv.org/pdf/2007.14062.pdf) (from Google)
   * BSLongformer (Block-Sparse implementation of [Longformer](https://arxiv.org/pdf/2004.05150.pdf) from AI2)
-We also define a template to have `variable` structure (top figure), which can be used to simply customize any block-sparse random/local/global attention pattern. In addition to this list, user can add any other sparsity structure as described in [tutorial](https://github.com/microsoft/DeepSpeed-internal/tree/master/docs/_tutorials/sparse_transformer.md) section.
+We also define a template to have `variable` structure (top figure), which can be used to simply customize any block-sparse random/local/global attention pattern. In addition to this list, user can add any other sparsity structure as described in [tutorial](https://www.deepspeed.ai/tutorials/sparse_attention/) section.
 
 
 * **comparison with state of the art, Longformer**
 We compared SA with Longformer, a state-of-the-art sparse structure and implementation. In our experiment, SA uses `Fixed` sparsity, and two implementations have comparable accuracy. On system performance, SA outperforms Longformer both in training and inference:
-  * 1.47x faster execution pre-training MLM on Wikitext103
+  * **1.47x** faster execution pre-training MLM on Wikitext103
 We ran an experiment following the [notebook](https://github.com/allenai/longformer/blob/master/scripts/convert_model_to_long.ipynb) offered by Longformer. In this experiment, we pre-train an MLM model using RoBERTa-base checkpoint. This is done on 8 V100-SXM2 GPU. Following table shows the details of the result in which using DeepSpeed Sparse Attention shows 1.47x speed up.
 
 |Model 	            |Local Window Size |BPC     |Train Step  |Time Per Iteration  |Time Improvement  |Accuracy improvement  |
@@ -70,7 +70,7 @@ We ran an experiment following the [notebook](https://github.com/allenai/longfor
 |Sparse Attention   |                  |1.8693  |            |1.1372              |                  |                      |
 
 
-  * 3.13x faster execution inference on BERT-Base
+  * **3.13x** faster execution inference on BERT-Base
 Through our Long Document Comprehension application we described above, we also checked the inference time for different window sizes testing BERT model on a `2,048` Sequence Length and batch size `1`. In this experiment, we noticed up to `3.13X` speed up replacing Bert Attention with DeepSpeed Sparse Attention instead of Longformer Attention. Following table shows the complete result.
 
 |Local Window Size   |Time Improvement|
