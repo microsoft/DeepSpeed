@@ -29,7 +29,7 @@ sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn
 
 onebit_adam_requires = fetch_requirements('requirements/requirements-1bit-adam.txt')
 if torch.cuda.is_available():
-    onebit_adam_requires.append(f"cupy-cuda{torch.version.cuda.replace('.','')}")
+    onebit_adam_requires.append(f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}")
 install_requires += onebit_adam_requires
 
 # Build environment variables for custom builds
