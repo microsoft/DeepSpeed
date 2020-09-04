@@ -29,9 +29,9 @@ gem install jekyll bundler
 ```
 
 ### Start a local webserver
-We now need to install the required Ruby packages for the website. 
+We now need to install the required Ruby packages for the website.
 
-**NOTE**: you should change to the docs folder before running the installation command to avoid this [error](https://stackoverflow.com/questions/10012181/bundle-install-returns-could-not-locate-gemfile/35157872): 
+**NOTE**: you should change to this folder (i.e., docs) before running the installation command to avoid this [error](https://stackoverflow.com/questions/10012181/bundle-install-returns-could-not-locate-gemfile/35157872):
 
 > Could not locate Gemfile
 
