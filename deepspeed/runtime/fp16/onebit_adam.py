@@ -141,7 +141,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         # Communication Phase 1
         gather_start = time.time()
-        gather(rank,
+        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather(rank,
                world_size,
                comm,
                cupy_sign_list_packed,
@@ -187,12 +187,12 @@ class OnebitAdam(torch.optim.Optimizer):
                                                dtype=cupy_worker_scale.dtype)
 
         # Communication Phase 2
-        allgather(comm,
+        cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather(comm,
                   cupy_server_sign_packed[0],
                   cupy_recvbuf_sign_server,
                   cupy_server_scale,
                   cupy_recvbuf_scale_server)
-
+        
         cupy_server_unpacked_sign = (cupy.unpackbits(
             cupy_recvbuf_sign_server.flatten())).reshape(world_size,
                                                          -1)
@@ -267,7 +267,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p.data) + 100
 
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
@@ -281,8 +281,6 @@ class OnebitAdam(torch.optim.Optimizer):
 
                 if not self.initialize or (self.adam_freeze_key
                                            and 'worker_error' not in state.keys()):
-                    if torch.distributed.get_rank() == 0:
-                        print("Allocating worker_error and setting exp_avg_sq to half")
                     torch.cuda.empty_cache()
                     state['worker_error'] = torch.zeros(state['corrected_tensor_size'],
                                                         device=p.device)
@@ -291,7 +289,7 @@ class OnebitAdam(torch.optim.Optimizer):
                     torch.cuda.empty_cache()
                     self.adam_freeze_key = True
                     if not self.initialize and torch.distributed.get_rank() == 0:
-                        print("Cupy Buffers Initialized")
+                        print("Cupy Buffers Initialized Successfully.")
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 beta1, beta2 = group['betas']
