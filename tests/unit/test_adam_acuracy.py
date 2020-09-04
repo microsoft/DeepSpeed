@@ -8,6 +8,7 @@ import copy
 
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
+
 def check_equal(first, second, atol=1e-2, verbose=False):
     if verbose:
         print(first)
@@ -36,11 +37,11 @@ def test_adam_opt(model_size):
 
     for i in range(10):
         rng_state = torch.get_rng_state()
-        param.grad=torch.randn(model_size, device=device)
+        param.grad = torch.randn(model_size, device=device)
         torch.set_rng_state(rng_state)
-        param1.grad=torch.randn(model_size, device=device)
+        param1.grad = torch.randn(model_size, device=device)
 
         optimizer.step()
         optimizer1.step()
 
-    check_equal(param, param1, atol = 1e-2, verbose=True)
+    check_equal(param, param1, atol=1e-2, verbose=True)

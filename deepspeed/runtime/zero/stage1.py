@@ -798,7 +798,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 lean_state[key] = value[:lean_length]
             else:
                 lean_state[key] = value
-            
+
         return lean_state
 
     # Return base optimizer states.
