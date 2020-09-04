@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 import copy
 
-from deepspeed import DeepSpeedCPUAdam
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 def check_equal(first, second, atol=1e-2, verbose=False):
-    if verbos:
+    if verbose:
         print(first)
         print(second)
     x = first.detach().numpy()
