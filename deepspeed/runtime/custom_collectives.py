@@ -1,5 +1,6 @@
 from mpi4py import MPI
-
+import numpy as np
+import cupy
 
 def my_igather(rank, size, comm, sendbuf, recbuf, root):
     req = []
@@ -106,7 +107,7 @@ def gather(rank,
            cupy_recvbuf_sign,
            cupy_worker_scale,
            cupy_recvbuf_scale):
-    cuda_aware = True
+    cuda_aware = False
     if cuda_aware:
         gather_cuda(rank,
                     world_size,
@@ -130,18 +131,18 @@ def allgather(comm,
               cupy_recvbuf_sign_server,
               cupy_server_scale,
               cupy_recvbuf_scale_server):
-    cuda_aware = True
+    cuda_aware = False
     if cuda_aware:
         comm.Allgather(cupy_server_sign_packed, cupy_recvbuf_sign_server)
         comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
     else:
         # 1. Convert cupy to numpy
-        numpy_recvbuf_sign_server = np.zeros([world_size,
+        numpy_recvbuf_sign_server = np.zeros([comm.Get_size(),
                                               cupy_server_sign_packed.size],
-                                             dtype=cupy_sign_list_packed.dtype)
-        numpy_recvbuf_scale_server = np.zeros([world_size,
+                                             dtype=cupy_server_sign_packed.dtype)
+        numpy_recvbuf_scale_server = np.zeros([comm.Get_size(),
                                                1],
-                                              dtype=cupy_worker_scale.dtype)
+                                              dtype=cupy_server_scale.dtype)
 
         numpy_server_sign_packed = cupy.asnumpy(cupy_server_sign_packed[0])
         numpy_recvbuf_sign_server = cupy.asnumpy(cupy_recvbuf_sign_server)
