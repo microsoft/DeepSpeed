@@ -1405,14 +1405,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
         #torch.set_num_threads(12)
         timers('optimizer_step').start()
-        self.optimizer.step()
+        self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
         #get rid of the fp32 gradients. Not needed anymore
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
                 group.grad = None
 
-        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-            fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+        #for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+        #    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         timers('optimizer_step').stop()
 
         if self.cpu_offload:
