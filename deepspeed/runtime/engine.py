@@ -16,12 +16,11 @@ from tensorboardX import SummaryWriter
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
-from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
+    ADAM_OPTIMIZER, DEEPSPEED_ADAM, LAMB_OPTIMIZER, DEEPSPEED_OPTIMIZERS
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
@@ -296,9 +295,6 @@ class DeepSpeedEngine(Module):
     def zero_cpu_offload(self):
         return self._config.zero_config.cpu_offload
 
-    def deepspeed_adam(self):
-        return self._config.zero_config.deepspeed_adam
-
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
 
@@ -539,16 +535,15 @@ class DeepSpeedEngine(Module):
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.zero_cpu_offload():
-                if False:  #self.deepspeed_adam():
-                    optimizer = DeepSpeedCPUAdam(model_parameters,
+                optimizer = torch.optim.Adam(model_parameters,
                                                  **optimizer_parameters)
-                else:
-                    optimizer = torch.optim.Adam(model_parameters,
-                                                 **optimizer_parameters)
-
             else:
                 from apex.optimizers.fused_adam import FusedAdam
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == DEEPSPEED_ADAM:
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
+            optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                 **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
