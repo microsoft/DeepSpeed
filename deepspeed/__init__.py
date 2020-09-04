@@ -15,7 +15,7 @@ from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConf
 from .utils import logger
 
 try:
-    from deepspeed.git_version_info import version, git_hash, git_branch
+    from .git_version_info import version, git_hash, git_branch
 except ImportError:
     version = "0.0.0+unknown"
     git_hash = None
