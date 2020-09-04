@@ -24,7 +24,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                             weight_decay=weight_decay,
                             amsgrad=amsgrad)
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
-        
+
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
 
@@ -72,5 +72,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                                                  exp_avg_sq,
                                                  p_fp16)
                 else:
-                    ds_opt_adam.adam_update(self.opt_id, p.data, grad, exp_avg, exp_avg_sq)
+                    ds_opt_adam.adam_update(self.opt_id,
+                                            p.data,
+                                            grad,
+                                            exp_avg,
+                                            exp_avg_sq)
         return loss

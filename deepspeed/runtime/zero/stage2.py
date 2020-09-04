@@ -1418,7 +1418,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
             fp16_partitions[partition_id].data.copy_(fp32_partition.data)
-            
+
         timers('optimizer_step').stop()
 
         if self.cpu_offload:
