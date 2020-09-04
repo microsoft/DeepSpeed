@@ -1,7 +1,7 @@
-from ..git_version_info import installed_ops
+from ..git_version_info import installed_ops as __installed_ops__
 from . import lamb
 from . import transformer
-if installed_ops['sparse-attn']:
+if __installed_ops__['sparse-attn']:
     from . import sparse_attention
-if installed_ops['cpu-adam']:
+if __installed_ops__['cpu-adam']:
     from . import adam
