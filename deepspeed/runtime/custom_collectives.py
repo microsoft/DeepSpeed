@@ -2,6 +2,7 @@ from mpi4py import MPI
 import numpy as np
 import cupy
 
+
 def my_igather(rank, size, comm, sendbuf, recbuf, root):
     req = []
     if rank == root:
@@ -137,9 +138,10 @@ def allgather(comm,
         comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
     else:
         # 1. Convert cupy to numpy
-        numpy_recvbuf_sign_server = np.zeros([comm.Get_size(),
-                                              cupy_server_sign_packed.size],
-                                             dtype=cupy_server_sign_packed.dtype)
+        numpy_recvbuf_sign_server = np.zeros(
+            [comm.Get_size(),
+             cupy_server_sign_packed.size],
+            dtype=cupy_server_sign_packed.dtype)
         numpy_recvbuf_scale_server = np.zeros([comm.Get_size(),
                                                1],
                                               dtype=cupy_server_scale.dtype)
