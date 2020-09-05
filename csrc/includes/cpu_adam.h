@@ -18,7 +18,8 @@
     }
 
 #define SIMD_WIDTH 16
-#define TILE 1048576
+
+#define TILE (1024 * 1024 * 1024)
 
 class Adam_Optimizer {
 public:
@@ -55,6 +56,12 @@ public:
                 float* _exp_avg_sa,
                 size_t param_size,
                 __half* dev_param = nullptr);
+    void Step_8(float *_params, 
+                float *grads, 
+                float *_exp_avg, 
+                float *_exp_avg_sq, 
+                size_t _param_size, 
+                __half* dev_params = nullptr);
 
 private:
     float _alpha;

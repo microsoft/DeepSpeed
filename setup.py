@@ -123,11 +123,15 @@ if BUILD_MASK & DS_BUILD_ADAM:
             sources=[
                 'csrc/adam/cpu_adam.cpp',
             ],
-            include_dirs=['csrc/includes'],
+            include_dirs=['csrc/includes',
+                        '/usr/local/cuda/include'],
             extra_compile_args={
                 'cxx':
                 ['-O3',
                  '-std=c++14',
+                 '-L/usr/local/cuda/lib64',
+                 '-lcudart',
+                 '-lcublas',
                  '-g',
                  '-Wno-reorder',
                  '-march=native',
