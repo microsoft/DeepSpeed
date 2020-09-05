@@ -101,17 +101,17 @@ jobs:
 
   - script: |
       conda create --force --yes -n $(conda_env) python=3.7
-      conda activate $(conda_env)
+      source activate $(conda_env)
     displayName: 'Create code test environment'
 
   - script: |
-      conda activate $(conda_env)
+      source activate $(conda_env)
       pip install pre-commit
       pre-commit run --all-files
     displayName: 'Formatting checks'
 
   - script: |
-      conda activate $(conda_env)
+      source activate $(conda_env)
       pip install pylint
       pylint --exit-zero deepspeed/
     displayName: 'Code linter'
