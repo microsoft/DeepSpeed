@@ -1,3 +1,7 @@
+'''
+Copyright 2019 The Microsoft DeepSpeed Team
+'''
+
 from mpi4py import MPI
 import numpy as np
 import cupy
