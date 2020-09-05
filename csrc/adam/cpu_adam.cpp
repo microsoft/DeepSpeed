@@ -330,10 +330,10 @@ void Adam_Optimizer::Step_8(float* _params,
             varianc_4[1] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH);
             varianc_4[2] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1));
             varianc_4[3] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3);
-            varianc_4[5] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 2));
-            varianc_4[6] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 5);
-            varianc_4[7] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 6);
-            varianc_4[8] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7);
+            varianc_4[4] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 2));
+            varianc_4[5] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 5);
+            varianc_4[6] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 6);
+            varianc_4[7] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7);
 
             __m512 param_4[8];
             param_4[0] = _mm512_loadu_ps(_params + i);
