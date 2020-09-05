@@ -118,21 +118,25 @@ if BUILD_MASK & DS_BUILD_LAMB:
 ## Adam ##
 if BUILD_MASK & DS_BUILD_ADAM:
     ext_modules.append(
-        CUDAExtension(
-            name='deepspeed.ops.adam.cpu_adam_op',
-            sources=[
-                'csrc/adam/cpu_adam.cpp',
-            ],
-            include_dirs=['csrc/includes'],
-            extra_compile_args={
-                'cxx':
-                ['-O3',
-                 '-std=c++14',
-                 '-g',
-                 '-Wno-reorder',
-                 '-march=native',
-                 '-fopenmp']
-            }))
+        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
+                      sources=[
+                          'csrc/adam/cpu_adam.cpp',
+                      ],
+                      include_dirs=['csrc/includes',
+                                    '/usr/local/cuda/include'],
+                      extra_compile_args={
+                          'cxx': [
+                              '-O3',
+                              '-std=c++14',
+                              '-L/usr/local/cuda/lib64',
+                              '-lcudart',
+                              '-lcublas',
+                              '-g',
+                              '-Wno-reorder',
+                              '-march=native',
+                              '-fopenmp'
+                          ]
+                      }))
 
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
