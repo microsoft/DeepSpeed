@@ -148,19 +148,19 @@ void Adam_Optimizer::Step_4(float* _params,
             grad_4[2] = _mm512_loadu_ps(grads + i + (SIMD_WIDTH << 1));
             grad_4[3] = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 3);
 
-            __m512 momntum_4[2];
+            __m512 momntum_4[4];
             momntum_4[0] = _mm512_loadu_ps(_exp_avg + i);
             momntum_4[1] = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH);
             momntum_4[2] = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH << 1));
             momntum_4[3] = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 3);
 
-            __m512 varianc_4[2];
+            __m512 varianc_4[4];
             varianc_4[0] = _mm512_loadu_ps(_exp_avg_sq + i);
             varianc_4[1] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH);
             varianc_4[2] = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1));
             varianc_4[3] = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3);
 
-            __m512 param_4[2];
+            __m512 param_4[4];
             param_4[0] = _mm512_loadu_ps(_params + i);
             param_4[1] = _mm512_loadu_ps(_params + i + SIMD_WIDTH);
             param_4[2] = _mm512_loadu_ps(_params + i + (SIMD_WIDTH << 1));
