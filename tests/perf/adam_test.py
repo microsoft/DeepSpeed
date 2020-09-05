@@ -3,7 +3,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 import time
 
 device = 'cpu'
-model_size = 10 * 1024**3
+model_size = 1 * 1024**3
 param = torch.nn.Parameter(torch.ones(model_size, device=device))
 param_fp16 = torch.nn.Parameter(torch.ones(model_size,
                                            dtype=torch.half,
