@@ -152,7 +152,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.reduce_scatter = reduce_scatter
 
-        self.overlap_comm = overlap_comm
+        self.overlap_comm = overlap_comm or cpu_offload
 
         self.cpu_offload = cpu_offload
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
@@ -1322,9 +1322,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def reset_cpu_buffers(self):
         self.norm_for_param_grads = {}
         self.local_overflow = False
-        with torch.cuda.stream(self.migration_stream):
-            for key, value in self.accumulated_grads_in_cpu.items():
-                value.mul_(0.0)
 
     def step(self, closure=None):
         """
@@ -1408,7 +1405,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
         #torch.set_num_threads(12)
         timers('optimizer_step').start()
-
         #self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
         self.optimizer.step()
         #get rid of the fp32 gradients. Not needed anymore
