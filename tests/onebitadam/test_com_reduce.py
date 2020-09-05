@@ -16,7 +16,7 @@ torch.distributed.init_process_group(backend='nccl',
                                      rank=rank)
 
 dummy_model = [torch.nn.Parameter(torch.ones(10))]
-dummy_optim = OnebitAdam(dummy_model)
+dummy_optim = OnebitAdam(dummy_model, cuda_aware=True)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
