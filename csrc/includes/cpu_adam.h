@@ -56,11 +56,11 @@ public:
                 float* _exp_avg_sa,
                 size_t param_size,
                 __half* dev_param = nullptr);
-    void Step_8(float *_params, 
-                float *grads, 
-                float *_exp_avg, 
-                float *_exp_avg_sq, 
-                size_t _param_size, 
+    void Step_8(float* _params,
+                float* grads,
+                float* _exp_avg,
+                float* _exp_avg_sq,
+                size_t _param_size,
                 __half* dev_params = nullptr);
 
 private:
