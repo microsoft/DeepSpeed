@@ -91,24 +91,27 @@ jobs:
 
 - job: Code_Quality_Checks
   pool:
-    name: 'DS_testing'
+    vmImage: 'ubuntu-latest'
   variables:
     conda_env: 'ds_codetest'
 
   steps:
+  - bash: echo "##vso[task.prependpath]$CONDA/bin"
+    displayName: Add conda to PATH
+
   - script: |
       conda create --force --yes -n $(conda_env) python=3.7
-      source activate $(conda_env)
+      conda activate $(conda_env)
     displayName: 'Create code test environment'
 
   - script: |
-      source activate $(conda_env)
+      conda activate $(conda_env)
       pip install pre-commit
       pre-commit run --all-files
     displayName: 'Formatting checks'
 
   - script: |
-      source activate $(conda_env)
+      conda activate $(conda_env)
       pip install pylint
       pylint --exit-zero deepspeed/
     displayName: 'Code linter'
