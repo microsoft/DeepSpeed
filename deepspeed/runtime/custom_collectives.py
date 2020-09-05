@@ -23,6 +23,7 @@ def gather_cuda(rank,
                 cupy_recvbuf_sign,
                 cupy_worker_scale,
                 cupy_recvbuf_scale):
+    # We do in-place operations on cupy buffers so we do not return any buffers
     requests = []
     for idx in range(world_size):
         req_sign = my_igather(rank,
@@ -52,6 +53,8 @@ def gather_host(rank,
                 cupy_recvbuf_sign,
                 cupy_worker_scale,
                 cupy_recvbuf_scale):
+    # In-place operations are not possible for newly created cupy arrays
+    # so we need to return the new buffers
     numpy_recvbuf_sign = np.zeros([world_size,
                                    cupy_sign_list_packed[rank].size],
                                   dtype=cupy_sign_list_packed[0].dtype)
@@ -101,67 +104,47 @@ def gather_host(rank,
     cupy.cuda.get_current_stream().synchronize()
 
     return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
-def gather(rank,
-           world_size,
-           comm,
-           cupy_sign_list_packed,
-           cupy_recvbuf_sign,
-           cupy_worker_scale,
-           cupy_recvbuf_scale):
-    cuda_aware = False
-    if cuda_aware:
-        gather_cuda(rank,
-                    world_size,
-                    comm,
-                    cupy_sign_list_packed,
-                    cupy_recvbuf_sign,
-                    cupy_worker_scale,
-                    cupy_recvbuf_scale)
-    else:
-        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(rank,
-                    world_size,
-                    comm,
-                    cupy_sign_list_packed,
-                    cupy_recvbuf_sign,
-                    cupy_worker_scale,
-                    cupy_recvbuf_scale)
-    return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
 
-def allgather(comm,
-              cupy_server_sign_packed,
-              cupy_recvbuf_sign_server,
-              cupy_server_scale,
-              cupy_recvbuf_scale_server):
-    cuda_aware = False
-    if cuda_aware:
-        comm.Allgather(cupy_server_sign_packed, cupy_recvbuf_sign_server)
-        comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
-    else:
-        # 1. Convert cupy to numpy
-        numpy_recvbuf_sign_server = np.zeros(
-            [comm.Get_size(),
-             cupy_server_sign_packed.size],
-            dtype=cupy_server_sign_packed.dtype)
-        numpy_recvbuf_scale_server = np.zeros([comm.Get_size(),
-                                               1],
-                                              dtype=cupy_server_scale.dtype)
 
-        numpy_server_sign_packed = cupy.asnumpy(cupy_server_sign_packed)
-        numpy_recvbuf_sign_server = cupy.asnumpy(cupy_recvbuf_sign_server)
-        numpy_server_scale = cupy.asnumpy(cupy_server_scale)
-        numpy_recvbuf_scale_server = cupy.asnumpy(cupy_recvbuf_scale_server)
-        cupy.cuda.get_current_stream().synchronize()
+def allgather_cuda(comm,
+                   cupy_server_sign_packed,
+                   cupy_recvbuf_sign_server,
+                   cupy_server_scale,
+                   cupy_recvbuf_scale_server):
+    comm.Allgather(cupy_server_sign_packed, cupy_recvbuf_sign_server)
+    comm.Allgather(cupy_server_scale, cupy_recvbuf_scale_server)
 
-        # 2. Communicate numpy buffers
-        comm.Allgather(numpy_server_sign_packed, numpy_recvbuf_sign_server)
-        comm.Allgather(numpy_server_scale, numpy_recvbuf_scale_server)
-        comm.Barrier()
 
-        # 3. Convert numpy back to cupy
-        cupy_server_sign_packed = cupy.asarray(numpy_server_sign_packed)
-        cupy_recvbuf_sign_server = cupy.asarray(numpy_recvbuf_sign_server)
-        cupy_server_scale = cupy.asarray(numpy_server_scale)
-        cupy_recvbuf_scale_server = cupy.asarray(numpy_recvbuf_scale_server)
-        cupy.cuda.get_current_stream().synchronize()
+def allgather_host(comm,
+                   cupy_server_sign_packed,
+                   cupy_recvbuf_sign_server,
+                   cupy_server_scale,
+                   cupy_recvbuf_scale_server):
+
+    # 1. Convert cupy to numpy
+    numpy_recvbuf_sign_server = np.zeros([comm.Get_size(),
+                                          cupy_server_sign_packed.size],
+                                         dtype=cupy_server_sign_packed.dtype)
+    numpy_recvbuf_scale_server = np.zeros([comm.Get_size(),
+                                           1],
+                                          dtype=cupy_server_scale.dtype)
+
+    numpy_server_sign_packed = cupy.asnumpy(cupy_server_sign_packed)
+    numpy_recvbuf_sign_server = cupy.asnumpy(cupy_recvbuf_sign_server)
+    numpy_server_scale = cupy.asnumpy(cupy_server_scale)
+    numpy_recvbuf_scale_server = cupy.asnumpy(cupy_recvbuf_scale_server)
+    cupy.cuda.get_current_stream().synchronize()
+
+    # 2. Communicate numpy buffers
+    comm.Allgather(numpy_server_sign_packed, numpy_recvbuf_sign_server)
+    comm.Allgather(numpy_server_scale, numpy_recvbuf_scale_server)
+    comm.Barrier()
+
+    # 3. Convert numpy back to cupy
+    cupy_server_sign_packed = cupy.asarray(numpy_server_sign_packed)
+    cupy_recvbuf_sign_server = cupy.asarray(numpy_recvbuf_sign_server)
+    cupy_server_scale = cupy.asarray(numpy_server_scale)
+    cupy_recvbuf_scale_server = cupy.asarray(numpy_recvbuf_scale_server)
+    cupy.cuda.get_current_stream().synchronize()
 
     return cupy_server_sign_packed, cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server

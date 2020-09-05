@@ -25,7 +25,7 @@ class OnebitAdam(torch.optim.Optimizer):
             parameter groups.
         lr (float, optional): learning rate. (default: 1e-3)
         freeze_step (int, optional): Number of steps for warmup (uncompressed)
-        stage before we start using compressed communication. (default 100000)
+            stage before we start using compressed communication. (default 100000)
         betas (Tuple[float, float], optional): coefficients used for computing
             running averages of gradient and its square. (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
@@ -40,6 +40,8 @@ class OnebitAdam(torch.optim.Optimizer):
             adds eps to the bias-corrected second moment estimate before
             evaluating square root instead of adding it to the square root of
             second moment estimate as in the original paper. (default: False)
+        cuda_aware (boolean, required): Set True if the underlying MPI implementation
+            supports CUDA-Aware communication. (default: False)
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
@@ -57,7 +59,8 @@ class OnebitAdam(torch.optim.Optimizer):
                  eps_inside_sqrt=False,
                  weight_decay=0.,
                  max_grad_norm=0.,
-                 amsgrad=False):
+                 amsgrad=False,
+                 cuda_aware=False):
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
@@ -84,6 +87,7 @@ class OnebitAdam(torch.optim.Optimizer):
         self.adam_freeze_key = False
         self.initialize = False
         self.freeze_step = freeze_step
+        self.cuda_aware = cuda_aware
 
     def torch2cupy(self, tensor):
         return cupy.fromDlpack(to_dlpack(tensor))
@@ -141,7 +145,16 @@ class OnebitAdam(torch.optim.Optimizer):
 
         # Communication Phase 1
         gather_start = time.time()
-        cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather(rank,
+        if self.cuda_aware:
+            gather_cuda(rank,
+                        world_size,
+                        comm,
+                        cupy_sign_list_packed,
+                        cupy_recvbuf_sign,
+                        cupy_worker_scale,
+                        cupy_recvbuf_scale)
+        else:
+            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(rank,
                world_size,
                comm,
                cupy_sign_list_packed,
@@ -187,12 +200,19 @@ class OnebitAdam(torch.optim.Optimizer):
                                                dtype=cupy_worker_scale.dtype)
 
         # Communication Phase 2
-        cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather(comm,
+        if self.cuda_aware:
+            allgather_cuda(comm,
+                           cupy_server_sign_packed[0],
+                           cupy_recvbuf_sign_server,
+                           cupy_server_scale,
+                           cupy_recvbuf_scale_server)
+        else:
+            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather_host(comm,
                   cupy_server_sign_packed[0],
                   cupy_recvbuf_sign_server,
                   cupy_server_scale,
                   cupy_recvbuf_scale_server)
-        
+
         cupy_server_unpacked_sign = (cupy.unpackbits(
             cupy_recvbuf_sign_server.flatten())).reshape(world_size,
                                                          -1)
