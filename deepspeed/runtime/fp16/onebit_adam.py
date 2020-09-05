@@ -12,7 +12,7 @@ from torch.utils.dlpack import from_dlpack
 from deepspeed.utils.logging import logger
 
 from mpi4py import MPI
-from deepspeed.runtime.custom_collectives import gather, allgather
+from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
 
 
 class OnebitAdam(torch.optim.Optimizer):
