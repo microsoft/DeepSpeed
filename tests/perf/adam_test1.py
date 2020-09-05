@@ -13,10 +13,10 @@ optimizer = DeepSpeedCPUAdam([param])
 #torch.set_num_threads(128)
 param.grad = torch.ones(model_size, device=device)
 avg = 0
-for i in range(10):
+for i in range(100):
     start = time.time()
     optimizer.step(fp16_param_groups=[param_fp16])
     stop = time.time()
     avg += (stop - start)
     param.grad = torch.ones(model_size, device=device) * 2
-print("Elapsed Time is ", avg / 10)
+print("Elapsed Time is ", avg / 100)
