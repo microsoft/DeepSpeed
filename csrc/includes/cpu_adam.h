@@ -71,6 +71,7 @@ private:
         __m512 data;
         //float data_f[16];
     };
+    
 
     float _alpha;
     float _betta1;
