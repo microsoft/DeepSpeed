@@ -10,6 +10,7 @@
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
+#include "custom_cuda_layers.h"
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
@@ -443,6 +444,15 @@ void Adam_Optimizer::Step_8(float* _params,
             _mm512_storeu_ps(_params + i + SIMD_WIDTH * 6, param_4[6]);
             _mm512_storeu_ps(_params + i + SIMD_WIDTH * 7, param_4[7]);
 
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t), param_4[0]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + SIMD_WIDTH, param_4[1]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + (SIMD_WIDTH << 2), param_4[4]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6]);
+            _mm512_storeu_ps(_doubled_buffer[buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7]);
+
             _mm512_storeu_ps(_exp_avg + i, momntum_4[0]);
             _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH, momntum_4[1]);
             _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH << 1), momntum_4[2]);
@@ -462,19 +472,10 @@ void Adam_Optimizer::Step_8(float* _params,
             _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7, varianc_4[7]);
         }
         if (dev_params) {
-#pragma omp parallel for
-            for (size_t j = 0; j < copy_size; j += 4) {
-                _doubled_buffer[buf_index][j] = (__half)_params[t + j];
-                _doubled_buffer[buf_index][j + 1] = (__half)_params[t + j + 1];
-                _doubled_buffer[buf_index][j + 2] = (__half)_params[t + j + 2];
-                _doubled_buffer[buf_index][j + 3] = (__half)_params[t + j + 3];
-            }
-
-            CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
-                                       _doubled_buffer[buf_index],
-                                       copy_size * sizeof(__half),
-                                       cudaMemcpyHostToDevice,
-                                       Context::Instance().GetCurrentStream()));
+            launch_param_update(_doubled_buffer[buf_index],
+                                dev_params + t,
+                                copy_size,
+                                Context::Instance().GetCurrentStream());
             buf_index = !buf_index;
         }
     }
