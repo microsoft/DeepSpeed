@@ -8,12 +8,12 @@ import torch.distributed as dist
 import pytest
 
 import deepspeed
-import deepspeed.pt.deepspeed_utils as ds_utils
+import deepspeed.runtime.utils as ds_utils
 
-from deepspeed.pt.pipe.PipelineParallelGrid import PipeDataParallelTopology, PipeModelDataParallelTopology
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
 PipeTopo = PipeDataParallelTopology
-import deepspeed.pt.pipe.PipelineModule as PipelineModule
-from deepspeed.pt.pipe.PipelineModule import LayerSpec
+import deepspeed.runtime.pipe.module as PipelineModule
+from deepspeed.runtime.pipe.module import LayerSpec
 
 from common import distributed_test
 
@@ -246,6 +246,6 @@ def test_pipe_cifar10_seedlayers(base_topo, test_topo, tmpdir):
         test = test_losses[-lastX:]
         test_avg = sum(test) / len(test)
         # XXX this is not a good way of measuring quality
-        #assert rel_diff(base_avg, test_avg) < 0.03
+        assert rel_diff(base_avg, test_avg) < 0.03
 
     _helper(base_topo, test_topo, tmpdir)

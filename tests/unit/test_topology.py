@@ -3,9 +3,9 @@ import pytest
 import torch
 import torch.distributed as dist
 
-from deepspeed.pt.pipe.PipelineParallelGrid import PipelineParallelGrid as Grid
-from deepspeed.pt.pipe.PipelineParallelGrid import ProcessTopology as Topo
-from deepspeed.pt.pipe.PipelineParallelGrid import _prime_factors
+from deepspeed.runtime.pipe.topology import PipelineParallelGrid as Grid
+from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
+from deepspeed.runtime.pipe.topology import _prime_factors
 
 from common import distributed_test
 

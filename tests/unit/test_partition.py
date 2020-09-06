@@ -3,11 +3,10 @@ import pytest
 import torch
 import torch.distributed as dist
 
-from deepspeed.pt.deepspeed_utils import partition_uniform
-from deepspeed.pt.deepspeed_utils import partition_balanced
-from deepspeed.pt.deepspeed_utils import prefix_sum_inc
-
-from deepspeed.pt.deepspeed_utils import PartitionedTensor
+from deepspeed.runtime.utils import partition_uniform
+from deepspeed.runtime.utils import partition_balanced
+from deepspeed.runtime.utils import prefix_sum_inc
+from deepspeed.runtime.utils import PartitionedTensor
 
 from common import distributed_test
 

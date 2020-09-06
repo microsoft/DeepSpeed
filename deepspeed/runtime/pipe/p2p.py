@@ -1,7 +1,6 @@
-#Author: Samyam Rajbhandari
-#Only tested with NCCL backend
-# Supports Send and Receive between adjacent processes using Broadcast
-#The functionality is designed to support GPUDirect for send and recv using NCCL backend
+'''
+Copyright 2019 The Microsoft DeepSpeed Team
+'''
 
 import torch.distributed as dist
 

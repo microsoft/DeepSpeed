@@ -1,3 +1,6 @@
+'''
+Copyright 2019 The Microsoft DeepSpeed Team
+'''
 import time
 import logging
 import copy
@@ -10,17 +13,16 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
-from deepspeed.pt.log_utils import logger
+from deepspeed.utils.logging import logger
 
-from deepspeed.pt.deepspeed_light import DeepSpeedLight
-from deepspeed.pt.deepspeed_light import MEMORY_OPT_ALLREDUCE_SIZE
-from deepspeed.pt.deepspeed_timer import ThroughputTimer
+from deepspeed.runtime.engine import DeepSpeedEngine
+from deepspeed.runtime.engine import MEMORY_OPT_ALLREDUCE_SIZE
+from deepspeed.utils.timer import ThroughputTimer
 
-from deepspeed.pt.deepspeed_utils import PartitionedTensor, ensure_directory_exists
+from deepspeed.runtime.utils import PartitionedTensor, ensure_directory_exists
 
-from deepspeed.pt.pipe.PipelineModule import PipelineModule, PipelineError, TiedLayerSpec
-
-import deepspeed.pt.pipe.p2p as p2p
+from .module import PipelineModule, PipelineError, TiedLayerSpec
+from . import p2p
 
 TARGET_ID = -2
 LOG_STAGE = -2
@@ -39,7 +41,7 @@ def _tensor_bytes(tensor):
     return tensor.numel() * tensor.element_size()
 
 
-class PipelineEngine(DeepSpeedLight):
+class PipelineEngine(DeepSpeedEngine):
     """ A model wrapper for pipeline-parallel execution.
 
     Parallelism is achieved by executing micro-batches in a pipelined fashion with
@@ -56,7 +58,6 @@ class PipelineEngine(DeepSpeedLight):
         self.micro_batches = self.gradient_accumulation_steps()
         '''---------Set Grid and Communication Groups------'''
         self.grid = self.module._grid
-        self.grid.display_info()
         if self.grid.get_global_rank() == 0:
             logging.info(f'CONFIG: micro_batches={self.micro_batches} '
                          f'micro_batch_size={self.micro_batch_size}')

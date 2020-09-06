@@ -1,4 +1,8 @@
-import logging
+'''
+Copyright 2019 The Microsoft DeepSpeed Team
+'''
+
+from deepspeed.utils import logger
 
 import torch.distributed as dist
 import sys
@@ -394,27 +398,6 @@ class PipelineParallelGrid:
         me = self._topo.get_coord(self.global_rank)
         transform = me._replace(pipe=stage_id, **kwargs)._asdict()
         return self._topo.get_rank(**transform)
-
-    def display_groups(self):
-        logging.info("Stage Groups")
-        for group in self.dp_groups:
-            logging.info(f"Group ID {group[0]} {group}")
-
-        logging.info("\n \n \n P2P Groups")
-        for group in self.p2p_groups:
-            logging.info(f"Group ID {group[0]} {group}")
-
-    def display_info(self):
-        if dist.get_rank() == 0:
-            logging.info("Grid Information:")
-        for i in range(dist.get_world_size()):
-            if i == dist.get_rank():
-                logging.info(f"Stage ID {self.stage_id} "
-                             f"Data Parallel_ID {self.data_parallel_id} "
-                             f"Stage group {self.dp_groups[self.stage_id]} "
-                             f"Actual Global Rank {dist.get_rank()} "
-                             f"P2P Groups {self.p2p_groups[i]}")
-            dist.barrier()
 
     def topology(self):
         return self._topo

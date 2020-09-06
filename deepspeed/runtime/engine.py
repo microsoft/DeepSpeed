@@ -29,10 +29,10 @@ import deepspeed.runtime.lr_schedules as lr_schedules
 
 from deepspeed.ops.lamb import FusedLamb
 
-from deepspeed.utils import logger
+from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
-from .deepspeed_utils import ensure_directory_exists
+from .utils import ensure_directory_exists
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -547,12 +547,8 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            if self._config.fp16_fused_optimizer:
-                from apex.optimizers.fused_adam import FusedAdam
-                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
-            else:
-                torch_optimizer = torch.optim.Adam
-                optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
+            from apex.optimizers.fused_adam import FusedAdam
+            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         else:
@@ -564,11 +560,9 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        fused_optimizer = self._config.fp16_fused_optimizer
-        if fused_optimizer and self.optimizer_name() == ADAM_OPTIMIZER:
+        if self.optimizer_name() == ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
-                if self.global_rank == 0:
-                    logger.info('Creating fused fp16 optimizer with dynamic loss scale')
+                logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
@@ -580,10 +574,8 @@ class DeepSpeedEngine(Module):
                     fused_adam_legacy=self.optimizer_legacy_fusion(),
                     timers=timers)
             else:
-                if self.global_rank == 0:
-                    logger.info(
-                        'Creating fused fp16 optimizer with static loss scale: {}'.
-                        format(self.loss_scale()))
+                logger.info('Creating fp16 optimizer with static loss scale: {}'.format(
+                    self.loss_scale()))
                 optimizer = FP16_Optimizer(
                     optimizer,
                     static_loss_scale=self.loss_scale(),
@@ -591,29 +583,14 @@ class DeepSpeedEngine(Module):
                     clip_grad=clip_grad,
                     fused_adam_legacy=self.optimizer_legacy_fusion())
         else:
-            if self.dynamic_loss_scale():
-                if self.global_rank == 0:
-                    logger.info(
-                        'Creating unfused fp16 optimizer with dynamic loss scale')
-                optimizer = FP16_UnfusedOptimizer(
-                    optimizer,
-                    dynamic_loss_scale=self.dynamic_loss_scale(),
-                    dynamic_loss_args=dynamic_loss_args,
-                    mpu=self.mpu,
-                    clip_grad=clip_grad,
-                    fused_lamb_legacy=self.optimizer_legacy_fusion()
-                    if self.optimizer_name() == LAMB_OPTIMIZER else False)
-            else:
-                logger.info(
-                    'Creating unfused fp16 optimizer with static loss scale: {}'.format(
-                        self.loss_scale()))
-                optimizer = FP16_UnfusedOptimizer(
-                    optimizer,
-                    static_loss_scale=self.loss_scale(),
-                    mpu=self.mpu,
-                    clip_grad=clip_grad,
-                    fused_lamb_legacy=self.optimizer_legacy_fusion()
-                    if self.optimizer_name() == LAMB_OPTIMIZER else False)
+            logger.info('Creating fp16 unfused optimizer with dynamic loss scale')
+            optimizer = FP16_UnfusedOptimizer(
+                optimizer,
+                dynamic_loss_scale=self.dynamic_loss_scale(),
+                dynamic_loss_args=dynamic_loss_args,
+                mpu=self.mpu,
+                clip_grad=clip_grad,
+                fused_lamb_legacy=self.optimizer_name() == LAMB_OPTIMIZER)
 
         return optimizer
 

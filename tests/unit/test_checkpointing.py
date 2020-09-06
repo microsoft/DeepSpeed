@@ -8,8 +8,7 @@ from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 
-#from deepspeed.pt.pipe.PipelineParallelGrid import PipeDataParallelTopology as PipeTopo
-from deepspeed.pt.pipe.PipelineParallelGrid import *
+from deepspeed.runtime.pipe.topology import *
 PipeTopo = PipeDataParallelTopology
 
 import argparse

@@ -557,7 +557,8 @@ class PartitionedTensor:
     def to_meta(self):
         """Returns a torch.LongTensor that encodes partitioning information.
 
-        Can be used ``data()`` to serialized a ``PartitionedTensor``.
+        Can be used along with ``data()`` to serialize a ``PartitionedTensor`` for
+        communication.
 
         Returns:
             torch.LongTensor: a tensor encoding the meta-information for the partitioning

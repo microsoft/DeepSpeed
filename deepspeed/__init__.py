@@ -10,10 +10,10 @@ from deepspeed.runtime.lr_schedules import add_tuning_arguments
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.runtime.activation_checkpointing import checkpointing
 from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from deepspeed.utils import logger
+from deepspeed.utils import log_dist
 
-from deepspeed.pt.pipe.PipelineParallelWrapper import PipelineEngine
-from deepspeed.pt.pipe.PipelineModule import PipelineModule, LayerSpec
+from deepspeed.runtime.pipe.engine import PipelineEngine
+from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 
 try:
     from deepspeed.git_version_info import version, git_hash, git_branch

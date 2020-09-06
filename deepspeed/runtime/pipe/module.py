@@ -13,11 +13,11 @@ import torch.distributed as dist
 
 from numpy import prod
 
-from deepspeed.pt.log_utils import logger
-import deepspeed.pt.deepspeed_utils as ds_utils
-import deepspeed.pt.deepspeed_checkpointing as checkpointing
+from deepspeed.utils import logger
+import deepspeed.runtime.utils as ds_utils
+from ..activation_checkpointing import checkpointing
 
-from deepspeed.pt.pipe.PipelineParallelGrid import PipelineParallelGrid
+from .topology import PipelineParallelGrid
 
 
 class PipelineError(Exception):
