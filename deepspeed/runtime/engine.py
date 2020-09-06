@@ -819,17 +819,6 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-    def train_batch(self, *forward_args, **forward_kwargs):
-        """A simple wrapper around forward/backward/step.
-
-        Returns:
-            loss
-        """
-        loss = self.module(*forward_args, **forward_kwargs)
-        self.backward(loss)
-        self.step()
-        return loss
-
     def is_gradient_accumulation_boundary(self):
         return (self.micro_steps + 1) % \
             self.gradient_accumulation_steps() == 0
