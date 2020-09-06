@@ -3,3 +3,4 @@ torchvision>=0.4.0
 tqdm
 psutil
 tensorboard>=1.14
+future
