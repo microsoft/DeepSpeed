@@ -300,7 +300,10 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                               True,
                               'deepspeed_adam'),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+def test_checkpoint_zero_no_optimizer(tmpdir,
+                                      zero_stage,
+                                      use_cpu_offload,
+                                      adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,

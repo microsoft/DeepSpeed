@@ -559,17 +559,17 @@ def suite():
 
     # Baseline = Megatron + Torch.Optim.Adam
     # Test = Megatron + Torch.Optim.Adam + ZeRO-Stage-2
-#    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2_cpu_optimizer'))
-#    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2_cpu_optimizer'))
-#    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_cpu_optimizer'))
-#    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2_cpu_optimizer'))
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2_cpu_optimizer'))
+    suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2_cpu_optimizer'))
+    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_cpu_optimizer'))
+    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2_cpu_optimizer'))
 
     # Baseline = Megatron + Torch.Optim.Adam
     # Test = Megatron + DeepSpeedAdam + ZeRO-Offload
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2_offload'))
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2_offload'))
-#    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_offload'))
-#    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2_offload'))
+    suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_offload'))
+    suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2_offload'))
 
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero1'))
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero1'))

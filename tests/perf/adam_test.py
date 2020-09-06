@@ -3,7 +3,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 import time
 
 device = 'cpu'
-model_size = 1 * 1024 ** 3
+model_size = 1 * 1024**3
 group_size = [model_size, 274432]
 
 param = [torch.nn.Parameter(torch.ones(size, device=device)) for size in group_size]
