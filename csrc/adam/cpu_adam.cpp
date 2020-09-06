@@ -305,8 +305,7 @@ void Adam_Optimizer::Step_8(float* _params,
         if ((t + TILE) > _param_size) copy_size = _param_size - t;
         size_t offset = copy_size + t;
 #pragma omp parallel for
-        for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) 
-        {
+        for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) {
             __m512 grad_4[8];
             grad_4[0] = _mm512_loadu_ps(grads + i);
             grad_4[1] = _mm512_loadu_ps(grads + i + SIMD_WIDTH);
@@ -472,11 +471,10 @@ void Adam_Optimizer::Step_8(float* _params,
             _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 6, varianc_4[6]);
             _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7, varianc_4[7]);
         }
-        if (dev_params) 
-        {
-            launch_param_update(_doubled_buffer[buf_index], 
-                                dev_params + t, 
-                                copy_size, 
+        if (dev_params) {
+            launch_param_update(_doubled_buffer[buf_index],
+                                dev_params + t,
+                                copy_size,
                                 Context::Instance().GetCurrentStream());
             buf_index = !buf_index;
         }
