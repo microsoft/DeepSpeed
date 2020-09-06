@@ -15,6 +15,7 @@ import collections
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
+
 from deepspeed.utils import logger
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
@@ -155,6 +156,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.overlap_comm = overlap_comm or cpu_offload
 
         self.cpu_offload = cpu_offload
+
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
         self.dp_process_group = dp_process_group
@@ -1405,17 +1407,22 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
         #torch.set_num_threads(12)
         timers('optimizer_step').start()
-        #self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
-        self.optimizer.step()
-        #get rid of the fp32 gradients. Not needed anymore
-        if not self.cpu_offload:
+        if self.cpu_offload:
+#            self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
+            self.optimizer.step()
+            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+        else:
+            self.optimizer.step()
+            #get rid of the fp32 gradients. Not needed anymore
             for group in self.single_partition_of_fp32_groups:
                 group.grad = None
 
-        for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-            fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
 
         timers('optimizer_step').stop()
+        timers.log(names=['optimizer_step'])
 
         if self.cpu_offload:
             self.reset_cpu_buffers()

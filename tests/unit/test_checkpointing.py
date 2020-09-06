@@ -235,21 +235,24 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
                          [
                              (1,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              True),
+                              True,
+                              'deepspeed_adam'),
                          ])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -285,21 +288,24 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
                                     load_optimizer_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
                          [
                              (1,
-                              False),
+                              False,
+                              "Adam"),
                              (2,
-                              False),
+                              False,
+                              "Adam"),
                              (2,
-                              True),
+                              True,
+                              'deepspeed_adam'),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
+def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -338,23 +344,27 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
                                        load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
                          [
                              (0,
-                              False),
+                              False,
+                              'Adam'),
                              (1,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              True),
+                              True,
+                              'deepspeed_adam'),
                          ])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -405,23 +415,27 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
                                   load_lr_scheduler_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
                          [
                              (0,
-                              False),
+                              False,
+                              'Adam'),
                              (1,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              False),
+                              False,
+                              'Adam'),
                              (2,
-                              True),
+                              True,
+                              'deepspeed_adam'),
                          ])
-def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 1e-5
             }
