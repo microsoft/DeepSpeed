@@ -2,12 +2,12 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
+#include <x86intrin.h>
 #include <cassert>
 #include "context.h"
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
-#include <x86intrin.h>
 
 #define CUDA_CHECK(callstr)                                                                    \
     {                                                                                          \
@@ -66,12 +66,10 @@ public:
                 __half* dev_params = nullptr);
 
 private:
-
-    union AVX_512{
+    union AVX_512 {
         __m512 data;
-        //float data_f[16];
+        // float data_f[16];
     };
-    
 
     float _alpha;
     float _betta1;
