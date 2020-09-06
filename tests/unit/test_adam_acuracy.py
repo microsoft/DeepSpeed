@@ -10,9 +10,6 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
-    if verbose:
-        print(first)
-        print(second)
     x = first.detach().numpy()
     y = second.detach().numpy()
     if verbose:
@@ -23,6 +20,11 @@ def check_equal(first, second, atol=1e-2, verbose=False):
 
 @pytest.mark.parametrize('model_size',
                          [
+                             (64),
+                             (22),
+                             (55),
+                             (127),
+                             (1024),
                              (1048576),
                          ]) # yapf: disable
 def test_adam_opt(model_size):
