@@ -121,6 +121,7 @@ if BUILD_MASK & DS_BUILD_ADAM:
         CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
                       sources=[
                           'csrc/adam/cpu_adam.cpp',
+                          'csrc/adam/custom_cuda_kernel.cu',
                       ],
                       include_dirs=['csrc/includes',
                                     '/usr/local/cuda/include'],
@@ -135,6 +136,18 @@ if BUILD_MASK & DS_BUILD_ADAM:
                               '-Wno-reorder',
                               '-march=native',
                               '-fopenmp'
+                          ],
+                          'nvcc': [
+                              '-O3',
+                              '--use_fast_math',
+                              '-gencode',
+                              'arch=compute_61,code=compute_61',
+                              '-gencode',
+                              'arch=compute_70,code=compute_70',
+                              '-std=c++14',
+                              '-U__CUDA_NO_HALF_OPERATORS__',
+                              '-U__CUDA_NO_HALF_CONVERSIONS__',
+                              '-U__CUDA_NO_HALF2_OPERATORS__'
                           ]
                       }))
 
