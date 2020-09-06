@@ -91,15 +91,11 @@ void Adam_Optimizer::Step(float* _params,
             grad_4.data = _mm512_div_ps(momntum_4.data, grad_4.data);
 
             param_4.data = _mm512_fmadd_ps(grad_4.data, step_size_4.data, param_4.data);
-            if (dev_params) {
-                for (size_t j = 0; j < SIMD_WIDTH; j += 4) {
-                    _doubled_buffer[_buf_index][(i - t) + (j << 2)] =     (__half)param_4.data_f[(j << 2)];
-                    _doubled_buffer[_buf_index][(i - t) + (j << 2) + 1] = (__half)param_4.data_f[(j << 2) + 1];
-                    _doubled_buffer[_buf_index][(i - t) + (j << 2) + 2] = (__half)param_4.data_f[(j << 2) + 2];
-                    _doubled_buffer[_buf_index][(i - t) + (j << 2) + 3] = (__half)param_4.data_f[(j << 2) + 3];
-                }
-            }
+
             _mm512_storeu_ps(_params + i, param_4.data);
+            
+            if (dev_params)_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4.data);
+
             _mm512_storeu_ps(_exp_avg + i, momntum_4.data);
             _mm512_storeu_ps(_exp_avg_sq + i, varianc_4.data);
         }
@@ -110,13 +106,17 @@ void Adam_Optimizer::Step(float* _params,
                 _doubled_buffer[_buf_index][j + 1] = (__half)_params[t + j + 1];
                 _doubled_buffer[_buf_index][j + 2] = (__half)_params[t + j + 2];
                 _doubled_buffer[_buf_index][j + 3] = (__half)_params[t + j + 3];
-            }*/
+            }
 
             CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
                                        _doubled_buffer[_buf_index],
                                        copy_size * sizeof(__half),
                                        cudaMemcpyHostToDevice,
-                                       Context::Instance().GetCurrentStream()));
+                                       Context::Instance().GetCurrentStream()));*/
+            launch_param_update(_doubled_buffer[_buf_index],
+                                dev_params + t,
+                                copy_size,
+                                Context::Instance().GetCurrentStream());
             _buf_index = !_buf_index;
         }
     }
@@ -154,11 +154,10 @@ void Adam_Optimizer::Step(float* _params,
             _exp_avg_sq[k] = varianc;
         }
         if (dev_params) {
-            CUDA_CHECK(cudaMemcpyAsync(dev_params + rounded_size,
-                                _doubled_buffer[_buf_index],
-                                (_param_size - rounded_size) * sizeof(__half),
-                                cudaMemcpyHostToDevice,
-                                Context::Instance().GetCurrentStream()));
+            launch_param_update(_doubled_buffer[_buf_index],
+                                dev_params + rounded_size,
+                                (_param_size - rounded_size),
+                                Context::Instance().GetCurrentStream());
         }
     }
 }
@@ -280,22 +279,17 @@ void Adam_Optimizer::Step_4(float* _params,
             param_4[2].data = _mm512_fmadd_ps(grad_4[2].data, step_size_4.data, param_4[2].data);
             param_4[3].data = _mm512_fmadd_ps(grad_4[3].data, step_size_4.data, param_4[3].data);
 
-            if (dev_params) {
-                for(int u = 0;u < 4;u++)
-                {
-                    for (size_t j = 0; j < SIMD_WIDTH; j += 4) {
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2)] =     (__half)param_4[u].data_f[(j << 2)];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 1] = (__half)param_4[u].data_f[(j << 2) + 1];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 2] = (__half)param_4[u].data_f[(j << 2) + 2];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 3] = (__half)param_4[u].data_f[(j << 2) + 3];
-                    }
-                }
-            }
-
             _mm512_storeu_ps(_params + i, param_4[0].data);
             _mm512_storeu_ps(_params + i + SIMD_WIDTH, param_4[1].data);
             _mm512_storeu_ps(_params + i + (SIMD_WIDTH << 1), param_4[2].data);
             _mm512_storeu_ps(_params + i + SIMD_WIDTH * 3, param_4[3].data);
+
+            if (dev_params) {
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data);
+            }
 
             _mm512_storeu_ps(_exp_avg + i, momntum_4[0].data);
             _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH, momntum_4[1].data);
@@ -315,13 +309,18 @@ void Adam_Optimizer::Step_4(float* _params,
                 _doubled_buffer[_buf_index][j + 1] = (__half)_params[t + j + 1];
                 _doubled_buffer[_buf_index][j + 2] = (__half)_params[t + j + 2];
                 _doubled_buffer[_buf_index][j + 3] = (__half)_params[t + j + 3];
-            }*/
+            }
 
             CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
                                        _doubled_buffer[_buf_index],
                                        copy_size * sizeof(__half),
                                        cudaMemcpyHostToDevice,
                                        Context::Instance().GetCurrentStream()));
+            */
+            launch_param_update(_doubled_buffer[_buf_index],
+                                dev_params + t,
+                                copy_size,
+                                Context::Instance().GetCurrentStream());
             _buf_index = !_buf_index;
         }
     }
@@ -340,7 +339,6 @@ int create_adam_optimizer(int optimizer_id,
                           float betta2 = 0.999,
                           float eps = 1e-8,
                           float weight_decay = 0)
-
 {
     auto opt = std::make_shared<Adam_Optimizer>(alpha, betta1, betta2, eps, weight_decay);
 
@@ -533,24 +531,15 @@ void Adam_Optimizer::Step_8(float* _params,
             _mm512_storeu_ps(_params + i + SIMD_WIDTH * 6, param_4[6].data);
             _mm512_storeu_ps(_params + i + SIMD_WIDTH * 7, param_4[7].data);
 
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4[0]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2), param_4[4]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6]);
-            //_mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7]);
             if (dev_params) {
-                for(int u = 0;u < 8;u++)
-                {
-                    for (size_t j = 0; j < SIMD_WIDTH; j += 4) {
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2)] =     (__half)param_4[u].data_f[(j << 2)];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 1] = (__half)param_4[u].data_f[(j << 2) + 1];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 2] = (__half)param_4[u].data_f[(j << 2) + 2];
-                        _doubled_buffer[_buf_index][(i - t) + (u << 4) + (j << 2) + 3] = (__half)param_4[u].data_f[(j << 2) + 3];
-                    }
-                }
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2), param_4[4].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6].data);
+                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7].data);
             }
 
             _mm512_storeu_ps(_exp_avg + i, momntum_4[0].data);
@@ -572,16 +561,10 @@ void Adam_Optimizer::Step_8(float* _params,
             _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7, varianc_4[7].data);
         }
         if (dev_params) {
-            /*launch_param_update(_doubled_buffer[_buf_index],
+            launch_param_update(_doubled_buffer[_buf_index],
                                 dev_params + t,
                                 copy_size,
                                 Context::Instance().GetCurrentStream());
-            _buf_index = !_buf_index;*/
-            CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
-                                       _doubled_buffer[_buf_index],
-                                       copy_size * sizeof(__half),
-                                       cudaMemcpyHostToDevice,
-                                       Context::Instance().GetCurrentStream()));
             _buf_index = !_buf_index;
         }
     }
