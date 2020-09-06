@@ -2,12 +2,12 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
+#include <x86intrin.h>
 #include <cassert>
 #include "context.h"
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
-#include <x86intrin.h>
 
 #define CUDA_CHECK(callstr)                                                                    \
     {                                                                                          \
@@ -38,8 +38,8 @@ public:
           _betta2_t(1.0),
           _buf_index(false)
     {
-        cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(__half));
-        cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(__half));
+        cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
+        cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
     }
     ~Adam_Optimizer()
     {
@@ -66,10 +66,9 @@ public:
                 __half* dev_params = nullptr);
 
 private:
-
-    union AVX_512{
+    union AVX_512 {
         __m512 data;
-        float data_f[16];
+        // float data_f[16];
     };
 
     float _alpha;
@@ -81,6 +80,6 @@ private:
     float _betta1_t;
     float _betta2_t;
 
-    __half* _doubled_buffer[2];
+    float* _doubled_buffer[2];
     bool _buf_index;
 };
