@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 import apex
 from deepspeed.utils import logger
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
@@ -22,8 +23,15 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     return my_group
 
 
-ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, apex.optimizers.FusedAdam]
+ZERO_SUPPORTED_OPTIMIZERS = [
+    torch.optim.Adam,
+    apex.optimizers.FusedAdam,
+    DeepSpeedCPUAdam
+]
 
 
 def is_zero_supported_optimizer(optimizer):
+    print(
+        f'Checking ZeRO support for optimizer={optimizer.__class__.__name__} type={type(optimizer)}'
+    )
     return type(optimizer) in ZERO_SUPPORTED_OPTIMIZERS

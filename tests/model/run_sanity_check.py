@@ -30,7 +30,7 @@ def pytest_hack(runner_result):
 
 
 def test_megatron():
-    runner = unittest.TextTestRunner(failfast=True)
+    runner = unittest.TextTestRunner(failfast=False)
     pytest_hack(runner.run(Megatron_GPT2.suite()))
 
 

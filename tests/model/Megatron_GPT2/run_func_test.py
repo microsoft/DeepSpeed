@@ -19,7 +19,7 @@ MASTER_PORT = 29700
 
 def grep_loss_from_file(file_name):
     loss = 0.0
-
+    print(f'grepping {file_name}')
     with open(file_name, 'r') as f:
         lines = f.readlines()
         line_filter = "validation loss at the end of training for test data | LM loss:"
@@ -455,7 +455,7 @@ class GPT2FuncTestCase(BaseTestCase):
             baseline_prefix += test_config["json"][0:-5]
             baseline_deepspeed_config = True
 
-        test_config["other_args"] = cpu_optimizer_flag
+        test_config["other_args"] = f"\"{cpu_optimizer_flag}\""
         base_file = self.gen_output_name(test_config,
                                          baseline_prefix,
                                          baseline_config=baseline_deepspeed_config)
@@ -565,7 +565,7 @@ def suite():
     suite.addTest(GPT2FuncTestCase('test_mp4_gpu4_node1_zero2_cpu_optimizer'))
 
     # Baseline = Megatron + Torch.Optim.Adam
-    # Test = Megatron + Torch.Optim.Adam + ZeRO-Offload
+    # Test = Megatron + DeepSpeedAdam + ZeRO-Offload
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu1_node1_zero2_offload'))
     suite.addTest(GPT2FuncTestCase('test_mp1_gpu2_node1_zero2_offload'))
     suite.addTest(GPT2FuncTestCase('test_mp2_gpu4_node1_zero2_offload'))
