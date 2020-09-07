@@ -235,6 +235,9 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             All ranks return the loss from
         """
+        if not torch._C.is_grad_enabled():
+            raise RuntimeError(f'train_batch() requires gradients enabled. Use eval_batch() instead.')
+
         self.module.train()
         self.total_loss.zero_()
 
@@ -292,7 +295,8 @@ class PipelineEngine(DeepSpeedEngine):
         sched = schedule.InferenceSchedule(micro_batches=self.micro_batches,
                                            stages=self.num_stages,
                                            stage_id=self.stage_id)
-        self._exec_schedule(sched)
+        with torch.no_grad():
+            self._exec_schedule(sched)
         self.batch_timer.stop()
 
         self.agg_eval_loss = self._aggregate_total_loss()
