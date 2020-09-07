@@ -228,12 +228,11 @@ class PipelineEngine(DeepSpeedEngine):
             self.pipe_buffers[key].extend([None] * num_added)
         self.num_pipe_buffers = num_buffers
 
-
     def train_batch(self):
         """Progress the pipeline to train the next batch of data.
 
         Returns:
-            All ranks return the loss from
+            The arithmetic mean of the losses over all micro-batches.
         """
         if not torch._C.is_grad_enabled():
             raise RuntimeError(f'train_batch() requires gradients enabled. Use eval_batch() instead.')
@@ -277,10 +276,17 @@ class PipelineEngine(DeepSpeedEngine):
 
 
     def eval_batch(self, data_iter):
-        """Progress the pipeline to train the next batch of data.
+        """Evaluate the pipeline on a batch of data from ``data_iter``.
+
+        This method is equivalent to:
+
+        .. code-block: python
+            module.eval()
+            with torch.no_grad():
+                output = module(batch)
 
         Returns:
-            All ranks return the loss from
+            The arithmetic mean of the losses over all micro-batches.
         """
         self.module.eval()
         self.total_loss.zero_()
@@ -352,13 +358,13 @@ class PipelineEngine(DeepSpeedEngine):
 
 
     def set_dataloader(self, loader):
-        """ Store a DataLoader for the first and last stages of the pipeline. """
+        """ Store a DataLoader to samplefrom for training data. """
         if self.is_first_stage or self.is_last_stage:
             self.training_dataloader = loader
             self.data_iterator = iter(self.training_dataloader)
 
     def set_dataiterator(self, iterator):
-        """ Store a DataLoader for the first and last stages of the pipeline. """
+        """ Store an iterator to sample for training data. """
         if self.is_first_stage or self.is_last_stage:
             self.training_dataloader = None
             self.data_iterator = iterator
