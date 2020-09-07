@@ -12,9 +12,7 @@ import torch.distributed as dist
 
 from deepspeed.utils import logger
 from .. import utils as ds_utils
-#import deepspeed.runtime.utils as ds_utils
 from ..activation_checkpointing import checkpointing
-
 from .topology import PipeDataParallelTopology, PipelineParallelGrid
 
 
@@ -110,7 +108,7 @@ class PipelineModule(nn.Module):
     """
     def __init__(self,
                  layers,
-                 num_stages,
+                 num_stages=None,
                  loss_fn=None,
                  topology=None,
                  seed_layers=False,
@@ -120,10 +118,9 @@ class PipelineModule(nn.Module):
                  activation_checkpoint_interval=1,
                  activation_checkpoint_func=checkpointing.checkpoint):
         super().__init__()
-        self._layer_specs = list(layers)
-        self.forward_funcs = []
-        self.tied_modules = nn.ModuleDict()
-        self.tied_weight_attrs = {}
+
+        if num_stages is None and topology is None:
+            raise RuntimeError('must provide num_stages or topology')
 
         self.micro_offset = 0
 
@@ -146,26 +143,36 @@ class PipelineModule(nn.Module):
         self.global_rank = dist.get_rank(group=self.world_group)
         self.world_size = dist.get_world_size(group=self.world_group)
 
-        self.num_stages = num_stages
-        if topology is None:
-            if self.world_size % self.num_stages != 0:
-                raise RuntimeError(
-                    f'num_stages ({self.num_stages}) must divide distributed world size ({self.world_size})'
-                )
-            dp = self.world_size // num_stages
-            topology = PipeDataParallelTopology(num_pp=num_stages, num_dp=dp)
+        if topology:
+            self._topo = topology
+            self.num_stages = self._topo.get_dim('pipe')
+        else:
+            self.num_stages = num_stages
+            if topology is None:
+                if self.world_size % self.num_stages != 0:
+                    raise RuntimeError(
+                        f'num_stages ({self.num_stages}) must divide distributed world size ({self.world_size})'
+                    )
+                dp = self.world_size // num_stages
+                topology = PipeDataParallelTopology(num_pp=num_stages, num_dp=dp)
+                self._topo = topology
 
+        # Contruct communicators for pipeline topology
         self._grid = PipelineParallelGrid(process_group=self.world_group,
-                                          topology=topology)
-        self._topo = self._grid.topology()
+                                          topology=self._topo)
 
         self.stage_id = self._topo.get_coord(self.global_rank).pipe
 
         # Initialize partition information
+        self._layer_specs = list(layers)
         self._num_layers = len(self._layer_specs)
         self._local_start = 0
         self._local_stop = None
         self._partition_layers(method=partition_method)
+
+        self.forward_funcs = []
+        self.tied_modules = nn.ModuleDict()
+        self.tied_weight_attrs = {}
 
         # Offset the random seed by the stage ID.
         #newseed = torch.cuda.initial_seed() + self._grid.get_stage_id()
@@ -382,7 +389,10 @@ class PipelineModule(nn.Module):
                             pass
                     print(f'    {idx+start:2d}: {name}')
             if self.loss_fn:
-                print(f'  loss: {self.loss_fn.__name__}')
+                try:
+                    print(f'  loss: {self.loss_fn.__name__}')
+                except AttributeError:
+                    print(f'  loss: {self.loss_fn.__class__.__name__}')
 
         self._set_bounds(start=self.parts[stage_id], stop=self.parts[stage_id + 1])
 

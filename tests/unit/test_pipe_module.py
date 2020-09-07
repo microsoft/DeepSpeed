@@ -83,7 +83,7 @@ def test_pipe_module_sequential(sequential_model, simple_args):
             model_parameters=[p for p in pipe_model.parameters()])
 
         if pipe_model.is_first_stage or pipe_model.is_last_stage:
-            pipe_input = copy.deepcopy(base_input).to('cuda')
+            pipe_input = base_input.clone().detach().to('cuda')
             # label 0 is meaningless
             data_iter = iter([
                 (pipe_input,

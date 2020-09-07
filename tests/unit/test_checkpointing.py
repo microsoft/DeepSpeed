@@ -477,9 +477,7 @@ def test_checkpoint_fp32_optimizer(tmpdir):
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1])
-def test_checkpoint_pipe_engine(zero_stage, tmpdir):
-    topo = PipeTopo(num_pp=2, num_dp=2)
-
+def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
     config_dict = {
         "train_batch_size": 2,
         "train_micro_batch_size_per_gpu": 1,
@@ -515,9 +513,9 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir):
     }
 
     @distributed_test(world_size=4)
-    def _test(save_folder):
+    def _test(save_folder, num_stages):
         args = args_from_dict(tmpdir, config_dict)
-        model = LinearStackPipe(topology=topo)
+        model = LinearStackPipe(num_stages=num_stages)
         checkpoint_correctness_verification(args=args,
                                             model=model,
                                             hidden_dim=model.hidden_dim,
@@ -527,7 +525,7 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir):
                                             load_lr_scheduler_states=True,
                                             train_batch=True)
 
-    _test(tmpdir)
+    _test(tmpdir, num_stages=stages)
 
 
 @pytest.mark.parametrize("base_topo,test_topo",
