@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 
 class PipeSchedule(ABC):
-    """Abstract base class to direct the execution of a pipeline engine by generating sequences of
+    """Directs the execution of a pipeline engine by generating sequences of
     :class:`PipeInstruction`.
 
     Schedules are generators that yield sequences of
