@@ -5,42 +5,44 @@ from abc import ABC, abstractmethod
 
 
 class PipeSchedule(ABC):
+    """Abstract base class to direct the execution of a pipeline engine by generating sequences of
+    :class:`PipeInstruction`.
+
+    Schedules are generators that yield sequences of
+    :class:`PipeInstruction` to process the micro-batches in one batch.
+    Each yielded step is atomic in the sense that a barrier
+    synchronization can be placed between successive steps without
+    deadlock.
+
+    Below is an example schedule that implements data parallelism with gradient accumulation:
+
+    .. code-block:: python
+
+        class DataParallelSchedule(PipeSchedule):
+            def steps(self):
+                for step_id in range(self.micro_batches):
+                    cmds = [
+                        LoadMicroBatch(buffer_id=0),
+                        ForwardPass(buffer_id=0),
+                        BackwardPass(buffer_id=0),
+                    ]
+                    if step_id == self.micro_batches - 1:
+                        cmds.extend([
+                            ReduceGrads(),
+                            OptimizerStep(),
+                        ])
+                    yield cmds
+
+            def num_pipe_buffers(self):
+                return 1
+
+    Args:
+        micro_batches (int): The number of micro-batches that comprise a batch.
+        stages (int): The number of pipeline stages.
+        stage_id (int): The pipe stage that will execute the generated schedule.
+    """
+
     def __init__(self, micro_batches, stages, stage_id):
-        """Abstract base class to direct the execution of a pipeline engine by generating sequences of
-        :class:`PipeInstruction`s.
-
-        Schedules are generators that yield sequences of
-        :class:`PipeInstruction` to process the micro-batches in one batch.
-        Each yielded step is atomic in the sense that a barrier
-        synchronization can be placed between successive steps without
-        deadlock.
-
-        Below is an example schedule that implements data parallelism with gradient accumulation:
-
-        .. code-block:: python
-
-            class DataParallelSchedule(PipeSchedule):
-                def steps(self):
-                    for step_id in range(self.micro_batches):
-                        cmds = [
-                            LoadMicroBatch(buffer_id=0),
-                            ForwardPass(buffer_id=0),
-                            BackwardPass(buffer_id=0),
-                        ]
-                        if step_id == self.micro_batches-1:
-                            cmds.append(ReduceGrads())
-                            cmds.append(OptimizerStep())
-                        yield cmds
-
-                def num_pipe_buffers(self):
-                    return 1
-
-        Args:
-            micro_batches (int): The number of micro-batches that comprise a batch.
-            stages (int): The number of pipeline stages.
-            stage_id (int): The pipe stage that will execute the generated schedule.
-        """
-
         super().__init__()
         self.micro_batches = micro_batches
         self.stages = stages
@@ -56,7 +58,7 @@ class PipeSchedule(ABC):
             Schedules must implement ``steps()`` to define the schedule.
         
         Returns:
-            list: instructions to be executed as one step of the pipeline
+            Instructions to be executed as one step of the pipeline
         """
         pass
 
@@ -67,7 +69,7 @@ class PipeSchedule(ABC):
             Schedules should specialize ``num_pipe_buffers()`` for memory savings at scale.
 
         Returns:
-            int: The number of buffers for the engine to allocate.
+            The number of buffers for the engine to allocate.
         """
         return self.micro_batches
 
@@ -131,6 +133,7 @@ class InferenceSchedule(PipeSchedule):
     """
 
     def steps(self):
+        """"""
         prev_micro_batch_id = -1
         total_steps = self.micro_batches + self.stages - 1
         for step_id in range(total_steps):
@@ -172,10 +175,10 @@ class InferenceSchedule(PipeSchedule):
     
 
     def num_pipe_buffers(self):
-        """Only two pipeline buffers required for inferencing.
+        """Only two pipeline buffers are required for inferencing.
 
         Returns:
-            int: ``2``
+            ``2``
         """
         return 2
 
@@ -189,6 +192,7 @@ class TrainSchedule(PipeSchedule):
     """
 
     def steps(self):
+        """"""
         prev_micro_batch_id = -1
         total_steps = 2 * (self.micro_batches + self.stages - 1)
         for step_id in range(total_steps):
@@ -240,10 +244,7 @@ class TrainSchedule(PipeSchedule):
             yield cmds
 
     def num_pipe_buffers(self):
-        """Require as many buffers as the distance from this stage to the last.
-
-        Returns:
-            int: The number of buffers required at this stage.
+        """As many buffers as the distance from this stage to the last stage.
         """
         buffers = min(self.stages - self.stage_id + 1, self.micro_batches)
         return max(2, buffers)
@@ -291,11 +292,37 @@ class TrainSchedule(PipeSchedule):
         micro_batch_id = int(base + self.stage_id // 2)
         return micro_batch_id
 
+
+class DataParallelSchedule(PipeSchedule):
+    """An example schedule that trains using traditional data parallelism with gradient
+    accumulation.
+    """
+
+    def steps(self):
+        """"""
+        for step_id in range(self.micro_batches):
+            cmds = [
+                LoadMicroBatch(buffer_id=0),
+                ForwardPass(buffer_id=0),
+                BackwardPass(buffer_id=0),
+            ]
+            if step_id == self.micro_batches - 1:
+                cmds.extend([
+                    ReduceGrads(),
+                    OptimizerStep(),
+                ])
+            yield cmds
+
+    def num_pipe_buffers(self):
+        """Only one pipeline buffer needed.
+        """
+        return 1
+
 class PipeInstruction:
     """Base class for all instructions to be executed by the pipeline engine.
 
     All keyword arguments are stored as members similar to a ``namedtuple``. These are
-    then accessible to the :class:`PipelineEngine` during execution.
+    then accessible to the :class:`PipeEngine` during execution.
 
     Args:
         kwargs (optional): keyword arguments to store as members
@@ -454,19 +481,3 @@ def _is_even(x):
 
 def _is_odd(x):
     return x % 2 != 0
-
-class DataParallelSchedule(PipeSchedule):
-    def steps(self):
-        for step_id in range(self.micro_batches):
-            cmds = [
-                LoadMicroBatch(buffer_id=0),
-                ForwardPass(buffer_id=0),
-                BackwardPass(buffer_id=0),
-            ]
-            if step_id == self.micro_batches-1:
-                cmds.append(ReduceGrads())
-                cmds.append(OptimizerStep())
-            yield cmds
-
-    def num_pipe_buffers(self):
-        return 1

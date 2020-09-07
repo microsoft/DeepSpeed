@@ -3,7 +3,6 @@ import enum
 
 import re as regex
 
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import partial
 
@@ -14,7 +13,8 @@ import torch.distributed as dist
 from numpy import prod
 
 from deepspeed.utils import logger
-import deepspeed.runtime.utils as ds_utils
+from .. import utils as ds_utils
+#import deepspeed.runtime.utils as ds_utils
 from ..activation_checkpointing import checkpointing
 
 from .topology import PipelineParallelGrid
@@ -85,7 +85,7 @@ class LayerType(enum.Enum):
     Func = 1
 
 
-class PipelineModule(nn.Module, ABC):
+class PipelineModule(nn.Module):
     """ Abstract base class for modules to be parallelized with pipeline parallelism.
 
     Users should subclass PipelineModule and provide layer_specs(), which returns a list
@@ -176,13 +176,13 @@ class PipelineModule(nn.Module, ABC):
         self.activation_checkpoint_interval = activation_checkpoint_interval
         self.activation_checkpoint_func = activation_checkpoint_func
 
-    @abstractmethod
     def layer_specs(self):
         """Should return a list of LayerSpec objects. Subclasses must provide
         this as a representation of their module.
 
         Note that this may be called multiple times before build().
         """
+        raise RuntimeError('must subclass layer_specs')
         pass
 
     def _build(self):

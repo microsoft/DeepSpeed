@@ -1,4 +1,5 @@
 # Copyright 2019 The Microsoft DeepSpeed Team
+
 import time
 import logging
 import copy
@@ -13,18 +14,17 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
 
-from deepspeed.utils.logging import logger
 
-from deepspeed.runtime.engine import DeepSpeedEngine
-from deepspeed.runtime.engine import MEMORY_OPT_ALLREDUCE_SIZE
+from deepspeed.utils.logging import logger
 from deepspeed.utils.timer import ThroughputTimer
 
-from deepspeed.runtime.utils import PartitionedTensor, ensure_directory_exists
+from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
+from ..utils import PartitionedTensor, ensure_directory_exists
 
 from .module import PipelineModule, PipelineError, TiedLayerSpec
 from . import p2p
+from . import schedule
 
-import deepspeed.runtime.pipe.schedule as schedule
 
 TARGET_ID = -2
 LOG_STAGE = -2
@@ -42,7 +42,6 @@ mem_cached = 0
 def _tensor_bytes(tensor):
     return tensor.numel() * tensor.element_size()
 
-
 class PipelineEngine(DeepSpeedEngine):
     """ A model wrapper for pipeline-parallel execution.
 
@@ -58,7 +57,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.micro_batch_size = self.train_micro_batch_size_per_gpu()
         self.micro_batches = self.gradient_accumulation_steps()
-        '''---------Set Grid and Communication Groups------'''
+
+        # Set Grid and Communication Groups
         self.grid = self.module._grid
         if self.grid.get_global_rank() == 0:
             logging.info(f'CONFIG: micro_batches={self.micro_batches} '
@@ -69,7 +69,8 @@ class PipelineEngine(DeepSpeedEngine):
         assert self.dp_world_size == self.grid.data_parallel_size
         assert self.train_batch_size() == \
             self.micro_batch_size * self.micro_batches * self.grid.data_parallel_size
-        '''---------------------Set Stage Info------------------'''
+
+        #  Set Stage Inf
         self.num_stages = self.grid.pipe_parallel_size
         self.stage_id = self.grid.get_stage_id()
         self.prev_stage = self.stage_id - 1
@@ -138,10 +139,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.is_pipe_parallel:
             p2p.init_process_groups(self.grid)
 
-        '''---------Input, Output and Grads for Communication------'''
-        self.pipe_recv_buf = None
-        self.grad_layer = None
-
+        # Pipeline buffers
         self.num_pipe_buffers = 0
         self.pipe_buffers = {
             'inputs' : [],   # batch input and received activations
@@ -149,6 +147,8 @@ class PipelineEngine(DeepSpeedEngine):
             'outputs' : [],  # activations
             'output_tensors' : [], # tensor object to preserve backward graph
         }
+        self.pipe_recv_buf = None
+        self.grad_layer = None
 
         self.meta_buffer = None
 
@@ -199,6 +199,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('step_microstep').start()
             self.timers('step_microstep').stop()
 
+
     
     def _exec_reduce_tied_grads(self):
         self.module.allreduce_tied_weight_gradients()
@@ -244,10 +245,6 @@ class PipelineEngine(DeepSpeedEngine):
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
-        if self.num_stages == 1:
-            sched = schedule.DataParallelSchedule(micro_batches=self.micro_batches,
-                                        stages=self.num_stages,
-                                        stage_id=self.stage_id)
         self._exec_schedule(sched)
         self.batch_timer.stop()
 
@@ -1130,8 +1127,6 @@ class PipelineEngine(DeepSpeedEngine):
         self._reserve_pipe_buffers(pipe_schedule.num_pipe_buffers())
         # For each step in the schedule
         for step_cmds in pipe_schedule:
-            #torch.cuda.synchronize()
-            dist.barrier()
             # For each instruction in the step
             for cmd in step_cmds:
                 if type(cmd) not in self._INSTRUCTION_MAP:

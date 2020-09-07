@@ -1,5 +1,5 @@
-Pipeline Scheduler
-==================
+Pipeline Parallelism
+====================
 
-.. automodule:: deepspeed.runtime.pipe.schedule
+.. automodule:: deepspeed.runtime.pipe.engine
     :members:
