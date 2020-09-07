@@ -79,7 +79,7 @@ class TiedLayerSpec(LayerSpec):
 
 
 class PipelineModule(nn.Module):
-    """ Base class for modules to be parallelized with pipeline parallelism.
+    """Base class for modules to be parallelized with pipeline parallelism.
 
     Users should subclass PipelineModule and provide layer_specs(), which returns a list
     of LayerSpec objects. Thes sequence of layers represents the pipeline-parallel model.
