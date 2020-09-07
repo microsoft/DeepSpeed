@@ -1,4 +1,3 @@
-
 import pytest
 
 import deepspeed.runtime.pipe.schedule as schedule
@@ -6,6 +5,7 @@ import deepspeed.runtime.pipe.schedule as schedule
 
 def _count_type(cmds, classtype):
     return len(list(filter(lambda c: type(c) == classtype, cmds)))
+
 
 def test_pipe_inference_schedule_singlestage():
     sched = schedule.InferenceSchedule(micro_batches=4, stages=1, stage_id=0)
@@ -17,6 +17,7 @@ def test_pipe_inference_schedule_singlestage():
         assert type(cmds[1]) == schedule.ForwardPass
         assert cmds[0].buffer_id == cmds[1].buffer_id
     assert len(full) == sched.num_micro_batches
+
 
 def test_pipe_train_schedule_singlestage():
     sched = schedule.TrainSchedule(micro_batches=4, stages=1, stage_id=0)
@@ -30,13 +31,13 @@ def test_pipe_train_schedule_singlestage():
         #assert type(cmds[1]) == schedule.ForwardPass
         #assert cmds[0].buffer_id == cmds[1].buffer_id
     #assert len(full) == sched.num_micro_batches
-    
 
-    
 
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_firststage(micro_batches, stages=3, verbose=False):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=0)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
+                                       stages=stages,
+                                       stage_id=0)
     assert sched.num_micro_batches == micro_batches
     full = list(iter(sched))
     if verbose:
@@ -69,11 +70,13 @@ def test_pipe_inference_schedule_firststage(micro_batches, stages=3, verbose=Fal
         assert _count_type(cmds, schedule.ForwardPass) == 1
         assert _count_type(cmds, schedule.SendActivation) == 1
     assert len(full) == micro_batches + stages - 1
-    
+
 
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_midstage(micro_batches, stages=3, verbose=False):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=1)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
+                                       stages=stages,
+                                       stage_id=1)
 
     full = list(iter(sched))
     if verbose:
@@ -98,9 +101,12 @@ def test_pipe_inference_schedule_midstage(micro_batches, stages=3, verbose=False
             assert _count_type(cmds, schedule.SendActivation) == 1
     assert len(full) == micro_batches + stages - 1
 
+
 @pytest.mark.parametrize('micro_batches', [1, 3, 8, 10])
 def test_pipe_inference_schedule_laststage(micro_batches, stages=3, verbose=False):
-    sched = schedule.InferenceSchedule(micro_batches=micro_batches, stages=stages, stage_id=2)
+    sched = schedule.InferenceSchedule(micro_batches=micro_batches,
+                                       stages=stages,
+                                       stage_id=2)
     full = list(iter(sched))
     if verbose:
         print()
@@ -115,7 +121,6 @@ def test_pipe_inference_schedule_laststage(micro_batches, stages=3, verbose=Fals
         assert _count_type(cmds, schedule.RecvActivation) == 1
         assert _count_type(cmds, schedule.SendActivation) == 0
     assert len(full) == micro_batches + stages - 1
-
 
 
 def test_pipe_schedule_firststage():

@@ -1,4 +1,3 @@
-
 from ..utils import call_to_str
 
 from abc import ABC, abstractmethod
@@ -41,7 +40,6 @@ class PipeSchedule(ABC):
         stages (int): The number of pipeline stages.
         stage_id (int): The pipe stage that will execute the generated schedule.
     """
-
     def __init__(self, micro_batches, stages, stage_id):
         super().__init__()
         self.micro_batches = micro_batches
@@ -56,7 +54,7 @@ class PipeSchedule(ABC):
 
         .. note::
             Schedules must implement ``steps()`` to define the schedule.
-        
+
         Returns:
             Instructions to be executed as one step of the pipeline
         """
@@ -78,7 +76,7 @@ class PipeSchedule(ABC):
 
     def _valid_stage(self, stage_id):
         return 0 <= stage_id < self.stages
-    
+
     @property
     def stage(self):
         """Stage index used to configure this schedule."""
@@ -117,11 +115,11 @@ class PipeSchedule(ABC):
         """
         assert self._valid_micro_batch(micro_batch_id)
         return micro_batch_id % self.num_pipe_buffers()
-    
+
     def __iter__(self):
         self.it = None
         return self
-    
+
     def __next__(self):
         if self.it is None:
             self.it = self.steps()
@@ -131,7 +129,6 @@ class PipeSchedule(ABC):
 class InferenceSchedule(PipeSchedule):
     """A schedule for inferencing batches using pipeline parallelism.
     """
-
     def steps(self):
         """"""
         prev_micro_batch_id = -1
@@ -151,7 +148,7 @@ class InferenceSchedule(PipeSchedule):
             if self.is_first_stage or self.is_last_stage:
                 if self._valid_micro_batch(micro_batch_id):
                     cmds.append(LoadMicroBatch(recv_buf))
-            
+
             if _is_even(self.stage_id):
                 if self._valid_stage(self.next_stage):
                     if self._valid_micro_batch(micro_batch_id - 1):
@@ -170,9 +167,8 @@ class InferenceSchedule(PipeSchedule):
 
             if self._valid_micro_batch(micro_batch_id):
                 cmds.append(ForwardPass(recv_buf))
-            
+
             yield cmds
-    
 
     def num_pipe_buffers(self):
         """Only two pipeline buffers are required for inferencing.
@@ -182,7 +178,7 @@ class InferenceSchedule(PipeSchedule):
         """
         return 2
 
-    
+
 class TrainSchedule(PipeSchedule):
     """A schedule for training a batch using hybrid parallelism.
 
@@ -190,7 +186,6 @@ class TrainSchedule(PipeSchedule):
     convergence follows that of a data parallel approach with the same batch
     size.
     """
-
     def steps(self):
         """"""
         prev_micro_batch_id = -1
@@ -209,7 +204,8 @@ class TrainSchedule(PipeSchedule):
 
             # Exchange activations
             if is_forward:
-                if self._valid_micro_batch(micro_batch_id) and self._valid_stage(self.prev_stage):
+                if self._valid_micro_batch(micro_batch_id) and self._valid_stage(
+                        self.prev_stage):
                     cmds.append(RecvActivation(curr_buffer))
                 if self._valid_micro_batch(prev_micro_batch_id) and self._valid_stage(
                         self.prev_stage):
@@ -218,7 +214,8 @@ class TrainSchedule(PipeSchedule):
                 if self._valid_micro_batch(prev_micro_batch_id) and self._valid_stage(
                         self.next_stage):
                     cmds.append(SendActivation(prev_buffer))
-                if self._valid_micro_batch(micro_batch_id) and self._valid_stage(self.next_stage):
+                if self._valid_micro_batch(micro_batch_id) and self._valid_stage(
+                        self.next_stage):
                     cmds.append(RecvGrad(curr_buffer))
 
             # First/last stage loads
@@ -248,7 +245,7 @@ class TrainSchedule(PipeSchedule):
         """
         buffers = min(self.stages - self.stage_id + 1, self.micro_batches)
         return max(2, buffers)
-    
+
     def _step_to_micro_batch(self, step_id):
         if _is_even(step_id) and _is_even(self.stage_id):
             micro_batch_id = self._even_step_forward_id(step_id)
@@ -265,12 +262,11 @@ class TrainSchedule(PipeSchedule):
         elif _is_odd(step_id) and _is_even(self.stage_id):
             micro_batch_id = self._odd_step_backward_id(step_id)
             is_forward = False
-        
+
         else:
             assert False
-        
-        return micro_batch_id, is_forward
 
+        return micro_batch_id, is_forward
 
     def _even_step_forward_id(self, step_id):
         base = step_id // 2
@@ -297,7 +293,6 @@ class DataParallelSchedule(PipeSchedule):
     """An example schedule that trains using traditional data parallelism with gradient
     accumulation.
     """
-
     def steps(self):
         """"""
         for step_id in range(self.micro_batches):
@@ -317,6 +312,7 @@ class DataParallelSchedule(PipeSchedule):
         """Only one pipeline buffer needed.
         """
         return 1
+
 
 class PipeInstruction:
     """Base class for all instructions to be executed by the pipeline engine.
@@ -346,10 +342,12 @@ class OptimizerStep(PipeInstruction):
     """
     pass
 
+
 class ReduceGrads(PipeInstruction):
     """Reduce the computed gradients among data-parallel processes within the stage.
     """
     pass
+
 
 class ReduceTiedGrads(PipeInstruction):
     """Reduce the computed gradients of tied modules within a pipeline-parallel group.
@@ -363,7 +361,6 @@ class ReduceTiedGrads(PipeInstruction):
     pass
 
 
-
 class BufferOpInstruction(PipeInstruction):
     """A pipeline instruction that operates on pipeline buffer(s).
 
@@ -372,6 +369,7 @@ class BufferOpInstruction(PipeInstruction):
     """
     def __init__(self, buffer_id, **kwargs):
         super().__init__(buffer_id=buffer_id, **kwargs)
+
 
 # IO
 class LoadMicroBatch(BufferOpInstruction):
@@ -385,14 +383,15 @@ class LoadMicroBatch(BufferOpInstruction):
     """
     pass
 
+
 # Compute
 class ForwardPass(BufferOpInstruction):
     """Compute a forward pass.
-    
+
     Roughly:
 
     .. code-block:: python
-    
+
         buffers['ouputs'][buffer_id] = forward(buffers['inputs'][buffer_id])
     """
     pass
@@ -400,18 +399,17 @@ class ForwardPass(BufferOpInstruction):
 
 class BackwardPass(BufferOpInstruction):
     """Compute a backward pass and accumulate gradients.
-    
+
     Roughly:
 
     .. code-block:: python
-    
+
         outputs = buffers['ouputs'][buffer_id]
         gradients = buffers['gradients'][buffer_id]
         torch.autograd.backward(tensors=outputs,
                                 grad_tensors=gradients)
     """
     pass
-
 
 
 # Communication
@@ -474,6 +472,7 @@ class RecvGrad(BufferOpInstruction):
         on the next pipeline stage to avoid deadlock.
     """
     pass
+
 
 def _is_even(x):
     return x % 2 == 0

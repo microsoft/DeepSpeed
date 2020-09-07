@@ -614,7 +614,6 @@ class DeepSpeedConfig(object):
             assert False, \
                 'Either train_batch_size or micro_batch_per_gpu needs to be provided'
 
-
     def _configure_train_batch_size(self):
         self._set_batch_related_parameters()
         self._batch_assertion()

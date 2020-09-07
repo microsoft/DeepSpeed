@@ -668,7 +668,6 @@ def call_to_str(base, *args, **kwargs):
         if kwargs:
             name += ', '
     if kwargs:
-        name += ', '.join(f'{key}={repr(arg)}' for key,
-                            arg in kwargs.items())
+        name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
