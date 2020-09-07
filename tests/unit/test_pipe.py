@@ -151,6 +151,8 @@ def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, s
         for step in range(num_steps):
             loss = engine.train_batch()
             losses.append(loss.item())
+            if step % 50 == 0:
+                print(f'STEP={step} LOSS={loss.item()}')
 
         if average_dp_losses:
             loss_tensor = torch.tensor(losses).cuda()
@@ -201,7 +203,7 @@ def test_pipe_cifar10_seedlayers(base_topo, test_topo, tmpdir):
     args = args_from_dict(tmpdir, config_dict)
 
     @distributed_test(world_size=4)
-    def _helper(base_topo, test_topo, tmpdir, steps=100):
+    def _helper(base_topo, test_topo, tmpdir, steps=500):
         assert steps >= 100
 
         base_model = AlexNetPipe(num_classes=10,

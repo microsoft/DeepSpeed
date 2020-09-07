@@ -3,7 +3,6 @@ import enum
 
 import re as regex
 
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import partial
 
@@ -14,7 +13,8 @@ import torch.distributed as dist
 from numpy import prod
 
 from deepspeed.utils import logger
-import deepspeed.runtime.utils as ds_utils
+from .. import utils as ds_utils
+#import deepspeed.runtime.utils as ds_utils
 from ..activation_checkpointing import checkpointing
 
 from .topology import PipelineParallelGrid
@@ -56,15 +56,9 @@ class LayerSpec:
             self.global_rank = -1
 
     def __repr__(self):
-        name = f'{self.typename.__name__}('
-        if self.module_args:
-            name += ', '.join(map(repr, self.module_args))
-        if self.module_kwargs:
-            name += ', '
-            name += ', '.join(f'{repr(key)}={repr(arg)}' for key,
-                              arg in self.module_kwargs.items())
-        name += ')'
-        return name
+        return ds_utils.call_to_str(self.typename.__name__,
+                                    self.module_args,
+                                    self.module_kwargs)
 
     def build(self, log=False):
         """Build the stored specification."""
@@ -93,7 +87,7 @@ class LayerType(enum.Enum):
     Func = 1
 
 
-class PipelineModule(nn.Module, ABC):
+class PipelineModule(nn.Module):
     """ Abstract base class for modules to be parallelized with pipeline parallelism.
 
     Users should subclass PipelineModule and provide layer_specs(), which returns a list
@@ -184,13 +178,13 @@ class PipelineModule(nn.Module, ABC):
         self.activation_checkpoint_interval = activation_checkpoint_interval
         self.activation_checkpoint_func = activation_checkpoint_func
 
-    @abstractmethod
     def layer_specs(self):
         """Should return a list of LayerSpec objects. Subclasses must provide
         this as a representation of their module.
 
         Note that this may be called multiple times before build().
         """
+        raise RuntimeError('must subclass layer_specs')
         pass
 
     def _build(self):
@@ -241,9 +235,6 @@ class PipelineModule(nn.Module, ABC):
         # of our FP16 optimizer
         for p in self.parameters():
             p.model_parallel = True
-
-    def _make_model_parallel(param):
-        param.model_parallel = True
 
     def _count_layer_params(self):
         """ Count the parameters in individual layers.
@@ -436,18 +427,21 @@ class PipelineModule(nn.Module, ABC):
                                 self._grid.stage_to_global(stage_id=s,
                                                            data=dp))
                     group = dist.new_group(ranks=tied_ranks)
+
                     # Record this tied module if we own a local copy of it.
-                    if dp == self._grid.data_parallel_id and key in self.tied_modules:
-                        tied_comms[key] = {
-                            'ranks': tied_ranks,
-                            'group': group,
-                            'weight_attr': self.tied_weight_attrs[key],
-                            'module': self.tied_modules[key],
-                        }
-                        # Only count the tied module once in the eyes of the FP16 optimizer
-                        if self.global_rank != tied_ranks[0]:
-                            for p in self.tied_modules[key].parameters():
-                                p.model_parallel = False
+                    if self.global_rank in tied_ranks:
+                        assert key in self.tied_modules
+                        if key in self.tied_modules:
+                            tied_comms[key] = {
+                                'ranks': tied_ranks,
+                                'group': group,
+                                'weight_attr': self.tied_weight_attrs[key],
+                                'module': self.tied_modules[key],
+                            }
+                            # Only count the tied module once in the eyes of the FP16 optimizer
+                            if self.global_rank != tied_ranks[0]:
+                                for p in self.tied_modules[key].parameters():
+                                    p.model_parallel = False
         '''
         if len(tied_comms) > 0:
             print(f'RANK={self.global_rank} tied_comms={tied_comms}')
