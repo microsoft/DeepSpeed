@@ -104,11 +104,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition input/output buffers
         self.is_pipe_partitioned = self.is_model_parallel
-        self.is_grad_partitioned = False  #self.is_model_parallel
-        if self.global_rank == 0:
-            print(f'RANK={self.global_rank} '
-                  f'PIPE_PARTITION={self.is_pipe_partitioned} '
-                  f'GRAD_PARTITION={self.is_grad_partitioned}')
+        self.is_grad_partitioned = False
 
         model_parameters = filter(lambda p: p.requires_grad, self.module.parameters())
         num_params = sum([p.numel() for p in model_parameters])
@@ -126,13 +122,14 @@ class PipelineEngine(DeepSpeedEngine):
         params_tensor = params_tensor.tolist()
         total_params = params_tensor[0]
         unique_params = params_tensor[1]
-        print(f'RANK={self.global_rank} '
-              f'STAGE={self.stage_id} '
-              f'LAYERS={self.module._local_stop - self.module._local_start} '
-              f'[{self.module._local_start}, {self.module._local_stop}) '
-              f'STAGE_PARAMS={num_params} ({num_params/1e6:0.3f}M) '
-              f'TOTAL_PARAMS={total_params} ({total_params/1e6:0.3f}M) '
-              f'UNIQUE_PARAMS={unique_params} ({unique_params/1e6:0.3f}M)')
+        if self.grid.data_parallel_id == 0:
+            logger.info(f'RANK={self.global_rank} '
+                        f'STAGE={self.stage_id} '
+                        f'LAYERS={self.module._local_stop - self.module._local_start} '
+                        f'[{self.module._local_start}, {self.module._local_stop}) '
+                        f'STAGE_PARAMS={num_params} ({num_params/1e6:0.3f}M) '
+                        f'TOTAL_PARAMS={total_params} ({total_params/1e6:0.3f}M) '
+                        f'UNIQUE_PARAMS={unique_params} ({unique_params/1e6:0.3f}M)')
 
         #intialize peer-2-peer communication and allreduce groups
         if self.is_pipe_parallel:
@@ -158,7 +155,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.loss = torch.tensor(0.0).to(self.device)
 
         #stores the loss for the entire batch
-        self.total_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
+        self.total_loss = None
         self.agg_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
         self.dp_group_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
 
@@ -168,19 +165,18 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.is_last_stage:
             self.loss_model = self.module.loss_fn
-            self.loss_input = None
 
-        # Initialize pipeline communicators. Just send total_loss
+        # Initialize pipeline communicators. Just send a 0.
         if is_even(self.stage_id):
             if not self.is_last_stage:
-                p2p.send(self.total_loss, self.next_stage)
+                p2p.send(self.loss, self.next_stage)
             if not self.is_first_stage:
-                p2p.recv(self.total_loss, self.prev_stage)
+                p2p.recv(self.loss, self.prev_stage)
         else:
             if not self.is_first_stage:
-                p2p.recv(self.total_loss, self.prev_stage)
+                p2p.recv(self.loss, self.prev_stage)
             if not self.is_last_stage:
-                p2p.send(self.total_loss, self.next_stage)
+                p2p.send(self.loss, self.next_stage)
 
         # XXX look into timer reporting timing
         # Initialize some timers because of early weirdness.
@@ -235,7 +231,7 @@ class PipelineEngine(DeepSpeedEngine):
                 f'train_batch() requires gradients enabled. Use eval_batch() instead.')
 
         self.module.train()
-        self.total_loss.zero_()
+        self.total_loss = None
 
         self.batch_timer.start()
 
@@ -286,7 +282,7 @@ class PipelineEngine(DeepSpeedEngine):
             The arithmetic mean of the losses over all micro-batches.
         """
         self.module.eval()
-        self.total_loss.zero_()
+        self.total_loss = None
 
         self.batch_timer.start()
 
@@ -421,8 +417,10 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Sanity check dimensions.
         # XXX: the last minibatch with size < micro_batch_size kills us
+        '''
         if torch.is_tensor(batch[0]):
             if batch[0].size(0) != self.micro_batch_size:
+                print(f'{self.global_rank}: running over {batch[0].size(0)}')
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
         else:
@@ -430,6 +428,7 @@ class PipelineEngine(DeepSpeedEngine):
             if batch[0][0].size(0) != self.micro_batch_size:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
+        '''
 
         return batch
 
@@ -480,7 +479,16 @@ class PipelineEngine(DeepSpeedEngine):
             else:
                 # Some models just return loss from forward()
                 self.loss = outputs
-            self.total_loss += self.loss.detach()
+
+            if isinstance(self.loss, torch.Tensor):
+                if self.total_loss is None:
+                    self.total_loss = torch.zeros_like(self.loss)
+                self.total_loss += self.loss.detach()
+            else:
+                if self.total_loss is None:
+                    self.total_loss = [torch.zeros_like(l) for l in self.loss]
+                for idx, l in enumerate(self.loss):
+                    self.total_loss[idx] += l.detach()
 
     def _exec_backward_pass(self, buffer_id):
         assert self.optimizer is not None, "must provide optimizer during " \
@@ -579,10 +587,10 @@ class PipelineEngine(DeepSpeedEngine):
             self.pipe_buffers['inputs'][buffer_id] = loaded
 
         if self.is_last_stage:
+            loaded = batch[1]
             if torch.is_tensor(batch[1]):
                 loaded = batch[1].to(self.device)
-            else:
-                assert isinstance(batch[1], tuple)
+            elif isinstance(batch[1], tuple):
                 loaded = []
                 for x in batch[1]:
                     assert torch.is_tensor(x)
