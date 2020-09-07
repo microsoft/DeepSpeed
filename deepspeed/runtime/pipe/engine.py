@@ -1,6 +1,4 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
-'''
+# Copyright 2019 The Microsoft DeepSpeed Team
 import time
 import logging
 import copy
@@ -79,6 +77,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.data_iterator = None
         self.batch_fn = None
+
+        self._force_grad_boundary = False
 
         self.batch_timer = ThroughputTimer(batch_size=self.micro_batch_size *
                                            self.micro_batches,
@@ -171,8 +171,6 @@ class PipelineEngine(DeepSpeedEngine):
             self.loss_model = self.module.loss_fn
             self.loss_input = None
 
-        self.prev_sample_id = None
-
         # Initialize pipeline communicators. Just send total_loss
         if is_even(self.stage_id):
             if not self.is_last_stage:
@@ -206,14 +204,14 @@ class PipelineEngine(DeepSpeedEngine):
         self.module.allreduce_tied_weight_gradients()
     
     def _exec_reduce_grads(self):
-        self.force_grad_boundary = True
+        self._force_grad_boundary = True
         if self.is_data_parallel:
             self.buffered_allreduce_fallback(
                 elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
-        self.force_grad_boundary = False
+        self._force_grad_boundary = False
     
     def _reserve_pipe_buffers(self, num_buffers):
-        """Ensure that each pipeline buffer has at least ``num_buffers` slots.
+        """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
 
         This method only reserves slots and does not allocate tensors.
 
@@ -246,6 +244,10 @@ class PipelineEngine(DeepSpeedEngine):
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
+        if self.num_stages == 1:
+            sched = schedule.DataParallelSchedule(micro_batches=self.micro_batches,
+                                        stages=self.num_stages,
+                                        stage_id=self.stage_id)
         self._exec_schedule(sched)
         self.batch_timer.stop()
 
@@ -280,7 +282,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         This method is equivalent to:
 
-        .. code-block: python
+        .. code-block:: python
+
             module.eval()
             with torch.no_grad():
                 output = module(batch)
@@ -358,7 +361,7 @@ class PipelineEngine(DeepSpeedEngine):
 
 
     def set_dataloader(self, loader):
-        """ Store a DataLoader to samplefrom for training data. """
+        """ Store a DataLoader to sample for training data. """
         if self.is_first_stage or self.is_last_stage:
             self.training_dataloader = loader
             self.data_iterator = iter(self.training_dataloader)
@@ -373,10 +376,15 @@ class PipelineEngine(DeepSpeedEngine):
         self.batch_fn = fn
 
     def is_gradient_accumulation_boundary(self):
-        if hasattr(self, 'force_grad_boundary'):
-            return self.force_grad_boundary
-        else:
-            return False
+        """True if the engine is executing a gradient reduction or optimizer step instruction.
+
+        This is overridden from :class:`DeepSpeedEngine` to force reductions
+        and steps when the pipeline engine is instructed to do so.
+
+        Returns:
+            bool: whether reductions and optimizer steps should occur.
+        """
+        return self._force_grad_boundary
 
     def log_for_device(self, *msg):
         if LOG_STAGE == self.stage_id or LOG_STAGE == -1:
@@ -414,10 +422,6 @@ class PipelineEngine(DeepSpeedEngine):
             except StopIteration:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
-            '''
-            if self.global_rank == 0:
-                print(f'STEP={self.global_steps} SAMPLES={self.global_samples} BATCH={batch}')
-            '''
 
         # All MP ranks participate in batch_fn, where they might broadcast the data.
         if self.batch_fn:
@@ -434,9 +438,6 @@ class PipelineEngine(DeepSpeedEngine):
             if batch[0][0].size(0) != self.micro_batch_size:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
-
-        #assert batch[0].size(0) == self.micro_batch_size
-        #assert batch[1].size(0) == self.micro_batch_size
 
         return batch
 
@@ -489,10 +490,6 @@ class PipelineEngine(DeepSpeedEngine):
             if self.loss_model is not None:
                 labels = self.pipe_buffers['labels'][buffer_id]
                 self.loss = self.loss_model(outputs, labels)
-                '''
-                if not torch._C.is_grad_enabled():
-                    print(f'RANK={self.global_rank} eval loss={self.loss}')
-                '''
             else:
                 # Some models just return loss from forward()
                 self.loss = outputs
@@ -571,7 +568,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.mem_status('AFTER BWD')
 
-    def _exec_load_sample(self, buffer_id):
+    def _exec_load_micro_batch(self, buffer_id):
         if self.wall_clock_breakdown():
             self.timers('batch_input').start()
 
@@ -915,9 +912,9 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('step').start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
-        self.force_grad_boundary = True
+        self._force_grad_boundary = True
         self._take_model_step()
-        self.force_grad_boundary = False
+        self._force_grad_boundary = False
 
         self.mem_status('AFTER STEP')
 
@@ -1119,7 +1116,7 @@ class PipelineEngine(DeepSpeedEngine):
         schedule.ReduceGrads : _exec_reduce_grads,
         schedule.ReduceTiedGrads : _exec_reduce_tied_grads,
 
-        schedule.LoadSample : _exec_load_sample,
+        schedule.LoadMicroBatch : _exec_load_micro_batch,
 
         schedule.ForwardPass : _exec_forward_pass,
         schedule.BackwardPass : _exec_backward_pass,
@@ -1133,6 +1130,8 @@ class PipelineEngine(DeepSpeedEngine):
         self._reserve_pipe_buffers(pipe_schedule.num_pipe_buffers())
         # For each step in the schedule
         for step_cmds in pipe_schedule:
+            #torch.cuda.synchronize()
+            dist.barrier()
             # For each instruction in the step
             for cmd in step_cmds:
                 if type(cmd) not in self._INSTRUCTION_MAP:

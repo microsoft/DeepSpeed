@@ -234,9 +234,6 @@ class PipelineModule(nn.Module, ABC):
         for p in self.parameters():
             p.model_parallel = True
 
-    def _make_model_parallel(param):
-        param.model_parallel = True
-
     def _count_layer_params(self):
         """ Count the parameters in individual layers.
 
