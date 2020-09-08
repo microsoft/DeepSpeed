@@ -25,7 +25,7 @@ from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT, \
 from ..utils import logger
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = ["NCCL", "PYTHON"]
+EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
@@ -69,15 +69,15 @@ def parse_args(args=None):
                         resources except slot 0 on worker-1.
                         ''')
 
-    parser.add_argument("--num_nodes", 
-                        type=int, 
-                        default=-1, 
+    parser.add_argument("--num_nodes",
+                        type=int,
+                        default=-1,
                         help="Total number of worker nodes to run on, this will use "
                         "the top N hosts from the given hostfile.")
 
-    parser.add_argument("--num_gpus", 
-                        type=int, 
-                        default=-1, 
+    parser.add_argument("--num_gpus",
+                        type=int,
+                        default=-1,
                         help="Max number of GPUs to use on each node, will use "
                         "[0:N) GPU ids on each node.")
 
