@@ -24,7 +24,8 @@ class CheckOverflow(object):
                 for param in group:
                     self.params.append(param)
 
-    def check_using_norm(self, norm_group, reduce_overflow=False):
+    def check_using_norm(self, norm_group, reduce_overflow=True):
+        #TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
 
         if self.mpu is not None:
