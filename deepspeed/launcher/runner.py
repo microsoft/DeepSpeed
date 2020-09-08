@@ -69,9 +69,17 @@ def parse_args(args=None):
                         resources except slot 0 on worker-1.
                         ''')
 
-    parser.add_argument("--num_nodes", type=int, default=-1, help="")
+    parser.add_argument("--num_nodes", 
+                        type=int, 
+                        default=-1, 
+                        help="Total number of worker nodes to run on, this will use "
+                        "the top N hosts from the given hostfile.")
 
-    parser.add_argument("--num_gpus", type=int, default=-1, help="")
+    parser.add_argument("--num_gpus", 
+                        type=int, 
+                        default=-1, 
+                        help="Max number of GPUs to use on each node, will use "
+                        "[0:N) GPU ids on each node.")
 
     parser.add_argument("--master_port",
                         default=TORCH_DISTRIBUTED_DEFAULT_PORT,
@@ -90,6 +98,12 @@ def parse_args(args=None):
                         type=str,
                         help="(optional) choose launcher backend for multi-node"
                         "training. Options currently include PDSH, OpenMPI, MVAPICH.")
+
+    parser.add_argument("--launcher_args",
+                        default="",
+                        type=str,
+                        help="(optional) pass launcher specific arguments as a "
+                        "single quoted argument.")
 
     parser.add_argument("user_script",
                         type=str,

@@ -145,8 +145,7 @@ class ThroughputTimer():
             torch.cuda.synchronize()
             self.end_time = time.time()
             duration = self.end_time - self.start_time
-            # self.total_elapsed_time += duration
-            self.total_elapsed_time = duration
+            self.total_elapsed_time += duration
             if self.local_step_count % self.steps_per_output == 0:
                 if report_speed:
                     self.logging("{}/{}, SamplesPerSec={}".format(
@@ -166,8 +165,7 @@ class ThroughputTimer():
         if self.total_step_count > 0:
             samples_per_step = self.batch_size * self.num_workers
             total_step_offset = self.total_step_count - self.start_step
-            # avg_time_per_step = self.total_elapsed_time / total_step_offset
-            avg_time_per_step = self.total_elapsed_time / self.steps_per_output
+            avg_time_per_step = self.total_elapsed_time / total_step_offset
             # training samples per second
             return samples_per_step / avg_time_per_step
         return float("-inf")
