@@ -1588,14 +1588,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.contiguous_gradients:
             self.ipg_buffer = []
-            buf_0 = torch.empty(int(self.reduce_bucket_size * 2.5),
+            buf_0 = torch.empty(int(self.reduce_bucket_size * 4.5),
                                 dtype=torch.half,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
-                buf_1 = torch.empty(int(self.reduce_bucket_size * 2.5),
+                buf_1 = torch.empty(int(self.reduce_bucket_size * 4.5),
                                     dtype=torch.half,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
