@@ -22,7 +22,7 @@ class MultiNodeRunner(ABC):
         raise NotImplementedError()
 
     def add_export(self, key, var):
-        self.exports[key] = var
+        self.exports[key.strip()] = var.strip()
 
     def parse_user_args(self):
         return list(
@@ -80,6 +80,7 @@ class OpenMPIRunner(MultiNodeRunner):
 
     def get_cmd(self, environment, active_resources):
         '''
+        DELETEME: Example for 1-bit adam
         mpirun  -n 8 \
 		-hostfile hosts \
 		--mca btl ^openib \
@@ -93,25 +94,29 @@ class OpenMPIRunner(MultiNodeRunner):
 		model.py
         '''
         #FIXME: Allow for include/exclude at node-level but not gpu-level
-        assert args.include == "" and args.exclude == "", 'openmpi backend does not support worker include/exclusion'
-        assert args.num_nodes == -1 and args.num_gpus == -1, 'openmpi backend does not support limiting num nodes/gpus'
-        total_process_count = sum([len(n) for n in self.resource_pool.values()])
-
-        export_cmd = ""
-        for k, v in self.exports.items():
-            export_cmd += f"-x {k}={v} "
+        assert self.args.include == "" and self.args.exclude == "", 'openmpi backend does not support worker include/exclusion'
+        assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'openmpi backend does not support limiting num nodes/gpus'
+        total_process_count = sum(self.resource_pool.values())
 
         mpirun_cmd = [
             'mpirun',
-            f'-n {total_process_count}',
-            f'-hostfile {self.args.hostfile}',
-            '--mca btl ^openib',
-            '--mca btl_tcp_if_include eth0',
-            '-x UCX_TLS=tcp',
-            export_cmd,
-            "cd {};".format(os.path.abspath('.')),
-            sys.executable,
+            '-n', f'{total_process_count}',
+            '-hostfile' ,f'{self.args.hostfile}',
+            '--mca', 'btl', '^openib',
+            '--mca', 'btl_tcp_if_include', 'eth0',
+            '-x', 'UCX_TLS=tcp'
+        ]
+
+        export_cmd = []
+        for k, v in self.exports.items():
+            export_cmd += ['-x', f'{k}={v}']
+
+        python_exec = [sys.executable,
             "-u",
         ]
 
-        return mpirun_cmd + [self.user_script] + self.user_arguments
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
+
+
+class MVAPICHRunner(MultiNodeRunner):
+  pass
