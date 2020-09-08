@@ -64,11 +64,6 @@ class LinearStackPipe(PipelineModule):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
 
-        super().__init__(**kwargs)
-
-        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
-
-    def layer_specs(self):
         layers = []
         layers.append(LayerSpec(torch.nn.Linear, self.input_dim, self.hidden_dim))
         for x in range(self.num_layers):
@@ -79,10 +74,8 @@ class LinearStackPipe(PipelineModule):
                           bias=False))
             layers.append(lambda x: x)
         layers.append(LayerSpec(torch.nn.Linear, self.hidden_dim, self.output_dim))
-        return layers
 
-    def loss_fn(self, output, y):
-        return self.cross_entropy_loss(output, y)
+        super().__init__(layers=layers, loss_fn=torch.nn.CrossEntropyLoss(), **kwargs)
 
 
 class SimpleOptimizer(torch.optim.Optimizer):
