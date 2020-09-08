@@ -27,6 +27,11 @@ install_requires = fetch_requirements('requirements/requirements.txt')
 dev_requires = fetch_requirements('requirements/requirements-dev.txt')
 sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn.txt')
 
+onebit_adam_requires = fetch_requirements('requirements/requirements-1bit-adam.txt')
+if torch.cuda.is_available():
+    onebit_adam_requires.append(f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}")
+install_requires += onebit_adam_requires
+
 # Build environment variables for custom builds
 DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
