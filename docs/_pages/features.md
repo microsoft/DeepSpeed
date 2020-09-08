@@ -165,7 +165,7 @@ NVIDIA, or any training optimizer that extends torch's `torch.optim.Optimizer` c
 ### CPU-Adam: High-Performance vectorized implementation of Adam
 We introduce an efficient implementation of Adam optimizer on CPU that improves the parameter-update
 performance by nearly an order of magnitude. Comparing to torch-adam, we observe 5.1x to 6.5x 
-speedups considering the model-size betweein 1 to 10 billion parameters. For the CPU-Adam implementation, 
+speedups considering the model-size between 1 to 10 billion parameters. For the CPU-Adam implementation, 
 we use the AVX SIMD instructions on Intel-x86 architecture. We support both AVX-512 and AVX-2 instruction sets. 
 
 ### Memory bandwidth optimized FP16 Optimizer
