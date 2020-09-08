@@ -1,5 +1,5 @@
 '''
-Copyright 2019 The Microsoft DeepSpeed Team
+Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import types
 import torch
@@ -35,7 +35,7 @@ class OnebitAdam(torch.optim.Optimizer):
         min_coeff(float, optional): minimum value of the lamb coefficient (default: 0.01)
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
-            (default: False) NOT SUPPORTED in FusedAdam!
+            (default: False) NOT SUPPORTED in 1-bit Adam!
         eps_inside_sqrt (boolean, optional): in the 'update parameters' step,
             adds eps to the bias-corrected second moment estimate before
             evaluating square root instead of adding it to the square root of
@@ -63,7 +63,7 @@ class OnebitAdam(torch.optim.Optimizer):
                  cuda_aware=False):
 
         if amsgrad:
-            raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
+            raise RuntimeError('1-bit Adam does not support the AMSGrad variant.')
         defaults = dict(lr=lr,
                         bias_correction=bias_correction,
                         betas=betas,
