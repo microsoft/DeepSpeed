@@ -158,7 +158,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.cpu_offload = cpu_offload
 
-        self.deepspeed_adam_offload = (cpu_offload and type(init_optimizer) == DeepSpeedCPUAdam)
+        self.deepspeed_adam_offload = (cpu_offload
+                                       and type(init_optimizer) == DeepSpeedCPUAdam)
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
@@ -1478,7 +1479,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
-        timers.log(names=['optimizer_gradients', 'optimizer_step', 'optimizer_allgather'])
+        timers.log(
+            names=['optimizer_gradients',
+                   'optimizer_step',
+                   'optimizer_allgather'])
         see_memory_usage('After zero_optimizer step')
         return
 
