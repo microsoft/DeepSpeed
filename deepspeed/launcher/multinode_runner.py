@@ -152,7 +152,7 @@ class MVAPICHRunner(MultiNodeRunner):
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'mvapich backend does not support limiting num nodes/gpus'
         devices_per_node = self.resource_pool.values()
         total_process_count = sum(devices_per_node)
-        process_per_node = devices_per_node[0]
+        process_per_node = list(devices_per_node)[0]
         assert all([n == process_per_node for n in devices_per_node]), "mvapich requires same number of devices per node"
 
         with open(MVAPICH_TMP_HOSTFILE, 'w') as fd:
