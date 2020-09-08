@@ -11,5 +11,5 @@ DeepSpeed offers sparse attention kernels, an instrumental technology to support
 
 * Brief overview, see our [press release](https://www.microsoft.com/en-us/research/blog/TODO-PR-DeepSpeed-V3/).
 * Detailed technology deep dive, see our [blog post](https://www.deepspeed.ai/news/2020/09/08/sparse-attention.html).
-* Tutorial on how to reproduce our results, see our [Sparse attention tutorial](https://www.deepspeed.ai/tutorials/sparse-attention/).
-* The source code for our transformer kernels can be found in the [DeepSpeed repo](https://github.com/microsoft/deepspeed) and BERT pre-training code can be found in the [DeepSpeedExamples repo](https://github.com/microsoft/deepspeedexamples).
+* Tutorial on how to use sparse attention, see our [Sparse attention tutorial](https://www.deepspeed.ai/tutorials/sparse-attention/).
+* The source code for our sparse attention kernels can be found in the [DeepSpeed repo](https://github.com/microsoft/deepspeed) and BERT pre-training code useing sparse attention can be found in the [DeepSpeedExamples repo](https://github.com/microsoft/deepspeedexamples).
