@@ -25,35 +25,42 @@ void Adam_Optimizer::Step(float* _params,
                           size_t _param_size,
                           __half* dev_params)
 {
-    _betta1_t *= _betta1;
-    _betta2_t *= _betta2;
-
-    AVX_512 betta1_4;
-    betta1_4.data = _mm512_set1_ps(_betta1);
-    AVX_512 betta2_4;
-    betta2_4.data = _mm512_set1_ps(_betta2);
-
     float betta1_minus1 = 1 - _betta1;
     float betta2_minus1 = 1 - _betta2;
-    AVX_512 betta1_minus1_4;
-    betta1_minus1_4.data = _mm512_set1_ps(betta1_minus1);
-    AVX_512 betta2_minus1_4;
-    betta2_minus1_4.data = _mm512_set1_ps(betta2_minus1);
 
     float bias_correction1 = 1 - _betta1_t;
     float bias_correction2 = 1 / sqrt(1 - _betta2_t);
-    // AVX_512 bias_correction1_4 = _mm512_set1_ps(bias_correction1);
-    AVX_512 bias2_sqrt;
-    bias2_sqrt.data = _mm512_set1_ps(bias_correction2);
-
-    AVX_512 eps_4;
-    eps_4.data = _mm512_set1_ps(_eps);
 
     float step_size = -1 * _alpha / bias_correction1;
-    AVX_512 step_size_4;
-    step_size_4.data = _mm512_set1_ps(step_size);
 
-    size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH);
+    size_t rounded_size = 0;
+
+#if defined(__AVX512__) or defined(__AVX256__)
+
+    AVX_Data betta1_4;
+    betta1_4.data = SIMD_SET(_betta1);
+    AVX_Data betta2_4;
+    betta2_4.data = SIMD_SET(_betta2);
+
+    AVX_Data betta1_minus1_4;
+    betta1_minus1_4.data = SIMD_SET(betta1_minus1);
+    AVX_Data betta2_minus1_4;
+    betta2_minus1_4.data = SIMD_SET(betta2_minus1);
+    
+    AVX_Data bias2_sqrt;
+    bias2_sqrt.data = SIMD_SET(bias_correction2);
+
+    AVX_Data eps_4;
+    eps_4.data = SIMD_SET(_eps);
+
+    AVX_Data step_size_4;
+    step_size_4.data = SIMD_SET(step_size);
+
+    AVX_Data weight_decay4;
+    if (_weight_decay > 0)
+        weight_decay4.data = SIMD_SET(_weight_decay);
+
+    rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH);
 
     for (size_t t = 0; t < rounded_size; t += TILE) {
         size_t copy_size = TILE;
@@ -61,57 +68,41 @@ void Adam_Optimizer::Step(float* _params,
         size_t offset = copy_size + t;
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH) {
-            AVX_512 grad_4;
-            grad_4.data = _mm512_loadu_ps(grads + i);
+            AVX_Data grad_4;
+            grad_4.data = SIMD_LOAD(grads + i);
 
-            AVX_512 momntum_4;
-            momntum_4.data = _mm512_loadu_ps(_exp_avg + i);
-            AVX_512 varianc_4;
-            varianc_4.data = _mm512_loadu_ps(_exp_avg_sq + i);
+            AVX_Data momentum_4;
+            momentum_4.data = SIMD_LOAD(_exp_avg + i);
+            AVX_Data variance_4;
+            variance_4.data = SIMD_LOAD(_exp_avg_sq + i);
 
-            AVX_512 param_4;
-            param_4.data = _mm512_loadu_ps(_params + i);
+            AVX_Data param_4;
+            param_4.data = SIMD_LOAD(_params + i);
 
-            if (_weight_decay > 0) {
-                AVX_512 weight_decay4;
-                weight_decay4.data = _mm512_set1_ps(_weight_decay);
-                grad_4.data = _mm512_fmadd_ps(param_4.data, weight_decay4.data, grad_4.data);
-            }
+            if (_weight_decay > 0)
+                grad_4.data = SIMD_FMA(param_4.data, weight_decay4.data, grad_4.data);
 
-            momntum_4.data = _mm512_mul_ps(momntum_4.data, betta1_4.data);
-            momntum_4.data = _mm512_fmadd_ps(grad_4.data, betta1_minus1_4.data, momntum_4.data);
+            momentum_4.data = SIMD_MUL(momentum_4.data, betta1_4.data);
+            momentum_4.data = SIMD_FMA(grad_4.data, betta1_minus1_4.data, momentum_4.data);
 
-            varianc_4.data = _mm512_mul_ps(varianc_4.data, betta2_4.data);
-            grad_4.data = _mm512_mul_ps(grad_4.data, grad_4.data);
-            varianc_4.data = _mm512_fmadd_ps(grad_4.data, betta2_minus1_4.data, varianc_4.data);
+            variance_4.data = SIMD_MUL(variance_4.data, betta2_4.data);
+            grad_4.data = SIMD_MUL(grad_4.data, grad_4.data);
+            variance_4.data = SIMD_FMA(grad_4.data, betta2_minus1_4.data, variance_4.data);
 
-            grad_4.data = _mm512_sqrt_ps(varianc_4.data);
-            grad_4.data = _mm512_fmadd_ps(grad_4.data, bias2_sqrt.data, eps_4.data);
-            grad_4.data = _mm512_div_ps(momntum_4.data, grad_4.data);
+            grad_4.data = SIMD_SQRT(variance_4.data);
+            grad_4.data = SIMD_FMA(grad_4.data, bias2_sqrt.data, eps_4.data);
+            grad_4.data = SIMD_DIV(momentum_4.data, grad_4.data);
 
-            param_4.data = _mm512_fmadd_ps(grad_4.data, step_size_4.data, param_4.data);
+            param_4.data = SIMD_FMA(grad_4.data, step_size_4.data, param_4.data);
 
-            _mm512_storeu_ps(_params + i, param_4.data);
+            SIMD_STORE(_params + i, param_4.data);
 
-            if (dev_params) _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4.data);
+            if (dev_params) SIMD_STORE(_doubled_buffer[_buf_index] + (i - t), param_4.data);
 
-            _mm512_storeu_ps(_exp_avg + i, momntum_4.data);
-            _mm512_storeu_ps(_exp_avg_sq + i, varianc_4.data);
+            SIMD_STORE(_exp_avg + i, momentum_4.data);
+            SIMD_STORE(_exp_avg_sq + i, variance_4.data);
         }
-        if (dev_params) { /*
- #pragma omp parallel for
-             for (size_t j = 0; j < copy_size; j += 4) {
-                 _doubled_buffer[_buf_index][j] = (__half)_params[t + j];
-                 _doubled_buffer[_buf_index][j + 1] = (__half)_params[t + j + 1];
-                 _doubled_buffer[_buf_index][j + 2] = (__half)_params[t + j + 2];
-                 _doubled_buffer[_buf_index][j + 3] = (__half)_params[t + j + 3];
-             }
-
-             CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
-                                        _doubled_buffer[_buf_index],
-                                        copy_size * sizeof(__half),
-                                        cudaMemcpyHostToDevice,
-                                        Context::Instance().GetCurrentStream()));*/
+        if (dev_params) {
             launch_param_update(_doubled_buffer[_buf_index],
                                 dev_params + t,
                                 copy_size,
@@ -120,32 +111,34 @@ void Adam_Optimizer::Step(float* _params,
         }
     }
 
+#endif
+
     if (_param_size > rounded_size) {
 #pragma omp parallel for
         for (size_t k = rounded_size; k < _param_size; k++) {
             float grad = grads[k];
             float param = _params[k];
-            float momntum = _exp_avg[k];
-            float varianc = _exp_avg_sq[k];
-            if (_weight_decay > 0) { grad = param * _weight_decay + grad; }
+            float momentum = _exp_avg[k];
+            float variance = _exp_avg_sq[k];
+            if (_weight_decay > 0) grad = param * _weight_decay + grad; 
 
-            momntum *= momntum * _betta1;
-            momntum = grad * betta1_minus1 + momntum;
+            momentum *= momentum * _betta1;
+            momentum = grad * betta1_minus1 + momentum;
 
-            varianc = varianc * _betta2;
+            variance = variance * _betta2;
             grad = grad * grad;
-            varianc = grad * betta2_minus1 + varianc;
+            variance = grad * betta2_minus1 + variance;
 
-            grad = sqrt(varianc);
+            grad = sqrt(variance);
             grad = grad * bias_correction2 + _eps;
-            grad = momntum / grad;
+            grad = momentum / grad;
 
             param = grad * step_size + param;
             if (dev_params) _doubled_buffer[_buf_index][k - rounded_size] = (__half)param;
 
             _params[k] = param;
-            _exp_avg[k] = momntum;
-            _exp_avg_sq[k] = varianc;
+            _exp_avg[k] = momentum;
+            _exp_avg_sq[k] = variance;
         }
         if (dev_params) {
             launch_param_update(_doubled_buffer[_buf_index],
@@ -163,35 +156,36 @@ void Adam_Optimizer::Step_4(float* _params,
                             size_t _param_size,
                             __half* dev_params)
 {
-    _betta1_t *= _betta1;
-    _betta2_t *= _betta2;
+    size_t rounded_size = 0;
+    
+#if defined(__AVX512__) or defined(__AVX256__)    
 
-    AVX_512 betta1_4;
-    betta1_4.data = _mm512_set1_ps(_betta1);
-    AVX_512 betta2_4;
-    betta2_4.data = _mm512_set1_ps(_betta2);
+    AVX_Data betta1_4;
+    betta1_4.data = SIMD_SET(_betta1);
+    AVX_Data betta2_4;
+    betta2_4.data = SIMD_SET(_betta2);
 
     float betta1_minus1 = 1 - _betta1;
     float betta2_minus1 = 1 - _betta2;
-    AVX_512 betta1_minus1_4;
-    betta1_minus1_4.data = _mm512_set1_ps(betta1_minus1);
-    AVX_512 betta2_minus1_4;
-    betta2_minus1_4.data = _mm512_set1_ps(betta2_minus1);
+    AVX_Data betta1_minus1_4;
+    betta1_minus1_4.data = SIMD_SET(betta1_minus1);
+    AVX_Data betta2_minus1_4;
+    betta2_minus1_4.data = SIMD_SET(betta2_minus1);
 
     float bias_correction1 = 1 - _betta1_t;
     float bias_correction2 = 1 / sqrt(1 - _betta2_t);
-    // AVX_512 bias_correction1_4 = _mm512_set1_ps(bias_correction1);
-    AVX_512 bias2_sqrt;
-    bias2_sqrt.data = _mm512_set1_ps(bias_correction2);
+    // AVX_Data bias_correction1_4 = SIMD_SET(bias_correction1);
+    AVX_Data bias2_sqrt;
+    bias2_sqrt.data = SIMD_SET(bias_correction2);
 
-    AVX_512 eps_4;
-    eps_4.data = _mm512_set1_ps(_eps);
+    AVX_Data eps_4;
+    eps_4.data = SIMD_SET(_eps);
 
     float step_size = -1 * _alpha / bias_correction1;
-    AVX_512 step_size_4;
-    step_size_4.data = _mm512_set1_ps(step_size);
+    AVX_Data step_size_4;
+    step_size_4.data = SIMD_SET(step_size);
 
-    size_t rounded_size = ROUND_DOWN(_param_size, (SIMD_WIDTH << 2));
+    rounded_size = ROUND_DOWN(_param_size, (SIMD_WIDTH << 2));
 
     for (size_t t = 0; t < rounded_size; t += TILE) {
         size_t copy_size = TILE;
@@ -199,133 +193,119 @@ void Adam_Optimizer::Step_4(float* _params,
         size_t offset = copy_size + t;
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 2)) {
-            AVX_512 grad_4[4];
-            grad_4[0].data = _mm512_loadu_ps(grads + i);
-            grad_4[1].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH);
-            grad_4[2].data = _mm512_loadu_ps(grads + i + (SIMD_WIDTH << 1));
-            grad_4[3].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 3);
+            AVX_Data grad_4[4];
+            grad_4[0].data = SIMD_LOAD(grads + i);
+            grad_4[1].data = SIMD_LOAD(grads + i + SIMD_WIDTH);
+            grad_4[2].data = SIMD_LOAD(grads + i + (SIMD_WIDTH << 1));
+            grad_4[3].data = SIMD_LOAD(grads + i + SIMD_WIDTH * 3);
 
-            AVX_512 momntum_4[4];
-            momntum_4[0].data = _mm512_loadu_ps(_exp_avg + i);
-            momntum_4[1].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH);
-            momntum_4[2].data = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH << 1));
-            momntum_4[3].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 3);
+            AVX_Data momentum_4[4];
+            momentum_4[0].data = SIMD_LOAD(_exp_avg + i);
+            momentum_4[1].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH);
+            momentum_4[2].data = SIMD_LOAD(_exp_avg + i + (SIMD_WIDTH << 1));
+            momentum_4[3].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * 3);
 
-            AVX_512 varianc_4[4];
-            varianc_4[0].data = _mm512_loadu_ps(_exp_avg_sq + i);
-            varianc_4[1].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH);
-            varianc_4[2].data = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1));
-            varianc_4[3].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3);
+            AVX_Data variance_4[4];
+            variance_4[0].data = SIMD_LOAD(_exp_avg_sq + i);
+            variance_4[1].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH);
+            variance_4[2].data = SIMD_LOAD(_exp_avg_sq + i + (SIMD_WIDTH << 1));
+            variance_4[3].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * 3);
 
-            AVX_512 param_4[4];
-            param_4[0].data = _mm512_loadu_ps(_params + i);
-            param_4[1].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH);
-            param_4[2].data = _mm512_loadu_ps(_params + i + (SIMD_WIDTH << 1));
-            param_4[3].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 3);
+            AVX_Data param_4[4];
+            param_4[0].data = SIMD_LOAD(_params + i);
+            param_4[1].data = SIMD_LOAD(_params + i + SIMD_WIDTH);
+            param_4[2].data = SIMD_LOAD(_params + i + (SIMD_WIDTH << 1));
+            param_4[3].data = SIMD_LOAD(_params + i + SIMD_WIDTH * 3);
 
             if (_weight_decay > 0) {
-                AVX_512 weight_decay4;
-                weight_decay4.data = _mm512_set1_ps(_weight_decay);
+                AVX_Data weight_decay4;
+                weight_decay4.data = SIMD_SET(_weight_decay);
                 grad_4[0].data =
-                    _mm512_fmadd_ps(param_4[0].data, weight_decay4.data, grad_4[0].data);
+                    SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
                 grad_4[1].data =
-                    _mm512_fmadd_ps(param_4[1].data, weight_decay4.data, grad_4[1].data);
+                    SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
                 grad_4[2].data =
-                    _mm512_fmadd_ps(param_4[2].data, weight_decay4.data, grad_4[2].data);
+                    SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
                 grad_4[3].data =
-                    _mm512_fmadd_ps(param_4[3].data, weight_decay4.data, grad_4[3].data);
+                    SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
             }
 
-            momntum_4[0].data = _mm512_mul_ps(momntum_4[0].data, betta1_4.data);
-            momntum_4[0].data =
-                _mm512_fmadd_ps(grad_4[0].data, betta1_minus1_4.data, momntum_4[0].data);
-            momntum_4[1].data = _mm512_mul_ps(momntum_4[1].data, betta1_4.data);
-            momntum_4[1].data =
-                _mm512_fmadd_ps(grad_4[1].data, betta1_minus1_4.data, momntum_4[1].data);
-            momntum_4[2].data = _mm512_mul_ps(momntum_4[2].data, betta1_4.data);
-            momntum_4[2].data =
-                _mm512_fmadd_ps(grad_4[2].data, betta1_minus1_4.data, momntum_4[2].data);
-            momntum_4[3].data = _mm512_mul_ps(momntum_4[3].data, betta1_4.data);
-            momntum_4[3].data =
-                _mm512_fmadd_ps(grad_4[3].data, betta1_minus1_4.data, momntum_4[3].data);
+            momentum_4[0].data = SIMD_MUL(momentum_4[0].data, betta1_4.data);
+            momentum_4[0].data =
+                SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
+            momentum_4[1].data = SIMD_MUL(momentum_4[1].data, betta1_4.data);
+            momentum_4[1].data =
+                SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
+            momentum_4[2].data = SIMD_MUL(momentum_4[2].data, betta1_4.data);
+            momentum_4[2].data =
+                SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
+            momentum_4[3].data = SIMD_MUL(momentum_4[3].data, betta1_4.data);
+            momentum_4[3].data =
+                SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
 
-            varianc_4[0].data = _mm512_mul_ps(varianc_4[0].data, betta2_4.data);
-            varianc_4[1].data = _mm512_mul_ps(varianc_4[1].data, betta2_4.data);
-            varianc_4[2].data = _mm512_mul_ps(varianc_4[2].data, betta2_4.data);
-            varianc_4[3].data = _mm512_mul_ps(varianc_4[3].data, betta2_4.data);
-            grad_4[0].data = _mm512_mul_ps(grad_4[0].data, grad_4[0].data);
-            grad_4[1].data = _mm512_mul_ps(grad_4[1].data, grad_4[1].data);
-            grad_4[2].data = _mm512_mul_ps(grad_4[2].data, grad_4[2].data);
-            grad_4[3].data = _mm512_mul_ps(grad_4[3].data, grad_4[3].data);
-            varianc_4[0].data =
-                _mm512_fmadd_ps(grad_4[0].data, betta2_minus1_4.data, varianc_4[0].data);
-            varianc_4[1].data =
-                _mm512_fmadd_ps(grad_4[1].data, betta2_minus1_4.data, varianc_4[1].data);
-            varianc_4[2].data =
-                _mm512_fmadd_ps(grad_4[2].data, betta2_minus1_4.data, varianc_4[2].data);
-            varianc_4[3].data =
-                _mm512_fmadd_ps(grad_4[3].data, betta2_minus1_4.data, varianc_4[3].data);
+            variance_4[0].data = SIMD_MUL(variance_4[0].data, betta2_4.data);
+            variance_4[1].data = SIMD_MUL(variance_4[1].data, betta2_4.data);
+            variance_4[2].data = SIMD_MUL(variance_4[2].data, betta2_4.data);
+            variance_4[3].data = SIMD_MUL(variance_4[3].data, betta2_4.data);
+            grad_4[0].data = SIMD_MUL(grad_4[0].data, grad_4[0].data);
+            grad_4[1].data = SIMD_MUL(grad_4[1].data, grad_4[1].data);
+            grad_4[2].data = SIMD_MUL(grad_4[2].data, grad_4[2].data);
+            grad_4[3].data = SIMD_MUL(grad_4[3].data, grad_4[3].data);
+            variance_4[0].data =
+                SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
+            variance_4[1].data =
+                SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
+            variance_4[2].data =
+                SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
+            variance_4[3].data =
+                SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
 
-            grad_4[0].data = _mm512_sqrt_ps(varianc_4[0].data);
-            grad_4[1].data = _mm512_sqrt_ps(varianc_4[1].data);
-            grad_4[2].data = _mm512_sqrt_ps(varianc_4[2].data);
-            grad_4[3].data = _mm512_sqrt_ps(varianc_4[3].data);
+            grad_4[0].data = SIMD_SQRT(variance_4[0].data);
+            grad_4[1].data = SIMD_SQRT(variance_4[1].data);
+            grad_4[2].data = SIMD_SQRT(variance_4[2].data);
+            grad_4[3].data = SIMD_SQRT(variance_4[3].data);
 
-            grad_4[0].data = _mm512_fmadd_ps(grad_4[0].data, bias2_sqrt.data, eps_4.data);
-            grad_4[1].data = _mm512_fmadd_ps(grad_4[1].data, bias2_sqrt.data, eps_4.data);
-            grad_4[2].data = _mm512_fmadd_ps(grad_4[2].data, bias2_sqrt.data, eps_4.data);
-            grad_4[3].data = _mm512_fmadd_ps(grad_4[3].data, bias2_sqrt.data, eps_4.data);
-            grad_4[0].data = _mm512_div_ps(momntum_4[0].data, grad_4[0].data);
-            grad_4[1].data = _mm512_div_ps(momntum_4[1].data, grad_4[1].data);
-            grad_4[2].data = _mm512_div_ps(momntum_4[2].data, grad_4[2].data);
-            grad_4[3].data = _mm512_div_ps(momntum_4[3].data, grad_4[3].data);
+            grad_4[0].data = SIMD_FMA(grad_4[0].data, bias2_sqrt.data, eps_4.data);
+            grad_4[1].data = SIMD_FMA(grad_4[1].data, bias2_sqrt.data, eps_4.data);
+            grad_4[2].data = SIMD_FMA(grad_4[2].data, bias2_sqrt.data, eps_4.data);
+            grad_4[3].data = SIMD_FMA(grad_4[3].data, bias2_sqrt.data, eps_4.data);
+            grad_4[0].data = SIMD_DIV(momentum_4[0].data, grad_4[0].data);
+            grad_4[1].data = SIMD_DIV(momentum_4[1].data, grad_4[1].data);
+            grad_4[2].data = SIMD_DIV(momentum_4[2].data, grad_4[2].data);
+            grad_4[3].data = SIMD_DIV(momentum_4[3].data, grad_4[3].data);
 
-            param_4[0].data = _mm512_fmadd_ps(grad_4[0].data, step_size_4.data, param_4[0].data);
-            param_4[1].data = _mm512_fmadd_ps(grad_4[1].data, step_size_4.data, param_4[1].data);
-            param_4[2].data = _mm512_fmadd_ps(grad_4[2].data, step_size_4.data, param_4[2].data);
-            param_4[3].data = _mm512_fmadd_ps(grad_4[3].data, step_size_4.data, param_4[3].data);
+            param_4[0].data = SIMD_FMA(grad_4[0].data, step_size_4.data, param_4[0].data);
+            param_4[1].data = SIMD_FMA(grad_4[1].data, step_size_4.data, param_4[1].data);
+            param_4[2].data = SIMD_FMA(grad_4[2].data, step_size_4.data, param_4[2].data);
+            param_4[3].data = SIMD_FMA(grad_4[3].data, step_size_4.data, param_4[3].data);
 
-            _mm512_storeu_ps(_params + i, param_4[0].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH, param_4[1].data);
-            _mm512_storeu_ps(_params + i + (SIMD_WIDTH << 1), param_4[2].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH * 3, param_4[3].data);
+            SIMD_STORE(_params + i, param_4[0].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH, param_4[1].data);
+            SIMD_STORE(_params + i + (SIMD_WIDTH << 1), param_4[2].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH * 3, param_4[3].data);
 
             if (dev_params) {
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
                                  param_4[1].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
                                  param_4[2].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
                                  param_4[3].data);
             }
 
-            _mm512_storeu_ps(_exp_avg + i, momntum_4[0].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH, momntum_4[1].data);
-            _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH << 1), momntum_4[2].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 3, momntum_4[3].data);
+            SIMD_STORE(_exp_avg + i, momentum_4[0].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH, momentum_4[1].data);
+            SIMD_STORE(_exp_avg + i + (SIMD_WIDTH << 1), momentum_4[2].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH * 3, momentum_4[3].data);
 
-            _mm512_storeu_ps(_exp_avg_sq + i, varianc_4[0].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH, varianc_4[1].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1), varianc_4[2].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3, varianc_4[3].data);
+            SIMD_STORE(_exp_avg_sq + i, variance_4[0].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH, variance_4[1].data);
+            SIMD_STORE(_exp_avg_sq + i + (SIMD_WIDTH << 1), variance_4[2].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 3, variance_4[3].data);
         }
 
-        if (dev_params) { /*
- #pragma omp parallel for
-             for (size_t j = 0; j < copy_size; j += 4) {
-                 _doubled_buffer[_buf_index][j] = (__half)_params[t + j];
-                 _doubled_buffer[_buf_index][j + 1] = (__half)_params[t + j + 1];
-                 _doubled_buffer[_buf_index][j + 2] = (__half)_params[t + j + 2];
-                 _doubled_buffer[_buf_index][j + 3] = (__half)_params[t + j + 3];
-             }
-
-             CUDA_CHECK(cudaMemcpyAsync(dev_params + t,
-                                        _doubled_buffer[_buf_index],
-                                        copy_size * sizeof(__half),
-                                        cudaMemcpyHostToDevice,
-                                        Context::Instance().GetCurrentStream()));
-             */
+        if (dev_params) {
             launch_param_update(_doubled_buffer[_buf_index],
                                 dev_params + t,
                                 copy_size,
@@ -333,6 +313,7 @@ void Adam_Optimizer::Step_4(float* _params,
             _buf_index = !_buf_index;
         }
     }
+#endif
     if (_param_size > rounded_size)
         Step((_params + rounded_size),
              (grads + rounded_size),
@@ -352,9 +333,15 @@ int create_adam_optimizer(int optimizer_id,
     auto opt = std::make_shared<Adam_Optimizer>(alpha, betta1, betta2, eps, weight_decay);
 
     s_optimizers[optimizer_id] = opt;
-
-    std::cout << "Adam Optimizer #" << optimizer_id << " is created." << std::endl;
-
+#if defined(__AVX512__)
+    std::cout << "Adam Optimizer #" << optimizer_id << " is created with AVX512 arithmetic capability." << std::endl;
+#else
+#if defined(__AVX256__)
+    std::cout << "Adam Optimizer #" << optimizer_id << " is created with AVX2 arithmetic capability." << std::endl;
+#else
+    std::cout << "Adam Optimizer #" << optimizer_id << " is created with scalar arithmetic capability." << std::endl;
+#endif
+#endif
     return 0;
 }
 
@@ -365,35 +352,36 @@ void Adam_Optimizer::Step_8(float* _params,
                             size_t _param_size,
                             __half* dev_params)
 {
-    _betta1_t *= _betta1;
-    _betta2_t *= _betta2;
+    size_t rounded_size = 0;
+    
+#if defined(__AVX512__) or defined(__AVX256__)    
 
-    AVX_512 betta1_4;
-    betta1_4.data = _mm512_set1_ps(_betta1);
-    AVX_512 betta2_4;
-    betta2_4.data = _mm512_set1_ps(_betta2);
+    AVX_Data betta1_4;
+    betta1_4.data = SIMD_SET(_betta1);
+    AVX_Data betta2_4;
+    betta2_4.data = SIMD_SET(_betta2);
 
     float betta1_minus1 = 1 - _betta1;
     float betta2_minus1 = 1 - _betta2;
-    AVX_512 betta1_minus1_4;
-    betta1_minus1_4.data = _mm512_set1_ps(betta1_minus1);
-    AVX_512 betta2_minus1_4;
-    betta2_minus1_4.data = _mm512_set1_ps(betta2_minus1);
+    AVX_Data betta1_minus1_4;
+    betta1_minus1_4.data = SIMD_SET(betta1_minus1);
+    AVX_Data betta2_minus1_4;
+    betta2_minus1_4.data = SIMD_SET(betta2_minus1);
 
     float bias_correction1 = 1 - _betta1_t;
     float bias_correction2 = 1 / sqrt(1 - _betta2_t);
-    // AVX_512 bias_correction1_4 = _mm512_set1_ps(bias_correction1);
-    AVX_512 bias2_sqrt;
-    bias2_sqrt.data = _mm512_set1_ps(bias_correction2);
+    // AVX_Data bias_correction1_4 = SIMD_SET(bias_correction1);
+    AVX_Data bias2_sqrt;
+    bias2_sqrt.data = SIMD_SET(bias_correction2);
 
-    AVX_512 eps_4;
-    eps_4.data = _mm512_set1_ps(_eps);
+    AVX_Data eps_4;
+    eps_4.data = SIMD_SET(_eps);
 
     float step_size = -1 * _alpha / bias_correction1;
-    AVX_512 step_size_4;
-    step_size_4.data = _mm512_set1_ps(step_size);
+    AVX_Data step_size_4;
+    step_size_4.data = SIMD_SET(step_size);
 
-    size_t rounded_size = ROUND_DOWN(_param_size, (SIMD_WIDTH << 3));
+    rounded_size = ROUND_DOWN(_param_size, (SIMD_WIDTH << 3));
 
     for (size_t t = 0; t < rounded_size; t += TILE) {
         size_t copy_size = TILE;
@@ -401,204 +389,204 @@ void Adam_Optimizer::Step_8(float* _params,
         size_t offset = copy_size + t;
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) {
-            AVX_512 grad_4[8];
-            grad_4[0].data = _mm512_loadu_ps(grads + i);
-            grad_4[1].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH);
-            grad_4[2].data = _mm512_loadu_ps(grads + i + (SIMD_WIDTH << 1));
-            grad_4[3].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 3);
-            grad_4[4].data = _mm512_loadu_ps(grads + i + (SIMD_WIDTH << 2));
-            grad_4[5].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 5);
-            grad_4[6].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 6);
-            grad_4[7].data = _mm512_loadu_ps(grads + i + SIMD_WIDTH * 7);
+            AVX_Data grad_4[8];
+            grad_4[0].data = SIMD_LOAD(grads + i);
+            grad_4[1].data = SIMD_LOAD(grads + i + SIMD_WIDTH);
+            grad_4[2].data = SIMD_LOAD(grads + i + (SIMD_WIDTH << 1));
+            grad_4[3].data = SIMD_LOAD(grads + i + SIMD_WIDTH * 3);
+            grad_4[4].data = SIMD_LOAD(grads + i + (SIMD_WIDTH << 2));
+            grad_4[5].data = SIMD_LOAD(grads + i + SIMD_WIDTH * 5);
+            grad_4[6].data = SIMD_LOAD(grads + i + SIMD_WIDTH * 6);
+            grad_4[7].data = SIMD_LOAD(grads + i + SIMD_WIDTH * 7);
 
-            AVX_512 momntum_4[8];
-            momntum_4[0].data = _mm512_loadu_ps(_exp_avg + i);
-            momntum_4[1].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH);
-            momntum_4[2].data = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH << 1));
-            momntum_4[3].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 3);
-            momntum_4[4].data = _mm512_loadu_ps(_exp_avg + i + (SIMD_WIDTH << 2));
-            momntum_4[5].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 5);
-            momntum_4[6].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 6);
-            momntum_4[7].data = _mm512_loadu_ps(_exp_avg + i + SIMD_WIDTH * 7);
+            AVX_Data momentum_4[8];
+            momentum_4[0].data = SIMD_LOAD(_exp_avg + i);
+            momentum_4[1].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH);
+            momentum_4[2].data = SIMD_LOAD(_exp_avg + i + (SIMD_WIDTH << 1));
+            momentum_4[3].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * 3);
+            momentum_4[4].data = SIMD_LOAD(_exp_avg + i + (SIMD_WIDTH << 2));
+            momentum_4[5].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * 5);
+            momentum_4[6].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * 6);
+            momentum_4[7].data = SIMD_LOAD(_exp_avg + i + SIMD_WIDTH * 7);
 
-            AVX_512 varianc_4[8];
-            varianc_4[0].data = _mm512_loadu_ps(_exp_avg_sq + i);
-            varianc_4[1].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH);
-            varianc_4[2].data = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1));
-            varianc_4[3].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3);
-            varianc_4[4].data = _mm512_loadu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 2));
-            varianc_4[5].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 5);
-            varianc_4[6].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 6);
-            varianc_4[7].data = _mm512_loadu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7);
+            AVX_Data variance_4[8];
+            variance_4[0].data = SIMD_LOAD(_exp_avg_sq + i);
+            variance_4[1].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH);
+            variance_4[2].data = SIMD_LOAD(_exp_avg_sq + i + (SIMD_WIDTH << 1));
+            variance_4[3].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * 3);
+            variance_4[4].data = SIMD_LOAD(_exp_avg_sq + i + (SIMD_WIDTH << 2));
+            variance_4[5].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * 5);
+            variance_4[6].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * 6);
+            variance_4[7].data = SIMD_LOAD(_exp_avg_sq + i + SIMD_WIDTH * 7);
 
-            AVX_512 param_4[8];
-            param_4[0].data = _mm512_loadu_ps(_params + i);
-            param_4[1].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH);
-            param_4[2].data = _mm512_loadu_ps(_params + i + (SIMD_WIDTH << 1));
-            param_4[3].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 3);
-            param_4[4].data = _mm512_loadu_ps(_params + i + (SIMD_WIDTH << 2));
-            param_4[5].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 5);
-            param_4[6].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 6);
-            param_4[7].data = _mm512_loadu_ps(_params + i + SIMD_WIDTH * 7);
+            AVX_Data param_4[8];
+            param_4[0].data = SIMD_LOAD(_params + i);
+            param_4[1].data = SIMD_LOAD(_params + i + SIMD_WIDTH);
+            param_4[2].data = SIMD_LOAD(_params + i + (SIMD_WIDTH << 1));
+            param_4[3].data = SIMD_LOAD(_params + i + SIMD_WIDTH * 3);
+            param_4[4].data = SIMD_LOAD(_params + i + (SIMD_WIDTH << 2));
+            param_4[5].data = SIMD_LOAD(_params + i + SIMD_WIDTH * 5);
+            param_4[6].data = SIMD_LOAD(_params + i + SIMD_WIDTH * 6);
+            param_4[7].data = SIMD_LOAD(_params + i + SIMD_WIDTH * 7);
 
             if (_weight_decay > 0) {
-                AVX_512 weight_decay4;
-                weight_decay4.data = _mm512_set1_ps(_weight_decay);
+                AVX_Data weight_decay4;
+                weight_decay4.data = SIMD_SET(_weight_decay);
                 grad_4[0].data =
-                    _mm512_fmadd_ps(param_4[0].data, weight_decay4.data, grad_4[0].data);
+                    SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
                 grad_4[1].data =
-                    _mm512_fmadd_ps(param_4[1].data, weight_decay4.data, grad_4[1].data);
+                    SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
                 grad_4[2].data =
-                    _mm512_fmadd_ps(param_4[2].data, weight_decay4.data, grad_4[2].data);
+                    SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
                 grad_4[3].data =
-                    _mm512_fmadd_ps(param_4[3].data, weight_decay4.data, grad_4[3].data);
+                    SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
                 grad_4[4].data =
-                    _mm512_fmadd_ps(param_4[4].data, weight_decay4.data, grad_4[4].data);
+                    SIMD_FMA(param_4[4].data, weight_decay4.data, grad_4[4].data);
                 grad_4[5].data =
-                    _mm512_fmadd_ps(param_4[5].data, weight_decay4.data, grad_4[5].data);
+                    SIMD_FMA(param_4[5].data, weight_decay4.data, grad_4[5].data);
                 grad_4[6].data =
-                    _mm512_fmadd_ps(param_4[6].data, weight_decay4.data, grad_4[6].data);
+                    SIMD_FMA(param_4[6].data, weight_decay4.data, grad_4[6].data);
                 grad_4[7].data =
-                    _mm512_fmadd_ps(param_4[7].data, weight_decay4.data, grad_4[7].data);
+                    SIMD_FMA(param_4[7].data, weight_decay4.data, grad_4[7].data);
             }
 
-            momntum_4[0].data = _mm512_mul_ps(momntum_4[0].data, betta1_4.data);
-            momntum_4[0].data =
-                _mm512_fmadd_ps(grad_4[0].data, betta1_minus1_4.data, momntum_4[0].data);
-            momntum_4[1].data = _mm512_mul_ps(momntum_4[1].data, betta1_4.data);
-            momntum_4[1].data =
-                _mm512_fmadd_ps(grad_4[1].data, betta1_minus1_4.data, momntum_4[1].data);
-            momntum_4[2].data = _mm512_mul_ps(momntum_4[2].data, betta1_4.data);
-            momntum_4[2].data =
-                _mm512_fmadd_ps(grad_4[2].data, betta1_minus1_4.data, momntum_4[2].data);
-            momntum_4[3].data = _mm512_mul_ps(momntum_4[3].data, betta1_4.data);
-            momntum_4[3].data =
-                _mm512_fmadd_ps(grad_4[3].data, betta1_minus1_4.data, momntum_4[3].data);
-            momntum_4[4].data = _mm512_mul_ps(momntum_4[4].data, betta1_4.data);
-            momntum_4[4].data =
-                _mm512_fmadd_ps(grad_4[4].data, betta1_minus1_4.data, momntum_4[4].data);
-            momntum_4[5].data = _mm512_mul_ps(momntum_4[5].data, betta1_4.data);
-            momntum_4[5].data =
-                _mm512_fmadd_ps(grad_4[5].data, betta1_minus1_4.data, momntum_4[5].data);
-            momntum_4[6].data = _mm512_mul_ps(momntum_4[6].data, betta1_4.data);
-            momntum_4[6].data =
-                _mm512_fmadd_ps(grad_4[6].data, betta1_minus1_4.data, momntum_4[6].data);
-            momntum_4[7].data = _mm512_mul_ps(momntum_4[7].data, betta1_4.data);
-            momntum_4[7].data =
-                _mm512_fmadd_ps(grad_4[7].data, betta1_minus1_4.data, momntum_4[7].data);
+            momentum_4[0].data = SIMD_MUL(momentum_4[0].data, betta1_4.data);
+            momentum_4[0].data =
+                SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
+            momentum_4[1].data = SIMD_MUL(momentum_4[1].data, betta1_4.data);
+            momentum_4[1].data =
+                SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
+            momentum_4[2].data = SIMD_MUL(momentum_4[2].data, betta1_4.data);
+            momentum_4[2].data =
+                SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
+            momentum_4[3].data = SIMD_MUL(momentum_4[3].data, betta1_4.data);
+            momentum_4[3].data =
+                SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
+            momentum_4[4].data = SIMD_MUL(momentum_4[4].data, betta1_4.data);
+            momentum_4[4].data =
+                SIMD_FMA(grad_4[4].data, betta1_minus1_4.data, momentum_4[4].data);
+            momentum_4[5].data = SIMD_MUL(momentum_4[5].data, betta1_4.data);
+            momentum_4[5].data =
+                SIMD_FMA(grad_4[5].data, betta1_minus1_4.data, momentum_4[5].data);
+            momentum_4[6].data = SIMD_MUL(momentum_4[6].data, betta1_4.data);
+            momentum_4[6].data =
+                SIMD_FMA(grad_4[6].data, betta1_minus1_4.data, momentum_4[6].data);
+            momentum_4[7].data = SIMD_MUL(momentum_4[7].data, betta1_4.data);
+            momentum_4[7].data =
+                SIMD_FMA(grad_4[7].data, betta1_minus1_4.data, momentum_4[7].data);
 
-            varianc_4[0].data = _mm512_mul_ps(varianc_4[0].data, betta2_4.data);
-            varianc_4[1].data = _mm512_mul_ps(varianc_4[1].data, betta2_4.data);
-            varianc_4[2].data = _mm512_mul_ps(varianc_4[2].data, betta2_4.data);
-            varianc_4[3].data = _mm512_mul_ps(varianc_4[3].data, betta2_4.data);
-            varianc_4[4].data = _mm512_mul_ps(varianc_4[4].data, betta2_4.data);
-            varianc_4[5].data = _mm512_mul_ps(varianc_4[5].data, betta2_4.data);
-            varianc_4[6].data = _mm512_mul_ps(varianc_4[6].data, betta2_4.data);
-            varianc_4[7].data = _mm512_mul_ps(varianc_4[7].data, betta2_4.data);
-            grad_4[0].data = _mm512_mul_ps(grad_4[0].data, grad_4[0].data);
-            grad_4[1].data = _mm512_mul_ps(grad_4[1].data, grad_4[1].data);
-            grad_4[2].data = _mm512_mul_ps(grad_4[2].data, grad_4[2].data);
-            grad_4[3].data = _mm512_mul_ps(grad_4[3].data, grad_4[3].data);
-            grad_4[4].data = _mm512_mul_ps(grad_4[4].data, grad_4[4].data);
-            grad_4[5].data = _mm512_mul_ps(grad_4[5].data, grad_4[5].data);
-            grad_4[6].data = _mm512_mul_ps(grad_4[6].data, grad_4[6].data);
-            grad_4[7].data = _mm512_mul_ps(grad_4[7].data, grad_4[7].data);
-            varianc_4[0].data =
-                _mm512_fmadd_ps(grad_4[0].data, betta2_minus1_4.data, varianc_4[0].data);
-            varianc_4[1].data =
-                _mm512_fmadd_ps(grad_4[1].data, betta2_minus1_4.data, varianc_4[1].data);
-            varianc_4[2].data =
-                _mm512_fmadd_ps(grad_4[2].data, betta2_minus1_4.data, varianc_4[2].data);
-            varianc_4[3].data =
-                _mm512_fmadd_ps(grad_4[3].data, betta2_minus1_4.data, varianc_4[3].data);
-            varianc_4[4].data =
-                _mm512_fmadd_ps(grad_4[4].data, betta2_minus1_4.data, varianc_4[4].data);
-            varianc_4[5].data =
-                _mm512_fmadd_ps(grad_4[5].data, betta2_minus1_4.data, varianc_4[5].data);
-            varianc_4[6].data =
-                _mm512_fmadd_ps(grad_4[6].data, betta2_minus1_4.data, varianc_4[6].data);
-            varianc_4[7].data =
-                _mm512_fmadd_ps(grad_4[7].data, betta2_minus1_4.data, varianc_4[7].data);
+            variance_4[0].data = SIMD_MUL(variance_4[0].data, betta2_4.data);
+            variance_4[1].data = SIMD_MUL(variance_4[1].data, betta2_4.data);
+            variance_4[2].data = SIMD_MUL(variance_4[2].data, betta2_4.data);
+            variance_4[3].data = SIMD_MUL(variance_4[3].data, betta2_4.data);
+            variance_4[4].data = SIMD_MUL(variance_4[4].data, betta2_4.data);
+            variance_4[5].data = SIMD_MUL(variance_4[5].data, betta2_4.data);
+            variance_4[6].data = SIMD_MUL(variance_4[6].data, betta2_4.data);
+            variance_4[7].data = SIMD_MUL(variance_4[7].data, betta2_4.data);
+            grad_4[0].data = SIMD_MUL(grad_4[0].data, grad_4[0].data);
+            grad_4[1].data = SIMD_MUL(grad_4[1].data, grad_4[1].data);
+            grad_4[2].data = SIMD_MUL(grad_4[2].data, grad_4[2].data);
+            grad_4[3].data = SIMD_MUL(grad_4[3].data, grad_4[3].data);
+            grad_4[4].data = SIMD_MUL(grad_4[4].data, grad_4[4].data);
+            grad_4[5].data = SIMD_MUL(grad_4[5].data, grad_4[5].data);
+            grad_4[6].data = SIMD_MUL(grad_4[6].data, grad_4[6].data);
+            grad_4[7].data = SIMD_MUL(grad_4[7].data, grad_4[7].data);
+            variance_4[0].data =
+                SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
+            variance_4[1].data =
+                SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
+            variance_4[2].data =
+                SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
+            variance_4[3].data =
+                SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
+            variance_4[4].data =
+                SIMD_FMA(grad_4[4].data, betta2_minus1_4.data, variance_4[4].data);
+            variance_4[5].data =
+                SIMD_FMA(grad_4[5].data, betta2_minus1_4.data, variance_4[5].data);
+            variance_4[6].data =
+                SIMD_FMA(grad_4[6].data, betta2_minus1_4.data, variance_4[6].data);
+            variance_4[7].data =
+                SIMD_FMA(grad_4[7].data, betta2_minus1_4.data, variance_4[7].data);
 
-            grad_4[0].data = _mm512_sqrt_ps(varianc_4[0].data);
-            grad_4[1].data = _mm512_sqrt_ps(varianc_4[1].data);
-            grad_4[2].data = _mm512_sqrt_ps(varianc_4[2].data);
-            grad_4[3].data = _mm512_sqrt_ps(varianc_4[3].data);
-            grad_4[4].data = _mm512_sqrt_ps(varianc_4[4].data);
-            grad_4[5].data = _mm512_sqrt_ps(varianc_4[5].data);
-            grad_4[6].data = _mm512_sqrt_ps(varianc_4[6].data);
-            grad_4[7].data = _mm512_sqrt_ps(varianc_4[7].data);
+            grad_4[0].data = SIMD_SQRT(variance_4[0].data);
+            grad_4[1].data = SIMD_SQRT(variance_4[1].data);
+            grad_4[2].data = SIMD_SQRT(variance_4[2].data);
+            grad_4[3].data = SIMD_SQRT(variance_4[3].data);
+            grad_4[4].data = SIMD_SQRT(variance_4[4].data);
+            grad_4[5].data = SIMD_SQRT(variance_4[5].data);
+            grad_4[6].data = SIMD_SQRT(variance_4[6].data);
+            grad_4[7].data = SIMD_SQRT(variance_4[7].data);
 
-            grad_4[0].data = _mm512_fmadd_ps(grad_4[0].data, bias2_sqrt.data, eps_4.data);
-            grad_4[1].data = _mm512_fmadd_ps(grad_4[1].data, bias2_sqrt.data, eps_4.data);
-            grad_4[2].data = _mm512_fmadd_ps(grad_4[2].data, bias2_sqrt.data, eps_4.data);
-            grad_4[3].data = _mm512_fmadd_ps(grad_4[3].data, bias2_sqrt.data, eps_4.data);
-            grad_4[4].data = _mm512_fmadd_ps(grad_4[4].data, bias2_sqrt.data, eps_4.data);
-            grad_4[5].data = _mm512_fmadd_ps(grad_4[5].data, bias2_sqrt.data, eps_4.data);
-            grad_4[6].data = _mm512_fmadd_ps(grad_4[6].data, bias2_sqrt.data, eps_4.data);
-            grad_4[7].data = _mm512_fmadd_ps(grad_4[7].data, bias2_sqrt.data, eps_4.data);
-            grad_4[0].data = _mm512_div_ps(momntum_4[0].data, grad_4[0].data);
-            grad_4[1].data = _mm512_div_ps(momntum_4[1].data, grad_4[1].data);
-            grad_4[2].data = _mm512_div_ps(momntum_4[2].data, grad_4[2].data);
-            grad_4[3].data = _mm512_div_ps(momntum_4[3].data, grad_4[3].data);
-            grad_4[4].data = _mm512_div_ps(momntum_4[4].data, grad_4[4].data);
-            grad_4[5].data = _mm512_div_ps(momntum_4[5].data, grad_4[5].data);
-            grad_4[6].data = _mm512_div_ps(momntum_4[6].data, grad_4[6].data);
-            grad_4[7].data = _mm512_div_ps(momntum_4[7].data, grad_4[7].data);
+            grad_4[0].data = SIMD_FMA(grad_4[0].data, bias2_sqrt.data, eps_4.data);
+            grad_4[1].data = SIMD_FMA(grad_4[1].data, bias2_sqrt.data, eps_4.data);
+            grad_4[2].data = SIMD_FMA(grad_4[2].data, bias2_sqrt.data, eps_4.data);
+            grad_4[3].data = SIMD_FMA(grad_4[3].data, bias2_sqrt.data, eps_4.data);
+            grad_4[4].data = SIMD_FMA(grad_4[4].data, bias2_sqrt.data, eps_4.data);
+            grad_4[5].data = SIMD_FMA(grad_4[5].data, bias2_sqrt.data, eps_4.data);
+            grad_4[6].data = SIMD_FMA(grad_4[6].data, bias2_sqrt.data, eps_4.data);
+            grad_4[7].data = SIMD_FMA(grad_4[7].data, bias2_sqrt.data, eps_4.data);
+            grad_4[0].data = SIMD_DIV(momentum_4[0].data, grad_4[0].data);
+            grad_4[1].data = SIMD_DIV(momentum_4[1].data, grad_4[1].data);
+            grad_4[2].data = SIMD_DIV(momentum_4[2].data, grad_4[2].data);
+            grad_4[3].data = SIMD_DIV(momentum_4[3].data, grad_4[3].data);
+            grad_4[4].data = SIMD_DIV(momentum_4[4].data, grad_4[4].data);
+            grad_4[5].data = SIMD_DIV(momentum_4[5].data, grad_4[5].data);
+            grad_4[6].data = SIMD_DIV(momentum_4[6].data, grad_4[6].data);
+            grad_4[7].data = SIMD_DIV(momentum_4[7].data, grad_4[7].data);
 
-            param_4[0].data = _mm512_fmadd_ps(grad_4[0].data, step_size_4.data, param_4[0].data);
-            param_4[1].data = _mm512_fmadd_ps(grad_4[1].data, step_size_4.data, param_4[1].data);
-            param_4[2].data = _mm512_fmadd_ps(grad_4[2].data, step_size_4.data, param_4[2].data);
-            param_4[3].data = _mm512_fmadd_ps(grad_4[3].data, step_size_4.data, param_4[3].data);
-            param_4[4].data = _mm512_fmadd_ps(grad_4[4].data, step_size_4.data, param_4[4].data);
-            param_4[5].data = _mm512_fmadd_ps(grad_4[5].data, step_size_4.data, param_4[5].data);
-            param_4[6].data = _mm512_fmadd_ps(grad_4[6].data, step_size_4.data, param_4[6].data);
-            param_4[7].data = _mm512_fmadd_ps(grad_4[7].data, step_size_4.data, param_4[7].data);
+            param_4[0].data = SIMD_FMA(grad_4[0].data, step_size_4.data, param_4[0].data);
+            param_4[1].data = SIMD_FMA(grad_4[1].data, step_size_4.data, param_4[1].data);
+            param_4[2].data = SIMD_FMA(grad_4[2].data, step_size_4.data, param_4[2].data);
+            param_4[3].data = SIMD_FMA(grad_4[3].data, step_size_4.data, param_4[3].data);
+            param_4[4].data = SIMD_FMA(grad_4[4].data, step_size_4.data, param_4[4].data);
+            param_4[5].data = SIMD_FMA(grad_4[5].data, step_size_4.data, param_4[5].data);
+            param_4[6].data = SIMD_FMA(grad_4[6].data, step_size_4.data, param_4[6].data);
+            param_4[7].data = SIMD_FMA(grad_4[7].data, step_size_4.data, param_4[7].data);
 
-            _mm512_storeu_ps(_params + i, param_4[0].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH, param_4[1].data);
-            _mm512_storeu_ps(_params + i + (SIMD_WIDTH << 1), param_4[2].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH * 3, param_4[3].data);
-            _mm512_storeu_ps(_params + i + (SIMD_WIDTH << 2), param_4[4].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH * 5, param_4[5].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH * 6, param_4[6].data);
-            _mm512_storeu_ps(_params + i + SIMD_WIDTH * 7, param_4[7].data);
+            SIMD_STORE(_params + i, param_4[0].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH, param_4[1].data);
+            SIMD_STORE(_params + i + (SIMD_WIDTH << 1), param_4[2].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH * 3, param_4[3].data);
+            SIMD_STORE(_params + i + (SIMD_WIDTH << 2), param_4[4].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH * 5, param_4[5].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH * 6, param_4[6].data);
+            SIMD_STORE(_params + i + SIMD_WIDTH * 7, param_4[7].data);
 
             if (dev_params) {
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
                                  param_4[1].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
                                  param_4[2].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
                                  param_4[3].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2),
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2),
                                  param_4[4].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5,
                                  param_4[5].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6,
                                  param_4[6].data);
-                _mm512_storeu_ps(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7,
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7,
                                  param_4[7].data);
             }
 
-            _mm512_storeu_ps(_exp_avg + i, momntum_4[0].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH, momntum_4[1].data);
-            _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH << 1), momntum_4[2].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 3, momntum_4[3].data);
-            _mm512_storeu_ps(_exp_avg + i + (SIMD_WIDTH << 2), momntum_4[4].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 5, momntum_4[5].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 6, momntum_4[6].data);
-            _mm512_storeu_ps(_exp_avg + i + SIMD_WIDTH * 7, momntum_4[7].data);
+            SIMD_STORE(_exp_avg + i, momentum_4[0].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH, momentum_4[1].data);
+            SIMD_STORE(_exp_avg + i + (SIMD_WIDTH << 1), momentum_4[2].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH * 3, momentum_4[3].data);
+            SIMD_STORE(_exp_avg + i + (SIMD_WIDTH << 2), momentum_4[4].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH * 5, momentum_4[5].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH * 6, momentum_4[6].data);
+            SIMD_STORE(_exp_avg + i + SIMD_WIDTH * 7, momentum_4[7].data);
 
-            _mm512_storeu_ps(_exp_avg_sq + i, varianc_4[0].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH, varianc_4[1].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 1), varianc_4[2].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 3, varianc_4[3].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + (SIMD_WIDTH << 2), varianc_4[4].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 5, varianc_4[5].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 6, varianc_4[6].data);
-            _mm512_storeu_ps(_exp_avg_sq + i + SIMD_WIDTH * 7, varianc_4[7].data);
+            SIMD_STORE(_exp_avg_sq + i, variance_4[0].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH, variance_4[1].data);
+            SIMD_STORE(_exp_avg_sq + i + (SIMD_WIDTH << 1), variance_4[2].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 3, variance_4[3].data);
+            SIMD_STORE(_exp_avg_sq + i + (SIMD_WIDTH << 2), variance_4[4].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 5, variance_4[5].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 6, variance_4[6].data);
+            SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 7, variance_4[7].data);
         }
         if (dev_params) {
             launch_param_update(_doubled_buffer[_buf_index],
@@ -608,6 +596,7 @@ void Adam_Optimizer::Step_8(float* _params,
             _buf_index = !_buf_index;
         }
     }
+#endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
                (grads + rounded_size),
@@ -635,7 +624,7 @@ int ds_adam_step(int optimizer_id,
 
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-
+    opt->IncrementStep();
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
     return 0;
@@ -662,7 +651,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
 
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-
+    opt->IncrementStep();
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 

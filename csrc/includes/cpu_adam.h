@@ -8,6 +8,8 @@
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
+#include <stdio.h>
+#include <cpuid.h>
 
 #define CUDA_CHECK(callstr)                                                                    \
     {                                                                                          \
@@ -18,9 +20,29 @@
         }                                                                                      \
     }
 
-#define SIMD_WIDTH 16
-
 #define TILE (1024 * 1024 * 1024)
+
+#if defined(__AVX512__)
+    #define SIMD_STORE(a, d) _mm512_storeu_ps(a, d)
+    #define SIMD_LOAD(x) _mm512_loadu_ps(x)
+    #define SIMD_SET(x) _mm512_set1_ps(x)
+    #define SIMD_MUL(x, y) _mm512_mul_ps(x, y)
+    #define SIMD_FMA(x, y, c) _mm512_fmadd_ps(x, y, c)
+    #define SIMD_SQRT(x) _mm512_sqrt_ps(x)
+    #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
+    #define SIMD_WIDTH 16
+#else 
+    #if defined(__AVX256__)
+        #define SIMD_STORE(a, d) _mm256_storeu_ps(a, d)
+        #define SIMD_LOAD(x) _mm256_loadu_ps(x)
+        #define SIMD_SET(x) _mm256_set1_ps(x)
+        #define SIMD_MUL(x, y) _mm256_mul_ps(x, y)
+        #define SIMD_FMA(x, y, c) _mm256_fmadd_ps(x, y, c)
+        #define SIMD_SQRT(x) _mm256_sqrt_ps(x)
+        #define SIMD_DIV(x, y) _mm256_div_ps(x, y)
+        #define SIMD_WIDTH 8
+    #endif
+#endif
 
 class Adam_Optimizer {
 public:
@@ -64,12 +86,22 @@ public:
                 float* _exp_avg_sq,
                 size_t _param_size,
                 __half* dev_params = nullptr);
-
+    inline void IncrementStep()
+    {
+        _betta1_t *= _betta1;
+        _betta2_t *= _betta2;        
+    }
 private:
-    union AVX_512 {
+#if defined(__AVX512__) or defined(__AVX256__)
+    union AVX_Data {
+#if defined(__AVX512__)
         __m512 data;
+#else 
+        __m256 data;
+#endif
         // float data_f[16];
     };
+#endif
 
     float _alpha;
     float _betta1;
