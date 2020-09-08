@@ -46,7 +46,7 @@ void Adam_Optimizer::Step(float* _params,
     betta1_minus1_4.data = SIMD_SET(betta1_minus1);
     AVX_Data betta2_minus1_4;
     betta2_minus1_4.data = SIMD_SET(betta2_minus1);
-    
+
     AVX_Data bias2_sqrt;
     bias2_sqrt.data = SIMD_SET(bias_correction2);
 
@@ -57,8 +57,7 @@ void Adam_Optimizer::Step(float* _params,
     step_size_4.data = SIMD_SET(step_size);
 
     AVX_Data weight_decay4;
-    if (_weight_decay > 0)
-        weight_decay4.data = SIMD_SET(_weight_decay);
+    if (_weight_decay > 0) weight_decay4.data = SIMD_SET(_weight_decay);
 
     rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH);
 
@@ -120,7 +119,7 @@ void Adam_Optimizer::Step(float* _params,
             float param = _params[k];
             float momentum = _exp_avg[k];
             float variance = _exp_avg_sq[k];
-            if (_weight_decay > 0) grad = param * _weight_decay + grad; 
+            if (_weight_decay > 0) grad = param * _weight_decay + grad;
 
             momentum *= momentum * _betta1;
             momentum = grad * betta1_minus1 + momentum;
@@ -157,8 +156,8 @@ void Adam_Optimizer::Step_4(float* _params,
                             __half* dev_params)
 {
     size_t rounded_size = 0;
-    
-#if defined(__AVX512__) or defined(__AVX256__)    
+
+#if defined(__AVX512__) or defined(__AVX256__)
 
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -220,28 +219,20 @@ void Adam_Optimizer::Step_4(float* _params,
             if (_weight_decay > 0) {
                 AVX_Data weight_decay4;
                 weight_decay4.data = SIMD_SET(_weight_decay);
-                grad_4[0].data =
-                    SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
-                grad_4[1].data =
-                    SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
-                grad_4[2].data =
-                    SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
-                grad_4[3].data =
-                    SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
+                grad_4[0].data = SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
+                grad_4[1].data = SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
+                grad_4[2].data = SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
+                grad_4[3].data = SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
             }
 
             momentum_4[0].data = SIMD_MUL(momentum_4[0].data, betta1_4.data);
-            momentum_4[0].data =
-                SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
+            momentum_4[0].data = SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
             momentum_4[1].data = SIMD_MUL(momentum_4[1].data, betta1_4.data);
-            momentum_4[1].data =
-                SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
+            momentum_4[1].data = SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
             momentum_4[2].data = SIMD_MUL(momentum_4[2].data, betta1_4.data);
-            momentum_4[2].data =
-                SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
+            momentum_4[2].data = SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
             momentum_4[3].data = SIMD_MUL(momentum_4[3].data, betta1_4.data);
-            momentum_4[3].data =
-                SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
+            momentum_4[3].data = SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
 
             variance_4[0].data = SIMD_MUL(variance_4[0].data, betta2_4.data);
             variance_4[1].data = SIMD_MUL(variance_4[1].data, betta2_4.data);
@@ -251,14 +242,10 @@ void Adam_Optimizer::Step_4(float* _params,
             grad_4[1].data = SIMD_MUL(grad_4[1].data, grad_4[1].data);
             grad_4[2].data = SIMD_MUL(grad_4[2].data, grad_4[2].data);
             grad_4[3].data = SIMD_MUL(grad_4[3].data, grad_4[3].data);
-            variance_4[0].data =
-                SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
-            variance_4[1].data =
-                SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
-            variance_4[2].data =
-                SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
-            variance_4[3].data =
-                SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
+            variance_4[0].data = SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
+            variance_4[1].data = SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
+            variance_4[2].data = SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
+            variance_4[3].data = SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
 
             grad_4[0].data = SIMD_SQRT(variance_4[0].data);
             grad_4[1].data = SIMD_SQRT(variance_4[1].data);
@@ -286,12 +273,10 @@ void Adam_Optimizer::Step_4(float* _params,
 
             if (dev_params) {
                 SIMD_STORE(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
-                                 param_4[1].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data);
                 SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
-                                 param_4[2].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
-                                 param_4[3].data);
+                           param_4[2].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data);
             }
 
             SIMD_STORE(_exp_avg + i, momentum_4[0].data);
@@ -334,12 +319,15 @@ int create_adam_optimizer(int optimizer_id,
 
     s_optimizers[optimizer_id] = opt;
 #if defined(__AVX512__)
-    std::cout << "Adam Optimizer #" << optimizer_id << " is created with AVX512 arithmetic capability." << std::endl;
+    std::cout << "Adam Optimizer #" << optimizer_id
+              << " is created with AVX512 arithmetic capability." << std::endl;
 #else
 #if defined(__AVX256__)
-    std::cout << "Adam Optimizer #" << optimizer_id << " is created with AVX2 arithmetic capability." << std::endl;
+    std::cout << "Adam Optimizer #" << optimizer_id
+              << " is created with AVX2 arithmetic capability." << std::endl;
 #else
-    std::cout << "Adam Optimizer #" << optimizer_id << " is created with scalar arithmetic capability." << std::endl;
+    std::cout << "Adam Optimizer #" << optimizer_id
+              << " is created with scalar arithmetic capability." << std::endl;
 #endif
 #endif
     return 0;
@@ -353,8 +341,8 @@ void Adam_Optimizer::Step_8(float* _params,
                             __half* dev_params)
 {
     size_t rounded_size = 0;
-    
-#if defined(__AVX512__) or defined(__AVX256__)    
+
+#if defined(__AVX512__) or defined(__AVX256__)
 
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -432,48 +420,32 @@ void Adam_Optimizer::Step_8(float* _params,
             if (_weight_decay > 0) {
                 AVX_Data weight_decay4;
                 weight_decay4.data = SIMD_SET(_weight_decay);
-                grad_4[0].data =
-                    SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
-                grad_4[1].data =
-                    SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
-                grad_4[2].data =
-                    SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
-                grad_4[3].data =
-                    SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
-                grad_4[4].data =
-                    SIMD_FMA(param_4[4].data, weight_decay4.data, grad_4[4].data);
-                grad_4[5].data =
-                    SIMD_FMA(param_4[5].data, weight_decay4.data, grad_4[5].data);
-                grad_4[6].data =
-                    SIMD_FMA(param_4[6].data, weight_decay4.data, grad_4[6].data);
-                grad_4[7].data =
-                    SIMD_FMA(param_4[7].data, weight_decay4.data, grad_4[7].data);
+                grad_4[0].data = SIMD_FMA(param_4[0].data, weight_decay4.data, grad_4[0].data);
+                grad_4[1].data = SIMD_FMA(param_4[1].data, weight_decay4.data, grad_4[1].data);
+                grad_4[2].data = SIMD_FMA(param_4[2].data, weight_decay4.data, grad_4[2].data);
+                grad_4[3].data = SIMD_FMA(param_4[3].data, weight_decay4.data, grad_4[3].data);
+                grad_4[4].data = SIMD_FMA(param_4[4].data, weight_decay4.data, grad_4[4].data);
+                grad_4[5].data = SIMD_FMA(param_4[5].data, weight_decay4.data, grad_4[5].data);
+                grad_4[6].data = SIMD_FMA(param_4[6].data, weight_decay4.data, grad_4[6].data);
+                grad_4[7].data = SIMD_FMA(param_4[7].data, weight_decay4.data, grad_4[7].data);
             }
 
             momentum_4[0].data = SIMD_MUL(momentum_4[0].data, betta1_4.data);
-            momentum_4[0].data =
-                SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
+            momentum_4[0].data = SIMD_FMA(grad_4[0].data, betta1_minus1_4.data, momentum_4[0].data);
             momentum_4[1].data = SIMD_MUL(momentum_4[1].data, betta1_4.data);
-            momentum_4[1].data =
-                SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
+            momentum_4[1].data = SIMD_FMA(grad_4[1].data, betta1_minus1_4.data, momentum_4[1].data);
             momentum_4[2].data = SIMD_MUL(momentum_4[2].data, betta1_4.data);
-            momentum_4[2].data =
-                SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
+            momentum_4[2].data = SIMD_FMA(grad_4[2].data, betta1_minus1_4.data, momentum_4[2].data);
             momentum_4[3].data = SIMD_MUL(momentum_4[3].data, betta1_4.data);
-            momentum_4[3].data =
-                SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
+            momentum_4[3].data = SIMD_FMA(grad_4[3].data, betta1_minus1_4.data, momentum_4[3].data);
             momentum_4[4].data = SIMD_MUL(momentum_4[4].data, betta1_4.data);
-            momentum_4[4].data =
-                SIMD_FMA(grad_4[4].data, betta1_minus1_4.data, momentum_4[4].data);
+            momentum_4[4].data = SIMD_FMA(grad_4[4].data, betta1_minus1_4.data, momentum_4[4].data);
             momentum_4[5].data = SIMD_MUL(momentum_4[5].data, betta1_4.data);
-            momentum_4[5].data =
-                SIMD_FMA(grad_4[5].data, betta1_minus1_4.data, momentum_4[5].data);
+            momentum_4[5].data = SIMD_FMA(grad_4[5].data, betta1_minus1_4.data, momentum_4[5].data);
             momentum_4[6].data = SIMD_MUL(momentum_4[6].data, betta1_4.data);
-            momentum_4[6].data =
-                SIMD_FMA(grad_4[6].data, betta1_minus1_4.data, momentum_4[6].data);
+            momentum_4[6].data = SIMD_FMA(grad_4[6].data, betta1_minus1_4.data, momentum_4[6].data);
             momentum_4[7].data = SIMD_MUL(momentum_4[7].data, betta1_4.data);
-            momentum_4[7].data =
-                SIMD_FMA(grad_4[7].data, betta1_minus1_4.data, momentum_4[7].data);
+            momentum_4[7].data = SIMD_FMA(grad_4[7].data, betta1_minus1_4.data, momentum_4[7].data);
 
             variance_4[0].data = SIMD_MUL(variance_4[0].data, betta2_4.data);
             variance_4[1].data = SIMD_MUL(variance_4[1].data, betta2_4.data);
@@ -491,22 +463,14 @@ void Adam_Optimizer::Step_8(float* _params,
             grad_4[5].data = SIMD_MUL(grad_4[5].data, grad_4[5].data);
             grad_4[6].data = SIMD_MUL(grad_4[6].data, grad_4[6].data);
             grad_4[7].data = SIMD_MUL(grad_4[7].data, grad_4[7].data);
-            variance_4[0].data =
-                SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
-            variance_4[1].data =
-                SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
-            variance_4[2].data =
-                SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
-            variance_4[3].data =
-                SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
-            variance_4[4].data =
-                SIMD_FMA(grad_4[4].data, betta2_minus1_4.data, variance_4[4].data);
-            variance_4[5].data =
-                SIMD_FMA(grad_4[5].data, betta2_minus1_4.data, variance_4[5].data);
-            variance_4[6].data =
-                SIMD_FMA(grad_4[6].data, betta2_minus1_4.data, variance_4[6].data);
-            variance_4[7].data =
-                SIMD_FMA(grad_4[7].data, betta2_minus1_4.data, variance_4[7].data);
+            variance_4[0].data = SIMD_FMA(grad_4[0].data, betta2_minus1_4.data, variance_4[0].data);
+            variance_4[1].data = SIMD_FMA(grad_4[1].data, betta2_minus1_4.data, variance_4[1].data);
+            variance_4[2].data = SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
+            variance_4[3].data = SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
+            variance_4[4].data = SIMD_FMA(grad_4[4].data, betta2_minus1_4.data, variance_4[4].data);
+            variance_4[5].data = SIMD_FMA(grad_4[5].data, betta2_minus1_4.data, variance_4[5].data);
+            variance_4[6].data = SIMD_FMA(grad_4[6].data, betta2_minus1_4.data, variance_4[6].data);
+            variance_4[7].data = SIMD_FMA(grad_4[7].data, betta2_minus1_4.data, variance_4[7].data);
 
             grad_4[0].data = SIMD_SQRT(variance_4[0].data);
             grad_4[1].data = SIMD_SQRT(variance_4[1].data);
@@ -554,20 +518,15 @@ void Adam_Optimizer::Step_8(float* _params,
 
             if (dev_params) {
                 SIMD_STORE(_doubled_buffer[_buf_index] + (i - t), param_4[0].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
-                                 param_4[1].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data);
                 SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
-                                 param_4[2].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
-                                 param_4[3].data);
+                           param_4[2].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data);
                 SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2),
-                                 param_4[4].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5,
-                                 param_4[5].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6,
-                                 param_4[6].data);
-                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7,
-                                 param_4[7].data);
+                           param_4[4].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6].data);
+                SIMD_STORE(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7].data);
             }
 
             SIMD_STORE(_exp_avg + i, momentum_4[0].data);

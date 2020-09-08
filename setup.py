@@ -106,7 +106,6 @@ elif d['AVX2']:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
 
-
 ext_modules = []
 
 ## Lamb ##
