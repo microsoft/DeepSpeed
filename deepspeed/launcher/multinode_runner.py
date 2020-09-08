@@ -1,10 +1,12 @@
 import os
 import sys
 import shutil
+import subprocess
+import warnings
 from abc import ABC
 
 from ..utils import logger
-from .constants import PDSH_MAX_FAN_OUT
+from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
 
 class MultiNodeRunner(ABC):
@@ -24,11 +26,6 @@ class MultiNodeRunner(ABC):
     def add_export(self, key, var):
         self.exports[key.strip()] = var.strip()
 
-    def parse_user_args(self):
-        return list(
-            map(lambda x: x if x.startswith("-") else "'{}'".format(x),
-                self.args.user_args))
-
 
 class PDSHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64):
@@ -36,6 +33,11 @@ class PDSHRunner(MultiNodeRunner):
 
     def backend_exists(self):
         return shutil.which('pdsh')
+
+    def parse_user_args(self):
+        return list(
+            map(lambda x: x if x.startswith("-") else "'{}'".format(x),
+                self.args.user_args))
 
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
@@ -72,6 +74,7 @@ class OpenMPIRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
         super(OpenMPIRunner, self).__init__(args, world_info_base64)
         self.resource_pool = resource_pool
+        self.add_export('UCX_TLS', 'tcp')
 
     def backend_exists(self):
         #TODO: check for openmpi existance, not just mpirun
@@ -79,20 +82,6 @@ class OpenMPIRunner(MultiNodeRunner):
         return shutil.which('mpirun')
 
     def get_cmd(self, environment, active_resources):
-        '''
-        DELETEME: Example for 1-bit adam
-        mpirun  -n 8 \
-		-hostfile hosts \
-		--mca btl ^openib \
-		--mca btl_tcp_if_include eth0 \
-		-x UCX_TLS=tcp \
-		-x PYTHONPATH=$PYTHONPATH \
-		-x NCCL_SOCKET_IFNAME=eth0 \
-		-x NCCL_IB_DISABLE=1 \
-		-x NCCL_IB_CUDA_SUPPORT=0 \
-		-x NCCL_DEBUG=INFO \
-		model.py
-        '''
         #FIXME: Allow for include/exclude at node-level but not gpu-level
         assert self.args.include == "" and self.args.exclude == "", 'openmpi backend does not support worker include/exclusion'
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'openmpi backend does not support limiting num nodes/gpus'
@@ -100,23 +89,88 @@ class OpenMPIRunner(MultiNodeRunner):
 
         mpirun_cmd = [
             'mpirun',
-            '-n', f'{total_process_count}',
-            '-hostfile' ,f'{self.args.hostfile}',
-            '--mca', 'btl', '^openib',
-            '--mca', 'btl_tcp_if_include', 'eth0',
-            '-x', 'UCX_TLS=tcp'
+            '-n',
+            f'{total_process_count}',
+            '-hostfile',
+            f'{self.args.hostfile}',
+            '--mca',
+            'btl',
+            '^openib',
+            '--mca',
+            'btl_tcp_if_include',
+            'eth0',
         ]
 
         export_cmd = []
         for k, v in self.exports.items():
             export_cmd += ['-x', f'{k}={v}']
 
-        python_exec = [sys.executable,
-            "-u",
-        ]
+        python_exec = [sys.executable, "-u"]
 
-        return mpirun_cmd + export_cmd + python_exec + [self.user_script] + self.user_arguments
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script
+                                                        ] + self.user_arguments
 
 
 class MVAPICHRunner(MultiNodeRunner):
-  pass
+    def __init__(self, args, world_info_base64, resource_pool):
+        super(MVAPICHRunner, self).__init__(args, world_info_base64)
+        self.resource_pool = resource_pool
+
+        self.add_export('MV2_USE_GDRCOPY', '0')
+        self.add_export('MV2_SMP_USE_CMA', '0')
+        self.add_export('MV2_DEBUG_SHOW_BACKTRACE', '1')
+        self.add_export('MV2_USE_CUDA', '1')
+        self.add_export('MV2_SUPPORT_DL', '1')
+        self.add_export('MV2_ENABLE_AFFINITY', '0')
+        self.add_export('MV2_INTER_ALLGATHER_TUNING', '5')
+        self.add_export('MV2_CUDA_USE_NAIVE', '0')
+
+    def backend_exists(self):
+        #TODO: check for openmpi existance, not just mpirun
+        #TODO: if IB is available we should suggestion mvapich
+        mpiname_exists = shutil.which('mpiname')
+        exists = False
+        if not mpiname_exists:
+            warnings.warn("mpiname does not exist, mvapich is not installed properly")
+        else:
+            results = subprocess.check_output('mpiname', shell=True)
+            mpiname_results = results.decode('utf-8').strip()
+            if "MVAPICH2-GDR" in mpiname_results:
+                exists = True
+            else:
+                warnings.warn(
+                    f"Expected MVAPICH2-GDR as return for mpiname but received {mpiname_results}"
+                )
+        return exists
+
+    def get_cmd(self, environment, active_resources):
+        #FIXME: Allow for include/exclude at node-level but not gpu-level
+        assert self.args.include == "" and self.args.exclude == "", 'mvapich backend does not support worker include/exclusion'
+        assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'mvapich backend does not support limiting num nodes/gpus'
+        devices_per_node = self.resource_pool.values()
+        total_process_count = sum(devices_per_node)
+        process_per_node = devices_per_node[0]
+        assert all([n == process_per_node for n in devices_per_node]), "mvapich requires same number of devices per node"
+
+        with open(MVAPICH_TMP_HOSTFILE, 'w') as fd:
+            for host in self.resource_pool.keys():
+                fd.write(f'{host}\n')
+
+        mpirun_cmd = [
+            'mpirun',
+            '-np',
+            f'{total_process_count}',
+            '-ppn',
+            f'{process_per_node}',
+            '--hostfile',
+            f'{MVAPICH_TMP_HOSTFILE}',
+        ]
+
+        export_cmd = []
+        for k, v in self.exports.items():
+            export_cmd += ['-env', f'{k}={v}']
+
+        python_exec = [sys.executable, "-u"]
+
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script
+                                                        ] + self.user_arguments
