@@ -96,6 +96,16 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
+import cpufeature
+d = cpufeature.CPUFeature
+
+SIMD_WIDTH = ''
+if d['AVX512f']:
+    SIMD_WIDTH = '-D__AVX512__'
+elif d['AVX2']:
+    SIMD_WIDTH = '-D__AVX256__'
+print("SIMD_WIDTH = ", SIMD_WIDTH)
+
 ext_modules = []
 
 ## Lamb ##
@@ -135,7 +145,8 @@ if BUILD_MASK & DS_BUILD_ADAM:
                               '-g',
                               '-Wno-reorder',
                               '-march=native',
-                              '-fopenmp'
+                              '-fopenmp',
+                              SIMD_WIDTH
                           ],
                           'nvcc': [
                               '-O3',
