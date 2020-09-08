@@ -1,5 +1,10 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
+
+DeepSpeed runner is the main front-end to launching multi-worker
+training jobs with DeepSpeed. By default this uses pdsh to parallel
+ssh into multiple worker nodes and launch all the neccisary processes
+per rank for training.
 """
 
 import os
@@ -14,8 +19,10 @@ from copy import deepcopy
 
 import torch.cuda
 
-from deepspeed.runtime.constants import TORCH_DISTRIBUTED_DEFAULT_PORT
-from deepspeed.utils import logger
+from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
+from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT, \
+    PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
+from ..utils import logger
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON"]
@@ -67,7 +74,7 @@ def parse_args(args=None):
     parser.add_argument("--num_gpus", type=int, default=-1, help="")
 
     parser.add_argument("--master_port",
-                        default=int(TORCH_DISTRIBUTED_DEFAULT_PORT),
+                        default=TORCH_DISTRIBUTED_DEFAULT_PORT,
                         type=int,
                         help="(optional) Port used by PyTorch distributed for "
                         "communication during training.")
@@ -77,6 +84,12 @@ def parse_args(args=None):
                         type=str,
                         help="(optional) IP address of node 0, will be "
                         "inferred via 'hostname -I' if not specified.")
+
+    parser.add_argument("--launcher",
+                        default=PDSH_LAUNCHER,
+                        type=str,
+                        help="(optional) choose launcher backend for multi-node"
+                        "training. Options currently include PDSH, OpenMPI, MVAPICH.")
 
     parser.add_argument("user_script",
                         type=str,
@@ -223,6 +236,115 @@ def encode_world_info(world_info):
 
 
 def main(args=None):
+    args = parse_args(args)
+
+    if args.num_nodes >= 0 or args.num_gpus >= 0:
+        if args.include != "" or args.exclude != "":
+            raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
+
+    multi_node_exec = True
+    resource_pool = fetch_hostfile(args.hostfile)
+    if not resource_pool:
+        resource_pool = {}
+        device_count = torch.cuda.device_count()
+        if device_count == 0:
+            raise RuntimeError("Unable to proceed, no GPU resources available")
+        resource_pool['localhost'] = device_count
+        args.master_addr = "127.0.0.1"
+        multi_node_exec = False
+
+    if not multi_node_exec and args.num_nodes > 1:
+        raise ValueError("Num nodes is >1 but no extra nodes available via hostfile")
+
+    active_resources = parse_inclusion_exclusion(resource_pool,
+                                                 args.include,
+                                                 args.exclude)
+
+    env = os.environ.copy()
+
+    if not args.master_addr:
+        first_host = list(active_resources.keys())[0]
+        hostname_cmd = ["ssh {} hostname -I".format(first_host)]
+        result = subprocess.check_output(hostname_cmd, shell=True)
+        args.master_addr = result.decode('utf-8').split()[0]
+        logger.info("Using IP address of {} for node {}".format(
+            args.master_addr,
+            first_host))
+
+    if args.num_nodes > 0:
+        updated_active_resources = collections.OrderedDict()
+        for count, hostname in enumerate(active_resources.keys()):
+            if args.num_nodes == count:
+                break
+            updated_active_resources[hostname] = active_resources[hostname]
+        active_resources = updated_active_resources
+
+    if args.num_gpus > 0:
+        updated_active_resources = collections.OrderedDict()
+        for hostname in active_resources.keys():
+            updated_active_resources[hostname] = list(range(args.num_gpus))
+        active_resources = updated_active_resources
+
+    # encode world info as base64 to make it easier to pass via command line
+    world_info_base64 = encode_world_info(active_resources)
+
+    multi_node_exec = len(active_resources) > 1
+
+    if multi_node_exec and not shutil.which('pdsh'):
+        raise RuntimeError("pdsh is not installed, unable to proceed")
+
+    if not multi_node_exec:
+        deepspeed_launch = [
+            sys.executable,
+            "-u",
+            "-m",
+            "deepspeed.launcher.launch",
+            "--world_info={}".format(world_info_base64),
+            "--master_addr={}".format(args.master_addr),
+            "--master_port={}".format(args.master_port)
+        ]
+        cmd = deepspeed_launch + [args.user_script] + args.user_args
+    else:
+        args.launcher = args.launcher.lower()
+        if args.launcher == PDSH_LAUNCHER:
+            runner = PDSHRunner(args, world_info_base64)
+        elif args.launcher == OPENMPI_LAUNCHER:
+            runner = OpenMPIRunner(args, world_info_base64, resource_pool)
+        elif args.launcher == MVAPICH_LAUNCHER:
+            runner = MVAPICHRunner(args, world_info_base64, resource_pool)
+        else:
+            raise NotImplementedError(f"Unknown launcher {args.launcher}")
+
+        if not runner.backend_exists():
+            raise RuntimeError(f"launcher '{args.launcher}' not installed.")
+
+        curr_path = os.path.abspath('.')
+        if 'PYTHONPATH' in env:
+            env['PYTHONPATH'] = curr_path + ":" + env['PYTHONPATH']
+        else:
+            env['PYTHONPATH'] = curr_path
+
+        exports = ""
+        for var in env.keys():
+            if any([var.startswith(name) for name in EXPORT_ENVS]):
+                runner.add_export(var, env[var])
+
+        for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
+            environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+            if os.path.isfile(environ_file):
+                with open(environ_file, 'r') as fd:
+                    for var in fd.readlines():
+                        key, val = var.split('=')
+                        runner.add_export(key, val)
+
+        cmd = runner.get_cmd(env, active_resources)
+
+    logger.info("cmd={}".format(cmd))
+    result = subprocess.Popen(cmd, env=env)
+    result.wait()
+
+
+def _main(args=None):
     args = parse_args(args)
 
     if args.num_nodes >= 0 or args.num_gpus >= 0:
