@@ -26,6 +26,9 @@ class MultiNodeRunner(ABC):
     def add_export(self, key, var):
         self.exports[key.strip()] = var.strip()
 
+    def parse_user_args(self):
+        return self.args.user_args
+
 
 class PDSHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64):
