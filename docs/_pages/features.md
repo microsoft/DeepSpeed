@@ -164,10 +164,10 @@ NVIDIA, or any training optimizer that extends torch's `torch.optim.Optimizer` c
 
 ### CPU-Adam: High-Performance vectorized implementation of Adam
 We introduce an efficient implementation of Adam optimizer on CPU that improves the parameter-update
-performance by nearly an order of magnitude. We use the AVX SIMD instructions on Intel-x86 architecture 
+performance by nearly an order of magnitude. We use the AVX SIMD instructions on Intel-x86 architecture
 for the CPU-Adam implementation. We support both AVX-512 and AVX-2 instruction sets. DeepSpeed uses
 AVX-2 by defualt which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
-installing DeepSpeed. Using AVX-512, we observe 5.1x to 6.5x speedups considering the model-size between 
+installing DeepSpeed. Using AVX-512, we observe 5.1x to 6.5x speedups considering the model-size between
 1 to 10 billion parameters with respect to torch-adam.
 
 ### Memory bandwidth optimized FP16 Optimizer
