@@ -1,14 +1,14 @@
-
+trigger:
+  paths:
+    exclude:
+      - docs
+      - azure
 jobs:
 - job: DeepSpeed_Tests
   timeoutInMinutes: 360
   pool:
     name: 'DS_testing'
-  trigger:
-    paths:
-      exclude:
-        - docs
-        - azure
+
   strategy:
     matrix:
       PyTorch12-CUDA100:
