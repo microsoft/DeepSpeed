@@ -114,8 +114,8 @@ class PipelineModule(nn.Module):
                  seed_layers=False,
                  seed_fn=None,
                  base_seed=1234,
-                 partition_method='uniform',
-                 activation_checkpoint_interval=1,
+                 partition_method='parameters',
+                 activation_checkpoint_interval=0,
                  activation_checkpoint_func=checkpointing.checkpoint):
         super().__init__()
 

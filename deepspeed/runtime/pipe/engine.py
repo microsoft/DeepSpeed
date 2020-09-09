@@ -15,7 +15,7 @@ import torch.optim as optim
 import torch.distributed as dist
 
 from deepspeed.utils.logging import logger
-from deepspeed.utils.timer import ThroughputTimer
+from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor, ensure_directory_exists
@@ -60,8 +60,8 @@ class PipelineEngine(DeepSpeedEngine):
         # Set Grid and Communication Groups
         self.grid = self.module._grid
         if self.grid.get_global_rank() == 0:
-            logging.info(f'CONFIG: micro_batches={self.micro_batches} '
-                         f'micro_batch_size={self.micro_batch_size}')
+            logger.info(f'CONFIG: micro_batches={self.micro_batches} '
+                        f'micro_batch_size={self.micro_batch_size}')
 
         self.global_rank = self.grid.get_global_rank()
 
@@ -233,16 +233,25 @@ class PipelineEngine(DeepSpeedEngine):
         self.module.train()
         self.total_loss = None
 
-        self.batch_timer.start()
+        self.timers('train_batch').start()
 
         # Do the work
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
         self._exec_schedule(sched)
-        self.batch_timer.stop()
-
         self.agg_train_loss = self._aggregate_total_loss()
+        self.timers('train_batch').stop()
+
+        if self.global_steps % self.steps_per_print() == 0:
+            if self.global_rank == 0:
+                elapsed = self.timers('train_batch').elapsed(reset=True)
+                iter_time = elapsed / self.steps_per_print()
+                tput = self.train_batch_size() / elapsed
+                print(f'steps: {self.global_steps} '
+                      f'loss: {self.agg_train_loss:0.4f} '
+                      f'iter time (s): {iter_time:0.3f} '
+                      f'samples/sec: {tput:0.3f}')
 
         # Tensorboard
         if self.tensorboard_enabled():
@@ -284,8 +293,6 @@ class PipelineEngine(DeepSpeedEngine):
         self.module.eval()
         self.total_loss = None
 
-        self.batch_timer.start()
-
         # Use the provided data iterator
         train_iterator = self.data_iterator
         self.set_dataiterator(data_iter)
@@ -296,7 +303,6 @@ class PipelineEngine(DeepSpeedEngine):
                                            stage_id=self.stage_id)
         with torch.no_grad():
             self._exec_schedule(sched)
-        self.batch_timer.stop()
 
         self.agg_eval_loss = self._aggregate_total_loss()
         if self.tensorboard_enabled():
@@ -417,10 +423,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Sanity check dimensions.
         # XXX: the last minibatch with size < micro_batch_size kills us
-        '''
         if torch.is_tensor(batch[0]):
             if batch[0].size(0) != self.micro_batch_size:
-                print(f'{self.global_rank}: running over {batch[0].size(0)}')
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
         else:
@@ -428,15 +432,16 @@ class PipelineEngine(DeepSpeedEngine):
             if batch[0][0].size(0) != self.micro_batch_size:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
-        '''
-
         return batch
 
     def _exec_forward_pass(self, buffer_id):
         self.tput_timer.start()
         self.mem_status('BEFORE FWD', reset_max=True)
 
-        inputs = self.pipe_buffers['inputs'][buffer_id]
+        if isinstance(self.pipe_buffers['inputs'][buffer_id], tuple):
+            inputs = tuple(t.clone() for t in self.pipe_buffers['inputs'][buffer_id])
+        else:
+            inputs = self.pipe_buffers['inputs'][buffer_id].clone()
 
         # collect the partitioned input from the previous stage
         if self.is_pipe_partitioned and not self.is_first_stage:
@@ -571,7 +576,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.is_first_stage:
             loaded = None
             if torch.is_tensor(batch[0]):
-                loaded = batch[0].to(self.device).detach()
+                loaded = batch[0].clone().to(self.device).detach()
                 loaded.requires_grad = loaded.is_floating_point()
             else:
                 assert isinstance(batch[0], tuple)
