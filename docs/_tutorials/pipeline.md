@@ -246,7 +246,7 @@ for step in range(args.steps):
 ## Advanced Topics
 
 
-### Load Balancing the Pipeline Module
+### Load Balancing Pipeline Modules
 The performance of pipeline parallel training strongly relies on load
 balance. DeepSpeed provides several mechanisms for partitioning the model
 across GPUs. These strategies can be set with the `partition_method` keyword
