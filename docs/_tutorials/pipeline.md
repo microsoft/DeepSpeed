@@ -43,7 +43,7 @@ pipeline parallel training by preparing `torchvision`'s
 [AlexNet](https://pytorch.org/docs/1.2.0/_modules/torchvision/models/alexnet.html)
 model.
 
-### Expressing Pipleline Models
+### Expressing Pipeline Models
 Pipeline parallelism requires models be expressed as a sequence of layers.
 In the forward pass, each layer consumes the output of the previous
 layer. In fact, there is no need to specify a `forward()` for a pipeline
@@ -79,9 +79,12 @@ are present, DeepSpeed will also use hybrid data parallelism.
 stages.
 {: .notice--info}
 
+**Note:** For large model training, see [memory-efficient model construction](#memory-efficient-module-initialization).
+{: .notice--info}
+
 ### AlexNet
 Let's look at an abbreviated implementation of `torchvision`'s
-[AlexNet](https://pytorch.org/docs/1.2.0/_modules/torchvision/models/alexnet.html).
+[AlexNet](https://pytorch.org/docs/1.2.0/_modules/torchvision/models/alexnet.html):
 
 ```python
 class AlexNet(nn.Module):
@@ -106,13 +109,11 @@ class AlexNet(nn.Module):
         x = self.classifier(x)
         return x
 ```
-`AlexNet` is the composition of several `Sequential` submodules. We can turn this into
-a `PipelineModule` by
-
-
-
+`AlexNet` is mostly a composition of several `Sequential` submodules. We can
+turn this into a `PipelineModule` by flattening its submodules into a single
+sequence of layers:
 ```python
-class AlexNetPipe(torchvision.models.alexnet.AlexNet):
+class AlexNetPipe(AlexNet):
     def to_layers(self):
         layers = [
             *self.features,
@@ -121,24 +122,26 @@ class AlexNetPipe(torchvision.models.alexnet.AlexNet):
             *self.classifier
         ]
         return layers
+
+from deepspeed.pipe import PipelineModule
+net = AlexNetPipe()
+net = PipelineModule(layers=net.to_layers(), num_stages=2)
 ```
 
-DeepSpeed's `PipelineModule` supports a superset of PyTorch’s
-`torch.nn.Sequential` container. In addition
-
-DeepSpeed provides several conveniences for expressing tools as pipeline
-parallel modules in addition to tensors in addition to modules whose forward
-passes are executed users may also provide arbitrary functions such as
-reshaping tensors or converting to precision so on.below is an example of a
-module which provides three layers with a reshape in between .
+**Note:**
+the `lamda` in the middle of `layers` above is not a `torch.nn.Module`
+type. Any object that implements `__call__()` can be a layer in a
+`PipelineModule`: this allows for convenient data transformations in the
+pipeline.
+{: .notice--info}
 
 
 ### Inputs and Outputs
 Following `torch.nn.Sequential`, the inputs and outputs of each layer must be
 either a single `torch.Tensor` or a `tuple` of tensors. In practice, some
 models may need to modify their forward pass to pack and unpack arguments to
-`forward()`. Consider an abbreviated implementation of a Transformer block in a GPT
-model:
+`forward()`. Consider an abbreviated implementation of a stack of Transformer
+blocks:
 ```python
 class TransformerBlock(nn.Module)
     ...
@@ -152,7 +155,7 @@ stack = [ TransformerBlock() for _ in range(num_layers) ]
 Two modifications to `TransformerBlock` are required:
 
 1. The arguments must be collected into a `tuple`.
-2. `mask` must also be returned from `forward()` so the next layer can use it.
+2. `mask` must also be returned from `forward()` to pass to the next layer.
 
 These modifications can be accomplished with a short subclass:
 ```python
@@ -160,39 +163,53 @@ class TransformerBlockPipe(TransformerBlock)
     def forward(self, inputs):
         hidden, mask = inputs
         outputs = super().forward(hidden, mask)
-        return output, mask
+        return (output, mask)
+stack = [ TransformerBlockPipe() for _ in range(num_layers) ]
 ```
 
+### Training Loops
+
+Pipeline parallelism interleaves forward and backward passes, and thus the
+training loop cannot be divided into separate stages of `forward()`,
+`backward()` and `step()`.
+Instead, DeepSpeed's pipeline engine provides a `train_batch()` method that
+advances the pipeline engine until the next batch of training data is
+consumed and the model weights updated.
+```python
+train_iter = iter(train_loader)
+loss = engine.train_batch(data_iter=trainiter)
+```
+
+The above `train_batch()` example is equivalent to the following with
+traditional data parallel DeepSpeed:
+```python
+train_iter = iter(train_loader)
+for micro_batch in engine.gradient_accumulation_steps():
+    batch = next(data_iter)
+    loss = engine(batch)
+    engine.backward(loss)
+    engine.step()
+```
 
 ### Dealing with Data
 
+Data parallel training typically has each worker perform IO independently at
+the start of each batch. However, in a pipeline parallel environment, only the
+first stage uses the input data, and the last stage uses labels for loss
+calculation.
 
+**Note:**
+The pipeline engine expects data loaders to return a `tuple` of two items. The
+first returned item is the input batch data, and the second item is the data
+to be used in the loss calculation. As before, inputs and labels should be
+either `torch.Tensor` type or a `tuple` of tensors.
+{: .notice--info}
+
+For convenience, the DeepSpeed pipeline engine can construct a distributed
+data loader when a dataset is provided to `deepspeed.initialize()`. DeepSpeed
+handles the rest of the complexity of data loading, and so the pipeline
+training loop becomes:
 ```python
-trainloader = deepspeed.utils.RepeatingLoader(trainloader)
-trainiter = iter(trainloader)
-```
-
-### Training AlexNet
-
-For example, forward and backward passes are interleaved and thus the training
-loop cannot be divided into separate stages of `forward()`, `backward()` and `step()`.
-
-
-```python
-def join_layers(vision_model):
-    """Joins the a torchvision AlexNet or VGG model into a single sequence."""
-    return [
-        *vision_model.features,
-        vision_model.avgpool,
-        lambda x: torch.flatten(x, 1),
-        *vision_model.classifier,
-    ]
-
-net = torchvision.models.alexnet(num_classes=10)
-net = PipelineModule(layers=join_layers(net),
-                     loss_fn=torch.nn.CrossEntropyLoss(),
-                     num_stages=2)
-
 engine, _, _, _ = deepspeed.initialize(
     args=args,
     model=net,
@@ -203,25 +220,99 @@ for step in range(args.steps):
     loss = engine.train_batch()
 ```
 
+Of course, DeepSpeed will work with any data loader that you wish to use.
+Data loaders should be constructed by the first stage in the pipeline. Each
+worker should load micro-batches of size
+`engine.train_micro_batch_size_per_gpu()` and will be queried
+a total of `engine.gradient_accumulation_steps()` times per `train_batch()`.
+
+**Watch out!**
+The pipeline engine *pulls* data from an iteratior instead of iterating over
+it. It's critical that the data stream does not empty in the middle of a
+training batch.
+{: .notice--warning}
+
+DeepSpeed provides a convenience class `deepspeed.utils.RepeatingLoader` that
+simply wraps an iterable such as a data loader and restarts it whenever the
+end is reached:
+```python
+train_loader = deepspeed.utils.RepeatingLoader(train_loader)
+train_iter = iter(train_loader)
+for step in range(args.steps):
+    loss = engine.train_batch(data_iter=trainiter)
+```
+
 
 ## Advanced Topics
 
-### Custom Pipeline Schedules
+
+### Load Balancing Pipeline Modules
+The performance of pipeline parallel training strongly relies on load
+balance. DeepSpeed provides several mechanisms for partitioning the model
+across GPUs. These strategies can be set with the `partition_method` keyword
+argument to `PipelineModule`. Here are partitioning methods currently provided
+by DeepSpeed:
+
+* `partition_method="parameters"` (**default**)
+   balances the number of trainable parameters on each pipeline stage . This is
+   especially useful in memory-constrained environments and when the size of a
+   layer is proportional to the computation time.
+* `partition_method="type:[regex]"`
+  balances layers whose class names match `[regex]`. The regular expression
+  is not case sensitive. For example, `partition_method="type:transformer"`
+  would balance the number of transformer layers per stage.
+* `partition_method="uniform"` balances the number of layers per stage.
+
+### Memory-Efficient Model Construction
+Building a `Sequential` and providing it `PipelineModule` is a convenient way
+of specifying a pipeline parallel model. However, this approach encounters
+scalability issues for massive models. Starting from a `Sequential` allocates
+the model in CPU memory redundantly by every worker. A machine with 16 GPUs
+must have as much local CPU memory as 16 times the model size.
+
+DeepSpeed provides a `LayerSpec` class that delays the construction of
+modules until the model layers have been partitioned across workers. Then,
+the modules are built on the GPU that owns the layer.
+
+Here's an example of the abbreviated AlexNet model, but expressed only
+with `LayerSpec`s. Note that the syntax is almost unchanged: `nn.ReLU(inplace=True)`
+simply becomes `LayerSpec(nn.ReLU, inplace=True)`.
+```python
+from deepspeed.pipe import PipelineModule, LayerSpec
+class AlexNetPipe(PipelineModule):
+    def __init__(self, num_classes=10, **kwargs):
+        self.num_classes = num_classes
+        specs = [
+            LayerSpec(nn.Conv2d, 3, 64, kernel_size=11, stride=4, padding=2),
+            LayerSpec(nn.ReLU, inplace=True),
+            ...
+            LayerSpec(nn.ReLU, inplace=True),
+            LayerSpec(nn.Linear, 4096, self.num_classes),
+        ]
+        super().__init__(layers=specs, loss_fn=nn.CrossEntropyLoss(), **kwargs)
+```
+
+### Tied Layers
+Some models cannot be entirely expressed as pipeline parallel models because
+some layers are reused in the pipeline. For example, Transformer based
+language models commonly use an embedding layer early in the pipeline to map
+vocabulary to hidden states, and then use the embedding to map hidden states
+back to vocabulary at the end of the pipeline. If the model was restricted to
+pure pipeline parallelism, this embedding reuse would prohibit pipeline
+parallelism.
+
+DeepSpeed provides a `TiedLayerSpec` that is an extension of
+`LayerSpec`. `TiedLayerSpec` requires an additional argument: `key`.
+Each reuse of a layer is specified with a `TiedLayerSpec`, and the `key` field
+is used to identify where a layer is reused.
+
+Tied layers are replicated on every pipeline stage that owns an instance of
+reuse. Training then proceeds as normal, but an additional all-reduce of the
+tied gradients is added after all backward passes complete. The all-reduce
+ensures that the weights of the tied layer remain in sync across pipeline stages.
+
+(TODO: add API reference + example)
 
 
-<!--
-Commented out scratch space
-
-
-Pipeline parallelism has several strengths:
-
-* Enables larger models than with data
-parallelism alone because workers only store a subset of the model and
-optimizer locally.
-* Accelerates training in bandwidth-bound scenarios through a significant reduction in  communication volume.
-
-
-
-including [ZeRO](https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/)
-
--->
+### Customizing Pipeline Schedules
+(to be transcribed)
