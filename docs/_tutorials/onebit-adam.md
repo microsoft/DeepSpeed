@@ -152,7 +152,7 @@ Table 1. Fine-tuning configuration
 
 **Note:** For more details about loading checkpoint, argument parsing, initialization, forward pass, backward pass, weight update and evaluation, please refer to the [BingBertSQuAD Fine-tuning](/tutorials/bert-finetuning/) tutorial.
 
-### 1.3 Performance Results for BingBertSQuAD Fine-tuning
+### 2.3 Performance Results for BingBertSQuAD Fine-tuning
 
 ***Accuracy:***
 The results are summarized in the table below. The total batch size is set to 96 and training is conducted
