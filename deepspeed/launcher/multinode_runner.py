@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 import warnings
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
@@ -17,11 +17,13 @@ class MultiNodeRunner(ABC):
         self.world_info_base64 = world_info_base64
         self.exports = {}
 
+    @abstractmethod
     def backend_exists(self):
-        raise NotImplementedError()
+        pass
 
+    @abstractmethod
     def get_cmd(self, environment, active_resources):
-        raise NotImplementedError()
+        pass
 
     def add_export(self, key, var):
         self.exports[key.strip()] = var.strip()
@@ -32,7 +34,7 @@ class MultiNodeRunner(ABC):
 
 class PDSHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64):
-        super(PDSHRunner, self).__init__(args, world_info_base64)
+        super().__init__(args, world_info_base64)
 
     def backend_exists(self):
         return shutil.which('pdsh')
@@ -75,7 +77,7 @@ class PDSHRunner(MultiNodeRunner):
 
 class OpenMPIRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
-        super(OpenMPIRunner, self).__init__(args, world_info_base64)
+        super().__init__(args, world_info_base64)
         self.resource_pool = resource_pool
         self.add_export('UCX_TLS', 'tcp')
 
@@ -84,7 +86,7 @@ class OpenMPIRunner(MultiNodeRunner):
         return shutil.which('ompi_info')
 
     def get_cmd(self, environment, active_resources):
-        #FIXME: Allow for include/exclude at node-level but not gpu-level
+        #TODO: Allow for include/exclude at node-level but not gpu-level
         assert self.args.include == "" and self.args.exclude == "", 'openmpi backend does not support worker include/exclusion'
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'openmpi backend does not support limiting num nodes/gpus'
         total_process_count = sum(self.resource_pool.values())
@@ -115,7 +117,7 @@ class OpenMPIRunner(MultiNodeRunner):
 
 class MVAPICHRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
-        super(MVAPICHRunner, self).__init__(args, world_info_base64)
+        super().__init__(args, world_info_base64)
         self.resource_pool = resource_pool
 
         # Disable the CMA kernel module, not available on Ubuntu systems
@@ -155,7 +157,7 @@ class MVAPICHRunner(MultiNodeRunner):
         return exists
 
     def get_cmd(self, environment, active_resources):
-        #FIXME: Allow for include/exclude at node-level but not gpu-level
+        #TODO: Allow for include/exclude at node-level but not gpu-level
         assert self.args.include == "" and self.args.exclude == "", 'mvapich backend does not support worker include/exclusion'
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'mvapich backend does not support limiting num nodes/gpus'
         devices_per_node = self.resource_pool.values()
