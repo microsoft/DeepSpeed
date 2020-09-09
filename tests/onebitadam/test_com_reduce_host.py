@@ -10,12 +10,15 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 
+#TODO: Detect the hostname we are running on automatically
 torch.distributed.init_process_group(backend='nccl',
-                                     init_method='tcp://worker-0:2245',
+                                     init_method='tcp://worker-1:2245',
                                      world_size=size,
                                      rank=rank)
 
 dummy_model = [torch.nn.Parameter(torch.ones(10))]
+
+# Set cuda_aware to False to use host buffers for communication
 dummy_optim = OnebitAdam(dummy_model, cuda_aware=False)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
