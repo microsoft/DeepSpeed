@@ -26,9 +26,15 @@ cd DeepSpeedExamples/
 
 1-bit Adam uses advanced communication schemes that are not yet supported by PyTorch distributed and NCCL. We rely on Message Passing Interface (MPI) for these advanced communication primitives.
 
-We package the necessary dependencies in the DeepSpeed docker images. However, if you are using a different build system, please install MPI and mpi4py on your system.
+We package the necessary dependencies in the DeepSpeed docker images. However, if you are using a different build system, please install MPI and mpi4py on your system. We have tested CUDA-Aware MPI communication using the [MVAPICH2-GDR](http://mvapich.cse.ohio-state.edu/userguide/gdr/) library. However, any CUDA-Aware communication library including [OpenMPI](https://www.open-mpi.org/) should work fine with these examples.
 
-An example launch command for 1-bit Adam will be as follows:
+An example launch command for 1-bit Adam using the `deepspeed` launcher is as follows:
+
+```shell
+deepspeed --launcher=[mvapich|openmpi] script.py
+```
+
+Alternatively, the standard mpirun launcher can also be used as follows:
 
 ```shell
 mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash [training_script.sh]
@@ -57,9 +63,9 @@ The 1-bit Adam feature can be used by setting the optimizer configuration option
 Please note two new parameters `freeze_step` and `cuda_aware` that have been added to support the 1-bit Adam feature.
 
 `cuda_aware` is used to indicate that the underlying MPI library support CUDA-Aware communication.
-This feature is only supported on systems with InfiniBand interconnect.
+This feature is only supported on systems with InfiniBand interconnect and a CUDA-Aware MPI library like [MVAPICH2-GDR](http://mvapich.cse.ohio-state.edu/userguide/gdr/) or OpenMPI built with CUDA-Aware support. Setting `cuda_aware` to False will allow training on Ethernet based systems. However, the communication will happen using sender as well as receiver side memory copies between CPU and GPU buffers before and after communication.
 
-`freeze_step` is the number of warm up steps before 1-bit compression gets applied to the communication. In order to determine the number of warm up steps, one strategy is to set 15-25% of the total training steps for a given model. If it provides the desired outcome, one can try to extract more performance by reducing the steps systematically. In future, we plan to introduce a threshold that can automatically search and decide for the number of warm up steps for different models. The examples below have been tuned for the number for warm up steps and the `freeze_step` is set to the best number for you in the corresponding run scripts.
+`freeze_step` is the number of warm up steps before 1-bit compression gets applied to the communication. In order to determine the number of warm up steps, one strategy is to set 15-25% of the total training steps for a given model. If it provides the desired outcome, one can try to extract more performance by reducing the steps systematically. In future, we plan to introduce a threshold that can automatically search and decide for the number of warm up steps for different models. The examples below have been tuned for the number of warm up steps. The `freeze_step` parameter has already been set to the best number we found in the corresponding run scripts.
 
 ## 1. BingBertSQuAD fine-tuning with 1-bit Adam
 
@@ -72,7 +78,7 @@ This feature is only supported on systems with InfiniBand interconnect.
 
 You can also use a pre-trained BERT model checkpoint from either DeepSpeed, [HuggingFace](https://github.com/huggingface/transformers), or [TensorFlow](https://github.com/google-research/bert#pre-trained-models) to run the fine-tuning.
 
-### Running BingBertSQuAD with DeepSpeed and 1-bit Adam
+### 1.1 Running BingBertSQuAD with DeepSpeed and 1-bit Adam
 
 The main part of training is done in `nvidia_run_squad_deepspeed.py`, which has
 already been modified to use DeepSpeed. The `run_squad_deepspeed.sh` script
@@ -87,38 +93,38 @@ bash run_squad_deepspeed.sh <NUM_GPUS> <PATH_TO_CHECKPOINT> <PATH_TO_DATA_DIR> <
 
 The first argument is the number of GPUs to train with, second argument is the path to the pre-training checkpoint, third is the path to training and validation sets (e.g., train-v1.1.json), and fourth is path to an output folder where the results will be saved. This script will invoke `nvidia_run_squad_deepspeed.py`.
 
-- **DeepSpeed with 1-bit Adam enabled:** In order to run with 1-bit Adam feature enabled, the same script (`nvidia_run_squad_deepspeed.py`) can be used but there are two options for launching this properly:
+- **DeepSpeed with 1-bit Adam enabled:** In order to run with 1-bit Adam feature enabled, the same script (`nvidia_run_squad_deepspeed.py`) can be used but there are two options for launching this properly: 1) Launch using deepspeed launcher and 2) Launch with mpirun.
+
+To enable the 1-bit compressed training, 1-bit Adam uses an MPI library (E.g. MVAPICH2-GDR, OpenMPI, etc.) as the communication backend, which means that we can use `mpirun` to launchg the training job. However, our user-friendly launcher called `deepspeed` has been enhanced to launch MPI jobs as well.
+
+### Launch with deepspeed
+
+The following helper script in the DeepSpeedExamples/BingBertSQuAD will launch the training without the need for setting any `mpirun` parameters.
+
+```shell
+bash run_squad_deepspeed_onebitadam.sh
+```
 
 ### Launch with mpirun
-To enable the 1-bit compressed training, 1-bit Adam uses an MPI library (E.g. MVAPICH2, OpenMPI, etc.) as the communication backend, which means we can use `mpirun` as the launcher.
+
+Alternatively, we show how the standard `mpirun` launcher can be used for launching the fine-tuning job.
 
 ```shell
 mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash run_squad_deepspeed_onebitadam.sh
 ```
-For example, in order to use 32 GPUs (4GPUs/node, 8 nodes in total), with the support of InfiniBand, you can use MVAPICH2 as the launcher and run the following command:
+For example, in order to use 32 GPUs (4GPUs/node, 8 nodes in total), with the support of InfiniBand, you can use the `mpirun` launcher packaged with the MVAPICH2 library. Please run the folowing command:
+
 ```shell
 mpirun -np 32 -ppn 4 -hostfile hosts -env MV2_USE_CUDA=1 -env MV2_SUPPORT_DL=1 -env MV2_ENABLE_AFFINITY=0 -env MV2_SMP_USE_CMA=0 bash run_squad_deepspeed_onebitadam.sh
 ```
-For clusters where [xxx], please run the following command for launching:
-```shell
-mpirun -np [#processes] -npernode [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash mpi_run_squad_deepspeed.sh
-```
-Similarly, to use 32 GPUs (4GPUs/node, 8 nodes in total) in a TCP communication system, you can run
- ```shell
-mpirun -np 32 -npernode 8 -hostfile hosts [Ammar: add flag thx] bash mpi_run_squad_deepspeed.sh
-```
 
-### Launch with deepspeed (To be added)
-
-
-### Configuration for BingBertSQuAD with DeepSpeed and 1-bit Adam enabled
+### 1.2 Configuration for BingBertSQuAD with DeepSpeed and 1-bit Adam enabled
 
 The `deepspeed_bsz96_onebit_config.json` file gives the user the ability to specify DeepSpeed
 options in terms of batch size, micro batch size, optimizer, learning rate, and other parameters.
 When running the `nvidia_run_squad_deepspeed.py`, in addition to the
 `--deepspeed` flag to enable DeepSpeed, the appropriate DeepSpeed configuration
-file must be specified using `--deepspeed_config
-deepspeed_bsz96_config.json`.
+file must be specified using `--deepspeed_config deepspeed_bsz96_config.json`.
 
 Table 1 shows the fine-tuning configuration we used in our experiments.
 
@@ -136,11 +142,11 @@ Table 1 shows the fine-tuning configuration we used in our experiments.
 
 Table 1. Fine-tuning configuration
 
-### Results for BingBertSQuAD Fine-tuning
+### 1.3 Results for BingBertSQuAD Fine-tuning
 
 The results are summarized in the table below. The total batch size is set to 96 and training is conducted
 on 32 GPUs for 2 epochs. A set of parameters (seeds and learning rates) were tried and the best ones were selected.
-We fixed the learning rate to 3e-5.
+We fixed the learning rate to 3e-5. The table below shows the F1 and the EM scores we achieved that are on-par or better than the [HuggingFace results](https://github.com/huggingface/transformers/tree/master/examples/question-answering).
 
 | Case        | Model                                 | Precision | EM    | F1    |
 | ----------- | ------------------------------------- | --------- | ----- | ----- |
@@ -153,7 +159,7 @@ We fixed the learning rate to 3e-5.
 For data downloading and pre-processing, please refer to [BERT Pre-training](https://www.deepspeed.ai/tutorials/bert-pretraining/) posts
 for more details.
 
-### Running Pre-training with DeepSpeed and 1-bit Adam
+### 2.1 Running Pre-training with DeepSpeed and 1-bit Adam
 
 The main part of training is done in `deepspeed_train.py`, which has
 already been modified to use DeepSpeed. The `ds_train_bert_onebitadam_bsz4k_seq128.sh` and `ds_train_bert_bsz64k_seq128.sh` are the
@@ -169,20 +175,28 @@ bash ds_train_bert_bsz64k_seq128.sh
 
 - **DeepSpeed with 1-bit Adam enabled:** In order to run with 1-bit Adam feature enabled, the same script (`deepspeed_train.py`) can be used but there are two options for launching this properly:
 
+### Launch with deepspeed
+
+As discussed for BingBertSQuAD fine-tuning, we can simply use the `deepspeed` launcher to launch our BERT pre-training jobs as follows.
+
+```shell
+bash ds_train_bert_onebitadam_bsz4k_seq128.sh
+```
+
 ### Launch with mpirun
-To enable the 1-bit compressed training, 1-bit Adam uses an MPI library (E.g. MVAPICH2, OpenMPI, etc.) as the communication backend, which means we can use `mpirun` as the launcher.
+
+Alternatively, use the following command to launch using `mpirun`.
 
 ```shell
 mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash ds_train_bert_onebitadam_bsz4k_seq128.sh
 ```
+
 For example, in order to use 32 GPUs (4GPUs/node, 8 nodes in total), with the support of InfiniBand, you can use MVAPICH2 as the launcher and run the following command:
 ```shell
 mpirun -np 32 -ppn 4 -hostfile hosts -env MV2_USE_CUDA=1 -env MV2_SUPPORT_DL=1 -env MV2_ENABLE_AFFINITY=0 -env MV2_SMP_USE_CMA=0 bash ds_train_bert_onebitadam_bsz4k_seq128.sh
 ```
 
-### Launch with deepspeed (To be added)
-
-### Configuration for BingBertSQuAD with DeepSpeed and 1-bit Adam enabled
+### 2.2 Configuration for BingBertSQuAD with DeepSpeed and 1-bit Adam enabled
 
 The `deepspeed_bsz4k_onebit_config_seq128.json` file gives the user the ability to specify DeepSpeed
 options in terms of batch size, micro batch size, optimizer, learning rate, and other parameters.
@@ -212,3 +226,9 @@ Below is the DeepSpeed configuration file for running BERT-large pre-training wi
 }
 ```
 Notice that for BERT-base training (sequence length 128), the suggested freeze_step is 16000. For the rest of the pre-training using sequence 512, we suggest to use a freeze_step of 1500.
+
+### 2.3 Results for BERT pre-training
+
+Using 1-bit Adam, we are able to achieve significantly higher througput compared to the original Adam optimizer. We note that increase training speed during the compressed stage enables overall training speedup of up to 3.5x on Ethernet based systems where communication bandwidth is significantly limited. However, we are able to achieve up to 1.7x overall speedup even for the 40 Gigabit InfiniBand QDR based system. Furthermore, it is important to highlight that we are able to achieve feasible BERT pre-training using 1-bit Adam on a significantly smaller batch size of 4k compared to 32k and 64k for the LAMB optimizer.
+
+Graphs to be added from the blog post ...
