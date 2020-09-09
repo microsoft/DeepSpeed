@@ -38,9 +38,10 @@ DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
 DS_BUILD_SPARSE_ATTN_MASK = 100
 DS_BUILD_ADAM_MASK = 1000
+DS_BUILD_AVX512_MASK = 10000
 
 # Allow for build_cuda to turn on or off all ops
-DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_ADAM_MASK
+DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_ADAM_MASK | DS_BUILD_AVX512_MASK
 DS_BUILD_CUDA = int(os.environ.get('DS_BUILD_CUDA', 1)) * DS_BUILD_ALL_OPS
 
 # Set default of each op based on if build_cuda is set
@@ -51,6 +52,7 @@ DS_BUILD_TRANSFORMER = int(os.environ.get('DS_BUILD_TRANSFORMER',
                                           OP_DEFAULT)) * DS_BUILD_TRANSFORMER_MASK
 DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
                                           0)) * DS_BUILD_SPARSE_ATTN_MASK
+DS_BUILD_AVX512 = int(os.environ.get('DS_BUILD_AVX512', 0)) * DS_BUILD_AVX512_MASK
 
 # Final effective mask is the bitwise OR of each op
 BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
@@ -97,12 +99,12 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
 import cpufeature
-d = cpufeature.CPUFeature
+cpu_info = cpufeature.CPUFeature
 
 SIMD_WIDTH = ''
-if d['AVX512f']:
+if cpu_info['AVX512f'] and DS_BUILD_AVX512:
     SIMD_WIDTH = '-D__AVX512__'
-elif d['AVX2']:
+elif cpu_info['AVX2']:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
 
