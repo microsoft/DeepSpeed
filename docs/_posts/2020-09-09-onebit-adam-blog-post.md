@@ -52,6 +52,10 @@ To compress communication while using the Adam optimizer, we develop 1-bit Adam,
 
 The compression stage of the algorithm is controlled by a threshold parameter (as shown in Figure 2). When we detect that the change in “variance” falls below a certain threshold, we switch to the compression stage. Our study shows that only 15-20% of the overall training steps are needed for the warmup stage.
 
+![Comparison of distributed training steps in classic Adam and the proposed 1-bit compressed Adam algorithm](/assets/images/onebit-adam-overview.png){: .align-center}
+
+Figure 2: Comparison of distributed training steps in classic Adam and the proposed 1-bit compressed Adam algorithm
+
 ### 2.1 How 1-bit Adam works under the hood
 
 The weight update rule for 1-bit Adam is governed by the following equations.
@@ -71,10 +75,6 @@ For the i-th worker, in the compression stage:
 <img src="https://render.githubusercontent.com/render/math?math=x_%7Bt%2B1%7D%3Dx_t-%5Cgamma%20%5Cfrac%7Bm_%7Bt%2B1%7D%7D%7B%5Csqrt%7Bv_%7Bwarmup%7D%7D%2B%5Ceta%7D">
 
 Where x_t is the model after iteration (t-1), m_t^(i), e_t^(i) are the momentum and compression error on worker i after iteration (t-1), and v_warmup is the variance term after the warmup stage.
-
-![Comparison of distributed training steps in classic Adam and the proposed 1-bit compressed Adam algorithm](/assets/images/onebit-adam-overview.png){: .align-center}
-
-Figure 2: Comparison of distributed training steps in classic Adam and the proposed 1-bit compressed Adam algorithm
 
 ### 2.2 Addressing system challenges for 1-bit Adam
 
