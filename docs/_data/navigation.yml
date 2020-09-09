@@ -64,5 +64,7 @@ lnav:
         url: /tutorials/1Cycle/
       - title: "Learning Rate Range Test"
         url: /tutorials/lrrt/
+      - title: "Pipeline Parallelism"
+        url: /tutorials/pipeline/
   - title: "Contributing"
     url: /contributing/
