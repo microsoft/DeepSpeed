@@ -432,6 +432,7 @@ class PipelineEngine(DeepSpeedEngine):
             if batch[0][0].size(0) != self.micro_batch_size:
                 self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
+
         return batch
 
     def _exec_forward_pass(self, buffer_id):
