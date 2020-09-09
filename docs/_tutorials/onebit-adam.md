@@ -52,7 +52,7 @@ The 1-bit Adam feature can be used by setting the optimizer configuration option
     "params": {
       "lr": 2e-4,
       "freeze_step": 400,
-      "cuda_aware": True
+      "cuda_aware": true
     }
   },
   "fp16": {
