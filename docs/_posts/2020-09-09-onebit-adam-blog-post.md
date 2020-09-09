@@ -70,7 +70,7 @@ For the i-th worker, in the compression stage:
 
 <img src="https://render.githubusercontent.com/render/math?math=x_%7Bt%2B1%7D%3Dx_t-%5Cgamma%20%5Cfrac%7Bm_%7Bt%2B1%7D%7D%7B%5Csqrt%7Bv_%7Bwarmup%7D%7D%2B%5Ceta%7D">
 
-Where x_(t+1) is the model after t-th iteration, m_(t+1)^((i)), e_(t+1)^((i)) are the momentum and compression error on worker i after t-th iteration, and v_warmup is the variance term after the warmup stage.
+Where x_t is the model after iteration (t-1), m_t^(i), e_t^(i) are the momentum and compression error on worker i after iteration (t-1), and v_warmup is the variance term after the warmup stage.
 
 ![Comparison of distributed training steps in classic Adam and the proposed 1-bit compressed Adam algorithm](/assets/images/onebit-adam-overview.png){: .align-center}
 
