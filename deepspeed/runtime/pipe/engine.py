@@ -163,19 +163,19 @@ class PipelineEngine(DeepSpeedEngine):
             self.module.activation_checkpoint_interval = self._config.pipeline[
                 'activation_checkpoint_interval']
 
-        if self.is_last_stage:
+        if self.is_last_stage():
             self.loss_model = self.module.loss_fn
 
         # Initialize pipeline communicators. Just send a 0.
         if is_even(self.stage_id):
-            if not self.is_last_stage:
+            if not self.is_last_stage():
                 p2p.send(self.loss, self.next_stage)
-            if not self.is_first_stage:
+            if not self.is_first_stage():
                 p2p.recv(self.loss, self.prev_stage)
         else:
-            if not self.is_first_stage:
+            if not self.is_first_stage():
                 p2p.recv(self.loss, self.prev_stage)
-            if not self.is_last_stage:
+            if not self.is_last_stage():
                 p2p.send(self.loss, self.next_stage)
 
         # XXX look into timer reporting timing
@@ -220,7 +220,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.pipe_buffers[key].extend([None] * num_added)
         self.num_pipe_buffers = num_buffers
 
-    def train_batch(self):
+    def train_batch(self, data_iter=None):
         """Progress the pipeline to train the next batch of data.
 
         Returns:
@@ -229,6 +229,9 @@ class PipelineEngine(DeepSpeedEngine):
         if not torch._C.is_grad_enabled():
             raise RuntimeError(
                 f'train_batch() requires gradients enabled. Use eval_batch() instead.')
+
+        if data_iter:
+            self.set_dataiterator(data_iter)
 
         self.module.train()
         self.total_loss = None
@@ -324,7 +327,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _aggregate_total_loss(self):
         # Scale loss, average among DP ranks, and bcast loss to the rest of my DP group
-        if self.is_last_stage:
+        if self.is_last_stage():
             loss = self._scale_loss(self.total_loss)
             self.dp_group_loss = loss.clone().detach()
 
@@ -356,13 +359,13 @@ class PipelineEngine(DeepSpeedEngine):
 
     def set_dataloader(self, loader):
         """ Store a DataLoader to sample for training data. """
-        if self.is_first_stage or self.is_last_stage:
+        if self.is_first_stage() or self.is_last_stage():
             self.training_dataloader = loader
             self.data_iterator = iter(self.training_dataloader)
 
     def set_dataiterator(self, iterator):
         """ Store an iterator to sample for training data. """
-        if self.is_first_stage or self.is_last_stage:
+        if self.is_first_stage() or self.is_last_stage():
             self.training_dataloader = None
             self.data_iterator = iterator
 
@@ -445,7 +448,7 @@ class PipelineEngine(DeepSpeedEngine):
             inputs = self.pipe_buffers['inputs'][buffer_id].clone()
 
         # collect the partitioned input from the previous stage
-        if self.is_pipe_partitioned and not self.is_first_stage:
+        if self.is_pipe_partitioned and not self.is_first_stage():
             part_input = PartitionedTensor.from_meta(
                 meta=inputs[0],
                 local_part=inputs[1],
@@ -465,7 +468,7 @@ class PipelineEngine(DeepSpeedEngine):
         outputs = super().forward(inputs)
 
         # Partition the outputs if we are not the last stage
-        if self.is_pipe_partitioned and not self.is_last_stage:
+        if self.is_pipe_partitioned and not self.is_last_stage():
             part = PartitionedTensor(tensor=outputs[0],
                                      group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
@@ -478,7 +481,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.pipe_buffers['outputs'][buffer_id] = outputs
 
         # Optionally compute loss on the last device
-        if self.is_last_stage:
+        if self.is_last_stage():
             if self.loss_model is not None:
                 labels = self.pipe_buffers['labels'][buffer_id]
                 self.loss = self.loss_model(outputs, labels)
@@ -504,7 +507,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
-        if self.is_last_stage:
+        if self.is_last_stage():
             super().backward(self.loss, allreduce_gradients=False)
             self.mem_status('AFTER BWD')
             return
@@ -574,7 +577,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         batch = self._next_batch()
 
-        if self.is_first_stage:
+        if self.is_first_stage():
             loaded = None
             if torch.is_tensor(batch[0]):
                 loaded = batch[0].clone().to(self.device).detach()
@@ -592,7 +595,7 @@ class PipelineEngine(DeepSpeedEngine):
 
             self.pipe_buffers['inputs'][buffer_id] = loaded
 
-        if self.is_last_stage:
+        if self.is_last_stage():
             loaded = batch[1]
             if torch.is_tensor(batch[1]):
                 loaded = batch[1].to(self.device)
@@ -1082,12 +1085,10 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.module.load_state_dir(state_dict, strict=strict)
 
-    @property
     def is_first_stage(self):
         """True if this process is in the first stage in the pipeline."""
         return self.stage_id == 0
 
-    @property
     def is_last_stage(self):
         """True if this process is in the last stage in the pipeline."""
         return self.stage_id == self.num_stages - 1
