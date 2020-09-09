@@ -94,7 +94,9 @@ Figure 4: Scalability of 1-bit Adam for SQuAD Finetuning on V100 GPUs with batch
 
 ## 4. Dive deeper into 1-bit Adam evaluation results
 
-Same convergence as Adam: One major question for using 1-bit Adam is the convergence speed, and we find that 1-bit Adam can achieve the same convergence speed and comparable testing performance using the same number of training samples as shown in Figure 5.
+### Same convergence as Adam
+
+One major question for using 1-bit Adam is the convergence speed, and we find that 1-bit Adam can achieve the same convergence speed and comparable testing performance using the same number of training samples as shown in Figure 5.
 
 ![1-bit Adam convergence](/assets/images/onebit-convergence.png){: .align-center}
 
