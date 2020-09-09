@@ -644,3 +644,48 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
     _test_zero_supported_client_optimizer(args=args,
                                           model=model,
                                           optimizer_constructor=optimizer_constructor)
+
+
+def test_zero2_reduce_scatter_off(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "gradient_clipping": 1.0,
+        "zero_optimization": {
+            "stage": 2,
+            "contiguous_gradients": True,
+            "allgather_bucket_size": 2000000000,
+            "reduce_bucket_size": 200000000,
+            "overlap_comm": False,
+            "reduce_scatter": False
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, rank=args.local_rank)
+
+    @distributed_test(world_size=[2])
+    def _helper(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _helper(args=args, model=model, hidden_dim=hidden_dim)
