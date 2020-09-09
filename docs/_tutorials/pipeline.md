@@ -27,12 +27,12 @@ accumulates gradients locally. Next, all data parallel groups perform
 reductions of the gradients in parallel. Lastly, the optimizer updates the
 model weights.
 
-![Pipeline Schedule](/assets/images/pipe-schedule.png)
 
-*TODO: working on a real illustration of pipeline scheduling. This is just from a
-spreadsheet I had laying around – I think Samyam and I made it live one
-afternoon over a call. It doesn’t show gradient communication or the
-optimizer step.*
+**TODO**: add PP and DP labels to this figure and give it a useful caption.
+Below is an illustration of scheduling micro-batches for hybrid data and
+pipeline parallelism within DeepSpeed.
+
+![Pipeline Schedule](/assets/images/pipe-schedule.png)
 
 
 ## Getting Starting with Pipeline Parallelism
