@@ -44,14 +44,14 @@ def torch_sim(a):
 
 tensor_size = 100 * 2**20
 server_size = int(tensor_size / size)
-if tensor_size % ( 8 * size ) != 0:
-    right_tensor_size = tensor_size + ( 8*size - (tensor_size % ( 8 * size )) )
+if tensor_size % (8 * size) != 0:
+    right_tensor_size = tensor_size + (8 * size - (tensor_size % (8 * size)))
 else:
     right_tensor_size = tensor_size
 right_server_size = right_tensor_size // size
 # Adding bias to the initialization of the gradient we are communicating
 # In order to get rid of the case where some elements in the gradient are too small
-a = (torch.rand(tensor_size, device=device)  - 0.5) + 0.01 * rank 
+a = (torch.rand(tensor_size, device=device) - 0.5) + 0.01 * rank
 worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
@@ -64,7 +64,7 @@ a_after = dummy_optim.Compressed_Allreduce(a,
                                            size,
                                            comm,
                                            local_rank)
-threshold = 1e-6 
+threshold = 1e-6
 magnitude_threshold = 1e-6
 diff_mask = (a_after - a_torch) > threshold
 diff_server_mask = torch.chunk(diff_mask, size)[rank]
