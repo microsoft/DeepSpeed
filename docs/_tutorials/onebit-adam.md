@@ -113,10 +113,10 @@ To enable the 1-bit compressed training, 1-bit Adam uses an MPI library (E.g. MV
 
 ### Launch with deepspeed
 
-The following helper script in the DeepSpeedExamples/BingBertSQuAD will launch the training without the need for setting any `mpirun` parameters.
+The following helper script in the DeepSpeedExamples/BingBertSQuAD will launch the training without the need for setting any `mpirun` parameters. The number of nodes and GPUs will be automatically detected and the job will be launched on all the available resources.
 
 ```shell
-bash run_squad_deepspeed_onebitadam.sh
+bash run_squad_deepspeed_onebitadam.sh <PATH_TO_OUTPUT_DIR>
 ```
 
 ### Launch with mpirun
@@ -124,21 +124,22 @@ bash run_squad_deepspeed_onebitadam.sh
 Alternatively, we show how the standard `mpirun` launcher can be used for launching the fine-tuning job.
 
 ```shell
-mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash run_squad_deepspeed_onebitadam.sh
+mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flags] bash run_squad_mpi_onebitadam.sh
 ```
+
 For example, in order to use 32 GPUs (4GPUs/node, 8 nodes in total), with the support of InfiniBand, you can use the `mpirun` launcher packaged with the MVAPICH2 library. Please run the folowing command:
 
 ```shell
-mpirun -np 32 -ppn 4 -hostfile hosts -env MV2_USE_CUDA=1 -env MV2_SUPPORT_DL=1 -env MV2_ENABLE_AFFINITY=0 -env MV2_SMP_USE_CMA=0 bash run_squad_deepspeed_onebitadam.sh
+mpirun -np 32 -ppn 4 -hostfile hosts -env MV2_USE_CUDA=1 -env MV2_SUPPORT_DL=1 -env MV2_ENABLE_AFFINITY=0 -env MV2_SMP_USE_CMA=0 bash run_squad_mpi_onebitadam.sh
 ```
 
 ### 1.2 Configuration for BingBertSQuAD with DeepSpeed and 1-bit Adam enabled
 
-The `deepspeed_bsz96_onebit_config.json` file gives the user the ability to specify DeepSpeed
+The `deepspeed_onebitadam_bsz96_config.json` file gives the user the ability to specify DeepSpeed
 options in terms of batch size, micro batch size, optimizer, learning rate, and other parameters.
 When running the `nvidia_run_squad_deepspeed.py`, in addition to the
 `--deepspeed` flag to enable DeepSpeed, the appropriate DeepSpeed configuration
-file must be specified using `--deepspeed_config deepspeed_bsz96_config.json`.
+file must be specified using `--deepspeed_config deepspeed_onebitadam_bsz96_config.json`.
 
 Table 1 shows the fine-tuning configuration we used in our experiments.
 
@@ -176,9 +177,8 @@ for more details.
 ### 2.1 Running Pre-training with DeepSpeed and 1-bit Adam
 
 The main part of training is done in `deepspeed_train.py`, which has
-already been modified to use DeepSpeed. The `ds_train_bert_onebitadam_bsz4k_seq128.sh` and `ds_train_bert_bsz64k_seq128.sh` are the
- shell scripts that
-help to invoke training and setup several different hyperparameters relevant
+already been modified to use DeepSpeed. The `ds_train_bert_onebitadam_bsz4k_seq128.sh` and `ds_train_bert_bsz64k_seq128.sh`
+are the shell scripts that help to invoke training and setup several different hyperparameters relevant
 to the training process.
 
 - **DeepSpeed-enabled:** Start training with DeepSpeed by running the command below:
