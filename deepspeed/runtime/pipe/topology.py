@@ -1,6 +1,4 @@
-'''
-Copyright 2019 The Microsoft DeepSpeed Team
-'''
+# Copyright 2019 The Microsoft DeepSpeed Team
 
 from deepspeed.utils import logger
 
@@ -305,7 +303,8 @@ class PipelineParallelGrid:
         for dp in range(self.data_parallel_size):
             ranks = sorted(self._topo.get_axis_list(axis='data', idx=dp))
             if self.global_rank == 0:
-                print(f'RANK={self.global_rank} building DeepSpeed model group: {ranks}')
+                #print(f'RANK={self.global_rank} building DeepSpeed model group: {ranks}')
+                pass
             proc_group = dist.new_group(ranks=ranks)
             if self.global_rank in ranks:
                 self.ds_model_proc_group = proc_group
@@ -326,7 +325,7 @@ class PipelineParallelGrid:
         self.is_first_stage = (self.stage_id == 0)
         self.is_last_stage = (self.stage_id == (self.pipe_parallel_size - 1))
 
-        self.p2p_groups = self.build_p2p_groups()
+        self.p2p_groups = self._build_p2p_groups()
 
         # Create new ProcessGroup for pipeline collectives - these are pipe parallel groups
         self.pp_group = []
@@ -334,7 +333,8 @@ class PipelineParallelGrid:
         self.pipe_groups = self._topo.get_axis_comm_lists('pipe')
         for ranks in self.pipe_groups:
             if self.global_rank == 0:
-                print(f'RANK={self.global_rank} building pipeline group: {ranks}')
+                #print(f'RANK={self.global_rank} building pipeline group: {ranks}')
+                pass
             proc_group = dist.new_group(ranks=ranks)
             if self.global_rank in ranks:
                 self.pp_group = ranks
@@ -369,7 +369,7 @@ class PipelineParallelGrid:
     def get_data_parallel_id(self):
         return self._topo.get_coord(rank=self.global_rank).data
 
-    def build_p2p_groups(self):
+    def _build_p2p_groups(self):
         """Groups for sending and receiving activations and gradients across model
         parallel stages.
         """

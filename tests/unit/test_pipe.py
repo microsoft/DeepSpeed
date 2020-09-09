@@ -76,10 +76,6 @@ class AlexNet(nn.Module):
 class AlexNetPipe(PipelineModule.PipelineModule):
     def __init__(self, num_classes=10, **kwargs):
         self.num_classes = num_classes
-        super().__init__(**kwargs)
-        self.loss_fn = nn.CrossEntropyLoss()
-
-    def layer_specs(self):
         specs = [
             LayerSpec(nn.Conv2d, 3, 64, kernel_size=11, stride=4, padding=5),
             LayerSpec(nn.ReLU, inplace=True),
@@ -98,7 +94,7 @@ class AlexNetPipe(PipelineModule.PipelineModule):
             lambda x: x.view(x.size(0), -1),
             LayerSpec(nn.Linear, 256, self.num_classes), # classifier
         ]
-        return specs
+        super().__init__(layers=specs, loss_fn=nn.CrossEntropyLoss(), **kwargs)
 
 
 def cifar_trainset(fp16=False):
