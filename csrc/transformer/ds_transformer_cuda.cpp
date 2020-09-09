@@ -144,8 +144,13 @@ BertTransformerLayer<T>::~BertTransformerLayer()
 template <typename T>
 void BertTransformerLayer<T>::Initialize()
 {
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(
-        _batch_size, _seq_length, _hidden_size, _intermediate_size, _heads, _training, _gelu_checkpoint));
+    Context::Instance().GenWorkSpace(get_workspace_size<T>(_batch_size,
+                                                           _seq_length,
+                                                           _hidden_size,
+                                                           _intermediate_size,
+                                                           _heads,
+                                                           _training,
+                                                           _gelu_checkpoint));
 
     if (std::is_same<T, __half>::value) cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
 }

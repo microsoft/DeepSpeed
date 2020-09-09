@@ -314,7 +314,7 @@ def test_forward_stochastic(batch_size,
     ds_config.layer_id = None
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
-    ds_config.intermediate_size =hidden_size
+    ds_config.intermediate_size = hidden_size
     ds_config.max_seq_length = seq_len
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
