@@ -2,14 +2,14 @@
 title: "1-bit Adam: Up to 5x less communication volume and up to 2x faster training"
 ---
 
-In this tutorial, we are going to introduce the 1-bit Adam optimizer in DeepSpeed. 1-bit Adam can improve model training speed on communication-constrained clusters, especially for communication-intensive large models by reducing the overall communication volume by up to 5x.
+In this tutorial, we are going to introduce the 1-bit Adam optimizer in DeepSpeed. 1-bit Adam can improve model training speed on communication-constrained clusters, especially for communication-intensive large models by reducing the overall communication volume by up to 5x. Detailed description of the 1-bit Adam algorithm, its implementation in DeepSpeed, and performance evaluation is available from our [blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.html).
 
 To illustrate the benefits and usage of 1-bit Adam optimizer in DeepSpeed, we use the following two training tasks as examples:
 
 1. BingBertSQuAD Fine-tuning
 2. BERT Pre-training
 
-For more details on these tasks, please refer to the tutorial posts on [BingBertSQuAD Fine-tuning](https://www.deepspeed.ai/tutorials/bert-finetuning/) and [BERT Pre-training](https://www.deepspeed.ai/tutorials/bert-pretraining/).
+For more details on these tasks, please refer to the tutorial posts on [BingBertSQuAD Fine-tuning](/tutorials/bert-finetuning/) and [BERT Pre-training](/tutorials/bert-pretraining/).
 
 ## Overview
 
@@ -66,6 +66,20 @@ Please note two new parameters `freeze_step` and `cuda_aware` that have been add
 This feature is only supported on systems with InfiniBand interconnect and a CUDA-Aware MPI library like [MVAPICH2-GDR](http://mvapich.cse.ohio-state.edu/userguide/gdr/) or OpenMPI built with CUDA-Aware support. Setting `cuda_aware` to False will allow training on Ethernet based systems. However, the communication will happen using sender as well as receiver side memory copies between CPU and GPU buffers before and after communication.
 
 `freeze_step` is the number of warm up steps before 1-bit compression gets applied to the communication. In order to determine the number of warm up steps, one strategy is to set 15-25% of the total training steps for a given model. If it provides the desired outcome, one can try to extract more performance by reducing the steps systematically. In future, we plan to introduce a threshold that can automatically search and decide for the number of warm up steps for different models. The examples below have been tuned for the number of warm up steps. The `freeze_step` parameter has already been set to the best number we found in the corresponding run scripts.
+
+### Benefits of 1-bit Adam on communication-constrained systems
+
+1-bit Adam offers the same convergence as Adam, incurs up to 5x less communication that enables up to 3.5x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput for SQuAD fine-tuning. This end-to-end throughput improvement is enabled by the 6.6x (Figure 1) and 6.2x (Figure 2) speedup observed during the compression stage.
+
+![BERT-Large Pretraining](/assets/images/bert-scaling.png){: .align-center}
+
+Figure 1: Scalability of 1-bit Adam for BERT-Large Pretraining on V100 GPUs with batch size of 16/GPU.
+
+![SQuAD Finetuning](/assets/images/squad-scaling.png){: .align-center}
+
+Figure 2: Scalability of 1-bit Adam for SQuAD Finetuning on V100 GPUs with batch size of 3/GPU.
+
+For more results, please see our detailed [blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.html).
 
 ## 1. BingBertSQuAD fine-tuning with 1-bit Adam
 
@@ -226,9 +240,3 @@ Below is the DeepSpeed configuration file for running BERT-large pre-training wi
 }
 ```
 Notice that for BERT-base training (sequence length 128), the suggested freeze_step is 16000. For the rest of the pre-training using sequence 512, we suggest to use a freeze_step of 1500.
-
-### 2.3 Results for BERT pre-training
-
-Using 1-bit Adam, we are able to achieve significantly higher througput compared to the original Adam optimizer. We note that increase training speed during the compressed stage enables overall training speedup of up to 3.5x on Ethernet based systems where communication bandwidth is significantly limited. However, we are able to achieve up to 1.7x overall speedup even for the 40 Gigabit InfiniBand QDR based system. Furthermore, it is important to highlight that we are able to achieve feasible BERT pre-training using 1-bit Adam on a significantly smaller batch size of 4k compared to 32k and 64k for the LAMB optimizer.
-
-Graphs to be added from the blog post ...
