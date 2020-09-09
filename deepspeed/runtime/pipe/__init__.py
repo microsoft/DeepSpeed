@@ -1,1 +1,1 @@
-from .module import PipelineModule
+from .module import PipelineModule, LayerSpec, TiedLayerSpec
