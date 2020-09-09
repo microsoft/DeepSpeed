@@ -1,6 +1,5 @@
+# Copyright 2020 The Microsoft DeepSpeed Team
 """
-Copyright 2020 The Microsoft DeepSpeed Team: deepspeed@microsoft.com
-
 DeepSpeed launcher, this is similar to torch.distributed.launch but supports
 additional features such as abitrary gpu exclusion.
 
