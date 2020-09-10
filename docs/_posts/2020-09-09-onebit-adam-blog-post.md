@@ -30,7 +30,7 @@ Where C(⋅) is the 1-bit compression operator. The good thing about doing this 
 <img src="https://render.githubusercontent.com/render/math?math=x_t%3Dx_%7Bt-1%7D-%5Cgamma(g_t%2Be_%7Bt-1%7D-e_t%20)">
 
 
-This strategy has been proven to work for all optimization algorithms that are linearly dependent on the gradient, such as SGD and Momentum SGD.
+This strategy has been proven to work for optimization algorithms that are linearly dependent on the gradient, such as SGD and Momentum SGD.
 
 ### 1.2 Challenges in applying error-compensation to Adam
 We provide an overview of the Adam algorithm below. The update rules are as follows.
