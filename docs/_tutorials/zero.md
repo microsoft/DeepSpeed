@@ -80,7 +80,7 @@ Next, we need to update the DeepSpeed json configuration, as shown below, to ena
 }
 ```
 
-In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmenation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training). With these changes, we can now run the launch the training run. 
+In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmenation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training). With these changes, we can now run the launch the training run.
 
 Here is a screenshot of the training log:
 
@@ -90,4 +90,4 @@ Here is a screenshot of nvidia-smi show GPU activity during training:
 
 ![ZERO2_DP32_10B_SMI](/assets/images/zero2_dp32_10B_smi.png)
 
-Congratulations! You have completed the ZeRO tutorial. 
+Congratulations! You have completed the ZeRO tutorial.

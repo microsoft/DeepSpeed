@@ -3,7 +3,7 @@ title: "ZeRO-Offload"
 ---
 We recommend that you read the tutorials on [Getting Started](/getting-started/)  and [ZeRO](/zero/) before stepping through this tutorial.
 
-ZeRO-Offload is a ZeRO optimization that offloads the optimizer memory and computation from the GPU to the host CPU. ZeRO-Offload enables large models with up to 13 billion parameters to be efficiently trained on a single GPU. In this tutorial we will use ZeRO-Offload to train a 10-billion parameter GPT-2 model in DeepSpeed. 
+ZeRO-Offload is a ZeRO optimization that offloads the optimizer memory and computation from the GPU to the host CPU. ZeRO-Offload enables large models with up to 13 billion parameters to be efficiently trained on a single GPU. In this tutorial we will use ZeRO-Offload to train a 10-billion parameter GPT-2 model in DeepSpeed.
 
 ## ZeRO-Offload Overview
 For large model training, optimizers such as [Adam](https://arxiv.org/abs/1412.6980), can consume a significant amount of GPU compute and memory. ZeRO-Offload reduces the GPU compute and memory requirements of such models by leveraging compute and memory resources on the host CPU  to execute the optimizer. Furthermore, to prevent the optimizer from becoming a bottleneck, ZeRO-Offload uses DeepSpeed's highly optimized CPU implementation of Adam called [DeeSpeedCPUAdam](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/ops/adam). DeepSpeedCPUAdam is 5X--7X faster than the standard PyTorch implementation.
@@ -12,7 +12,7 @@ For large model training, optimizers such as [Adam](https://arxiv.org/abs/1412.6
 For this tutorial, we will configure a 10 billion parameter GPT-2 model using the DeepSpeed [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM) GPT-2 code. We advise stepping through the Megatron-LM [tutorial](/megatron/) if you have not previously done so. We will use a single [NVIDIA Tesla V100-SXM3 Tensor Core GPU](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM for this exercise.
 
 ## Training a 10B parameter GPT-2 on 1 V100 GPU
-We need to make changes to the Megatron-LM launch script and to the DeepSpeed configuration json. 
+We need to make changes to the Megatron-LM launch script and to the DeepSpeed configuration json.
 
 ### Megatron-LM GPT-2 launch script changes
 We need to apply two changes to the launch script for the DeepSpeed Megatron-LM GPT-2 model. The first change is to configure a 10B parameter GPT-2 model, which can be achieved by the following set of changes:
@@ -28,9 +28,9 @@ We need to apply two changes to the launch script for the DeepSpeed Megatron-LM 
        --cpu_optimizer \
 ```
 
-Most of the flags in the changes above should be familiar if you have stepped through the Megatron-LM [tutorial](/megatron/), except for the **_--cpu_optimizer_**. This flag informs the model script to pass a CPU-based Adam optimizer, rather than a GPU-based one, to DeepSpeed as the client optimizer. It is very important that this flag be used when training with ZeRO-Offload to ensure correct operation of the DeepSpeed engine.   
- 
-Second, we need to apply the following changes to ensure that only one GPU is used for training. 
+Most of the flags in the changes above should be familiar if you have stepped through the Megatron-LM [tutorial](/megatron/), except for the **_--cpu_optimizer_**. This flag informs the model script to pass a CPU-based Adam optimizer, rather than a GPU-based one, to DeepSpeed as the client optimizer. It is very important that this flag be used when training with ZeRO-Offload to ensure correct operation of the DeepSpeed engine.  
+
+Second, we need to apply the following changes to ensure that only one GPU is used for training.
 ```bash
    deepspeed --num_nodes 1 --num_gpus 1 ...
 ```
@@ -63,5 +63,5 @@ Finally, here is a screenshot of htop showing host CPU and memory activity durin
 
 ![ZERO_OFFLOAD_DP1_10B_SMI](/assets/images/zero_offload_dp1_10B_cpu.png)
 
-Congratulations! You have completed the ZeRO-Offload tutorial. 
+Congratulations! You have completed the ZeRO-Offload tutorial.
 
