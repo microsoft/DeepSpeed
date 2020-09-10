@@ -229,8 +229,17 @@ class PipelineEngine(DeepSpeedEngine):
     def train_batch(self, data_iter=None):
         """Progress the pipeline to train the next batch of data.
 
+        An iterator should be
+
+        .. note::
+            Gradient accumulation
+            carefully to avoid deadlocks.
+
+            Args:
+                data_iter (Iterator, optional): Iterator of training data.
+
         Returns:
-            The arithmetic mean of the losses over all micro-batches.
+            The arithmetic mean of the losses computed this batch.
         """
         if not torch._C.is_grad_enabled():
             raise RuntimeError(
