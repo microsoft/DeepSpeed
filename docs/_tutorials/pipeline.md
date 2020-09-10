@@ -28,8 +28,12 @@ reductions of the gradients in parallel. Lastly, the optimizer updates the
 model weights.
 
 
-Below is an illustration of scheduling micro-batches for hybrid data and
-pipeline parallelism within DeepSpeed.
+Below is an illustration of how DeepSpeed will train a batch with eight
+micro-batches using hybrid two-way data parallelism and two-stage pipeline
+parallelism. GPUs 0 and 2 are arranged in a pipeline and will alternate
+forward (F) and backward (B) passes. They will then all-reduce (AR) gradients
+with their data parallel counterparts, GPUs 1 and 3, respectively. Finally,
+the two pipeline stages update their model weights.
 
 ![Pipeline Schedule](/assets/images/pipe-schedule.png)
 
@@ -309,9 +313,3 @@ Tied layers are replicated on every pipeline stage that owns an instance of
 reuse. Training then proceeds as normal, but an additional all-reduce of the
 tied gradients is added after all backward passes complete. The all-reduce
 ensures that the weights of the tied layer remain in sync across pipeline stages.
-
-(TODO: add API reference + example)
-
-
-### Customizing Pipeline Schedules
-(to be transcribed)
