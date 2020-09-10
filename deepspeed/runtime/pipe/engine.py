@@ -198,7 +198,7 @@ class PipelineEngine(DeepSpeedEngine):
         # Build a loader and make it repeating.
         pipe_dataloader = self.deepspeed_io(dataset, data_sampler=sampler)
         pipe_dataloader = RepeatingLoader(pipe_dataloader)
-        self._set_dataloader(pipe_dataloader)
+        self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
         self.module.allreduce_tied_weight_gradients()
@@ -403,8 +403,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         return agg_loss
 
-    def _set_dataloader(self, loader):
-        """ Store a DataLoader to sample for training data. """
+    def set_dataloader(self, loader):
+        """"""
         if self.is_first_stage() or self.is_last_stage():
             self.training_dataloader = loader
             self.data_iterator = iter(self.training_dataloader)
