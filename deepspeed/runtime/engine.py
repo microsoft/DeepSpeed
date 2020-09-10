@@ -875,6 +875,8 @@ class DeepSpeedEngine(Module):
         else:
             self.optimizer.zero_grad()
 
+        report_progress = self.global_rank == 0 if self.global_rank else True
+
         # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
         overflow = False
         if hasattr(self.optimizer, 'overflow'):

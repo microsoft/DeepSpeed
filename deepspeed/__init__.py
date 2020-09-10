@@ -8,11 +8,14 @@ from . import ops
 
 from .runtime.engine import DeepSpeedEngine
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_ADAM
+from .runtime.pipe.engine import PipelineEngine
 from .runtime.lr_schedules import add_tuning_arguments
 from .runtime.config import DeepSpeedConfig
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .utils import log_dist
+
+from .pipe import PipelineModule
 
 try:
     from .git_version_info import version, git_hash, git_branch

@@ -28,7 +28,6 @@ reductions of the gradients in parallel. Lastly, the optimizer updates the
 model weights.
 
 
-**TODO**: add PP and DP labels to this figure and give it a useful caption.
 Below is an illustration of scheduling micro-batches for hybrid data and
 pipeline parallelism within DeepSpeed.
 

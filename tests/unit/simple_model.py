@@ -3,7 +3,7 @@ import json
 import argparse
 import torch
 
-from deepspeed import PipelineModule, LayerSpec
+from deepspeed.pipe import PipelineModule, LayerSpec
 
 
 class SimpleModel(torch.nn.Module):

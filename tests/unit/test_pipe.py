@@ -243,7 +243,6 @@ def test_pipe_cifar10_seedlayers(base_topo, test_topo, tmpdir):
         base_avg = sum(base) / len(base)
         test = test_losses[-lastX:]
         test_avg = sum(test) / len(test)
-        # XXX this is not a good way of measuring quality
         assert rel_diff(base_avg, test_avg) < 0.03
 
     _helper(base_topo, test_topo, tmpdir)

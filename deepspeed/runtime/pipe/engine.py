@@ -189,7 +189,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('step_microstep').start()
             self.timers('step_microstep').stop()
 
-    def _build_data_iter(dataset):
+    def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset,
             num_replicas=self.dp_world_size,
