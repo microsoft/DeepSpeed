@@ -30,17 +30,22 @@ deepspeed --hostfile=<hostfile> \
 ```
 The script `<client_entry.py>` will execute on the resources specified in `<hostfile>`.
 
+## Pipeline Parallelism
+DeepSpeed provides [pipeline parallelism](/tutorials/pipeline/) for memory-
+and communication- efficient training. DeepSpeed supports a hybrid
+combination of data, model, and pipeline parallelism and has scaled to over
+[one trillion parameters using 3D parallelism]({{ site.press_release_v3 }}).
+Pipeline parallelism can also improve communication efficiency and has
+accelerated training by up to 7x on low-banwdith clusters.
+
 
 ## Model Parallelism
-
 ### Support for Custom Model Parallelism
-DeepSpeed supports all forms of model parallelism including tensor slicing based
-approaches such as the [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), or
-pipelined parallelism approaches such as
-[PipeDream](https://github.com/msr-fiddle/pipedream) and
-[GPipe](https://github.com/kakaobrain/torchgpipe). It does so by only requiring the model
-parallelism framework to provide a *model parallelism unit* (`mpu`) that implements a few
-bookkeeping functionalities:
+DeepSpeed supports all forms of model parallelism including tensor slicing
+based approaches such as the
+[Megatron-LM](https://github.com/NVIDIA/Megatron-LM). It does so by only
+requiring the model parallelism framework to provide a *model parallelism
+unit* (`mpu`) that implements a few bookkeeping functionalities:
 
 ```python
 mpu.get_model_parallel_rank()
@@ -55,6 +60,8 @@ mpu.get_data_parallel_world_size()
 ### Integration with Megatron-LM
 DeepSpeed is fully compatible with [Megatron](https://github.com/NVIDIA/Megatron-LM).
 Please see the [Megatron-LM tutorial](/tutorials/megatron/) for details.
+
+
 
 
 ## The Zero Redundancy Optimizer
@@ -102,6 +109,12 @@ checkpoints are long lived but the activations that recomputed are short lived. 
 during the backward computation, the activation gradients are short lived while the parameter
 gradients are long lived. CMO transfers activation checkpoints and parameter gradients
 to contiguous buffers preventing memory fragmentation.
+
+## ZeRO-Offload
+
+ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.  
+
+For more details see the [ZeRO-Offload release blog]( https://www.microsoft.com/en-us/research/?p=689370&secret=iSlooB), and [tutorial](/tutorials/zero-offload/) on integration with DeepSpeed.
 
 ## Additional Memory and Bandwidth Optimizations
 
@@ -240,13 +253,13 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 }
 ```
 ## Sparse Attention
-DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse_attention/) tutorial.
+DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
 
-```python
+```bash
 --deepspeed_sparse_attention
 ```
 
-```python
+```json
 "sparse_attention": {
     "mode": "fixed",
     "block": 16,
