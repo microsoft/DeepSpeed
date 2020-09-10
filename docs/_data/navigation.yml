@@ -70,5 +70,9 @@ lnav:
         url: /tutorials/zero-offload/
       - title: "ZeRO Redundancy Optimizer (ZeRO)"
         url: /tutorials/zero/
+      - title: "DeepSpeed with 1-bit Adam"
+        url: /tutorials/onebit-adam/
+      - title: "Pipeline Parallelism"
+        url: /tutorials/pipeline/
   - title: "Contributing"
     url: /contributing/
