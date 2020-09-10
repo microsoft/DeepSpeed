@@ -103,6 +103,12 @@ during the backward computation, the activation gradients are short lived while 
 gradients are long lived. CMO transfers activation checkpoints and parameter gradients
 to contiguous buffers preventing memory fragmentation.
 
+## ZeRO-Offload
+
+ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.  
+
+For more details see the [ZeRO-Offload release blog]( https://www.microsoft.com/en-us/research/?p=689370&secret=iSlooB), and [tutorial](/tutorials/zero-offload/) on integration with DeepSpeed.
+
 ## Additional Memory and Bandwidth Optimizations
 
 ### Smart Gradient Accumulation
@@ -158,9 +164,27 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 
 ## Training Optimizers
 
+### 1-bit Adam optimizer with up to 5x less communication
+
+DeepSpeed has an efficient implementation of a novel algorithm called 1-bit Adam.
+It offers the same convergence as Adam, incurs up to 5x less communication that enables
+up to 3.5x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput
+for SQuAD fine-tuning on bandwidth-limited clusters. For more details on usage and performance,
+please refer to the detailed [tutorial](https://www.deepspeed.ai/tutorials/onebit-adam) and
+[blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md), respectively.
+<!-- **TODO: add paper link when it is ready ** -->
+
 ### Fused Adam optimizer and arbitrary torch.optim.Optimizer
 With DeepSpeed, the user can choose to use a high performance implementation of ADAM from
 NVIDIA, or any training optimizer that extends torch's `torch.optim.Optimizer` class.
+
+### CPU-Adam: High-Performance vectorized implementation of Adam
+We introduce an efficient implementation of Adam optimizer on CPU that improves the parameter-update
+performance by nearly an order of magnitude. We use the AVX SIMD instructions on Intel-x86 architecture
+for the CPU-Adam implementation. We support both AVX-512 and AVX-2 instruction sets. DeepSpeed uses
+AVX-2 by defualt which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
+installing DeepSpeed. Using AVX-512, we observe 5.1x to 6.5x speedups considering the model-size between
+1 to 10 billion parameters with respect to torch-adam.
 
 ### Memory bandwidth optimized FP16 Optimizer
 Mixed precision training is handled by the DeepSpeed FP16 Optimizer. This optimizer not
@@ -219,5 +243,24 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
   "activation_checkpointing": {
     "profile": true
   }
+}
+```
+## Sparse Attention
+DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
+
+```bash
+--deepspeed_sparse_attention
+```
+
+```json
+"sparse_attention": {
+    "mode": "fixed",
+    "block": 16,
+    "different_layout_per_head": true,
+    "num_local_blocks": 4,
+    "num_global_blocks": 1,
+    "attention": "bidirectional",
+    "horizontal_global_attention": false,
+    "num_different_global_patterns": 4
 }
 ```

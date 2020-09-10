@@ -1,4 +1,6 @@
 import torch
+import torch.distributed as dist
+
 import deepspeed
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
@@ -6,13 +8,16 @@ from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 
+from deepspeed.runtime.pipe.topology import *
+PipeTopo = PipeDataParallelTopology
+
 import argparse
 import pytest
 import json
 import os
 import numbers
 from common import distributed_test
-from simple_model import SimpleModel, random_dataloader, args_from_dict
+from simple_model import *
 
 
 def compare_deepspeed_states(saved_model, loaded_model):
@@ -24,29 +29,32 @@ def compare_deepspeed_states(saved_model, loaded_model):
     assert saved_model.global_steps == loaded_model.global_steps
 
 
-def compare_model_states(saved_model, loaded_model):
+def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
     compare_deepspeed_states(saved_model, loaded_model)
 
     for p0, p1 in zip(saved_model.module.parameters(), loaded_model.module.parameters()):
-        assert torch.allclose(p0,p1,atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
+        assert torch.allclose(p0, p1, atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
+
+    if not compare_optimizer:
+        return
 
     if isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer):
         for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups, loaded_model.optimizer.single_partition_of_fp32_groups):
-            assert torch.allclose(p0,p1,atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
+            assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer_Stage1):
         for partition0, partition1 in zip(saved_model.optimizer.local_sub_partitions_of_fp32_groups, loaded_model.optimizer.local_sub_partitions_of_fp32_groups):
             for p0, p1 in zip(partition0, partition1):
-                assert torch.allclose(p0,p1,atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
+                assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_Optimizer):
         for p0, p1 in zip(saved_model.optimizer.fp32_groups_flat, loaded_model.optimizer.fp32_groups_flat):
-            assert torch.allclose(p0,p1,atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
+            assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_UnfusedOptimizer):
         for params0, params1 in zip(saved_model.optimizer.fp32_groups, loaded_model.optimizer.fp32_groups):
             for p0, p1 in zip(params0, params1):
-                assert torch.allclose(p0,p1,atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
+                assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
     elif isinstance(saved_model.optimizer, torch.optim.Optimizer):
         pass
     else:
@@ -95,20 +103,28 @@ def checkpoint_correctness_verification(args,
                                         tmpdir,
                                         load_optimizer_states=False,
                                         load_lr_scheduler_states=False,
-                                        fp16=True):
+                                        fp16=True,
+                                        train_batch=False):
     dtype = torch.half if fp16 else torch.float32
-    ds_model, _, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+    ds_model, _, _, _ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
     data_loader = random_dataloader(model=ds_model,
                                     total_samples=50,
                                     hidden_dim=hidden_dim,
                                     device=ds_model.device,
                                     dtype=dtype)
-    for n, batch in enumerate(data_loader):
-        loss = ds_model(batch[0], batch[1])
-        ds_model.backward(loss)
-        ds_model.step()
+
+    if train_batch:
+        ds_model.set_dataloader(data_loader)
+        for n, batch in enumerate(data_loader):
+            loss = ds_model.train_batch()
+    else:
+        for n, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            print(loss)
+            ds_model.backward(loss)
+            ds_model.step()
 
     trained_model = ds_model
 
@@ -117,9 +133,9 @@ def checkpoint_correctness_verification(args,
 
     trained_model.save_checkpoint(save_folder, save_tag)
 
-    loaded_model, _, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+    loaded_model, _, _, _ = deepspeed.initialize(args=args,
+                                                 model=model,
+                                                 model_parameters=model.parameters())
 
     loaded_model.load_checkpoint(save_folder,
                                  save_tag,
@@ -235,13 +251,24 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-@pytest.mark.parametrize("zero_stage", [1, 2])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+                         [
+                             (1,
+                              False,
+                              'Adam'),
+                             (2,
+                              False,
+                              'Adam'),
+                             (2,
+                              True,
+                              'deepspeed_adam'),
+                         ])
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -254,8 +281,9 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
-        },
+            "stage": zero_stage,
+            "cpu_offload": use_cpu_offload
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -276,13 +304,27 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage):
                                     load_optimizer_states=True)
 
 
-@pytest.mark.parametrize("zero_stage", [1, 2])
-def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+                         [
+                             (1,
+                              False,
+                              "Adam"),
+                             (2,
+                              False,
+                              "Adam"),
+                             (2,
+                              True,
+                              'deepspeed_adam'),
+                         ])
+def test_checkpoint_zero_no_optimizer(tmpdir,
+                                      zero_stage,
+                                      use_cpu_offload,
+                                      adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -295,8 +337,9 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
-        },
+            "stage": zero_stage,
+            "cpu_offload": use_cpu_offload
+        }
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -320,13 +363,27 @@ def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage):
                                        load_optimizer_states=False)
 
 
-@pytest.mark.parametrize("zero_stage", [0, 1, 2])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+                         [
+                             (0,
+                              False,
+                              'Adam'),
+                             (1,
+                              False,
+                              'Adam'),
+                             (2,
+                              False,
+                              'Adam'),
+                             (2,
+                              True,
+                              'deepspeed_adam'),
+                         ])
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -339,7 +396,8 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
+            "stage": zero_stage,
+            "cpu_offload": use_cpu_offload
         },
         "scheduler": {
             "type": "WarmupLR",
@@ -376,13 +434,27 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage):
                                   load_lr_scheduler_states=True)
 
 
-@pytest.mark.parametrize("zero_stage", [0, 1, 2])
-def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
+@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+                         [
+                             (0,
+                              False,
+                              'Adam'),
+                             (1,
+                              False,
+                              'Adam'),
+                             (2,
+                              False,
+                              'Adam'),
+                             (2,
+                              True,
+                              'deepspeed_adam'),
+                         ])
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": "Adam",
+            "type": adam_optimizer,
             "params": {
                 "lr": 1e-5
             }
@@ -391,7 +463,8 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
             "enabled": True
         },
         "zero_optimization": {
-            "stage": zero_stage
+            "stage": zero_stage,
+            "cpu_offload": use_cpu_offload
         },
         "scheduler": {
             "type": "WarmupLR",
@@ -400,7 +473,7 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage):
                 "warmup_max_lr": 0.001,
                 "warmup_num_steps": 1000
             }
-        }
+        },
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -457,3 +530,108 @@ def test_checkpoint_fp32_optimizer(tmpdir):
         checkpoint_correctness_verification(args, model, hidden_dim, tmpdir, fp16=False)
 
     _test_checkpoint_fp32_optimizer(args=args, model=model, hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize("zero_stage", [0, 1])
+def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
+    config_dict = {
+        "train_batch_size": 2,
+        "train_micro_batch_size_per_gpu": 1,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 1e-5
+            }
+        },
+        "zero_optimization": {
+            "stage": zero_stage
+        },
+        "fp16": {
+            "enabled": zero_stage > 0
+        },
+        "scheduler": {
+            "type": "OneCycle",
+            "params": {
+                "cycle_first_step_size": 1000,
+                "cycle_first_stair_count": 500,
+                "cycle_second_step_size": 1000,
+                "cycle_second_stair_count": 500,
+                "decay_step_size": 1000,
+                "cycle_min_lr": 0.0001,
+                "cycle_max_lr": 0.0010,
+                "decay_lr_rate": 0.001,
+                "cycle_min_mom": 0.85,
+                "cycle_max_mom": 0.99,
+                "decay_mom_rate": 0.0
+            }
+        }
+    }
+
+    @distributed_test(world_size=4)
+    def _test(save_folder, num_stages):
+        args = args_from_dict(tmpdir, config_dict)
+        model = LinearStackPipe(num_stages=num_stages)
+        checkpoint_correctness_verification(args=args,
+                                            model=model,
+                                            hidden_dim=model.hidden_dim,
+                                            tmpdir=save_folder,
+                                            fp16=config_dict['fp16']['enabled'],
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=True,
+                                            train_batch=True)
+
+    _test(tmpdir, num_stages=stages)
+
+
+@pytest.mark.parametrize("base_topo,test_topo",
+                         [
+                             (PipeTopo(num_pp=1,
+                                       num_dp=4),
+                              PipeTopo(num_pp=4,
+                                       num_dp=1)),
+                             (PipeTopo(num_pp=2,
+                                       num_dp=2),
+                              PipeTopo(num_pp=2,
+                                       num_dp=2)),
+                             (PipeTopo(num_pp=4,
+                                       num_dp=1),
+                              PipeTopo(num_pp=2,
+                                       num_dp=2)),
+                         ])
+def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
+    @distributed_test(world_size=4)
+    def _test(base_topo, test_topo, save_folder):
+        base_model = LinearStackPipe(topology=base_topo)
+        base_model.save_state_dict(save_folder)
+
+        dist.barrier()
+
+        test_model = LinearStackPipe(topology=test_topo)
+        test_model.load_state_dir(save_folder)
+
+        # Base and test can have different lengths, so make sure we map from the
+        # smaller to larger model
+        if len(base_model.forward_funcs) < len(test_model.forward_funcs):
+            A = base_model
+            B = test_model
+        else:
+            A = test_model
+            B = base_model
+
+        # Compare layers individually since partitions are different
+        for idx, A_layer in enumerate(A.forward_funcs):
+            if not hasattr(A_layer, 'parameters'):
+                # Skip functionals, etc.
+                continue
+
+            # Find the corresponding layer in B
+            global_idx = idx + A._local_start
+            B_local_idx = global_idx - B._local_start
+            B_layer = B.forward_funcs[B_local_idx]
+
+            # Compare layer parameters
+            for p0, p1 in zip(A_layer.parameters(), B_layer.parameters()):
+                assert torch.allclose(p0, p1, atol=1e-07), f"Model state {p0} is not equal to {p1}"
+
+    _test(base_topo, test_topo, save_folder=tmpdir)

@@ -10,13 +10,21 @@ from deepspeed.runtime.constants import *
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
 from deepspeed.runtime.config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
 from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
+from deepspeed.runtime.zero.constants import *
 from deepspeed.runtime.activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from deepspeed.utils import logger
 
 TENSOR_CORE_ALIGN_SIZE = 8
 ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
-DEEPSPEED_OPTIMIZERS = [ADAM_OPTIMIZER, LAMB_OPTIMIZER]
+ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+DEEPSPEED_ADAM = 'deepspeed_adam'
+DEEPSPEED_OPTIMIZERS = [
+    ADAM_OPTIMIZER,
+    LAMB_OPTIMIZER,
+    ONEBIT_ADAM_OPTIMIZER,
+    DEEPSPEED_ADAM
+]
 
 
 def get_amp_enabled(param_dict):
@@ -110,22 +118,9 @@ def get_zero_optimization(param_dict):
 
 
 def get_zero_reduce_scatter(param_dict):
-    return get_scalar_param(param_dict, ZERO_REDUCE_SCATTER, ZERO_REDUCE_SCATTER_DEFAULT)
-
-
-def get_zero_max_elements_per_comm(param_dict):
     return get_scalar_param(param_dict,
-                            ZERO_MAX_ELEMENTS_PER_COMM,
-                            ZERO_MAX_ELEMENTS_PER_COMM_DEFAULT)
-
-
-def get_allgather_size(param_dict):
-    return get_scalar_param(param_dict,
-                            ALLGATHER_SIZE,
-                            ALLGATHER_SIZE_DEFAULT) if get_scalar_param(
-                                param_dict,
-                                ALLGATHER_SIZE,
-                                ALLGATHER_SIZE_DEFAULT) > 0 else ALLGATHER_SIZE_DEFAULT
+                            ZERO_OPTIMIZATION_REDUCE_SCATTER,
+                            ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT)
 
 
 def get_allreduce_always_fp32(param_dict):
@@ -329,6 +324,20 @@ def get_sparse_attention_type(param_dict):
         return SPARSE_ATTENTION_TYPE_DEFAULT
 
 
+def get_pipeline_config(param_dict):
+    '''Parses pipeline engine configuration. '''
+    default_pipeline = {
+        'stages': 'auto',
+        'partition': 'best',
+        'seed_layers': False,
+        'activation_checkpoint_interval': 0
+    }
+    config = default_pipeline
+    for key, val in param_dict.get('pipeline', {}).items():
+        config[key] = val
+    return config
+
+
 def get_optimizer_name(param_dict):
     if OPTIMIZER in param_dict.keys() and \
             TYPE in param_dict[OPTIMIZER].keys():
@@ -492,8 +501,6 @@ class DeepSpeedConfig(object):
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
-        self.allgather_size = get_allgather_size(param_dict)
-
         self.zero_config = DeepSpeedZeroConfig(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
@@ -530,6 +537,7 @@ class DeepSpeedConfig(object):
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)
+        self.pipeline = get_pipeline_config(param_dict)
 
     def _batch_assertion(self):
 
@@ -599,10 +607,6 @@ class DeepSpeedConfig(object):
             assert False, \
                 'Either train_batch_size or micro_batch_per_gpu needs to be provided'
 
-        logger.info(
-            f' After Train batch {self.train_batch_size} micro_batch {self.train_micro_batch_size_per_gpu} and grad_acc {self.gradient_accumulation_steps}'
-        )
-
     def _configure_train_batch_size(self):
         self._set_batch_related_parameters()
         self._batch_assertion()
@@ -627,14 +631,17 @@ class DeepSpeedConfig(object):
                                    ':'))))
 
     def _do_error_check(self):
+        assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
+
+        assert self.gradient_accumulation_steps, "DeepSpeedConfig: {} is not defined".format(
+            GRADIENT_ACCUMULATION_STEPS)
+
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
-
-        assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
-
-        assert self.gradient_accumulation_steps, 'DeepSpeedConfig: {} is not defined'.format(
-            GRADIENT_ACCUMULATION_STEPS)
+            if self.zero_config.cpu_offload is True:
+                assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
+                #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
@@ -650,12 +657,14 @@ class DeepSpeedConfig(object):
             MAX_GRAD_NORM in self.optimizer_params.keys() and \
                 self.optimizer_params[MAX_GRAD_NORM] > 0:
             if fp16_enabled:
-                logger.warning(
-                    'DeepSpeedConfig: In FP16 mode, DeepSpeed will pass {}:{} to FP16 wrapper'
-                    .format(MAX_GRAD_NORM,
-                            self.optimizer_params[MAX_GRAD_NORM]))
+                if self.global_rank == 0:
+                    logger.warning(
+                        'DeepSpeedConfig: In FP16 mode, DeepSpeed will pass {}:{} to FP16 wrapper'
+                        .format(MAX_GRAD_NORM,
+                                self.optimizer_params[MAX_GRAD_NORM]))
             else:
-                logger.warning(
-                    'DeepSpeedConfig: In FP32 mode, DeepSpeed does not permit MAX_GRAD_NORM ({}) > 0, setting to zero'
-                    .format(self.optimizer_params[MAX_GRAD_NORM]))
+                if self.global_rank == 0:
+                    logger.warning(
+                        'DeepSpeedConfig: In FP32 mode, DeepSpeed does not permit MAX_GRAD_NORM ({}) > 0, setting to zero'
+                        .format(self.optimizer_params[MAX_GRAD_NORM]))
                 self.optimizer_params[MAX_GRAD_NORM] = 0.0
