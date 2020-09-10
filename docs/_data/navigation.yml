@@ -65,6 +65,10 @@ lnav:
       - title: "Learning Rate Range Test"
         url: /tutorials/lrrt/
       - title: "DeepSpeed Sparse Attention"
-        url: /tutorials/sparse_attention/
+        url: /tutorials/sparse-attention/
+      - title: "DeepSpeed with 1-bit Adam"
+        url: /tutorials/onebit-adam/
+      - title: "Pipeline Parallelism"
+        url: /tutorials/pipeline/
   - title: "Contributing"
     url: /contributing/
