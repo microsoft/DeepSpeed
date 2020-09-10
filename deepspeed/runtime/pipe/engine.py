@@ -19,6 +19,7 @@ from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor, ensure_directory_exists
+from ..dataloader import RepeatingLoader
 
 from .module import PipelineModule, PipelineError, TiedLayerSpec
 from . import p2p
@@ -90,13 +91,7 @@ class PipelineEngine(DeepSpeedEngine):
         # PipelineEngine needs to handle data loading specially due to only the first
         # and last stages loading inputs/labels. We construct a sampler that uses
         if self.training_data:
-            sampler = torch.utils.data.distributed.DistributedSampler(
-                self.training_data,
-                num_replicas=self.dp_world_size,
-                rank=self.mpu.get_data_parallel_rank(),
-                shuffle=False)
-            pipe_dataloader = self.deepspeed_io(self.training_data, data_sampler=sampler)
-            self.set_dataloader(pipe_dataloader)
+            self._build_data_iter(self.training_data)
 
         self.is_pipe_parallel = self.grid.pipe_parallel_size > 1
         self.is_data_parallel = self.grid.data_parallel_size > 1
@@ -193,6 +188,17 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('backward_allreduce').stop()
             self.timers('step_microstep').start()
             self.timers('step_microstep').stop()
+
+    def _build_data_iter(dataset):
+        sampler = torch.utils.data.distributed.DistributedSampler(
+            dataset,
+            num_replicas=self.dp_world_size,
+            rank=self.mpu.get_data_parallel_rank(),
+            shuffle=False)
+        # Build a loader and make it repeating.
+        pipe_dataloader = self.deepspeed_io(dataset, data_sampler=sampler)
+        pipe_dataloader = RepeatingLoader(pipe_dataloader)
+        self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
         self.module.allreduce_tied_weight_gradients()
@@ -411,14 +417,8 @@ class PipelineEngine(DeepSpeedEngine):
         # Only MP rank 0 loads the data.
         if mp_rank == 0:
             if self.data_iterator is None:
-                raise ValueError(
-                    f"RANK={self.global_rank} First and last stages must call set_dataiterator() "
-                    "before training.")
-            try:
-                batch = next(self.data_iterator)
-            except StopIteration:
-                self.data_iterator = iter(self.training_dataloader)
-                return self._next_batch()
+                raise ValueError(f"RANK={self.global_rank} no data iterator provided.")
+            batch = next(self.data_iterator)
 
         # All MP ranks participate in batch_fn, where they might broadcast the data.
         if self.batch_fn:
@@ -428,12 +428,11 @@ class PipelineEngine(DeepSpeedEngine):
         # XXX: the last minibatch with size < micro_batch_size kills us
         if torch.is_tensor(batch[0]):
             if batch[0].size(0) != self.micro_batch_size:
-                self.data_iterator = iter(self.training_dataloader)
+                print(f'size mismatch: {batch[0].size(0)} mb: {self.micro_batch_size}')
                 return self._next_batch()
         else:
             assert torch.is_tensor(batch[0][0])
             if batch[0][0].size(0) != self.micro_batch_size:
-                self.data_iterator = iter(self.training_dataloader)
                 return self._next_batch()
 
         return batch

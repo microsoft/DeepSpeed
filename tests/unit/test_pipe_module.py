@@ -11,8 +11,8 @@ import deepspeed
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
 PipeTopo = PipeDataParallelTopology
 
-from deepspeed.runtime.pipe import PipelineModule
-from deepspeed.runtime.pipe.module import LayerSpec
+from deepspeed.pipe import PipelineModule, LayerSpec
+from deepspeed.utils import RepeatingLoader
 
 from common import distributed_test
 from simple_model import args_from_dict
@@ -57,7 +57,7 @@ def simple_args(tmpdir):
 
 
 def test_pipe_module_sequential(sequential_model, simple_args):
-    batch_input = torch.randn(HIDDEN_DIM)
+    batch_input = torch.randn(1, HIDDEN_DIM)
 
     @distributed_test(world_size=4)
     def _helper():
@@ -85,11 +85,9 @@ def test_pipe_module_sequential(sequential_model, simple_args):
         if pipe_model.is_first_stage or pipe_model.is_last_stage:
             pipe_input = base_input.clone().detach().to('cuda')
             # label 0 is meaningless
-            data_iter = iter([
-                (pipe_input,
-                 0),
-            ])
-            pipe_model.set_dataiterator(data_iter)
+            dataset = [(pipe_input, 0)]
+            loader = RepeatingLoader(dataset)
+            data_iter = iter(loader)
         else:
             data_iter = None
 
