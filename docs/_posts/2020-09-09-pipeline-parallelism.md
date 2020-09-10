@@ -1,6 +1,6 @@
 ---
 layout: single
-title: "Pipeline Parallel Training with DeepSpeed"
+title: "Training a Trillion Parameters with Pipeline Parallelism"
 excerpt: ""
 categories: news
 new_post: true
