@@ -27,6 +27,8 @@ We demonstrate the benefits of ZeRO stage 1 by showing that it enables data para
        --hidden-size 1600 \
        --num-attention-heads 16 \
        --batch-size 1 \
+       --d \
+       --deepspeed_config ds_zero_stage_1.config \
 ```
 
 Training this model without ZeRO fails with an out-of-memory (OOM) error as shown below:
@@ -59,6 +61,8 @@ ZeRO stage 2 optimizations further increases the size of models that can be trai
        --hidden-size 4096 \
        --num-attention-heads 32 \
        --batch-size 1 \
+       --d \
+       --deepspeed_config ds_zero_stage_2.config \
 ```
 
 Next, we need to update the DeepSpeed json configuration, as shown below, to enable ZeRO stage 2 optimizations:  
@@ -76,4 +80,14 @@ Next, we need to update the DeepSpeed json configuration, as shown below, to ena
 }
 ```
 
-In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmenation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).
+In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmenation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training). With these changes, we can now run the launch the training run. 
+
+Here is a screenshot of the training log:
+
+![ZERO2_DP32_10B_LOG](/assets/images/zero2_dp32_10B_log.png)
+
+Here is a screenshot of nvidia-smi show GPU activity during training:
+
+![ZERO2_DP32_10B_SMI](/assets/images/zero2_dp32_10B_smi.png)
+
+Congratulations! You have completed the ZeRO tutorial. 
