@@ -7,7 +7,7 @@ parallelism improves both the memory and compute efficiency of deep learning
 training by partitioning the layers of a model into stages that can be
 processed in parallel.
 DeepSpeed's training engine provides hybrid data and pipeline parallelism and
-can be further combined model parallelism such as
+can be further combined with model parallelism such as
 [Megatron-LM](https://github.com/NVIDIA/Megatron-LM).
 An illustration of
 3D parallelism is shown below. Our latest [results](linklinklink)
@@ -47,7 +47,7 @@ pipeline parallel training by preparing `torchvision`'s
 model.
 
 ### Expressing Pipeline Models
-Pipeline parallelism requires models be expressed as a sequence of layers.
+Pipeline parallelism requires models to be expressed as a sequence of layers.
 In the forward pass, each layer consumes the output of the previous
 layer. In fact, there is no need to specify a `forward()` for a pipeline
 parallel model! The forward pass of a pipeline parallel model implicitly
@@ -180,7 +180,7 @@ advances the pipeline engine until the next batch of training data is
 consumed and the model weights updated.
 ```python
 train_iter = iter(train_loader)
-loss = engine.train_batch(data_iter=trainiter)
+loss = engine.train_batch(data_iter=train_iter)
 ```
 
 The above `train_batch()` example is equivalent to the following with
@@ -198,7 +198,7 @@ for micro_batch in engine.gradient_accumulation_steps():
 
 Data parallel training typically has each worker perform IO independently at
 the start of each batch. However, in a pipeline parallel environment, only the
-first stage uses the input data, and the last stage uses labels for loss
+first stage uses the input data, and only the last stage uses labels for loss
 calculation.
 
 **Note:**
@@ -224,15 +224,17 @@ for step in range(args.steps):
 ```
 
 Of course, DeepSpeed will work with any data loader that you wish to use.
-Data loaders should be constructed by the first stage in the pipeline. Each
-worker should load micro-batches of size
+Data loaders should be constructed by the first and last stages in the
+pipeline. Each worker should load micro-batches of size
 `engine.train_micro_batch_size_per_gpu()` and will be queried
 a total of `engine.gradient_accumulation_steps()` times per `train_batch()`.
 
 **Watch out!**
 The pipeline engine *pulls* data from an iteratior instead of iterating over
 it. It's critical that the data stream does not empty in the middle of a
-training batch.
+training batch. Each invocation of `train_batch()` will pull
+a total of `engine.gradient_accumulation_steps()` micro-batches of data from
+the data iterator.
 {: .notice--warning}
 
 DeepSpeed provides a convenience class `deepspeed.utils.RepeatingLoader` that
