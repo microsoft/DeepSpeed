@@ -66,7 +66,7 @@ title: "DeepSpeed Configuration JSON"
       ],
       "eps": 1e-8,
       "weight_decay": 3e-7
-      "freeze_step": 400
+      "freeze_step": 400,
       "cuda_aware": true
     }
   }
