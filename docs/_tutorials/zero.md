@@ -51,7 +51,17 @@ As seen above, we set two fields in the **zero_optimization** key. Specifically 
 From the nvidia-smi screenshot above we can see that that only GPUs 0--7 are being used for training the model. With ZeRO stage 1 we can further reduce the per-device memory consumption by increasing the data parallelism degree. These memory savings can be leveraged to either increase model size and/or batch size. In contrast, such benefits are not possible with data parallelism alone.  
 
 ### Training a 10B Parameter GPT-2 model
-ZeRO stage 2 optimizations further increases the size of models that can be trained using data parallelism. We show this training a model with 10 billion parameters using 32 V100 GPUs. The json configuration changes required to these optimizations are shown below:  
+ZeRO stage 2 optimizations further increases the size of models that can be trained using data parallelism. We show this training a model with 10B parameters using 32 V100 GPUs. First, we need to configure a 10B parameter model. This can be done by applying the following GPT-2 model configuration changes to the DeepSpeed launch script.
+
+```bash
+       --model-parallel-size 1 \
+       --num-layers 50 \
+       --hidden-size 4096 \
+       --num-attention-heads 32 \
+       --batch-size 1 \
+```
+
+Next, we need to update the DeepSpeed json configuration, as shown below, to enable ZeRO stage 2 optimizations:  
 
 ```json
 {
