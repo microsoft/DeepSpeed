@@ -4,7 +4,7 @@ title: "DeepSpeed  Sparse Attention"
 
 In this tutorial we describe how to use DeepSpeed Sparse Attention (SA) and its building-block kernels. The easiest way to use SA is through DeepSpeed launcher. We will describe this through an example in [How to use sparse attention with DeepSpeed launcher](/tutorials/sparse-attention/#how-to-use-sparse-attention-with-deepspeed-launcher) section. But before that, we introduce modules provided by DeepSpeed SA in the [next](/tutorials/sparse-attention/#sparse-attention-modules) section.
 
-**Note:** Currently DeepSpeed Sparse Attention can be used only on Nvidia V100 GPU using Torch >= 1.5 and Cuda 10.1 or 10.2.
+**Note:** Currently DeepSpeed Sparse Attention can be used only on NVIDIA V100 GPU using Torch >= 1.5 and Cuda 10.1 or 10.2.
 {: .notice--warning}
 
 ## Sparse attention modules
@@ -115,7 +115,7 @@ if self.sparse_attention_config is not None and pad_len > 0:
 
 * **Enable sparse attention*: To use DeepSpeed Sparse Attention, you need to enable it in the launcher script through `deepspeed_sparse_attention` argument:
 
-```python
+```bash
 --deepspeed_sparse_attention
 ```
 
@@ -123,7 +123,7 @@ Please check [our bing_bert runner script](https://github.com/microsoft/DeepSpee
 
 * **Add sparsity config**: The sparsity config can be set through the [DeepSpeed JSON config file](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/deepspeed_bsz64k_lamb_config_seq128.json). In this example, we have used `fixed` sparsity mode that will be described in [How to config sparsity structures](/tutorials/sparse-attention/#how-to-config-sparsity-structures) section.
 
-```python
+```json
 "sparse_attention": {
     "mode": "fixed",
     "block": 16,

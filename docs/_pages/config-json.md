@@ -34,7 +34,7 @@ title: "DeepSpeed Configuration JSON"
 
 | Fields | Value                                                        | Example                        |
 | ------ | ------------------------------------------------------------ | ------------------------------ |
-| type   | The optimizer name. DeepSpeed natively supports Adam and LAMB optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
+| type   | The optimizer name. DeepSpeed natively supports Adam, OneBitAdam, and LAMB optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
 | params | Dictionary of parameters to instantiate optimizer. The parameter names must match the optimizer constructor signature (e.g., for [Adam](https://pytorch.org/docs/stable/optim.html#torch.optim.Adam)). | `{"lr": 0.001, "eps": 1e-8}` |
 
   Example of ***optimizer***
@@ -50,6 +50,24 @@ title: "DeepSpeed Configuration JSON"
       ],
       "eps": 1e-8,
       "weight_decay": 3e-7
+    }
+  }
+```
+  Another example of ***optimizer*** with 1-bit Adam specific parameters is as follows.
+
+```json
+"optimizer": {
+    "type": "OneBitAdam",
+    "params": {
+      "lr": 0.001,
+      "betas": [
+        0.8,
+        0.999
+      ],
+      "eps": 1e-8,
+      "weight_decay": 3e-7,
+      "freeze_step": 400,
+      "cuda_aware": true
     }
   }
 ```
@@ -213,7 +231,8 @@ Enabling and configure ZeRO memory optimizations
     "overlap_comm": false,
     "reduce_scatter": [true|false],
     "reduce_bucket_size": 500000000,
-    "contiguous_gradients" : [true|false]
+    "contiguous_gradients" : [true|false],
+    "cpu_offload": [true|false]
     }
 ```
 
@@ -265,6 +284,11 @@ Enabling and configure ZeRO memory optimizations
 | ------------------------------------------------------------ | ------- |
 | Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. Only useful when running very large models.   | `False`   |
 
+***cpu_offload***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes.  | `False`   |
 
 
 ### Logging

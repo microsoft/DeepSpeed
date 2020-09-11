@@ -34,6 +34,13 @@ Transformer Kernel API
 
    kernel
 
+Pipeline Parallelism
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   pipeline
+
 
 Indices and tables
 ------------------

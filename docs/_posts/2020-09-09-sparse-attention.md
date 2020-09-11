@@ -20,12 +20,12 @@ Block-sparse computations handled by DeepSpeed Sparse Attention kernels are illu
 
 ![Sparse attention backward pass](/assets/images/sa_backward_pass.png){: .align-center}
 
-To learn more about Sparsity Config, and also how to use this library, please check our [tutorial](/tutorials/sparse_attention/) that provides detailed information about it.
+To learn more about Sparsity Config, and also how to use this library, please check our [tutorial](/tutorials/sparse-attention/) that provides detailed information about it.
 
 ## Performance Results
 
 * **Power over 10x longer sequences**
-In a pre-training experiment, we ran BERT model under three settings: dense, dense with activation checkpoint, and sparse (SA) with activation checkpoint. SA empowers 10x and 16x longer sequences comparing with dense for BERT base and large, respectively. Following figure shows the longest sequence length runnable in BERT base and large model; experiment is performed with batch size 1 on a single Nvidia V100 GPU-32GB memory.
+In a pre-training experiment, we ran BERT model under three settings: dense, dense with activation checkpoint, and sparse (SA) with activation checkpoint. SA empowers 10x and 16x longer sequences comparing with dense for BERT base and large, respectively. Following figure shows the longest sequence length runnable in BERT base and large model; experiment is performed with batch size 1 on a single NVIDIA V100 GPU-32GB memory.
 
 ![Maximum sequence runnable on BERT](/assets/images/sa_maximum_sequence_runnable_on_bert.png){: .align-center}
 
@@ -81,4 +81,4 @@ DeepSpeed Sparse Attention suite does not target at any specific sparse structur
   * [BigBird](https://arxiv.org/pdf/2007.14062.pdf) (from Google)
   * BSLongformer (Block-Sparse implementation of [Longformer](https://arxiv.org/pdf/2004.05150.pdf) from AI2)
 
-We also define a template to have `variable` structure (top figure), which can be used to simply customize any block-sparse random/local/global attention pattern. In addition to this list, user can add any other sparsity structure as described in [tutorial](https://www.deepspeed.ai/tutorials/sparse_attention/) section.
+We also define a template to have `variable` structure (top figure), which can be used to simply customize any block-sparse random/local/global attention pattern. In addition to this list, user can add any other sparsity structure as described in [tutorial](https://www.deepspeed.ai/tutorials/sparse-attention/) section.

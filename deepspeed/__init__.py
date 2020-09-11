@@ -4,16 +4,21 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import sys
 import types
 
-from deepspeed.runtime.engine import DeepSpeedEngine
-from deepspeed.runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
-from deepspeed.runtime.lr_schedules import add_tuning_arguments
-from deepspeed.runtime.config import DeepSpeedConfig
-from deepspeed.runtime.activation_checkpointing import checkpointing
-from deepspeed.ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-from deepspeed.utils import logger
+from . import ops
+
+from .runtime.engine import DeepSpeedEngine
+from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_ADAM
+from .runtime.pipe.engine import PipelineEngine
+from .runtime.lr_schedules import add_tuning_arguments
+from .runtime.config import DeepSpeedConfig
+from .runtime.activation_checkpointing import checkpointing
+from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .utils import log_dist
+
+from .pipe import PipelineModule
 
 try:
-    from deepspeed.git_version_info import version, git_hash, git_branch
+    from .git_version_info import version, git_hash, git_branch
 except ImportError:
     version = "0.0.0+unknown"
     git_hash = None
@@ -97,23 +102,35 @@ def initialize(args,
         * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
           if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
     """
-    logger.info(
-        "DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
-            __version__,
-            __git_hash__,
-            __git_branch__),
-    )
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+        __version__,
+        __git_hash__,
+        __git_branch__),
+             ranks=[0])
 
-    engine = DeepSpeedEngine(args=args,
-                             model=model,
-                             optimizer=optimizer,
-                             model_parameters=model_parameters,
-                             training_data=training_data,
-                             lr_scheduler=lr_scheduler,
-                             mpu=mpu,
-                             dist_init_required=dist_init_required,
-                             collate_fn=collate_fn,
-                             config_params=config_params)
+    if not isinstance(model, PipelineModule):
+        engine = DeepSpeedEngine(args=args,
+                                 model=model,
+                                 optimizer=optimizer,
+                                 model_parameters=model_parameters,
+                                 training_data=training_data,
+                                 lr_scheduler=lr_scheduler,
+                                 mpu=mpu,
+                                 dist_init_required=dist_init_required,
+                                 collate_fn=collate_fn,
+                                 config_params=config_params)
+    else:
+        assert mpu is None, "mpu must be None with pipeline parallelism"
+        engine = PipelineEngine(args=args,
+                                model=model,
+                                optimizer=optimizer,
+                                model_parameters=model_parameters,
+                                training_data=training_data,
+                                lr_scheduler=lr_scheduler,
+                                mpu=model.mpu(),
+                                dist_init_required=dist_init_required,
+                                collate_fn=collate_fn,
+                                config_params=config_params)
 
     return_items = [
         engine,
