@@ -1,6 +1,6 @@
+#include <math.h>
 #include "custom_cuda_layers.h"
 #include "general_kernels.h"
-#include <math.h>
 
 namespace cg = cooperative_groups;
 
@@ -297,9 +297,7 @@ void launch_attn_softmax<float>(float* vals,
     int seq_length4 = sequence_length / 4;
 
     int block_compute_size =
-        (seq_length4 < threads ? 
-            (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 
-            1);
+        (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 1);
     dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
 
     int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
@@ -332,9 +330,8 @@ void launch_attn_softmax<float>(float* vals,
     else {
         const int threads = 256;
         block_compute_size =
-            (seq_length4 < threads ? 
-                (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 
-                1);
+            (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4))))
+                                   : 1);
         dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
 
         int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
@@ -368,9 +365,7 @@ void launch_attn_softmax<__half>(__half* vals,
     int seq_length4 = sequence_length / 4;
 
     int block_compute_size =
-        (seq_length4 < threads ? 
-            (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) :
-            1);
+        (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 1);
     dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
 
     int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
@@ -404,9 +399,8 @@ void launch_attn_softmax<__half>(__half* vals,
     else {
         const int threads = 256;
         block_compute_size =
-            (seq_length4 < threads ? 
-                (int)pow(2.0, floor(log2((float)(threads / seq_length4)))) : 
-                1);
+            (seq_length4 < threads ? (int)pow(2.0, floor(log2((float)(threads / seq_length4))))
+                                   : 1);
         dim3 grid_dim(batch_size, heads * sequence_length / block_compute_size);
 
         int subblock_max_workload = MAX_THREAD_ITERATIONS * 4 * threads;
@@ -538,36 +532,35 @@ void launch_attn_softmax_backward_v2(T* out_grad,
                                      int seq_length,
                                      cudaStream_t stream)
 {
-
     const int warps_per_block = 4;
     dim3 grid_dim(batch_size * heads * seq_length / warps_per_block);
     dim3 block_dim(WARP_SIZE, warps_per_block);
 
-    if(seq_length <= 32)
+    if (seq_length <= 32)
         softmax_backward_kernel_v2<T, 1>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 64)
+    else if (seq_length <= 64)
         softmax_backward_kernel_v2<T, 2>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 128)
+    else if (seq_length <= 128)
         softmax_backward_kernel_v2<T, 4>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 256)
+    else if (seq_length <= 256)
         softmax_backward_kernel_v2<T, 8>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 384)
+    else if (seq_length <= 384)
         softmax_backward_kernel_v2<T, 12>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 512)
+    else if (seq_length <= 512)
         softmax_backward_kernel_v2<T, 16>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 768)
+    else if (seq_length <= 768)
         softmax_backward_kernel_v2<T, 24>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 1024)
+    else if (seq_length <= 1024)
         softmax_backward_kernel_v2<T, 32>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
-    else if(seq_length <= 2048)
+    else if (seq_length <= 2048)
         softmax_backward_kernel_v2<T, 64>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
     else
