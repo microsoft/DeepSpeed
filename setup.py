@@ -78,12 +78,14 @@ ext_modules.append(
 )
 
 # deepspeed_transformer_cuda extension
-sources=['csrc/transformer/ds_transformer_cuda.cpp']
+sources=[]
 nvcc_flags=['-O3',
             '-std=c++14',
            ]
+include_dirs=['csrc/includes']
 if is_rocm_pytorch:
-    sources.extend(['csrc/transformer/hip/cublas_wrappers.hip',
+    sources.extend(['csrc/transformer/hip/ds_transformer_hip.cpp',
+                    'csrc/transformer/hip/cublas_wrappers.hip',
                     'csrc/transformer/hip/transform_kernels.hip',
                     'csrc/transformer/hip/gelu_kernels.hip',
                     'csrc/transformer/hip/dropout_kernels.hip',
@@ -91,8 +93,10 @@ if is_rocm_pytorch:
                     'csrc/transformer/hip/softmax_kernels.hip',
                     'csrc/transformer/hip/general_kernels.hip'
                    ])
+    include_dirs.extend(['/opt/rocm/include/rocrand'])
 else:
-    sources.extend(['csrc/transformer/cublas_wrappers.cu',
+    sources.extend(['csrc/transformer/cuda/ds_transformer_cuda.cpp',
+                    'csrc/transformer/cublas_wrappers.cu',
                     'csrc/transformer/transform_kernels.cu',
                     'csrc/transformer/gelu_kernels.cu',
                     'csrc/transformer/dropout_kernels.cu',
@@ -114,7 +118,7 @@ else:
 ext_modules.append(
     CUDAExtension(name='deepspeed_transformer_cuda',
                   sources=sources,
-                  include_dirs=['csrc/includes'],
+                  include_dirs=include_dirs,
                   extra_compile_args={
                       'cxx': ['-O3',
                               '-std=c++14',
