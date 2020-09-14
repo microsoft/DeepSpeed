@@ -27,7 +27,7 @@ class TransformerConfig():
         self.layer_id = -1
         self.batch_size = batch_size
         self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size if intermediate_size > 0 else 4 * hidden_size
+        self.intermediate_size = intermediate_size
         self.max_seq_length = max_seq_length
         self.heads = heads
         self.attn_dropout_ratio = attn_dropout_ratio
@@ -106,15 +106,16 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False):
         super(DeepSpeedTransformerConfig,
-              self).__init__(batch_size,
-                             max_seq_length,
-                             hidden_size,
-                             intermediate_size,
-                             heads,
-                             attn_dropout_ratio,
-                             hidden_dropout_ratio,
-                             num_hidden_layers,
-                             initializer_range)
+              self).__init__(
+                  batch_size,
+                  max_seq_length,
+                  hidden_size,
+                  intermediate_size if intermediate_size > 0 else 4 * hidden_size,
+                  heads,
+                  attn_dropout_ratio,
+                  hidden_dropout_ratio,
+                  num_hidden_layers,
+                  initializer_range)
         self.fp16 = fp16
         self.pre_layer_norm = pre_layer_norm
         self.local_rank = local_rank
