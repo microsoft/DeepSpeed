@@ -24,8 +24,6 @@ release = '0.3.0'
 
 master_doc = 'index'
 
-html_show_sourcelink = True
-
 autodoc_member_order = 'bysource'
 
 # -- General configuration ---------------------------------------------------
@@ -36,6 +34,7 @@ autodoc_member_order = 'bysource'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
     'recommonmark',
     'sphinx_rtd_theme',
 ]
