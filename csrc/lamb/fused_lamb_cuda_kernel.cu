@@ -14,7 +14,7 @@
 #include <iostream>
 
 //#include <helper_functions.h>
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
 #include <hip/hip_cooperative_groups.h>
 #else
 #include <cooperative_groups.h>
@@ -80,7 +80,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
     T a_sum = s_a[tid];
     T b_sum = s_b[tid];
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -92,7 +92,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 256];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -103,7 +103,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 128];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -114,7 +114,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 64];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -142,7 +142,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 32];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -153,7 +153,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 16];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -164,7 +164,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 8];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -175,7 +175,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 4];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -186,7 +186,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 2];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
@@ -197,7 +197,7 @@ __device__ void reduce_block_in_shared_memory(T* s_a, T* s_b, T* g_a, T* g_b)
         s_b[tid] = b_sum = b_sum + s_b[tid + 1];
     }
 
-#ifdef __HIP_PLATFORM_HCC__ && HIP_VERSION > 305 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
     cta.sync();
 #else
     cg::sync(cta);
