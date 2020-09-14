@@ -5,7 +5,9 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#ifndef __HIP_PLATFORM_HCC__
 #include <mma.h>
+#endif
 #include <stdio.h>
 
 int cublas_gemm_ex(cublasHandle_t handle,

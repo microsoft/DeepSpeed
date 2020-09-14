@@ -93,7 +93,7 @@ if is_rocm_pytorch:
                     'csrc/transformer/hip/softmax_kernels.hip',
                     'csrc/transformer/hip/general_kernels.hip'
                    ])
-    include_dirs.extend(['/opt/rocm/include/rocrand'])
+    include_dirs.extend(['/opt/rocm/include/rocrand', '/opt/rocm/include/hiprand/'])
 else:
     sources.extend(['csrc/transformer/cuda/ds_transformer_cuda.cpp',
                     'csrc/transformer/cublas_wrappers.cu',

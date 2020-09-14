@@ -2,7 +2,9 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#ifndef __HIP_PLATFORM_HCC__
 #include <cuda_profiler_api.h>
+#endif
 #include <array>
 #include <cstdio>
 #include <cstdlib>

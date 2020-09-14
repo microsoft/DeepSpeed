@@ -5,7 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305 
+#include <hip/hip_cooperative_groups.h>
+#else
 #include <cooperative_groups.h>
+#endif
 #include <curand_kernel.h>
 
 #include "context.h"
