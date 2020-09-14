@@ -20,9 +20,11 @@ copyright = '2020, Microsoft'
 author = 'Microsoft'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.0'
+release = '0.3.0'
 
 master_doc = 'index'
+
+html_show_sourcelink = True
 
 autodoc_member_order = 'bysource'
 
