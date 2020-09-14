@@ -55,8 +55,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         initializer_range: BERT model's initializer range for initializing parameter data
 
         local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
-        to use if the model already set the current device, otherwise need to set it
-        so that the transformer kernel can work on the right device
+            to use if the model already set the current device, otherwise need to set it
+            so that the transformer kernel can work on the right device
 
         seed: The random seed for the dropout layers
 
