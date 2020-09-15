@@ -8,8 +8,8 @@ import os
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 
-
-lamb_available = pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'], reason="lamb is not installed")
+lamb_available = pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'],
+                                    reason="lamb is not installed")
 
 
 @lamb_available

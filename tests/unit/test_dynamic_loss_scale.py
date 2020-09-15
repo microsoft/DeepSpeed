@@ -8,8 +8,8 @@ import numpy as np
 from common import distributed_test
 from simple_model import SimpleModel, args_from_dict
 
-
-lamb_available = pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'], reason="lamb is not installed")
+lamb_available = pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'],
+                                    reason="lamb is not installed")
 
 
 def run_model_step(model, gradient_list):

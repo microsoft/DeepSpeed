@@ -152,7 +152,8 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
-@pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'], reason="lamb is not installed")
+@pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'],
+                    reason="lamb is not installed")
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,

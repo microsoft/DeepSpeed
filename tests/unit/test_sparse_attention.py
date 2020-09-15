@@ -7,9 +7,8 @@ import pytest
 import torch
 import deepspeed
 
-
 if not deepspeed.ops.__installed_ops__['sparse-attn']:
-        pytest.skip("cpu-adam is not installed", allow_module_level=True)
+    pytest.skip("cpu-adam is not installed", allow_module_level=True)
 
 
 def test_sparse_attention_module_availability():
