@@ -1,4 +1,5 @@
 import torch
+
 import torch.distributed as dist
 
 import deepspeed
@@ -151,6 +152,7 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
+@pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'], reason="lamb is not installed")
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -264,6 +266,9 @@ def test_checkpoint_fused_optimizer(tmpdir):
                               'deepspeed_adam'),
                          ])
 def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+        pytest.skip("cpu-adam is not installed")
+
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -320,6 +325,9 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                                       zero_stage,
                                       use_cpu_offload,
                                       adam_optimizer):
+    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+        pytest.skip("cpu-adam is not installed")
+
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -379,6 +387,9 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                               'deepspeed_adam'),
                          ])
 def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+        pytest.skip("cpu-adam is not installed")
+
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -450,6 +461,9 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                               'deepspeed_adam'),
                          ])
 def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+        pytest.skip("cpu-adam is not installed")
+
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,

@@ -6,8 +6,11 @@ import numpy as np
 import pytest
 import copy
 
+import deepspeed
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
+if not deepspeed.ops.__installed_ops__['cpu-adam']:
+    pytest.skip("cpu-adam is not installed", allow_module_level=True)
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     x = first.detach().numpy()
@@ -18,6 +21,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         print('-' * 80)
     np.testing.assert_allclose(x, y, err_msg="param-update dismatch!", atol=atol)
 
+#@cpu_adam_available
 @pytest.mark.parametrize('model_size',
                          [
                              (64),
