@@ -8,7 +8,6 @@ Model Setup
    :maxdepth: 2
 
    initialize
-   checkpointing
 
 Training API
 ------------
@@ -26,6 +25,21 @@ Checkpointing API
 
    model-checkpointing
    activation-checkpointing
+
+
+Transformer Kernel API
+----------------------
+.. toctree::
+   :maxdepth: 2
+
+   kernel
+
+Pipeline Parallelism
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   pipeline
 
 
 Indices and tables

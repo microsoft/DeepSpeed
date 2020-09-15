@@ -8,16 +8,18 @@ deepspeed/git_version_info.py
 # Build + installation data
 build/
 dist/
-fused_lamb_*.so
+*.so
 deepspeed.egg-info/
 
 # Website
 docs/_site/
 docs/build
+docs/code-docs/source/_build
 docs/code-docs/_build
 docs/code-docs/build
 .sass-cache/
 .jekyll-cache/
 .jekyll-metadata
 
+# Testing data
 tests/unit/saved_checkpoint/

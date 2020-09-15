@@ -34,9 +34,12 @@ collections:
       - azure.md
       - cifar-10.md
       - bert-pretraining.md
+      - bert-finetuning.md
+      - transformer_kernel.md
       - megatron.md
       - 1Cycle.md
       - lrrt.md
+      - zero.md
 
 defaults:
   - scope:
@@ -64,5 +67,12 @@ defaults:
       layout: single
       share: true
 
+analytics:
+  provider: "google-gtag"
+  google:
+    tracking_id: "UA-169781858-1"
+
 timezone: America/Los_Angeles
 breadcrumbs: true
+
+press_release_v3: https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/

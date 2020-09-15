@@ -1,30 +1,52 @@
 '''
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
+import sys
+import types
 
-from deepspeed.pt.deepspeed_light import DeepSpeedLight
-from deepspeed.pt.deepspeed_light import ADAM_OPTIMIZER, LAMB_OPTIMIZER
-from deepspeed.pt.deepspeed_lr_schedules import add_tuning_arguments
+from . import ops
 
-import deepspeed.pt.deepspeed_checkpointing as checkpointing
+from .runtime.engine import DeepSpeedEngine
+from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER, DEEPSPEED_ADAM
+from .runtime.pipe.engine import PipelineEngine
+from .runtime.lr_schedules import add_tuning_arguments
+from .runtime.config import DeepSpeedConfig
+from .runtime.activation_checkpointing import checkpointing
+from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .utils import log_dist
+
+from .pipe import PipelineModule
 
 try:
-    from deepspeed.git_version_info import git_hash, git_branch
+    from .git_version_info import version, git_hash, git_branch
 except ImportError:
+    version = "0.0.0+unknown"
     git_hash = None
     git_branch = None
 
 # Export version information
-__version_major__ = 0
-__version_minor__ = 2
-__version_patch__ = 0
+version, __version_tag__ = version.split('+')
+__version_major__ = int(version.split('.')[0])
+__version_minor__ = int(version.split('.')[1])
+__version_patch__ = int(version.split('.')[2])
 __version__ = '.'.join(
     map(str,
         [__version_major__,
          __version_minor__,
          __version_patch__]))
+__version__ = f"{__version__}+{__version_tag__}"
 __git_hash__ = git_hash
 __git_branch__ = git_branch
+
+# Provide backwards compatability with old deepspeed.pt module structure, should hopefully not be used
+pt = types.ModuleType('pt', 'dummy pt module for backwards compatability')
+deepspeed = sys.modules[__name__]
+setattr(deepspeed, 'pt', pt)
+setattr(deepspeed.pt, 'deepspeed_utils', deepspeed.runtime.utils)
+sys.modules['deepspeed.pt'] = deepspeed.pt
+sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
+setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
+sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
 
 
 def initialize(args,
@@ -80,22 +102,35 @@ def initialize(args,
         * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
           if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
     """
-    print("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
         __version__,
         __git_hash__,
         __git_branch__),
-          flush=True)
+             ranks=[0])
 
-    engine = DeepSpeedLight(args=args,
-                            model=model,
-                            optimizer=optimizer,
-                            model_parameters=model_parameters,
-                            training_data=training_data,
-                            lr_scheduler=lr_scheduler,
-                            mpu=mpu,
-                            dist_init_required=dist_init_required,
-                            collate_fn=collate_fn,
-                            config_params=config_params)
+    if not isinstance(model, PipelineModule):
+        engine = DeepSpeedEngine(args=args,
+                                 model=model,
+                                 optimizer=optimizer,
+                                 model_parameters=model_parameters,
+                                 training_data=training_data,
+                                 lr_scheduler=lr_scheduler,
+                                 mpu=mpu,
+                                 dist_init_required=dist_init_required,
+                                 collate_fn=collate_fn,
+                                 config_params=config_params)
+    else:
+        assert mpu is None, "mpu must be None with pipeline parallelism"
+        engine = PipelineEngine(args=args,
+                                model=model,
+                                optimizer=optimizer,
+                                model_parameters=model_parameters,
+                                training_data=training_data,
+                                lr_scheduler=lr_scheduler,
+                                mpu=model.mpu(),
+                                dist_init_required=dist_init_required,
+                                collate_fn=collate_fn,
+                                config_params=config_params)
 
     return_items = [
         engine,

@@ -34,7 +34,7 @@ title: "DeepSpeed Configuration JSON"
 
 | Fields | Value                                                        | Example                        |
 | ------ | ------------------------------------------------------------ | ------------------------------ |
-| type   | The optimizer name. DeepSpeed natively supports Adam and LAMB optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
+| type   | The optimizer name. DeepSpeed natively supports Adam, OneBitAdam, and LAMB optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
 | params | Dictionary of parameters to instantiate optimizer. The parameter names must match the optimizer constructor signature (e.g., for [Adam](https://pytorch.org/docs/stable/optim.html#torch.optim.Adam)). | `{"lr": 0.001, "eps": 1e-8}` |
 
   Example of ***optimizer***
@@ -50,6 +50,24 @@ title: "DeepSpeed Configuration JSON"
       ],
       "eps": 1e-8,
       "weight_decay": 3e-7
+    }
+  }
+```
+  Another example of ***optimizer*** with 1-bit Adam specific parameters is as follows.
+
+```json
+"optimizer": {
+    "type": "OneBitAdam",
+    "params": {
+      "lr": 0.001,
+      "betas": [
+        0.8,
+        0.999
+      ],
+      "eps": 1e-8,
+      "weight_decay": 3e-7,
+      "freeze_step": 400,
+      "cuda_aware": true
     }
   }
 ```
@@ -104,11 +122,14 @@ Example of ***scheduler***
 
 ### FP16 training options
 
+**Note:** this mode cannot be combined with the `amp` mode described below.
+{: .notice--warning}
+
 ***fp16***: [dictionary]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| Configuration for using mixed precision/FP16 training that leverages [NVIDIA's Apex package](https://nvidia.github.io/apex/). An example, including the available dictionary keys is illustrated below. | None    |
+| Configuration for using mixed precision/FP16 training that leverages [NVIDIA's Apex package](https://nvidia.github.io/apex/). An example, including the available dictionary keys is illustrated below. NOTE: this does not use Apex's AMP mode that allows for more flexibility in mixed precision training modes, this mode is similar to AMP's O2 mode. Please see AMP support below if you want to use more complex mixed precision modes. If you want to use ZeRO (currently) you must use this mode. | None    |
 
 ```json
 "fp16": {
@@ -117,7 +138,7 @@ Example of ***scheduler***
     "initial_scale_power": 32,
     "loss_scale_window": 1000,
     "hysteresis": 2,
- 	"min_loss_scale": 1
+    "min_loss_scale": 1
 }
 ```
 
@@ -157,6 +178,38 @@ Example of ***scheduler***
 | ------------------------------------------------------------ | ------- |
 | ***min\_loss\_scale*** is  a **fp16** parameter representing the minimum dynamic loss scale value. | `1000`    |
 
+### Automatic mixed precision (AMP) training options
+
+**Note:** this mode cannot be combined with the `fp16` mode described above. In addition this mode is not currently compatible with ZeRO.
+{: .notice--warning}
+
+***amp***: [dictionary]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Configuration for using automatic mixed precision (AMP) training that leverages [NVIDIA's Apex AMP package](https://nvidia.github.io/apex/). An example, including the available dictionary keys is illustrated below. Is not compatible with `fp16` mode above or ZeRO. Any parameters outside of "enabled" will be passed to AMP's initialize call, see the API and descriptions here at the [apex.amp.initialize documentation](https://nvidia.github.io/apex/amp.html#apex.amp.initialize). | None    |
+
+```json
+"amp": {
+    "enabled": true,
+    ...
+    "opt_level": "O1",
+    ...
+}
+```
+
+***amp:enabled***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| ***enabled*** is an **amp** parameter indicating whether or not AMP training is enabled. | `false`   |
+
+***amp params***: [various]
+
+| Description                         | Default |
+| ----------------------------------- | ------- |
+| Any parameters outside of "enabled" will be passed to AMP's initialize call, see the API and descriptions here at the [apex.amp.initialize documentation](https://nvidia.github.io/apex/amp.html#apex.amp.initialize). | None    |
+
 ### Gradient Clipping
 
 ***gradient\_clipping***: [float]
@@ -175,9 +228,11 @@ Enabling and configure ZeRO memory optimizations
     "stage": [0|1|2],
     "allgather_partitions": [true|false],
     "allgather_bucket_size": 500000000,
+    "overlap_comm": false,
     "reduce_scatter": [true|false],
     "reduce_bucket_size": 500000000,
-    "contiguous_gradients" : [true|false]
+    "contiguous_gradients" : [true|false],
+    "cpu_offload": [true|false]
     }
 ```
 
@@ -205,6 +260,12 @@ Enabling and configure ZeRO memory optimizations
 | ------------------------------------------------------------ | ------- |
 | Number of elements allgathered at a time. Limits the memory required for the allgather for large model sizes   | `500000000`   |
 
+***overlap_comm***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Attempts to overlap the reduction of the gradients with backward computation   | `false`   |
+
 ***reduce_scatter***: [boolean]
 
 | Description                                                  | Default |
@@ -223,6 +284,11 @@ Enabling and configure ZeRO memory optimizations
 | ------------------------------------------------------------ | ------- |
 | Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. Only useful when running very large models.   | `False`   |
 
+***cpu_offload***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes.  | `False`   |
 
 
 ### Logging
@@ -293,3 +359,43 @@ Enabling and configure ZeRO memory optimizations
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
 | Logs the forward and backward time for each checkpoint function | `false`   |
+
+### Sparse Attention
+
+***sparse\_attention***: [dictionary]
+
+| Fields | Value                                                        | Example                        |
+| ------ | ------------------------------------------------------------ | ------------------------------ |
+| mode   | A string determining sparsity structure type. Deepspeed currently supports `"dense"`, `"fixed"`, `"bigbird"`, `"bslongformer"`, and `"variable"`. | `"fixed"` |
+| block  | An integer determining the block size. Current implementation of sparse self-attention is based on blocked sparse matrices. In which this parameter defines size of such blocks, `Block X Block`. | 16 |
+| different\_layout\_per\_head | A boolean determining if each head should be assigned a different sparsity layout; this will be satisfied based on availability. | false |
+| num\_local\_blocks | An integer determining the number of random blocks in each block row; only used in `"fixed"` mode. | 4 |
+| num\_global\_blocks | An integer determining how many consecutive blocks in a local window is used as the representative of the window for global attention; used in `"fixed"` and `"bigbird"` modes. | 1 |
+| attention | A string determining attention type. Attention can be `"unidirectional"`, such as autoregressive models, in which tokens attend only to tokens appear before them in the context. Considering that, the upper triangular of attention matrix is empty. Or it can be `"bidirectional"`, such as BERT, in which tokens can attend to any other tokens before or after them. Then, the upper triangular part of the attention matrix is mirror of the lower triangular; used in `"fixed"` and `"variable"` modes. | `"bidirectional"` |
+| horizontal\_global\_attention | A boolean determining if blocks that are global representative of a local window, also attend to all other blocks. This is valid only if attention type is `"bidirectional"`. Looking at the attention matrix, that means global attention not only includes the vertical blocks, but also horizontal blocks; used in `"fixed"` and `"variable"` modes. | false |
+| num\_different\_global\_patterns | An integer determining number of different global attentions layouts. While global attention can be fixed by which block/s are representative of any local window, since there are multi-heads, each head can use a different global representative; used only in `"fixed"` mode. | 4 |
+| num\_random\_blocks | An integer determining the number of random blocks in each block row; used in `"variable"` and `"bigbird"` modes. | 0 |
+| local\_window\_blocks | A list of integers determining the number of blocks in each local attention window. It assumes first number determines # of blocks in the first local window, second the second window, ..., and the last number determines the number of blocks in the remaining local windows; only used in `"variable"` mode. | [4] |
+| global\_block\_indices | A list of integers determining which blocks are considered as global attention. Given indices, determine the blocks that all other token blocks attend to and they attend to all other token blocks. Notice that if global\_block\_end\_indices parameter is set, this parameter is used as starting index of each global window; used in `"variable"` and `"bslongformer"` modes. | [0] |
+| global\_block\_end\_indices | A list of integers determining end indices of global window blocks. By default this is not used. But if it is set, it must have the same size of global\_block\_indices parameter, and combining this two parameters, for each index i, blocks from global\_block\_indices[i] to global\_block\_end\_indices[i], exclusive, are considered as global attention; used in `"variable"` and `"bslongformer"` modes. | None |
+| num\_sliding\_window\_blocks | An integer determining the number of blocks in sliding local attention window; used in `"bigbird"` and `"bslongformer"` modes. | 3 |
+
+  Example of ***sparse\_attention***
+
+```json
+  "sparse_attention": {
+    "mode": "fixed",
+    "block": 16,
+    "different_layout_per_head": true,
+    "num_local_blocks": 4,
+    "num_global_blocks": 1,
+    "attention": "bidirectional",
+    "horizontal_global_attention": false,
+    "num_different_global_patterns": 4,
+    "num_random_blocks": 0,
+    "local_window_blocks": [4],
+    "global_block_indices": [0],
+    "global_block_end_indices": None,
+    "num_sliding_window_blocks": 3
+  }
+```
