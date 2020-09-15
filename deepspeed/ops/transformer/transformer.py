@@ -37,52 +37,52 @@ class TransformerConfig():
 class DeepSpeedTransformerConfig(TransformerConfig):
     """Initialize the DeepSpeed Transformer Config.
 
-    Arguments:
-        batch_size: The maximum batch size used for running the kernel on each GPU
+        Arguments:
+            batch_size: The maximum batch size used for running the kernel on each GPU
 
-        max_seq_length: The sequence-length of the model being trained with DeepSpeed
+            max_seq_length: The sequence-length of the model being trained with DeepSpeed
 
-        hidden_size: The hidden size of the transformer layer
+            hidden_size: The hidden size of the transformer layer
 
-        heads: The number of heads in the self-attention of the transformer layer
+            heads: The number of heads in the self-attention of the transformer layer
 
-        attn_dropout_ratio: The ratio of dropout for the attention's output
+            attn_dropout_ratio: The ratio of dropout for the attention's output
 
-        hidden_dropout_ratio: The ratio of dropout for the transformer's output
+            hidden_dropout_ratio: The ratio of dropout for the transformer's output
 
-        num_hidden_layers: The number of transformer layers
+            num_hidden_layers: The number of transformer layers
 
-        initializer_range: BERT model's initializer range for initializing parameter data
+            initializer_range: BERT model's initializer range for initializing parameter data
 
-        local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
-            to use if the model already set the current device, otherwise need to set it
-            so that the transformer kernel can work on the right device
+            local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
+                to use if the model already set the current device, otherwise need to set it
+                so that the transformer kernel can work on the right device
 
-        seed: The random seed for the dropout layers
+            seed: The random seed for the dropout layers
 
-        fp16: Enable half-precision computation
+            fp16: Enable half-precision computation
 
-        pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
+            pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
 
-        normalize_invertible: Optional: Enable invertible LayerNorm execution (dropping the input activation),
-            default is False
+            normalize_invertible: Optional: Enable invertible LayerNorm execution (dropping the input activation),
+                default is False
 
-        gelu_checkpoint: Optional: Enable checkpointing of Gelu activation output to save memory,
-            default is False
+            gelu_checkpoint: Optional: Enable checkpointing of Gelu activation output to save memory,
+                default is False
 
-        adjust_init_range: Optional: Set as True (default) if the model adjusts the weight initial values of
-            its self-attention output and layer output, False keeps the initializer_range no change.
-            See the adjustment below:
-                output_std = self.config.initializer_range / math.sqrt(2.0 * num_layers)
+            adjust_init_range: Optional: Set as True (default) if the model adjusts the weight initial values of
+                its self-attention output and layer output, False keeps the initializer_range no change.
+                See the adjustment below:
+                    output_std = self.config.initializer_range / math.sqrt(2.0 * num_layers)
 
-        attn_dropout_checkpoint: Optional: Enable checkpointing of attention dropout to save memory,
-            default is False
+            attn_dropout_checkpoint: Optional: Enable checkpointing of attention dropout to save memory,
+                default is False
 
-        stochastic_mode:  Enable for high performance, please note that this flag has some level of
-            non-determinism and can produce different results on different runs.  However, we have seen
-            that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
-            a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
-            to turn it off in order to be able to reproduce the same result through the regular kernel execution.
+            stochastic_mode:  Enable for high performance, please note that this flag has some level of
+                non-determinism and can produce different results on different runs.  However, we have seen
+                that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
+                a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
+                to turn it off in order to be able to reproduce the same result through the regular kernel execution.
     """
     def __init__(self,
                  batch_size=-1,

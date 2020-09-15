@@ -236,9 +236,6 @@ def model_parallel_cuda_manual_seed(seed):
                               parallel GPUs, but the same across data parallel
                               groups. This is used for example for dropout in
                               model parallel regions.
-
-    Args:
-        seed (int): The seed to use.
     """
     global mpu
     # 2718 is just for fun and any POSITIVE value will work.
@@ -317,12 +314,12 @@ def get_full_inputs(tensors, device=None):
 class CheckpointFunction(torch.autograd.Function):
     """This function is adapted from torch.utils.checkpoint with
        two main changes:
-       1) torch.cuda.set_rng_state is replaced with `_set_cuda_rng_state`
-       2) the states in the model parallel tracker are also properly
-           tracked/set/reset.
-       3) Performance activation partitioning, contiguous memory optimization
-       4) CPU Checkpointing
-       5) Profile forward and backward functions
+           1) torch.cuda.set_rng_state is replaced with `_set_cuda_rng_state`
+           2) the states in the model parallel tracker are also properly
+              tracked/set/reset.
+           3) Performance activation partitioning, contiguous memory optimization
+           4) CPU Checkpointing
+           5) Profile forward and backward functions
     """
     @staticmethod
     def forward(ctx, run_function, *args):
