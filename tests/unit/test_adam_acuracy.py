@@ -21,7 +21,6 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         print('-' * 80)
     np.testing.assert_allclose(x, y, err_msg="param-update dismatch!", atol=atol)
 
-#@cpu_adam_available
 @pytest.mark.parametrize('model_size',
                          [
                              (64),
