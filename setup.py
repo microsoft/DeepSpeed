@@ -20,6 +20,10 @@ from torch.utils.hipify import hipify_python
 
 VERSION = "0.3.0"
 
+is_rocm_pytorch = False
+if torch.__version__ >= '1.5':
+    from torch.utils.cpp_extension import ROCM_HOME
+    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
 
 def fetch_requirements(path):
     with open(path, 'r') as fd:
@@ -27,6 +31,9 @@ def fetch_requirements(path):
 
 
 install_requires = fetch_requirements('requirements/requirements.txt')
+if is_rocm_pytorch:
+    print("NOTE: Please manually install torch and torchvision packages for ROCm")
+    install_requires = fetch_requirements('requirements/requirements-rocm.txt')
 dev_requires = fetch_requirements('requirements/requirements-dev.txt')
 sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn.txt')
 
@@ -119,11 +126,6 @@ if cpu_info['AVX512f'] and DS_BUILD_AVX512:
 elif cpu_info['AVX2']:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
-
-is_rocm_pytorch = False
-if torch.__version__ >= '1.5':
-    from torch.utils.cpp_extension import ROCM_HOME
-    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
 
 if is_rocm_pytorch:
     import shutil
