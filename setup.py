@@ -16,6 +16,7 @@ import warnings
 import cpufeature
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtension
+from torch.utils.hipify import hipify_python
 
 VERSION = "0.3.0"
 
@@ -119,23 +120,37 @@ elif cpu_info['AVX2']:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
 
+is_rocm_pytorch = False
+if torch.__version__ >= '1.5':
+    from torch.utils.cpp_extension import ROCM_HOME
+    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
+
+if is_rocm_pytorch:
+    import shutil
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
+                                show_detailed=True, is_pytorch_extension=True)
+
 ext_modules = []
 
 ## Lamb ##
 if BUILD_MASK & DS_BUILD_LAMB:
+    nvcc_flags=['-O3'] + version_dependent_macros
+    if is_rocm_pytorch:
+        sources = ['csrc/lamb/hip/fused_lamb_hip.cpp', 'csrc/lamb/hip/fused_lamb_hip_kernel.hip']
+    else:
+        sources = ['csrc/lamb/fused_lamb_cuda.cpp', 'csrc/lamb/fused_lamb_cuda_kernel.cu']
+        nvcc_flags.extend(['--use_fast_math'])
+
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.lamb.fused_lamb_cuda',
-                      sources=[
-                          'csrc/lamb/fused_lamb_cuda.cpp',
-                          'csrc/lamb/fused_lamb_cuda_kernel.cu'
-                      ],
+                      sources=sources,
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
                           'cxx': [
                               '-O3',
                           ] + version_dependent_macros,
-                          'nvcc': ['-O3',
-                                   '--use_fast_math'] + version_dependent_macros
+                          'nvcc': nvcc_flags
                       }))
 
 ## Adam ##
