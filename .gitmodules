@@ -3,5 +3,4 @@
 	url = https://github.com/ROCmSoftwarePlatform/apex.git
 [submodule "DeepSpeedExamples"]
 	path = DeepSpeedExamples
-	url = https://github.com/jithunnair-amd/DeepSpeedExamples.git
-	branch = changes_for_rocm_build 
+	url = https://github.com/ROCmSoftwarePlatform/DeepSpeedExamples.git
