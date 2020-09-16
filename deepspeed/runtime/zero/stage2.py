@@ -517,7 +517,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         see_memory_usage(f"End ipg_epilogue")
 
     # resets all partition to no reduced
-    # sets remianing grads to the total number of grads in each partition
+    # sets remaining grads to the total number of grads in each partition
     # set is grad computed to false for all grads in partition
     def reset_partition_gradient_structures(self):
         total_partitions = dist.get_world_size(group=self.dp_process_group)
