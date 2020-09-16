@@ -211,10 +211,9 @@ class FP16_Optimizer(object):
             fp16_params.extend([p for p in group if p.grad is not None])
         self.overflow = self.overflow_checker.has_overflow(fp16_params)
         self.stop_timers([OVERFLOW_CHECK])
+        prev_scale = self.cur_scale
+        self._update_scale(self.overflow)
         if self.overflow:
-            prev_scale = self.cur_scale
-            self._update_scale(self.overflow)
-
             if self.verbose:
                 log_dist(
                     "Overflow detected. Skipping step. Attempted loss "
