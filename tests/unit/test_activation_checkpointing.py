@@ -43,11 +43,11 @@ def _test_activation_checkpoint(module, *inputs):
     module.eval()
 
     module_ = deepcopy(module)
-    inputs_ = tuple(inp.clone().detach().cuda() for inp in inputs)
+    inputs_ = tuple(deepcopy(inp).cuda() for inp in inputs)
     base = _compute(module_, *inputs_, do_checkpoint=False)
 
     module_ = deepcopy(module)
-    inputs_ = tuple(inp.clone().detach().cuda() for inp in inputs)
+    inputs_ = tuple(deepcopy(inp).cuda() for inp in inputs)
     test = _compute(module_, *inputs_, do_checkpoint=True)
 
     for group in base.keys():
