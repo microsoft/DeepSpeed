@@ -81,7 +81,7 @@ class MaskedLinearSeq(MaskedLinear):
 class MaskedLinearSeqDup(MaskedLinearSeq):
     """MaskedLinearSeq, but with more outputs than inputs and in a different order."""
     def forward(self, x, mask):
-        dup = x.clone().detach() * 1000 * mask
+        dup = x.clone().detach() * 1000 * mask  # just an arbitrary scaling
         x, mask = super().forward(x, mask)
         return dup, x, mask
 
