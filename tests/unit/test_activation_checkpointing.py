@@ -32,7 +32,7 @@ def _compute(module, *inputs, do_checkpoint=False):
     }
 
 
-# This is distributed because checkpoint() assumes that torch.distri`buted is initialized.
+# This is distributed because checkpoint() assumes that torch.distributed is initialized.
 # torch.distributed is used with activation partitioning, but not for these simple cases.
 @distributed_test(world_size=1)
 def _test_activation_checkpoint(module, *inputs):
