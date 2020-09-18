@@ -32,7 +32,7 @@ def _compute(module, *inputs, do_checkpoint=False):
     }
 
 
-# This is distributed because checkpoint() assumes that torch.distributed is initialized.
+# This is distributed because checkpoint() assumes that torch.distri`buted is initialized.
 # torch.distributed is used with activation partitioning, but not for these simple cases.
 @distributed_test(world_size=1)
 def _test_activation_checkpoint(module, *inputs):
@@ -43,11 +43,11 @@ def _test_activation_checkpoint(module, *inputs):
     module.eval()
 
     module_ = deepcopy(module)
-    inputs_ = tuple(deepcopy(inp).cuda() for inp in inputs)
+    inputs_ = tuple(inp.clone().detach().cuda() for inp in inputs)
     base = _compute(module_, *inputs_, do_checkpoint=False)
 
     module_ = deepcopy(module)
-    inputs_ = tuple(deepcopy(inp).cuda() for inp in inputs)
+    inputs_ = tuple(inp.clone().detach().cuda() for inp in inputs)
     test = _compute(module_, *inputs_, do_checkpoint=True)
 
     for group in base.keys():
@@ -69,7 +69,12 @@ def _test_activation_checkpoint(module, *inputs):
 class MaskedLinear(torch.nn.Linear):
     def forward(self, x, mask):
         out = super().forward(x)
-        return out * mask
+        if mask.is_floating_point():
+            out = out * mask
+        else:
+            # must cast BoolTensor in older torch versions
+            out = out * mask.type_as(out)
+        return out
 
 
 class MaskedLinearSeq(MaskedLinear):
@@ -81,7 +86,7 @@ class MaskedLinearSeq(MaskedLinear):
 class MaskedLinearSeqDup(MaskedLinearSeq):
     """MaskedLinearSeq, but with more outputs than inputs and in a different order."""
     def forward(self, x, mask):
-        dup = x.clone().detach() * 1000 * mask  # just an arbitrary scaling
+        dup = x.clone().detach() * 1.38  # just an arbitrary scaling
         x, mask = super().forward(x, mask)
         return dup, x, mask
 
