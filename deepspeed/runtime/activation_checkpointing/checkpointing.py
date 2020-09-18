@@ -417,9 +417,8 @@ class CheckpointFunction(torch.autograd.Function):
 
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
-        if torch.cuda.is_initialized():
-            ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
-            ctx.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
+        ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
+        ctx.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
 
         #ctx.save_for_backward(*args)
         with torch.no_grad():
