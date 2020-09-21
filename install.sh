@@ -137,7 +137,7 @@ rm_if_exist() {
 
 if [ "$no_clean" == "0" ]; then
     # remove deepspeed build files
-    rm_if_exist deepspeed/git_version_info.py
+    rm_if_exist deepspeed/git_version_info_installed.py
     rm_if_exist dist
     rm_if_exist build
     rm_if_exist deepspeed.egg-info
@@ -154,9 +154,9 @@ else
 fi
 
 if [ "$pip_mirror" != "" ]; then
-    PIP_INSTALL="pip install --use-feature=2020-resolver -v -i $pip_mirror"
+    PIP_INSTALL="pip install -v -i $pip_mirror"
 else
-    PIP_INSTALL="pip install --use-feature=2020-resolver -v"
+    PIP_INSTALL="pip install -v"
 fi
 
 if [ ! -f $hostfile ]; then
