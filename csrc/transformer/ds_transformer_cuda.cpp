@@ -581,8 +581,8 @@ void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
     _attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
     _attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
 
-    Context::Instance().GenWorkSpace(
-        get_workspace_size<T>(bsz, _seq_length, _hidden_size, _intermediate_size, _heads, _training, _gelu_checkpoint));
+    Context::Instance().GenWorkSpace(get_workspace_size<T>(
+        bsz, _seq_length, _hidden_size, _intermediate_size, _heads, _training, _gelu_checkpoint));
 }
 
 template <typename T>
