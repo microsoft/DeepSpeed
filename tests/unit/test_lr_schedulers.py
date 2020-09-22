@@ -287,30 +287,13 @@ def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
 
 
 @pytest.mark.parametrize("min_lr, step_rate, step_size, staircase",
-                         [(1e-4,
-                           1e-5,
-                           1,
-                           True),
-                          (1e-5,
-                           1e-5,
-                           1,
-                           False),
-                          (1e-4,
-                           1e-3,
-                           10,
-                           True),
-                          (1e-3,
-                           1e-3,
-                           10,
-                           False),
-                          (1e-2,
-                           1e-2,
-                           19,
-                           True),
-                          (1e-2,
-                           1e-2,
-                           19,
-                           False)])
+                         [(1e-4, 1e-5, 1, True),
+                          (1e-5, 1e-5, 1, False),
+                          (1e-4, 1e-3, 10, True),
+                          (1e-3, 1e-3, 10, False),
+                          (1e-2, 1e-2, 19, True),
+                          (1e-2, 1e-2, 19, False)
+                           ])# yapf: disable
 def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
     config_dict = {
         "train_batch_size": 2,
@@ -376,23 +359,11 @@ def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
 
 @pytest.mark.parametrize("min_lr, max_lr, decay_rate, step_size",
                          [
-                             (1e-5,
-                              1e-2,
-                              1e-3,
-                              10),
-                             (1e-3,
-                              1e-1,
-                              0,
-                              21),
-                             (1e-5,
-                              1e-2,
-                              1e-3,
-                              10),
-                             (1e-3,
-                              1e-1,
-                              0,
-                              21),
-                         ])
+                             (1e-5, 1e-2, 1e-3, 10),
+                             (1e-3, 1e-1, 0, 21),
+                             (1e-5, 1e-2, 1e-3, 10),
+                             (1e-3, 1e-1, 0, 21),
+                         ])  # yapf: disable
 def test_onecycle_lr(tmpdir, min_lr, max_lr, decay_rate, step_size):
     config_dict = {
         "train_batch_size": 2,
@@ -472,23 +443,11 @@ def test_onecycle_lr(tmpdir, min_lr, max_lr, decay_rate, step_size):
 
 @pytest.mark.parametrize("min_mom, max_mom, decay_rate, step_size",
                          [
-                             (0.08,
-                              0.09,
-                              1e-3,
-                              10),
-                             (0.08,
-                              0.09,
-                              0,
-                              21),
-                             (0.08,
-                              0.09,
-                              1e-3,
-                              10),
-                             (0.08,
-                              0.09,
-                              0,
-                              21),
-                         ])
+                             (0.08, 0.09, 1e-3, 10),
+                             (0.08, 0.09, 0, 21),
+                             (0.08, 0.09, 1e-3, 10),
+                             (0.08, 0.09, 0, 21),
+                         ]) # yapf: disable
 def test_onecycle_mom(tmpdir, min_mom, max_mom, decay_rate, step_size):
     config_dict = {
         "train_batch_size": 2,
