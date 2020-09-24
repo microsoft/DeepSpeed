@@ -4,7 +4,7 @@ excerpt: "Train your first model with DeepSpeed!"
 ---
 
 If you haven't already, we advise you to first read through the
-[Getting Started](/getting-started/) guide before stepping through this
+[Getting Started](https://www.deepspeed.ai/getting-started/) guide before stepping through this
 tutorial.
 
 In this tutorial we will be adding DeepSpeed to CIFAR-10 model, which is small image classification model.

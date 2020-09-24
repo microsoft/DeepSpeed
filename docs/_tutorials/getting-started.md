@@ -7,7 +7,7 @@ date: 2020-05-15
 
 ## Installation
 
-* Please see our [Azure tutorial](/tutorials/azure/) to get started with DeepSpeed on Azure!
+* Please see our [Azure tutorial](https://www.deepspeed.ai/tutorials/azure/) to get started with DeepSpeed on Azure!
 * If you're not on Azure, we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
 * If you want to install DeepSpeed manually, we provide an install script `install.sh` to help install on a local machine or across an entire cluster.
 
@@ -116,7 +116,7 @@ the `step` value is stored as part of the `client_sd`.
 DeepSpeed features can be enabled, disabled, or configured using a config JSON
 file that should be specified as `args.deepspeed_config`. A sample config file
 is shown below. For a full set of features see [ API
-doc](/docs/config-json/).
+doc](https://www.deepspeed.ai/docs/config-json/).
 
 ```json
 {

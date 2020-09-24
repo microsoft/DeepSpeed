@@ -60,7 +60,7 @@ Next, we need to configure the VM environment for DeepSpeed. We provide a script
 ```bash
 ./setup_vms.sh
 ```
-to generate a [hostfile](/getting-started/#resource-configuration-multi-node) and SSH
+to generate a [hostfile](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) and SSH
 configuration on all of the VMs. This configuration will be used by the DeepSpeed
 Docker containers in the next step.
 
@@ -124,7 +124,7 @@ the first DeepSpeed container:
 
 ## Megatron-LM GPT2
 DeepSpeed includes an example model using Megatron-LM's GPT2. Please refer to the full
-[Megatron tutorial](/tutorials/megatron/) for more details.
+[Megatron tutorial](https://www.deepspeed.ai/tutorials/megatron/) for more details.
  * In order to fully train GPT2 with DeepSpeed and ZeRO we recommend using 8 instances of
    Azure's Standard_ND40rs_v2 SKU for a total of 64 NVIDIA V100 GPUs. With this setup and
    a batch size of 1536 you should be able to complete 100k training steps (153.6 million

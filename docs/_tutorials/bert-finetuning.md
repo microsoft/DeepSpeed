@@ -25,7 +25,7 @@ cd DeepSpeedExamples/BingBertSquad
   * Training set: [train-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json)
   * Validation set: [dev-v1.1.json](https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json)
 
-You also need a pre-trained BERT model checkpoint from either DeepSpeed, [HuggingFace](https://github.com/huggingface/transformers), or [TensorFlow](https://github.com/google-research/bert#pre-trained-models) to run the fine-tuning. Regarding the DeepSpeed model, we will use checkpoint 160 from the BERT pre-training [tutorial](/tutorials/bert-pretraining/).
+You also need a pre-trained BERT model checkpoint from either DeepSpeed, [HuggingFace](https://github.com/huggingface/transformers), or [TensorFlow](https://github.com/google-research/bert#pre-trained-models) to run the fine-tuning. Regarding the DeepSpeed model, we will use checkpoint 160 from the BERT pre-training [tutorial](https://www.deepspeed.ai/tutorials/bert-pretraining/).
 
 ### Running BingBertSquad
 
@@ -199,7 +199,7 @@ is defined as `train_micro_batch_size_per_gpu`, e.g., if it is set as 8 then
 the `--predict_batch_size` should also be 8.
 
 For further details about the transformer kernel, please see our [usage
-tutorial](/tutorials/transformer_kernel/) and [technical deep
+tutorial](https://www.deepspeed.ai/tutorials/transformer_kernel/) and [technical deep
 dive](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html) on
 the fastest BERT training.
 
@@ -286,7 +286,7 @@ As mentioned, we can increase the micro-batch size per GPU from 3 to 24 or even
 higher if a larger batch size is desired. In order to support a larger
 micro-batch size, we may need to enable different memory-optimization flags for our
 transformer kernel as described in [DeepSpeed Transformer
-Kernel](/tutorials/transformer_kernel/) tutorial. Table 4 shows which
+Kernel](https://www.deepspeed.ai/tutorials/transformer_kernel/) tutorial. Table 4 shows which
 optimization flags are required for running different range of micro-batch
 sizes.
 
@@ -306,7 +306,7 @@ Fine-tuning the model pre-trained using DeepSpeed Transformer and the recipe in 
 To get these results, we do require some tuning of the dropout settings as described below:
 
 ### Dropout Setting
-For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](/tutorials/transformer_kernel/) for more detail of selecting these two modes).
+For the fine-tuning, we only use the deterministic transformer to have reproducible the fine-tuning results. But, we choose different values for dropout based on whether pre-training was done using deterministic or stochastic transformer (Please see [Transformer tutorial](https://www.deepspeed.ai/tutorials/transformer_kernel/) for more detail of selecting these two modes).
 
 For models pre-trained with deterministic transformer, we use the same dropout ratio used in pre-training (0.1). However, we slightly increase the dropout ratio when fine-tuning the model pre-trained using the stochastic transformer to compensate for the lack of stochastic noise during fine-tuning.
 
