@@ -13,7 +13,6 @@ import torch
 import shutil
 import subprocess
 import warnings
-import cpufeature
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtension
 
@@ -63,9 +62,7 @@ DS_BUILD_TRANSFORMER = int(os.environ.get('DS_BUILD_TRANSFORMER',
                                           OP_DEFAULT)) * DS_BUILD_TRANSFORMER_MASK
 DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
                                           OP_DEFAULT)) * DS_BUILD_SPARSE_ATTN_MASK
-DS_BUILD_AVX512 = int(os.environ.get(
-    'DS_BUILD_AVX512',
-    cpufeature.CPUFeature['AVX512f'])) * DS_BUILD_AVX512_MASK
+DS_BUILD_AVX512 = int(os.environ.get('DS_BUILD_AVX512', False)) * DS_BUILD_AVX512_MASK
 
 # Final effective mask is the bitwise OR of each op
 BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
@@ -111,11 +108,10 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-cpu_info = cpufeature.CPUFeature
 SIMD_WIDTH = ''
-if cpu_info['AVX512f'] and DS_BUILD_AVX512:
+if DS_BUILD_AVX512:
     SIMD_WIDTH = '-D__AVX512__'
-elif cpu_info['AVX2']:
+else:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
 
