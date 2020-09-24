@@ -162,7 +162,7 @@ This structure is based on [Generative Modeling with Sparse Transformers](https:
   * `horizontal_global_attention`: a boolean determining if blocks that are global representative of a local window, also attend to all other blocks. This is valid only if attention type is `bidirectional`. Looking at the attention matrix, that means global attention not only includes the vertical blocks, but also horizontal blocks.
   * `num_different_global_patterns`: an integer determining number of different global attentions layouts. While global attention can be fixed by which block/s are representative of any local window, since there are multi-heads, each head can use a different global representative. For example, with 4 blocks constructing local window and global attention size of a single block, we can have 4 different versions in which the first, second, third, or forth block of each local window can be global representative of that window. This parameter determines how many of such patterns we want. Of course, there is a limitation based on `num_local_blocks` and `num_global_blocks`. Further, if you set this to more than one, you need to set `different_layout_per_head` to `True`.
 
-![Fixed sparsity structure](https://www.deepspeed.ai/assets/images/sa_fixed_sparsity_structure.png)
+![Fixed sparsity structure](/assets/images/sa_fixed_sparsity_structure.png)
 
 * **BSLongformer** (BSLongformerSparistyConfig):
 This structure is an edited version of [Longformer: The Long-Document Transformer](https://arxiv.org/pdf/2004.05150.pdf), in which instead of single token-wise sparsity, we offer block of tokens sparsity. Parameters that define this patters are:
@@ -186,7 +186,7 @@ This structure also combines the idea of local, global and random attention. Fur
 	* `horizontal_global_attention`: a boolean determining if blocks that are global representative of a local window, also attend to all other blocks. This is valid only if attention type is `bidirectional`. Looking at the attention matrix, that means global attention not only includes the vertical blocks, but also horizontal blocks
 Figure bellow illustrates an example of `variable` sparsity, in which blue, orange and green blocks illustrate local, global, and random attention blocks respectively.
 
-![Variable sparsity structure](https://www.deepspeed.ai/assets/images/sa_variable_sparsity_structure.png)
+![Variable sparsity structure](/assets/images/sa_variable_sparsity_structure.png)
 
 Further, we provide a `dense` pattern (`DenseSparsityConfig`), that can be used for the sake of testing while it represents the full attention.
 

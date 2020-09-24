@@ -20,7 +20,7 @@ frameworks.
 To use DeepSpeed's LRRT, you must satisfy the following two conditions:
 
 1. Integrate DeepSpeed into your training script using the [Getting
-Started](https://www.deepspeed.ai/getting-started/) guide.
+Started](/getting-started/) guide.
 2. Add the parameters to configure LRRT to the parameters of your model. The
 LRRT parameters are defined below.
 
@@ -80,7 +80,7 @@ larger batch sizes, as we scaled from one GPU (batch size 512) to four GPUs
 to match the performance of the smaller batch size using the same amount of
 data samples. The challenge here is the well known problem of slow convergence
 of large batch size training. Our approach was to use a
-[1Cycle](https://www.deepspeed.ai/tutorials/1Cycle/) schedule in DeepSpeed to tackle
+[1Cycle](/tutorials/1Cycle/) schedule in DeepSpeed to tackle
 this problem, and we used LRRT to configure the schedule.
 
 In the plots below, we illustrate using LRRT to discover the maximum learning
@@ -100,7 +100,7 @@ grown larger than that of the blue line in the presented data points. We
 subsequently refer to the gray line as "fast growing", and the orange line as
 "slow growing" LRRT schedules respectively.
 
-![validation_loss](https://www.deepspeed.ai/assets/images/loss_and_lr.png)
+![validation_loss](/assets/images/loss_and_lr.png)
 
 We make the following observations from this small example.
 

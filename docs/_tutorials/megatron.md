@@ -3,7 +3,7 @@ title: "Megatron-LM GPT2"
 ---
 
 If you haven't already, we advise you to first read through the [Getting
-Started](https://www.deepspeed.ai/getting-started/) guide before stepping through this tutorial.
+Started](/getting-started/) guide before stepping through this tutorial.
 
 In this tutorial we will be adding DeepSpeed to Megatron-LM GPT2 model, which
 is a large, powerful transformer. Megatron-LM supports model-parallel and multi-node
@@ -387,7 +387,7 @@ of increasing the computational granularity as well as reducing communication, a
 resulting in better performance. Therefore, with DeepSpeed and ZeRO-2 integration into Megatron,
 we elevate the model scale and speed to an entirely new level compared to Megatron alone.
 
-![DeepSpeed-vs-Megatron](https://www.deepspeed.ai/assets/images/zero-full.png)
+![DeepSpeed-vs-Megatron](/assets/images/zero-full.png)
 <p align="center">
 <em>Figure 2: ZeRO-2 scales to 170 billion parameters, has up to 10x higher throughput, obtains super linear speedup, and improves usability by avoiding the need for code refactoring for models up to 13 billion parameters.</em>
 </p>

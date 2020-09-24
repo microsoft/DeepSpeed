@@ -302,7 +302,7 @@ Note:
   transformer kernel enabled (such as in fine-tuning).
 
 For more details about the transformer kernel, please see [DeepSpeed
-Transformer Kernel](https://www.deepspeed.ai/tutorials/transformer_kernel/) and [DeepSpeed Fast-Bert
+Transformer Kernel](/tutorials/transformer_kernel/) and [DeepSpeed Fast-Bert
 Training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
 
 
@@ -326,14 +326,14 @@ deepspeed --num_nodes 4  \
     --deepspeed_transformer_kernel \
     --output_dir <output_directory>
 ```
-See the [Getting Started](https://www.deepspeed.ai/getting-started/) guide for more information on
+See the [Getting Started](/getting-started/) guide for more information on
 launching DeepSpeed.
 
 ------
 
 ## Reproducing Fastest BERT Training Results with DeepSpeed
 
-We achieve the fastest BERT training time while remaining competitive across the industry in terms of achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set. Please follow the [BERT fine-tuning](https://www.deepspeed.ai/tutorials/bert-finetuning/) tutorial to fine-tune your model that was pre-trained by transformer kernel and reproduce the SQUAD F1 score.
+We achieve the fastest BERT training time while remaining competitive across the industry in terms of achieving F1 score of 90.5 or better on the SQUAD 1.1 dev set. Please follow the [BERT fine-tuning](/tutorials/bert-finetuning/) tutorial to fine-tune your model that was pre-trained by transformer kernel and reproduce the SQUAD F1 score.
 
 - We complete BERT pre-training in 44 minutes using 1024 V100 GPUs (64 NVIDIA DGX-2 nodes). In comparison, the previous SOTA from NVIDIA takes 47 mins using 1472 V100 GPUs. DeepSpeed is not only faster but also uses 30% less resources. Using the same 1024 GPUS, NVIDIA BERT is 52% slower than DeepSpeed, taking 67 minutes to train.
 - Comparing with the original BERT training time from Google in which it took
@@ -380,9 +380,9 @@ for more details in
 
 ## DeepSpeed Single GPU Throughput Results
 
-![DeepSpeed Single GPU Bert Training Throughput 128](https://www.deepspeed.ai/assets/images/transformer_kernel_perf_seq128.PNG)
+![DeepSpeed Single GPU Bert Training Throughput 128](/assets/images/transformer_kernel_perf_seq128.PNG){: .align-center}
 
-![DeepSpeed Single GPU Bert Training Throughput 512](https://www.deepspeed.ai/assets/images/transformer_kernel_perf_seq512.PNG)
+![DeepSpeed Single GPU Bert Training Throughput 512](/assets/images/transformer_kernel_perf_seq512.PNG){: .align-center}
 
 Compared to SOTA, DeepSpeed significantly improves single GPU performance for transformer-based model like BERT. Figure above shows the single GPU throughput of training BertBERT-Large optimized through DeepSpeed, compared with two well-known Pytorch implementations, NVIDIA BERT and HuggingFace BERT. DeepSpeed reaches as high as 64 and 53 teraflops throughputs (corresponding to 272 and 52 samples/second) for sequence lengths of 128 and 512, respectively, exhibiting up to 28% throughput improvements over NVIDIA BERT and up to 62% over HuggingFace BERT.  We also support up to 1.8x larger batch size without running out of memory.
 

@@ -17,7 +17,7 @@ training](https://www.deepspeed.ai/news/2020/05/27/fastest-bert-training.html).
 
 ## Prerequisites
 
-To use transformer kernel for training a model, you should Integrate DeepSpeed into your training script using the [Getting Started](https://www.deepspeed.ai/getting-started/) guide.
+To use transformer kernel for training a model, you should Integrate DeepSpeed into your training script using the [Getting Started](/getting-started/) guide.
 
 **Note:** Currently DeepSpeed Transformer Kernels do not support Sparse Attention. To use Sparse Attention, you need to disable Transformer Kernels!
 {: .notice--warning}
@@ -85,7 +85,7 @@ The memory-optimization flags consist of:
 2. `normalize_invertible`: Enable invertible LayerNorm execution (dropping the input activation)
 3. `gelu_checkpoint`: Enable checkpointing of Gelu activation output to save memory
 
-To illustrate the required model configuration changes to use transformer kernel in model training, we use a BERT model and go through the different configurations in order to support the different sequence lengths and batch sizes. Please see the instruction at [BERT training tutorial](https://www.deepspeed.ai/tutorials/bert-pretraining/).
+To illustrate the required model configuration changes to use transformer kernel in model training, we use a BERT model and go through the different configurations in order to support the different sequence lengths and batch sizes. Please see the instruction at [BERT training tutorial](/tutorials/bert-pretraining/).
 
 ### **Memory Optimization Flags**
 

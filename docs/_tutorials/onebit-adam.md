@@ -9,7 +9,7 @@ To illustrate the benefits and usage of 1-bit Adam optimizer in DeepSpeed, we us
 1. BingBertSQuAD Fine-tuning
 2. BERT Pre-training
 
-For more details on these tasks, please refer to the tutorial posts on [BingBertSQuAD Fine-tuning](https://www.deepspeed.ai/tutorials/bert-finetuning/) and [BERT Pre-training](https://www.deepspeed.ai/tutorials/bert-pretraining/).
+For more details on these tasks, please refer to the tutorial posts on [BingBertSQuAD Fine-tuning](/tutorials/bert-finetuning/) and [BERT Pre-training](/tutorials/bert-pretraining/).
 
 ## 1. Overview
 
@@ -150,7 +150,7 @@ Table 1 shows the fine-tuning configuration we used in our experiments.
 
 Table 1. Fine-tuning configuration
 
-**Note:** For more details about loading checkpoint, argument parsing, initialization, forward pass, backward pass, weight update and evaluation, please refer to the [BingBertSQuAD Fine-tuning](https://www.deepspeed.ai/tutorials/bert-finetuning/) tutorial.
+**Note:** For more details about loading checkpoint, argument parsing, initialization, forward pass, backward pass, weight update and evaluation, please refer to the [BingBertSQuAD Fine-tuning](/tutorials/bert-finetuning/) tutorial.
 
 ### 2.3 Performance Results for BingBertSQuAD Fine-tuning
 
@@ -168,13 +168,13 @@ We fixed the learning rate to 3e-5. The table below shows the F1 and the EM scor
 
 1-bit Adam enables up to 2.7x overall speedup in training speed for SQuAD fine-tuning. This is made possible by up to 6.2x faster througput during the compressed stage of the algorithm as shown in Figure 1.
 
-![SQuAD Finetuning](https://www.deepspeed.ai/assets/images/squad-scaling.png)
+![SQuAD Finetuning](/assets/images/squad-scaling.png){: .align-center}
 
 Figure 1: Scalability of 1-bit Adam for SQuAD Finetuning on V100 GPUs with batch size of 3/GPU.
 
 
 ## 3. BERT Pre-training with 1-bit Adam
-For data downloading and pre-processing, please refer to the [BERT Pre-training](https://www.deepspeed.ai/tutorials/bert-pretraining/) post.
+For data downloading and pre-processing, please refer to the [BERT Pre-training](/tutorials/bert-pretraining/) post.
 
 ### 3.1 Running Pre-training with DeepSpeed and 1-bit Adam
 

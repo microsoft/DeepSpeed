@@ -14,7 +14,7 @@ An illustration of
 demonstrate that this 3D parallelism enables training models with over a
 **trillion** parameters.
 
-![3D parallelism in DeepSpeed](https://www.deepspeed.ai/assets/images/3d-parallelism.png)
+![3D parallelism in DeepSpeed](/assets/images/3d-parallelism.png)
 
 DeepSpeed uses *gradient accumulation* to extract pipeline parallelism (shown
 below). Each batch of training data is divided into micro-batches that can be
@@ -35,7 +35,7 @@ forward (F) and backward (B) passes. They will then all-reduce (AR) gradients
 with their data parallel counterparts, GPUs 1 and 3, respectively. Finally,
 the two pipeline stages update their model weights.
 
-![Pipeline Schedule](https://www.deepspeed.ai/assets/images/pipe-schedule.png)
+![Pipeline Schedule](/assets/images/pipe-schedule.png)
 
 
 ## Getting Starting with Pipeline Parallelism
