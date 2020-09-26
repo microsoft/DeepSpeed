@@ -201,7 +201,7 @@ if [ "$local_only" == "1" ]; then
 #        $PIP_SUDO pip uninstall -y deepspeed
         $PIP_SUDO $PIP_INSTALL dist/deepspeed*.whl
 	# -I to exclude local directory files
-        python -I basic_install_test.py
+        python basic_install_test.py
         if [ $? == 0 ]; then
             echo "Installation is successful"
         else
