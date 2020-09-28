@@ -14,6 +14,7 @@ from deepspeed.runtime.lr_schedules import WARMUP_DECAY_LR, TOTAL_NUM_STEPS
 
 pytest.skip("Disabling test_lr_scheduler.py for CI debugging", allow_module_level=True)
 
+
 def _verify_continuous_decrease(values):
     for i in range(len(values) - 1):
         assert values[i] > values[i + 1]
