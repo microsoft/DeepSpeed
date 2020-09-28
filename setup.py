@@ -69,7 +69,7 @@ DS_BUILD_AVX512 = int(os.environ.get(
 
 # Final effective mask is the bitwise OR of each op
 BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN)
-              #| DS_BUILD_CPU_ADAM)
+#| DS_BUILD_CPU_ADAM)
 
 install_ops = dict.fromkeys([LAMB, TRANSFORMER, SPARSE_ATTN, CPU_ADAM], False)
 if BUILD_MASK & DS_BUILD_LAMB:
