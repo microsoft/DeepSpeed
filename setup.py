@@ -187,8 +187,7 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu',
-                          'csrc/transformer/utils.cpp'
+                          'csrc/transformer/general_kernels.cu'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
@@ -219,8 +218,7 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu',
-                          'csrc/transformer/utils.cpp'
+                          'csrc/transformer/general_kernels.cu'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
