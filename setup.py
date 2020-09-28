@@ -47,17 +47,17 @@ CPU_ADAM = "cpu-adam"
 DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
 DS_BUILD_SPARSE_ATTN_MASK = 100
-DS_BUILD_CPU_ADAM_MASK = 1000
+#DS_BUILD_CPU_ADAM_MASK = 1000
 DS_BUILD_AVX512_MASK = 10000
 
 # Allow for build_cuda to turn on or off all ops
-DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_CPU_ADAM_MASK | DS_BUILD_AVX512_MASK
+DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_AVX512_MASK
 DS_BUILD_CUDA = int(os.environ.get('DS_BUILD_CUDA', 1)) * DS_BUILD_ALL_OPS
 
 # Set default of each op based on if build_cuda is set
 OP_DEFAULT = DS_BUILD_CUDA == DS_BUILD_ALL_OPS
-DS_BUILD_CPU_ADAM = int(os.environ.get('DS_BUILD_CPU_ADAM',
-                                       OP_DEFAULT)) * DS_BUILD_CPU_ADAM_MASK
+#DS_BUILD_CPU_ADAM = int(os.environ.get('DS_BUILD_CPU_ADAM',
+#                                       OP_DEFAULT)) * DS_BUILD_CPU_ADAM_MASK
 DS_BUILD_LAMB = int(os.environ.get('DS_BUILD_LAMB', OP_DEFAULT)) * DS_BUILD_LAMB_MASK
 DS_BUILD_TRANSFORMER = int(os.environ.get('DS_BUILD_TRANSFORMER',
                                           OP_DEFAULT)) * DS_BUILD_TRANSFORMER_MASK
@@ -68,14 +68,14 @@ DS_BUILD_AVX512 = int(os.environ.get(
     cpufeature.CPUFeature['AVX512f'])) * DS_BUILD_AVX512_MASK
 
 # Final effective mask is the bitwise OR of each op
-BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
-              | DS_BUILD_CPU_ADAM)
+BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN)
+              #| DS_BUILD_CPU_ADAM)
 
 install_ops = dict.fromkeys([LAMB, TRANSFORMER, SPARSE_ATTN, CPU_ADAM], False)
 if BUILD_MASK & DS_BUILD_LAMB:
     install_ops[LAMB] = True
-if BUILD_MASK & DS_BUILD_CPU_ADAM:
-    install_ops[CPU_ADAM] = True
+#if BUILD_MASK & DS_BUILD_CPU_ADAM:
+#    install_ops[CPU_ADAM] = True
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     install_ops[TRANSFORMER] = True
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
@@ -187,7 +187,8 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
+                          'csrc/transformer/general_kernels.cu',
+                          'csrc/transformer/utils.cpp'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
@@ -218,7 +219,8 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
+                          'csrc/transformer/general_kernels.cu',
+                          'csrc/transformer/utils.cpp'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
