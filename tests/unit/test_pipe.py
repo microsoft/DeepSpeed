@@ -10,7 +10,6 @@ import pytest
 import deepspeed
 import deepspeed.runtime.utils as ds_utils
 
-#pytest.skip("Disabling test_pipe.py for CI debugging", allow_module_level=True)
 
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
 PipeTopo = PipeDataParallelTopology
