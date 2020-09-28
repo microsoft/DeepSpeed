@@ -2,7 +2,6 @@ import torch
 import torch.distributed as dist
 import apex
 from deepspeed.utils import logger
-from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
 def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
@@ -23,11 +22,14 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     return my_group
 
 
-ZERO_SUPPORTED_OPTIMIZERS = [
-    torch.optim.Adam,
-    apex.optimizers.FusedAdam,
-    DeepSpeedCPUAdam
-]
+ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, apex.optimizers.FusedAdam]
+try:
+    from deepspeed.ops.adam import DeepSpeedCPUAdam
+    ZERO_SUPPORTED_OPTIMIZERS.append(DeepSpeedCPUAdam)
+except ImportError:
+    print(
+        "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
+    )
 
 
 def is_zero_supported_optimizer(optimizer):
