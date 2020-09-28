@@ -111,13 +111,13 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-cpu_info = cpufeature.CPUFeature
-SIMD_WIDTH = ''
-if cpu_info['AVX512f'] and DS_BUILD_AVX512:
-    SIMD_WIDTH = '-D__AVX512__'
-elif cpu_info['AVX2']:
-    SIMD_WIDTH = '-D__AVX256__'
-print("SIMD_WIDTH = ", SIMD_WIDTH)
+#cpu_info = cpufeature.CPUFeature
+#SIMD_WIDTH = ''
+#if cpu_info['AVX512f'] and DS_BUILD_AVX512:
+#    SIMD_WIDTH = '-D__AVX512__'
+#elif cpu_info['AVX2']:
+#    SIMD_WIDTH = '-D__AVX256__'
+#print("SIMD_WIDTH = ", SIMD_WIDTH)
 
 ext_modules = []
 
@@ -139,42 +139,42 @@ if BUILD_MASK & DS_BUILD_LAMB:
                       }))
 
 ## Adam ##
-if BUILD_MASK & DS_BUILD_CPU_ADAM:
-    ext_modules.append(
-        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
-                      sources=[
-                          'csrc/adam/cpu_adam.cpp',
-                          'csrc/adam/custom_cuda_kernel.cu',
-                      ],
-                      include_dirs=['csrc/includes',
-                                    '/usr/local/cuda/include'],
-                      extra_compile_args={
-                          'cxx': [
-                              '-O3',
-                              '-std=c++14',
-                              '-L/usr/local/cuda/lib64',
-                              '-lcudart',
-                              '-lcublas',
-                              '-g',
-                              '-Wno-reorder',
-                              '-march=native',
-                              '-fopenmp',
-                              SIMD_WIDTH
-                          ],
-                          'nvcc': [
-                              '-O3',
-                              '--use_fast_math',
-                              '-gencode',
-                              'arch=compute_61,code=compute_61',
-                              '-gencode',
-                              'arch=compute_70,code=compute_70',
-                              '-std=c++14',
-                              '-U__CUDA_NO_HALF_OPERATORS__',
-                              '-U__CUDA_NO_HALF_CONVERSIONS__',
-                              '-U__CUDA_NO_HALF2_OPERATORS__'
-                          ]
-                      }))
-
+#if BUILD_MASK & DS_BUILD_CPU_ADAM:
+#    ext_modules.append(
+#        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
+#                      sources=[
+#                          'csrc/adam/cpu_adam.cpp',
+#                          'csrc/adam/custom_cuda_kernel.cu',
+#                      ],
+#                      include_dirs=['csrc/includes',
+#                                    '/usr/local/cuda/include'],
+#                      extra_compile_args={
+#                          'cxx': [
+#                              '-O3',
+#                              '-std=c++14',
+#                              '-L/usr/local/cuda/lib64',
+#                              '-lcudart',
+#                              '-lcublas',
+#                              '-g',
+#                              '-Wno-reorder',
+#                              '-march=native',
+#                              '-fopenmp',
+#                              SIMD_WIDTH
+#                          ],
+#                          'nvcc': [
+#                              '-O3',
+#                              '--use_fast_math',
+#                              '-gencode',
+#                              'arch=compute_61,code=compute_61',
+#                              '-gencode',
+#                              'arch=compute_70,code=compute_70',
+#                              '-std=c++14',
+#                              '-U__CUDA_NO_HALF_OPERATORS__',
+#                              '-U__CUDA_NO_HALF_CONVERSIONS__',
+#                              '-U__CUDA_NO_HALF2_OPERATORS__'
+#                          ]
+#                      }))
+#
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     ext_modules.append(
@@ -187,7 +187,8 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
+                          'csrc/transformer/general_kernels.cu',
+                          'csrc/transformer/utils.cpp'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
@@ -218,7 +219,8 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                           'csrc/transformer/dropout_kernels.cu',
                           'csrc/transformer/normalize_kernels.cu',
                           'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
+                          'csrc/transformer/general_kernels.cu',
+                          'csrc/transformer/utils.cpp'
                       ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
