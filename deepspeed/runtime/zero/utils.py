@@ -26,7 +26,7 @@ ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, apex.optimizers.FusedAdam]
 try:
     from deepspeed.ops.adam import DeepSpeedCPUAdam
     ZERO_SUPPORTED_OPTIMIZERS.append(DeepSpeedCPUAdam)
-except ImportError:
+except RuntimeError:
     print(
         "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
     )

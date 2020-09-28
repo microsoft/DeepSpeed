@@ -161,7 +161,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             try:
                 from deepspeed.ops.adam import DeepSpeedCPUAdam
                 self.deepspeed_adam_offload = (type(init_optimizer) == DeepSpeedCPUAdam)
-            except ImportError:
+            except RuntimeError:
                 print(
                     "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
                 )
