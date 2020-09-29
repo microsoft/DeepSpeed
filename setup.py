@@ -25,14 +25,22 @@ def fetch_requirements(path):
 
 
 def available_vector_instructions():
-    cpu_vector_instructions = {}
     try:
         import cpufeature
+    except ImportError:
+        warnings.warn(
+            f'import cpufeature failed - CPU vector optimizations are not available for CPUAdam'
+        )
+        return {}
+
+    cpu_vector_instructions = {}
+    try:
         cpu_vector_instructions = cpufeature.CPUFeature
     except _:
         warnings.warn(
-            f'cpufeature library not working - CPU vector optimizations are not available for CPUAdam'
+            f'cpufeature.CPUFeature failed - CPU vector optimizations are not available for CPUAdam'
         )
+        return {}
 
     return cpu_vector_instructions
 
