@@ -85,7 +85,7 @@ if len(install_ops) == 0:
 print(f'BUILD_MASK={BUILD_MASK}, install_ops={install_ops}')
 
 cmdclass = {}
-cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=True)
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
