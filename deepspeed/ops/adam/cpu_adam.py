@@ -1,9 +1,6 @@
 import math
 import torch
 from torch.utils.cpp_extension import load
-#import importlib
-
-#ds_opt_adam = None
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
