@@ -71,7 +71,7 @@ jobs:
 
   - script: |
       source activate $(conda_env)
-      pytest --durations=0 --forked --verbose -x tests/unit/
+      TORCH_EXTENSIONS_DIR=. pytest --durations=0 --forked --verbose -x tests/unit/
     displayName: 'Unit tests'
 
 #   - script: |
