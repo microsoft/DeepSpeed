@@ -5,10 +5,10 @@ FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu18.04
 ARG BUILD_ID
 
 ##############################################################################
-# Installation/Basic Utilities
+# Installation/basic utilities
 ##############################################################################
 RUN apt-get update && \
-	apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
     software-properties-common sudo pdsh
 
 ##############################################################################
@@ -39,7 +39,7 @@ RUN apt-get install -y python3 python3-dev && \
     python -V && pip -V
 
 ##############################################################################
-# Installation Latest Git
+# Install latest Git
 ##############################################################################
 RUN add-apt-repository ppa:git-core/ppa -y && \
     apt-get update && \
