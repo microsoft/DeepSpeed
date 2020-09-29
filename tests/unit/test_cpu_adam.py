@@ -8,6 +8,7 @@ import copy
 
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
+
 def check_equal(first, second, atol=1e-2, verbose=False):
     x = first.detach().numpy()
     y = second.detach().numpy()
