@@ -15,6 +15,7 @@ import collections
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 from deepspeed.utils import logger
 #Toggle this to true to enable correctness test
@@ -157,14 +158,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.cpu_offload = cpu_offload
 
-        if cpu_offload:
-            try:
-                from deepspeed.ops.adam import DeepSpeedCPUAdam
-                self.deepspeed_adam_offload = (type(init_optimizer) == DeepSpeedCPUAdam)
-            except RuntimeError:
-                print(
-                    "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
-                )
+        self.deepspeed_adam_offload = (cpu_offload
+                                       and type(init_optimizer) == DeepSpeedCPUAdam)
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
