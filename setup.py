@@ -128,7 +128,6 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-
 ext_modules = []
 
 ## Lamb ##
