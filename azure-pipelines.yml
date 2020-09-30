@@ -43,7 +43,6 @@ jobs:
       conda install -q --yes conda
       conda install -q --yes pip
       conda install -q --yes gxx_linux-64
-      if [[ $(cuda.version) != "10.2" ]]; then conda install --yes -c conda-forge cudatoolkit-dev=$(cuda.version) ; fi
       echo "PATH=$PATH, LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
     displayName: 'Setup environment python=$(python.version) pytorch=$(pytorch.version) cuda=$(cuda.version)'
 
@@ -71,7 +70,7 @@ jobs:
 
   - script: |
       source activate $(conda_env)
-      pytest --durations=0 --forked --verbose -x tests/unit/
+      TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose -x tests/unit/
     displayName: 'Unit tests'
 
 #   - script: |

@@ -157,8 +157,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.cpu_offload = cpu_offload
 
-        self.deepspeed_adam_offload = (cpu_offload
-                                       and type(init_optimizer) == DeepSpeedCPUAdam)
+        if cpu_offload:
+            try:
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                self.deepspeed_adam_offload = (type(init_optimizer) == DeepSpeedCPUAdam)
+            except RuntimeError:
+                print(
+                    "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
+                )
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 

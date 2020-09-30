@@ -69,15 +69,15 @@ cpu_vector_instructions = available_vector_instructions()
 DS_BUILD_LAMB_MASK = 1
 DS_BUILD_TRANSFORMER_MASK = 10
 DS_BUILD_SPARSE_ATTN_MASK = 100
-DS_BUILD_CPU_ADAM_MASK = 1000
 
-# Allow for build_cuda to turn on or off all ops
-DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK | DS_BUILD_CPU_ADAM_MASK
+DS_BUILD_ALL_OPS = DS_BUILD_LAMB_MASK | DS_BUILD_TRANSFORMER_MASK | DS_BUILD_SPARSE_ATTN_MASK
+
 DS_BUILD_CUDA = int(os.environ.get('DS_BUILD_CUDA', 1)) * DS_BUILD_ALL_OPS
 
 # Set default of each op based on if build_cuda is set
 OP_DEFAULT = DS_BUILD_CUDA == DS_BUILD_ALL_OPS
-DS_BUILD_CPU_ADAM = int(os.environ.get('DS_BUILD_CPU_ADAM', 0)) * DS_BUILD_CPU_ADAM_MASK
+#DS_BUILD_CPU_ADAM = int(os.environ.get('DS_BUILD_CPU_ADAM',
+#                                       OP_DEFAULT)) * DS_BUILD_CPU_ADAM_MASK
 DS_BUILD_LAMB = int(os.environ.get('DS_BUILD_LAMB', OP_DEFAULT)) * DS_BUILD_LAMB_MASK
 DS_BUILD_TRANSFORMER = int(os.environ.get('DS_BUILD_TRANSFORMER',
                                           OP_DEFAULT)) * DS_BUILD_TRANSFORMER_MASK
@@ -85,14 +85,14 @@ DS_BUILD_SPARSE_ATTN = int(os.environ.get('DS_BUILD_SPARSE_ATTN',
                                           OP_DEFAULT)) * DS_BUILD_SPARSE_ATTN_MASK
 
 # Final effective mask is the bitwise OR of each op
-BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN
-              | DS_BUILD_CPU_ADAM)
+BUILD_MASK = (DS_BUILD_LAMB | DS_BUILD_TRANSFORMER | DS_BUILD_SPARSE_ATTN)
+#| DS_BUILD_CPU_ADAM)
 
 install_ops = dict.fromkeys([LAMB, TRANSFORMER, SPARSE_ATTN, CPU_ADAM], False)
 if BUILD_MASK & DS_BUILD_LAMB:
     install_ops[LAMB] = True
-if BUILD_MASK & DS_BUILD_CPU_ADAM:
-    install_ops[CPU_ADAM] = True
+#if BUILD_MASK & DS_BUILD_CPU_ADAM:
+#    install_ops[CPU_ADAM] = True
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     install_ops[TRANSFORMER] = True
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
@@ -102,7 +102,7 @@ if len(install_ops) == 0:
 print(f'BUILD_MASK={BUILD_MASK}, install_ops={install_ops}')
 
 cmdclass = {}
-cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=True)
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -128,12 +128,6 @@ if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
     version_ge_1_5 = ['-DVERSION_GE_1_5']
 version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-SIMD_WIDTH = ''
-if cpu_vector_instructions.get('AVX512f', False):
-    SIMD_WIDTH = '-D__AVX512__'
-elif cpu_vector_instructions.get('AVX2', False):
-    SIMD_WIDTH = '-D__AVX256__'
-print("SIMD_WIDTH = ", SIMD_WIDTH)
 
 ext_modules = []
 
@@ -155,42 +149,42 @@ if BUILD_MASK & DS_BUILD_LAMB:
                       }))
 
 ## Adam ##
-if BUILD_MASK & DS_BUILD_CPU_ADAM:
-    ext_modules.append(
-        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
-                      sources=[
-                          'csrc/adam/cpu_adam.cpp',
-                          'csrc/adam/custom_cuda_kernel.cu',
-                      ],
-                      include_dirs=['csrc/includes',
-                                    '/usr/local/cuda/include'],
-                      extra_compile_args={
-                          'cxx': [
-                              '-O3',
-                              '-std=c++14',
-                              '-L/usr/local/cuda/lib64',
-                              '-lcudart',
-                              '-lcublas',
-                              '-g',
-                              '-Wno-reorder',
-                              '-march=native',
-                              '-fopenmp',
-                              SIMD_WIDTH
-                          ],
-                          'nvcc': [
-                              '-O3',
-                              '--use_fast_math',
-                              '-gencode',
-                              'arch=compute_61,code=compute_61',
-                              '-gencode',
-                              'arch=compute_70,code=compute_70',
-                              '-std=c++14',
-                              '-U__CUDA_NO_HALF_OPERATORS__',
-                              '-U__CUDA_NO_HALF_CONVERSIONS__',
-                              '-U__CUDA_NO_HALF2_OPERATORS__'
-                          ]
-                      }))
-
+#if BUILD_MASK & DS_BUILD_CPU_ADAM:
+#    ext_modules.append(
+#        CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
+#                      sources=[
+#                          'csrc/adam/cpu_adam.cpp',
+#                          'csrc/adam/custom_cuda_kernel.cu',
+#                      ],
+#                      include_dirs=['csrc/includes',
+#                                    '/usr/local/cuda/include'],
+#                      extra_compile_args={
+#                          'cxx': [
+#                              '-O3',
+#                              '-std=c++14',
+#                              '-L/usr/local/cuda/lib64',
+#                              '-lcudart',
+#                              '-lcublas',
+#                              '-g',
+#                              '-Wno-reorder',
+#                              '-march=native',
+#                              '-fopenmp',
+#                              SIMD_WIDTH
+#                          ],
+#                          'nvcc': [
+#                              '-O3',
+#                              '--use_fast_math',
+#                              '-gencode',
+#                              'arch=compute_61,code=compute_61',
+#                              '-gencode',
+#                              'arch=compute_70,code=compute_70',
+#                              '-std=c++14',
+#                              '-U__CUDA_NO_HALF_OPERATORS__',
+#                              '-U__CUDA_NO_HALF_CONVERSIONS__',
+#                              '-U__CUDA_NO_HALF2_OPERATORS__'
+#                          ]
+#                      }))
+#
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     ext_modules.append(
