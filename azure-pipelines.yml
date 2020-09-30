@@ -70,6 +70,7 @@ jobs:
 
   - script: |
       source activate $(conda_env)
+      if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
       TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose -x tests/unit/
     displayName: 'Unit tests'
 
