@@ -23,7 +23,12 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
     return my_group
 
 
-ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, apex.optimizers.FusedAdam, DeepSpeedCPUAdam]
+ZERO_SUPPORTED_OPTIMIZERS = [
+    torch.optim.Adam,
+    apex.optimizers.FusedAdam,
+    DeepSpeedCPUAdam
+]
+
 
 def is_zero_supported_optimizer(optimizer):
     print(

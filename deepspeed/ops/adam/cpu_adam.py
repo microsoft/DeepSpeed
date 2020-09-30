@@ -28,12 +28,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         #global ds_opt_adam
         #ds_opt_adam = importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
         ds_opt_adam = DeepSpeedCPUAdam.load_op()
-        ds_opt_adam.create_adam(self.opt_id,
-                                lr,
-                                betas[0],
-                                betas[1],
-                                eps,
-                                weight_decay)
+        ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay)
 
     @staticmethod
     def load_op():
@@ -72,8 +67,6 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 verbose=True)
         return DeepSpeedCPUAdam.ds_opt_adam
 
-
-
     def __setstate__(self, state):
         super(DeepSpeedCPUAdam, self).__setstate__(state)
         for group in self.param_groups:
@@ -109,13 +102,12 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 ds_opt_adam = DeepSpeedCPUAdam.load_op()
                 if fp16_param_groups is not None:
                     p_fp16 = fp16_param_groups[group_id][param_id]
-                    ds_opt_adam.adam_update_copy(
-                        self.opt_id,
-                        p.data,
-                        grad,
-                        exp_avg,
-                        exp_avg_sq,
-                        p_fp16)
+                    ds_opt_adam.adam_update_copy(self.opt_id,
+                                                 p.data,
+                                                 grad,
+                                                 exp_avg,
+                                                 exp_avg_sq,
+                                                 p_fp16)
                 else:
                     ds_opt_adam.adam_update(self.opt_id,
                                             p.data,
