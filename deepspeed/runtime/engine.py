@@ -555,13 +555,7 @@ class DeepSpeedEngine(Module):
                 from apex.optimizers.fused_adam import FusedAdam
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == DEEPSPEED_ADAM:
-            try:
-                from deepspeed.ops.adam import DeepSpeedCPUAdam
-                self.deepspeed_adam_offload = (type(init_optimizer) == DeepSpeedCPUAdam)
-            except RuntimeError:
-                print(
-                    "If trying to use DeepCPUAdam, please instal Ninja (apt-get install ninja-build) to use DeepCPUAdam in JIT mode."
-                )
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
             optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             from deepspeed.ops.lamb import FusedLamb
