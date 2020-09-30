@@ -58,8 +58,8 @@ try:
 except ImportError:
     print(f'{WARNING} sparse attention is NOT installed.')
 
-try:
-    importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
-    print(f'{SUCCESS} cpu-adam (used by ZeRO-offload) successfully installed.')
-except ImportError:
-    print(f'{WARNING} cpu-adam (used by ZeRO-offload) is NOT installed.')
+#try:
+#    importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
+#    print(f'{SUCCESS} cpu-adam (used by ZeRO-offload) successfully installed.')
+#except ImportError:
+#    print(f'{WARNING} cpu-adam (used by ZeRO-offload) is NOT installed.')
