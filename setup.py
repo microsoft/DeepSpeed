@@ -92,7 +92,8 @@ install_ops = dict.fromkeys([LAMB, TRANSFORMER, SPARSE_ATTN, CPU_ADAM], False)
 if BUILD_MASK & DS_BUILD_LAMB:
     install_ops[LAMB] = True
 #if BUILD_MASK & DS_BUILD_CPU_ADAM:
-#    install_ops[CPU_ADAM] = True
+# CPU Adam will be installed at runtime
+install_ops[CPU_ADAM] = True
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
     install_ops[TRANSFORMER] = True
 if BUILD_MASK & DS_BUILD_SPARSE_ATTN:
