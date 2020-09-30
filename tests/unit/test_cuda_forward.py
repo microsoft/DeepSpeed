@@ -8,6 +8,7 @@ import random
 import time
 import copy
 from torch import nn
+from common import skipIfRocm
 from modelingpreln import BertEncoder as BertEncoderPreln
 from modeling import BertEncoder as BertEncoderPostln
 from modeling import BertLayerNorm, BertConfig
@@ -226,6 +227,7 @@ def run_forward(ds_config, atol=1e-2, verbose=False, test_bsz=None):
                              (8,2560,128,40,3,False,False),
                              (8,2560,128,40,3,False,True),
                          ]) # yapf: disable
+@skipIfRocm
 def test_forward(batch_size,
                  hidden_size,
                  seq_len,
@@ -261,6 +263,7 @@ def test_forward(batch_size,
                              (8,3,1024,512,16,3,False,False),
                              (8,7,1024,512,16,3,False,True),
                          ]) # yapf: disable
+@skipIfRocm
 def test_forward_with_small_bsz(batch_size,
                                 small_bsz,
                                 hidden_size,
@@ -296,6 +299,7 @@ def test_forward_with_small_bsz(batch_size,
                              (64,1024,128,16,3,False,False),
                              (64,1024,128,16,3,False,True),
                          ]) # yapf: disable
+@skipIfRocm
 def test_forward_stochastic(batch_size,
                             hidden_size,
                             seq_len,

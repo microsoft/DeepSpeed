@@ -1,11 +1,11 @@
 import torch
 import torch.distributed as dist
 
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 
 import pytest
 
-
+@skipIfRocm
 @distributed_test(world_size=3)
 def test_init():
     assert dist.is_initialized()
@@ -15,6 +15,7 @@ def test_init():
 
 # Demonstration of pytest's paramaterization
 @pytest.mark.parametrize('number,color', [(1138, 'purple')])
+@skipIfRocm
 def test_dist_args(number, color):
     """Outer test function with inputs from pytest.mark.parametrize(). Uses a distributed
     helper function.
@@ -29,6 +30,7 @@ def test_dist_args(number, color):
     _test_dist_args_helper(number, color=color)
 
 
+@skipIfRocm
 @distributed_test(world_size=[1, 2, 4])
 def test_dist_allreduce():
     x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)

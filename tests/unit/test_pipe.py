@@ -15,7 +15,7 @@ PipeTopo = PipeDataParallelTopology
 import deepspeed.runtime.pipe.module as PipelineModule
 from deepspeed.runtime.pipe.module import LayerSpec
 
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 
 
 def rel_diff(A, B):
@@ -170,6 +170,7 @@ def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, s
                               PipeTopo(num_pp=4,
                                        num_dp=1)),
                          ])
+@skipIfRocm
 def test_pipe_cifar10_seedlayers(base_topo, test_topo, tmpdir):
     config_dict = {
         "train_batch_size": 16,

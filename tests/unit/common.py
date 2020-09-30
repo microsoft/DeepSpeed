@@ -6,10 +6,22 @@ import torch.distributed as dist
 from torch.multiprocessing import Process
 
 import pytest
+from functools import wraps
+import unittest
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 
+TEST_WITH_ROCM = os.getenv('DEEPSPEED_TEST_WITH_ROCM', '0') == '1'
+
+def skipIfRocm(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if TEST_WITH_ROCM:
+            raise unittest.SkipTest("test doesn't currently work on the ROCm stack")
+        else:
+            fn(*args, **kwargs)
+    return wrapper
 
 def distributed_test(world_size=2, backend='nccl'):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.

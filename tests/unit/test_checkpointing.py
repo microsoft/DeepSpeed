@@ -16,7 +16,7 @@ import pytest
 import json
 import os
 import numbers
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import *
 
 
@@ -151,6 +151,7 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
+@skipIfRocm
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -209,6 +210,7 @@ def test_checkpoint_unfused_optimizer(tmpdir):
                                        load_optimizer_states=False)
 
 
+@skipIfRocm
 def test_checkpoint_fused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -263,6 +265,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
                               True,
                               'deepspeed_adam'),
                          ])
+@skipIfRocm
 def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
@@ -316,6 +319,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                               True,
                               'deepspeed_adam'),
                          ])
+@skipIfRocm
 def test_checkpoint_zero_no_optimizer(tmpdir,
                                       zero_stage,
                                       use_cpu_offload,
@@ -378,6 +382,7 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                               True,
                               'deepspeed_adam'),
                          ])
+@skipIfRocm
 def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
@@ -449,6 +454,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                               True,
                               'deepspeed_adam'),
                          ])
+@skipIfRocm
 def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     config_dict = {
         "train_batch_size": 2,
@@ -501,6 +507,7 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
                                      load_lr_scheduler_states=False)
 
 
+@skipIfRocm
 def test_checkpoint_fp32_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,

@@ -3,7 +3,7 @@ import torch
 import pytest
 import json
 import argparse
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
 
@@ -56,6 +56,7 @@ def _batch_assert(status, ds_config, batch, micro_batch, gas, success):
                          (2,32,8,2,True),
                          (2,33,17,2,False),
                          (2,32,18,1,False)]) # yapf: disable
+@skipIfRocm
 def test_batch_config(num_ranks, batch, micro_batch, gas, success):
     @distributed_test(world_size=2)
     def _test_batch_config(num_ranks, batch, micro_batch, gas, success):
@@ -114,6 +115,7 @@ def test_temp_config_json(tmpdir):
     assert 'train_batch_size' in config_json
 
 
+@skipIfRocm
 def test_deprecated_deepscale_config(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -155,6 +157,7 @@ def test_deprecated_deepscale_config(tmpdir):
     _test_deprecated_deepscale_config(args=args, model=model, hidden_dim=hidden_dim)
 
 
+@skipIfRocm
 def test_dist_init_true(tmpdir):
     config_dict = {
         "train_batch_size": 1,

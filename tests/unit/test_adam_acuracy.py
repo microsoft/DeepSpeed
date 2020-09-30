@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import copy
 
+from common import skipIfRocm
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
@@ -27,6 +28,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                              (1024),
                              (1048576),
                          ]) # yapf: disable
+@skipIfRocm
 def test_adam_opt(model_size):
     device = 'cpu'
     rng_state = torch.get_rng_state()

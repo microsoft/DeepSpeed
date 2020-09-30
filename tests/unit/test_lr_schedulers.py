@@ -4,7 +4,7 @@ import argparse
 import pytest
 import json
 import os
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 
 
@@ -18,6 +18,7 @@ from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_f
                            }),
                           ("LRRangeTest",
                            {})])
+@skipIfRocm
 def test_get_lr_before_train(tmpdir, scheduler_type, params):
     config_dict = {
         "train_batch_size": 2,

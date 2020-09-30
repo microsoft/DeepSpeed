@@ -8,9 +8,10 @@ from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
 
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 
 
+@skipIfRocm
 @distributed_test(world_size=4)
 def test_partitioned_tensor():
     world = dist.get_world_size()
@@ -32,6 +33,7 @@ def test_partitioned_tensor():
     assert torch.equal(full, reconstructed)
 
 
+@skipIfRocm
 @distributed_test(world_size=4)
 def test_partitioned_tensor_meta():
     world = dist.get_world_size()

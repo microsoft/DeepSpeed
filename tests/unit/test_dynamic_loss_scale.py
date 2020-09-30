@@ -5,7 +5,7 @@ import pytest
 import json
 import os
 import numpy as np
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import SimpleModel, args_from_dict
 
 
@@ -17,6 +17,7 @@ def run_model_step(model, gradient_list):
         model.step()
 
 
+@skipIfRocm
 def test_fused_no_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -61,6 +62,7 @@ def test_fused_no_overflow(tmpdir):
     _test_fused_no_overflow(args)
 
 
+@skipIfRocm
 def test_fused_all_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -103,6 +105,7 @@ def test_fused_all_overflow(tmpdir):
     _test_fused_all_overflow(args)
 
 
+@skipIfRocm
 def test_fused_some_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -165,6 +168,7 @@ def test_fused_some_overflow(tmpdir):
     _test_fused_some_overflow(args)
 
 
+@skipIfRocm
 def test_unfused_no_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -208,6 +212,7 @@ def test_unfused_no_overflow(tmpdir):
     _test_unfused_no_overflow(args)
 
 
+@skipIfRocm
 def test_unfused_all_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -253,6 +258,7 @@ def test_unfused_all_overflow(tmpdir):
     _test_unfused_all_overflow(args)
 
 
+@skipIfRocm
 def test_unfused_some_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 1,
