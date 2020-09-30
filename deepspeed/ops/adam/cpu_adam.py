@@ -4,39 +4,7 @@ from torch.utils.cpp_extension import load
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
-
     optimizer_id = 0
-    ds_opt_adam = load(
-        name='ds_cpu_adam',
-        sources=['csrc/adam/cpu_adam.cpp',
-                 'csrc/adam/custom_cuda_kernel.cu'],
-        extra_include_paths=['csrc/includes/',
-                             '/usr/local/cuda/include'],
-        extra_cflags=[
-            '-O3',
-            '-march=native',
-            '-std=c++14',
-            '-L/usr/local/cuda/lib64',
-            '-lcudart',
-            '-lcublas',
-            '-g',
-            '-Wno-reorder',
-            '-fopenmp',
-            '-D__AVX256__'
-        ],
-        extra_cuda_cflags=[
-            '-O3',
-            '--use_fast_math',
-            '-gencode',
-            'arch=compute_61,code=compute_61',
-            '-gencode',
-            'arch=compute_70,code=compute_70',
-            '-std=c++14',
-            '-U__CUDA_NO_HALF_OPERATORS__',
-            '-U__CUDA_NO_HALF_CONVERSIONS__',
-            '-U__CUDA_NO_HALF2_OPERATORS__'
-        ],
-        verbose=True)
 
     def __init__(self,
                  model_params,
@@ -59,12 +27,44 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
         #global ds_opt_adam
         #ds_opt_adam = importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
-        DeepSpeedCPUAdam.ds_opt_adam.create_adam(self.opt_id,
-                                                 lr,
-                                                 betas[0],
-                                                 betas[1],
-                                                 eps,
-                                                 weight_decay)
+        ds_opt_adam = load(
+            name='ds_cpu_adam',
+            sources=['csrc/adam/cpu_adam.cpp',
+                     'csrc/adam/custom_cuda_kernel.cu'],
+            extra_include_paths=['csrc/includes/',
+                                 '/usr/local/cuda/include'],
+            extra_cflags=[
+                '-O3',
+                '-march=native',
+                '-std=c++14',
+                '-L/usr/local/cuda/lib64',
+                '-lcudart',
+                '-lcublas',
+                '-g',
+                '-Wno-reorder',
+                '-fopenmp',
+                '-D__AVX256__'
+            ],
+            extra_cuda_cflags=[
+                '-O3',
+                '--use_fast_math',
+                '-gencode',
+                'arch=compute_61,code=compute_61',
+                '-gencode',
+                'arch=compute_70,code=compute_70',
+                '-std=c++14',
+                '-U__CUDA_NO_HALF_OPERATORS__',
+                '-U__CUDA_NO_HALF_CONVERSIONS__',
+                '-U__CUDA_NO_HALF2_OPERATORS__'
+            ],
+            verbose=True)
+
+        ds_opt_adam.create_adam(self.opt_id,
+                                lr,
+                                betas[0],
+                                betas[1],
+                                eps,
+                                weight_decay)
 
     def __setstate__(self, state):
         super(DeepSpeedCPUAdam, self).__setstate__(state)

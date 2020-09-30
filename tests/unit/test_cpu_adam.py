@@ -6,8 +6,6 @@ import numpy as np
 import pytest
 import copy
 
-from deepspeed.ops.adam import DeepSpeedCPUAdam
-
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     x = first.detach().numpy()
@@ -28,6 +26,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                              (1048576),
                          ]) # yapf: disable
 def test_cpu_adam_opt(model_size):
+    from deepspeed.ops.adam import DeepSpeedCPUAdam
     device = 'cpu'
     rng_state = torch.get_rng_state()
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
