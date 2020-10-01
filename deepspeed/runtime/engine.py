@@ -872,6 +872,15 @@ class DeepSpeedEngine(Module):
                 master_params = amp.master_params(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                max_norm=self.gradient_clipping())
+        #print("HELLOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+        
+        '''
+        for param in self.module.parameters(): # client_model_parameters:
+            param.requires_grad = False
+        for group in self.optimizer.param_groups:
+            for param in group['params']:
+                param.requires_grad = True
+        '''
         self.optimizer.step()
 
         #zero grad in basic optimizer could be unreliable and may not exhibit
