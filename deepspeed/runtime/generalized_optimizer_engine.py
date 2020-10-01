@@ -30,3 +30,4 @@ class generalized_optimizer_engine():
         for o in self.generalized_optimizers:
             if self.check_condition(o):
                 o.step()
+
