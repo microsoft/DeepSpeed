@@ -43,14 +43,14 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
     def load_op():
         if DeepSpeedCPUAdam.ds_opt_adam is None:
             from torch.utils.cpp_extension import load
-            
+
             ext_path = os.path.join(os.environ['TORCH_EXTENSIONS_DIR'], 'ds_cpu_adam')
             os.makedirs(ext_path, exist_ok=True)
-            
+
             # Attempt to mitigate build race conditions
             DeepSpeedCPUAdam.wait_if_build_started(ext_path)
             Path(os.path.join(ext_path, 'started')).touch()
-            
+
             DeepSpeedCPUAdam.ds_opt_adam = load(
                 name='ds_cpu_adam',
                 sources=['csrc/adam/cpu_adam.cpp',
