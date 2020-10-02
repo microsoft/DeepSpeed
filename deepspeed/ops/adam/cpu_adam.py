@@ -1,5 +1,8 @@
+import os
 import math
 import torch
+import time
+from pathlib import Path
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -31,16 +34,23 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay)
 
     @staticmethod
+    def wait_if_build_started(ext_path):
+        if os.path.isfile(os.path.join(ext_path, 'started')):
+            while not os.path.isfile(os.path.join(ext_path, 'done')):
+                time.sleep(1000)
+
+    @staticmethod
     def load_op():
         if DeepSpeedCPUAdam.ds_opt_adam is None:
-            # Prevent build race condition, in this case we can assume torch.dist is initialized
-            assert torch.distributed.is_initialized(), "torch distributed is not initialized unable to proceed"
-            local_rank = torch.cuda.current_device()
-            torch.distributed.barrier()
-            if local_rank != 0:
-                torch.distributed.barrier()
-
             from torch.utils.cpp_extension import load
+            
+            ext_path = os.path.join(os.environ['TORCH_EXTENSIONS_DIR'], 'ds_cpu_adam')
+            os.makedirs(ext_path, exist_ok=True)
+            
+            # Attempt to mitigate build race conditions
+            DeepSpeedCPUAdam.wait_if_build_started(ext_path)
+            Path(os.path.join(ext_path, 'started')).touch()
+            
             DeepSpeedCPUAdam.ds_opt_adam = load(
                 name='ds_cpu_adam',
                 sources=['csrc/adam/cpu_adam.cpp',
@@ -72,9 +82,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                     '-U__CUDA_NO_HALF2_OPERATORS__'
                 ],
                 verbose=True)
-
-            if local_rank == 0:
-                torch.distributed.barrier()
+            Path(os.path.join(ext_path, 'done')).touch()
 
         return DeepSpeedCPUAdam.ds_opt_adam
 
