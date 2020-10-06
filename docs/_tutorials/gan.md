@@ -44,7 +44,7 @@ We use `deepspeed.initialize` to create two model engines (one for the discrimin
 
 Note that DeepSpeed automatically takes care of the distributed training aspect, so we set ngpu=0 to disable the default data parallel mode of pytorch.
 
-### Discriminator Training 
+### Discriminator Training
 
 We modify the backward for discriminator as follows:
 
@@ -55,7 +55,7 @@ model_engineD.backward(errD_fake)
 
 which leads to the inclusion of the gradients due to both real and fake mini-batches in the optimizer update.
 
-### Generator Training 
+### Generator Training
 
 We modify the backward for generator as follows:
 
@@ -106,4 +106,4 @@ We use a total batch size of 64 and perform the training on 16 GPUs for 1 epoch 
 - Deepspeed total wall clock time for 1 epochs is 128 secs
 
 
-### 
+###
