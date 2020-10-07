@@ -1002,10 +1002,10 @@ class DeepSpeedEngine(Module):
         return self._get_optimizer_param('type')
 
     def get_mom(self):
-        if self.optimizer_name() in DEEPSPEED_OPTIMIZERS:
-            return self._get_optimizer_param('betas')
-        else:
+        if self.optimizer_name() in ['SGD', 'RMSprop']:
             return self._get_optimizer_param('momentum')
+        else:
+            return self._get_optimizer_param('betas')
 
     def _report_progress(self, step):
         lr = self.get_lr()
