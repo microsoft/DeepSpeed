@@ -158,7 +158,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.cpu_offload = cpu_offload
 
         self.deepspeed_adam_offload = (cpu_offload
-                                       and type(init_optimizer) == DeepSpeedCPUAdam)
+                                       and type(init_optimizer).__name__ == 'DeepSpeedCPUAdam')
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
