@@ -43,8 +43,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
     def load_op():
         if DeepSpeedCPUAdam.ds_opt_adam is None:
             from torch.utils.cpp_extension import load
-
-            ext_path = os.path.join(os.environ['TORCH_EXTENSIONS_DIR'], 'ds_cpu_adam')
+            torch_ext_path = os.environ.get('TORCH_EXTENSIONS_DIR', '/tmp/torch-extensions')
+            ext_path = os.path.join(torch_ext_path, 'ds_cpu_adam')
             os.makedirs(ext_path, exist_ok=True)
 
             # Attempt to mitigate build race conditions
@@ -53,12 +53,13 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
             CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+            DEEPSPEED_SRC_PATH = Path(__file__).parent.absolute()
 
             DeepSpeedCPUAdam.ds_opt_adam = load(
                 name='ds_cpu_adam',
-                sources=['csrc/adam/cpu_adam.cpp',
-                         'csrc/adam/custom_cuda_kernel.cu'],
-                extra_include_paths=['csrc/includes/',
+                sources=[os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/adam/cpu_adam.cpp'),
+                         os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/adam/custom_cuda_kernel.cu')],
+                extra_include_paths=[os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/includes/'),
                                      CUDA_INCLUDE],
                 extra_cflags=[
                     '-O3',
