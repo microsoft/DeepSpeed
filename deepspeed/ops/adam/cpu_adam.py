@@ -51,17 +51,20 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
             DeepSpeedCPUAdam.wait_if_build_started(ext_path)
             Path(os.path.join(ext_path, 'started')).touch()
 
+            CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+
             DeepSpeedCPUAdam.ds_opt_adam = load(
                 name='ds_cpu_adam',
                 sources=['csrc/adam/cpu_adam.cpp',
                          'csrc/adam/custom_cuda_kernel.cu'],
                 extra_include_paths=['csrc/includes/',
-                                     '/usr/local/cuda/include'],
+                                     CUDA_INCLUDE],
                 extra_cflags=[
                     '-O3',
                     '-march=native',
                     '-std=c++14',
-                    '-L/usr/local/cuda/lib64',
+                    f'-L{CUDA_LIB64}',
                     '-lcudart',
                     '-lcublas',
                     '-g',

@@ -318,6 +318,8 @@ with open('deepspeed/git_version_info_installed.py', 'w') as fd:
 
 print(f'install_requires={install_requires}')
 
+#      #package_data={'deepspeed.ops.sparse_attention.trsrc': ['*.tr'],
+#      #              'csrc': ['*.cpp', '*.h', '*.cu']},
 setup(name='deepspeed',
       version=f"{VERSION}+{git_hash}",
       description='DeepSpeed library',
@@ -326,9 +328,8 @@ setup(name='deepspeed',
       url='http://deepspeed.ai',
       install_requires=install_requires,
       packages=find_packages(exclude=["docker",
-                                      "third_party",
-                                      "csrc"]),
-      package_data={'deepspeed.ops.sparse_attention.trsrc': ['*.tr']},
+                                      "third_party"]),
+      include_package_data=True,
       scripts=['bin/deepspeed',
                'bin/deepspeed.pt',
                'bin/ds',
