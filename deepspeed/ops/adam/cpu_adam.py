@@ -43,7 +43,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
     def load_op():
         if DeepSpeedCPUAdam.ds_opt_adam is None:
             from torch.utils.cpp_extension import load
-            torch_ext_path = os.environ.get('TORCH_EXTENSIONS_DIR', '/tmp/torch-extensions')
+            torch_ext_path = os.environ.get('TORCH_EXTENSIONS_DIR',
+                                            '/tmp/torch-extensions')
             ext_path = os.path.join(torch_ext_path, 'ds_cpu_adam')
             os.makedirs(ext_path, exist_ok=True)
 
@@ -57,10 +58,20 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
             DeepSpeedCPUAdam.ds_opt_adam = load(
                 name='ds_cpu_adam',
-                sources=[os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/adam/cpu_adam.cpp'),
-                         os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/adam/custom_cuda_kernel.cu')],
-                extra_include_paths=[os.path.join(DEEPSPEED_SRC_PATH, '..', 'csrc/includes/'),
-                                     CUDA_INCLUDE],
+                sources=[
+                    os.path.join(DEEPSPEED_SRC_PATH,
+                                 '..',
+                                 'csrc/adam/cpu_adam.cpp'),
+                    os.path.join(DEEPSPEED_SRC_PATH,
+                                 '..',
+                                 'csrc/adam/custom_cuda_kernel.cu')
+                ],
+                extra_include_paths=[
+                    os.path.join(DEEPSPEED_SRC_PATH,
+                                 '..',
+                                 'csrc/includes/'),
+                    CUDA_INCLUDE
+                ],
                 extra_cflags=[
                     '-O3',
                     '-march=native',
