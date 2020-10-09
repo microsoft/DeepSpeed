@@ -1002,7 +1002,10 @@ class DeepSpeedEngine(Module):
         return self._get_optimizer_param('type')
 
     def get_mom(self):
-        return self._get_optimizer_param('betas')
+        if self.optimizer_name() in ['SGD', 'RMSprop']:
+            return self._get_optimizer_param('momentum')
+        else:
+            return self._get_optimizer_param('betas')
 
     def _report_progress(self, step):
         lr = self.get_lr()
@@ -1227,7 +1230,7 @@ class DeepSpeedEngine(Module):
                 self.optimizer.load_state_dict(
                     checkpoint['optimizer'],
                     load_optimizer_states=load_optimizer_states)
-            else:
+            elif load_optimizer_states:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
 
         if load_lr_scheduler_states and self.lr_scheduler is not None:

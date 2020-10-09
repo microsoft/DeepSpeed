@@ -29,12 +29,12 @@
         for (size_t j = blockIdx.y * blockDim.y + threadIdx.y; j < (m); j += blockDim.y * gridDim.y)
 
 #define DS_CUDA_NUM_THREADS 512
-#define DS_MAXIMUM_NUM_BLOCKS 4096
+#define DS_MAXIMUM_NUM_BLOCKS 262144
 
 inline int DS_GET_BLOCKS(const int N)
 {
-    return std::max(
-        std::min((N + DS_CUDA_NUM_THREADS - 1) / DS_CUDA_NUM_THREADS, DS_MAXIMUM_NUM_BLOCKS),
+    return (std::max)(
+        (std::min)((N + DS_CUDA_NUM_THREADS - 1) / DS_CUDA_NUM_THREADS, DS_MAXIMUM_NUM_BLOCKS),
         // Use at least 1 block, since CUDA does not allow empty block
         1);
 }
@@ -69,7 +69,7 @@ public:
         if (!_workspace) {
             assert(_workspace == nullptr);
             cudaMalloc(&_workspace, size);
-        } else if (_workSpaceSize != size) {
+        } else if (_workSpaceSize < size) {
             cudaFree(_workspace);
             cudaMalloc(&_workspace, size);
         }

@@ -18,6 +18,7 @@ class TransformerConfig():
                  batch_size,
                  max_seq_length,
                  hidden_size,
+                 intermediate_size,
                  heads,
                  attn_dropout_ratio,
                  hidden_dropout_ratio,
@@ -26,6 +27,7 @@ class TransformerConfig():
         self.layer_id = -1
         self.batch_size = batch_size
         self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
         self.max_seq_length = max_seq_length
         self.heads = heads
         self.attn_dropout_ratio = attn_dropout_ratio
@@ -43,6 +45,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
             max_seq_length: The sequence-length of the model being trained with DeepSpeed
 
             hidden_size: The hidden size of the transformer layer
+
+            intermediate_size: The intermediate size of the feed-forward part of transformer layer
 
             heads: The number of heads in the self-attention of the transformer layer
 
@@ -88,6 +92,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  batch_size=-1,
                  max_seq_length=-1,
                  hidden_size=-1,
+                 intermediate_size=-1,
                  heads=-1,
                  attn_dropout_ratio=-1,
                  hidden_dropout_ratio=-1,
@@ -103,14 +108,16 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False):
         super(DeepSpeedTransformerConfig,
-              self).__init__(batch_size,
-                             max_seq_length,
-                             hidden_size,
-                             heads,
-                             attn_dropout_ratio,
-                             hidden_dropout_ratio,
-                             num_hidden_layers,
-                             initializer_range)
+              self).__init__(
+                  batch_size,
+                  max_seq_length,
+                  hidden_size,
+                  (intermediate_size if intermediate_size > 0 else 4 * hidden_size),
+                  heads,
+                  attn_dropout_ratio,
+                  hidden_dropout_ratio,
+                  num_hidden_layers,
+                  initializer_range)
         self.fp16 = fp16
         self.pre_layer_norm = pre_layer_norm
         self.local_rank = local_rank
@@ -180,26 +187,30 @@ class DeepSpeedTransformerFunction(Function):
          ff2_inp,
          attn_prob_dropout_mask,
          attn_output_dropout_mask,
-         layer_output_dropout_mask) = forward_func(config.layer_id,
-                                                   input,
-                                                   input_mask,
-                                                   attn_qkvw,
-                                                   attn_qkvb,
-                                                   attn_ow,
-                                                   attn_ob,
-                                                   attn_nw,
-                                                   attn_nb,
-                                                   inter_w,
-                                                   inter_b,
-                                                   output_w,
-                                                   output_b,
-                                                   norm_w,
-                                                   norm_b,
-                                                   config.training,
-                                                   config.pre_layer_norm,
-                                                   config.attn_dropout_checkpoint,
-                                                   config.normalize_invertible,
-                                                   config.gelu_checkpoint)
+         layer_output_dropout_mask,
+         attn_layer_norm_var,
+         attn_layer_norm_mean,
+         layer_norm_var,
+         layer_norm_mean) = forward_func(config.layer_id,
+                                         input,
+                                         input_mask,
+                                         attn_qkvw,
+                                         attn_qkvb,
+                                         attn_ow,
+                                         attn_ob,
+                                         attn_nw,
+                                         attn_nb,
+                                         inter_w,
+                                         inter_b,
+                                         output_w,
+                                         output_b,
+                                         norm_w,
+                                         norm_b,
+                                         config.training,
+                                         config.pre_layer_norm,
+                                         config.attn_dropout_checkpoint,
+                                         config.normalize_invertible,
+                                         config.gelu_checkpoint)
 
         # For testing only.
         if grads is not None:
@@ -276,6 +287,9 @@ class DeepSpeedTransformerFunction(Function):
             if not config.normalize_invertible:
                 ctx.add_res = add_res
 
+            ctx.attn_layer_norm_mean = attn_layer_norm_mean
+            ctx.layer_norm_mean = layer_norm_mean
+
             ctx.ff1_inp = ff1_inp
             if not config.gelu_checkpoint:
                 ctx.gelu_inp = gelu_inp
@@ -284,6 +298,8 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
             ctx.attn_output_dropout_mask = attn_output_dropout_mask
             ctx.layer_output_dropout_mask = layer_output_dropout_mask
+            ctx.attn_layer_norm_var = attn_layer_norm_var
+            ctx.layer_norm_var = layer_norm_var
 
         return output
 
@@ -360,6 +376,10 @@ class DeepSpeedTransformerFunction(Function):
              ctx.attn_prob_dropout_mask,
              ctx.attn_output_dropout_mask,
              ctx.layer_output_dropout_mask,
+             ctx.attn_layer_norm_var,
+             ctx.attn_layer_norm_mean,
+             ctx.layer_norm_var,
+             ctx.layer_norm_mean,
              (ctx.inp_norm if (ctx.config.pre_layer_norm
                                and ctx.config.normalize_invertible) else input),
              input_mask,
@@ -432,12 +452,12 @@ class DeepSpeedTransformerLayer(nn.Module):
             self.attn_nw = nn.Parameter(torch.Tensor(self.config.hidden_size))
             self.attn_nb = nn.Parameter(torch.Tensor(self.config.hidden_size))
             self.inter_w = nn.Parameter(
-                torch.Tensor(4 * self.config.hidden_size,
+                torch.Tensor(self.config.intermediate_size,
                              self.config.hidden_size))
-            self.inter_b = nn.Parameter(torch.Tensor(4 * self.config.hidden_size))
+            self.inter_b = nn.Parameter(torch.Tensor(self.config.intermediate_size))
             self.output_w = nn.Parameter(
                 torch.Tensor(self.config.hidden_size,
-                             4 * self.config.hidden_size))
+                             self.config.intermediate_size))
             self.output_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
             self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
             self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
@@ -485,7 +505,7 @@ class DeepSpeedTransformerLayer(nn.Module):
                           self.config.batch_size,
                           self.config.hidden_size,
                           self.config.heads,
-                          4 * self.config.hidden_size,
+                          self.config.intermediate_size,
                           self.config.max_seq_length,
                           self.config.attn_dropout_ratio,
                           self.config.hidden_dropout_ratio,

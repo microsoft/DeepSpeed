@@ -15,7 +15,6 @@ import collections
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
-from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 from deepspeed.utils import logger
 #Toggle this to true to enable correctness test
@@ -260,7 +259,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
-            #divide the flat weights into near equal paritition equal to the data parallel degree
+            #divide the flat weights into near equal partition equal to the data parallel degree
             #each process will compute on a different part of the partition
             data_parallel_partitions = self.get_data_parallel_partitions(
                 self.fp16_groups_flat[i])
@@ -367,10 +366,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #stores the offset at which a parameter gradient needs to be inserted in a partition
         self.grad_partition_insertion_offset = {}
 
-        #the offset in the gradient at which it must be inserted at the beginning of the paritition
+        #the offset in the gradient at which it must be inserted at the beginning of the partition
         self.grad_start_offset = {}
 
-        #will store the averaged gradients required by this parititon
+        #will store the averaged gradients required by this partition
         self.averaged_gradients = {}
 
         # store index of first parameter in each partition
@@ -517,7 +516,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         see_memory_usage(f"End ipg_epilogue")
 
     # resets all partition to no reduced
-    # sets remianing grads to the total number of grads in each partition
+    # sets remaining grads to the total number of grads in each partition
     # set is grad computed to false for all grads in partition
     def reset_partition_gradient_structures(self):
         total_partitions = dist.get_world_size(group=self.dp_process_group)
@@ -617,7 +616,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}"
         )
 
-    ###############Idependent Partition Gradient ########################
+    ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
         if self.elements_in_ipg_bucket + param.numel() > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
@@ -1416,6 +1415,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #torch.set_num_threads(12)
         timers('optimizer_step').start()
         if self.deepspeed_adam_offload:
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
             self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
             #self.optimizer.step()
             #for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
