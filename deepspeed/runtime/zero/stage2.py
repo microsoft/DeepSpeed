@@ -23,16 +23,11 @@ from deepspeed.utils import logger
 pg_correctness_test = False
 
 try:
-    from apex_C import flatten
-    from apex_C import unflatten
+    from deepspeed.ops.utils import flatten, unflatten
 except ImportError:
-    try:
-        _ = warned_flatten
-    except NameError:
-        logger.warning(
-            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
-        warned_flatten = True
+    logger.warning(
+        "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+    )
     from torch._utils import _flatten_dense_tensors as flatten
     from torch._utils import _unflatten_dense_tensors as unflatten
 

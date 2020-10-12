@@ -130,6 +130,26 @@ version_dependent_macros = version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
 ext_modules = []
 
+## Fused Adam ##
+ext_modules.append(
+    CUDAExtension(
+        name='deepspeed.ops.adam.fused_adam_cuda',
+        sources=['csrc/adam/fused_adam_frontend.cpp',
+                 'csrc/adam/multi_tensor_adam.cu'],
+        include_dirs=['csrc/includes'],
+        extra_compile_args={
+            'cxx': ['-O3'] + version_dependent_macros,
+            'nvcc': ['-lineinfo',
+                     '-O3',
+                     '--use_fast_math'] + version_dependent_macros
+        }))
+
+ext_modules.append(
+    CppExtension(name='deepspeed.ops.utils',
+                 sources=[
+                     'csrc/utils/flatten_unflatten.cpp',
+                 ]))
+
 ## Lamb ##
 if BUILD_MASK & DS_BUILD_LAMB:
     ext_modules.append(
