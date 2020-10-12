@@ -3,11 +3,59 @@ import math
 import torch
 import time
 from pathlib import Path
+from ..ds_extension import DSExtension
+
+
+class CPUAdamDSExt(DSExtension):
+    def __init__(self):
+        self.ext_name = 'ds_cpu_adam'
+        self.op = None
+
+    def unsafe_load(self):
+        from torch.utils.cpp_extension import load
+        CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
+        CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        return load(name=self.ext_name,
+                    sources=[
+                        os.path.join(self.deepspeed_src_path(),
+                                     'csrc/adam/cpu_adam.cpp'),
+                        os.path.join(self.deepspeed_src_path(),
+                                     'csrc/adam/custom_cuda_kernel.cu')
+                    ],
+                    extra_include_paths=[
+                        os.path.join(self.deepspeed_src_path(),
+                                     'csrc/includes/'),
+                        CUDA_INCLUDE
+                    ],
+                    extra_cflags=[
+                        '-O3',
+                        '-march=native',
+                        '-std=c++14',
+                        f'-L{CUDA_LIB64}',
+                        '-lcudart',
+                        '-lcublas',
+                        '-g',
+                        '-Wno-reorder',
+                        '-fopenmp',
+                        '-D__AVX256__'
+                    ],
+                    extra_cuda_cflags=[
+                        '-O3',
+                        '--use_fast_math',
+                        '-gencode',
+                        'arch=compute_61,code=compute_61',
+                        '-gencode',
+                        'arch=compute_70,code=compute_70',
+                        '-std=c++14',
+                        '-U__CUDA_NO_HALF_OPERATORS__',
+                        '-U__CUDA_NO_HALF_CONVERSIONS__',
+                        '-U__CUDA_NO_HALF2_OPERATORS__'
+                    ],
+                    verbose=True)
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
     optimizer_id = 0
-    ds_opt_adam = None
 
     def __init__(self,
                  model_params,
@@ -28,78 +76,13 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
 
-        #global ds_opt_adam
-        #ds_opt_adam = importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
-        ds_opt_adam = DeepSpeedCPUAdam.load_op()
-        ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay)
-
-    @staticmethod
-    def wait_if_build_started(ext_path):
-        if os.path.isfile(os.path.join(ext_path, 'started')):
-            while not os.path.isfile(os.path.join(ext_path, 'done')):
-                time.sleep(1000)
-
-    @staticmethod
-    def load_op():
-        if DeepSpeedCPUAdam.ds_opt_adam is None:
-            from torch.utils.cpp_extension import load
-            torch_ext_path = os.environ.get('TORCH_EXTENSIONS_DIR',
-                                            '/tmp/torch-extensions')
-            ext_path = os.path.join(torch_ext_path, 'ds_cpu_adam')
-            os.makedirs(ext_path, exist_ok=True)
-
-            # Attempt to mitigate build race conditions
-            DeepSpeedCPUAdam.wait_if_build_started(ext_path)
-            Path(os.path.join(ext_path, 'started')).touch()
-
-            CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
-            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-            DEEPSPEED_SRC_PATH = Path(__file__).parent.absolute()
-
-            DeepSpeedCPUAdam.ds_opt_adam = load(
-                name='ds_cpu_adam',
-                sources=[
-                    os.path.join(DEEPSPEED_SRC_PATH,
-                                 '..',
-                                 'csrc/adam/cpu_adam.cpp'),
-                    os.path.join(DEEPSPEED_SRC_PATH,
-                                 '..',
-                                 'csrc/adam/custom_cuda_kernel.cu')
-                ],
-                extra_include_paths=[
-                    os.path.join(DEEPSPEED_SRC_PATH,
-                                 '..',
-                                 'csrc/includes/'),
-                    CUDA_INCLUDE
-                ],
-                extra_cflags=[
-                    '-O3',
-                    '-march=native',
-                    '-std=c++14',
-                    f'-L{CUDA_LIB64}',
-                    '-lcudart',
-                    '-lcublas',
-                    '-g',
-                    '-Wno-reorder',
-                    '-fopenmp',
-                    '-D__AVX256__'
-                ],
-                extra_cuda_cflags=[
-                    '-O3',
-                    '--use_fast_math',
-                    '-gencode',
-                    'arch=compute_61,code=compute_61',
-                    '-gencode',
-                    'arch=compute_70,code=compute_70',
-                    '-std=c++14',
-                    '-U__CUDA_NO_HALF_OPERATORS__',
-                    '-U__CUDA_NO_HALF_CONVERSIONS__',
-                    '-U__CUDA_NO_HALF2_OPERATORS__'
-                ],
-                verbose=True)
-            Path(os.path.join(ext_path, 'done')).touch()
-
-        return DeepSpeedCPUAdam.ds_opt_adam
+        self.ds_opt_adam = CPUAdamDSExt().load_op()
+        self.ds_opt_adam.create_adam(self.opt_id,
+                                     lr,
+                                     betas[0],
+                                     betas[1],
+                                     eps,
+                                     weight_decay)
 
     def __setstate__(self, state):
         super(DeepSpeedCPUAdam, self).__setstate__(state)
@@ -133,19 +116,18 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 state['step'] += 1
 
-                ds_opt_adam = DeepSpeedCPUAdam.load_op()
                 if fp16_param_groups is not None:
                     p_fp16 = fp16_param_groups[group_id][param_id]
-                    ds_opt_adam.adam_update_copy(self.opt_id,
+                    self.ds_opt_adam.adam_update_copy(self.opt_id,
+                                                      p.data,
+                                                      grad,
+                                                      exp_avg,
+                                                      exp_avg_sq,
+                                                      p_fp16)
+                else:
+                    self.ds_opt_adam.adam_update(self.opt_id,
                                                  p.data,
                                                  grad,
                                                  exp_avg,
-                                                 exp_avg_sq,
-                                                 p_fp16)
-                else:
-                    ds_opt_adam.adam_update(self.opt_id,
-                                            p.data,
-                                            grad,
-                                            exp_avg,
-                                            exp_avg_sq)
+                                                 exp_avg_sq)
         return loss
