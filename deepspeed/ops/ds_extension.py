@@ -34,12 +34,12 @@ class DSExtension(ABC):
         os.makedirs(ext_path, exist_ok=True)
 
         # Attempt to mitigate build race conditions
-        self._wait_if_build_started(ext_path)
-        Path(os.path.join(ext_path, LOCK)).touch()
+        #self._wait_if_build_started(ext_path)
+        #Path(os.path.join(ext_path, LOCK)).touch()
 
         op = self.unsafe_load()
 
-        os.remove(os.path.join(ext_path, LOCK))
+        #os.remove(os.path.join(ext_path, LOCK))
 
         return op
 
