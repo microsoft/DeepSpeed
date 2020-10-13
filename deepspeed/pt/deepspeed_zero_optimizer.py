@@ -207,7 +207,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             partition_size = base_size
             if id < remaining:
                 partition_size = partition_size + 1
-            partitions.append(tensor.narrow(0, start, partition_size)).detach()
+            partitions.append(tensor.narrow(0, start, partition_size).detach())
             start = start + partition_size
         return partitions
 
