@@ -1,0 +1,14 @@
+FROM shatu/pytorch:torch131_cuda101-onnxrt05_feb5apex_deepspeed2
+
+RUN pip uninstall -y deepspeed
+
+ENV TMP_DIR=/tmp/ds
+RUN mkdir -p ${TMP_DIR}
+
+RUN git clone https://github.com/microsoft/DeepSpeed.git ${TMP_DIR}/DeepSpeed
+RUN cd ${TMP_DIR}/DeepSpeed && \
+    git checkout . && \
+    git checkout smartreply_hotfix && \
+    ./install.sh --pip_sudo --deepspeed_only --skip_requirements
+RUN rm -rf ${STAGE_DIR}/DeepSpeed
+RUN python -c "import deepspeed; print(deepspeed.__version__)"
