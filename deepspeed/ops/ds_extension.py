@@ -24,7 +24,7 @@ class DSExtension(ABC):
     @staticmethod
     def _wait_if_build_started(ext_path):
         while os.path.isfile(os.path.join(ext_path, LOCK)):
-            time.sleep(1000)
+            time.sleep(1)
 
     def safer_load(self):
         from torch.utils.cpp_extension import load
@@ -34,7 +34,7 @@ class DSExtension(ABC):
         os.makedirs(ext_path, exist_ok=True)
 
         # Attempt to mitigate build race conditions
-        DSExtension._wait_if_build_started(ext_path)
+        self._wait_if_build_started(ext_path)
         Path(os.path.join(ext_path, LOCK)).touch()
 
         op = self.unsafe_load()
@@ -46,3 +46,28 @@ class DSExtension(ABC):
     @staticmethod
     def deepspeed_src_path():
         return Path(__file__).parent.absolute()
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local_rank", type=int)
+    args = parser.parse_args()
+    rank = args.local_rank
+
+    class Foo(DSExtension):
+        def __init__(self):
+            self.ext_name = "foo"
+            super().__init__()
+
+        def unsafe_load(self):
+            time.sleep(2)
+            op = [1, 2, 3]
+            torch_ext_path = os.environ.get('TORCH_EXTENSIONS_DIR',
+                                            DEFAULT_TORCH_EXTENSION_PATH)
+            ext_path = os.path.join(torch_ext_path, self.ext_name)
+            Path(os.path.join(ext_path, 'my_kernel')).touch()
+            return op
+
+    x = Foo().load_op()
+    print(x)

@@ -9,7 +9,7 @@ from ..ds_extension import DSExtension
 class CPUAdamDSExt(DSExtension):
     def __init__(self):
         self.ext_name = 'ds_cpu_adam'
-        self.op = None
+        super().__init__()
 
     def unsafe_load(self):
         from torch.utils.cpp_extension import load
