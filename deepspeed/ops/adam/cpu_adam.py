@@ -3,55 +3,7 @@ import math
 import torch
 import time
 from pathlib import Path
-from ..ds_extension import DSExtension
-
-
-class CPUAdamDSExt(DSExtension):
-    def __init__(self):
-        self.ext_name = 'ds_cpu_adam'
-        super().__init__()
-
-    def unsafe_load(self):
-        from torch.utils.cpp_extension import load
-        CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
-        CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-        return load(name=self.ext_name,
-                    sources=[
-                        os.path.join(self.deepspeed_src_path(),
-                                     'csrc/adam/cpu_adam.cpp'),
-                        os.path.join(self.deepspeed_src_path(),
-                                     'csrc/adam/custom_cuda_kernel.cu')
-                    ],
-                    extra_include_paths=[
-                        os.path.join(self.deepspeed_src_path(),
-                                     'csrc/includes/'),
-                        CUDA_INCLUDE
-                    ],
-                    extra_cflags=[
-                        '-O3',
-                        '-march=native',
-                        '-std=c++14',
-                        f'-L{CUDA_LIB64}',
-                        '-lcudart',
-                        '-lcublas',
-                        '-g',
-                        '-Wno-reorder',
-                        '-fopenmp',
-                        '-D__AVX256__'
-                    ],
-                    extra_cuda_cflags=[
-                        '-O3',
-                        '--use_fast_math',
-                        '-gencode',
-                        'arch=compute_61,code=compute_61',
-                        '-gencode',
-                        'arch=compute_70,code=compute_70',
-                        '-std=c++14',
-                        '-U__CUDA_NO_HALF_OPERATORS__',
-                        '-U__CUDA_NO_HALF_CONVERSIONS__',
-                        '-U__CUDA_NO_HALF2_OPERATORS__'
-                    ],
-                    verbose=True)
+from ..op_builder import CPUAdamBuilder
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -76,7 +28,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
 
-        self.ds_opt_adam = CPUAdamDSExt().load_op()
+        self.ds_opt_adam = CPUAdamBuilder().load()
+
         self.ds_opt_adam.create_adam(self.opt_id,
                                      lr,
                                      betas[0],

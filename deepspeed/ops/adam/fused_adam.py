@@ -9,6 +9,7 @@ import torch
 import importlib
 from .multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
+from ..op_builder import FusedAdamBuilder
 
 
 class FusedAdam(torch.optim.Optimizer):
@@ -67,14 +68,11 @@ class FusedAdam(torch.optim.Optimizer):
         super(FusedAdam, self).__init__(params, defaults)
         self.adam_w_mode = 1 if adam_w_mode else 0
         self.set_grad_none = set_grad_none
-        if multi_tensor_applier.available:
-            fused_adam_cuda = importlib.import_module(
-                'deepspeed.ops.adam.fused_adam_cuda')
-            # Skip buffer
-            self._dummy_overflow_buf = torch.cuda.IntTensor([0])
-            self.multi_tensor_adam = fused_adam_cuda.multi_tensor_adam
-        else:
-            raise RuntimeError('apex.optimizers.FusedAdam requires cuda extensions')
+
+        fused_adam_cuda = FusedAdamBuilder().load()
+        # Skip buffer
+        self._dummy_overflow_buf = torch.cuda.IntTensor([0])
+        self.multi_tensor_adam = fused_adam_cuda.multi_tensor_adam
 
     def zero_grad(self):
         if self.set_grad_none:

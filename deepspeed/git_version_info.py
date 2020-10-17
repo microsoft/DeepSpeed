@@ -7,8 +7,18 @@ except ModuleNotFoundError:
     git_hash = '[none]'
     git_branch = '[none]'
     installed_ops = {
-        'lamb': False,
-        'transformer': False,
-        'sparse-attn': False,
-        'cpu-adam': False
+        'cpu_adam_op': False,
+        'fused_adam_op': False,
+        'fused_lamb_op': False,
+        'sparse_attn_op': False,
+        'transformer_op': False,
+        'utils_op': False
+    }
+    compatible_ops = {
+        'cpu_adam_op': False,
+        'fused_adam_op': False,
+        'fused_lamb_op': False,
+        'sparse_attn_op': False,
+        'transformer_op': False,
+        'utils_op': False
     }
