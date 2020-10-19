@@ -58,7 +58,7 @@ if not torch.cuda.is_available():
 
 ext_modules = []
 
-from op_builder import ALL_OPS, TransformerBuilder
+from op_builder import ALL_OPS
 
 # Map of op name -> op builder
 op_builders = {op.OP_NAME: op for op in ALL_OPS}

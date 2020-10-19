@@ -26,7 +26,7 @@ class OpBuilder(ABC):
         self.cuda = cuda
 
     def absolute_name(self):
-        return self.prefix_name + self.name
+        return self.name_prefix + self.name
 
     def sources(self):
         '''
