@@ -157,14 +157,33 @@ if BUILD_MASK & DS_BUILD_LAMB:
 
 ## Adam ##
 if BUILD_MASK & DS_BUILD_CPU_ADAM:
+    nvcc_flags= ['-O3'] + version_dependent_macros
+    include_dirs=['csrc/includes']
+    if is_rocm_pytorch:
+        sources = ['csrc/adam/hip/cpu_adam.cpp', 'csrc/adam/hip/custom_hip_kernel.hip']
+        include_dirs.extend(['/opt/rocm/include/rocrand', '/opt/rocm/include/hiprand'])
+        nvcc_flags.extend(['-U__HIP_NO_HALF_OPERATORS__',
+                           '-U__HIP_NO_HALF_CONVERSIONS__',
+                           '-U__HIP_NO_HALF2_OPERATORS__'
+        ])
+    else:
+        sources=['csrc/adam/cpu_adam.cpp','csrc/adam/custom_cuda_kernel.cu']
+        include_dirs.extend(['/usr/local/cuda/include'])
+        nvcc_flags.extend(['--use_fast_math',
+                           '-gencode',
+                           'arch=compute_61,code=compute_61',
+                           '-gencode',
+                           'arch=compute_70,code=compute_70',
+                           '-std=c++14',
+                           '-U__CUDA_NO_HALF_OPERATORS__',
+                           '-U__CUDA_NO_HALF_CONVERSIONS__',
+                           '-U__CUDA_NO_HALF2_OPERATORS__'
+        ])
+
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
-                      sources=[
-                          'csrc/adam/cpu_adam.cpp',
-                          'csrc/adam/custom_cuda_kernel.cu',
-                      ],
-                      include_dirs=['csrc/includes',
-                                    '/usr/local/cuda/include'],
+                      sources=sources,
+                      include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': [
                               '-O3',
@@ -178,84 +197,70 @@ if BUILD_MASK & DS_BUILD_CPU_ADAM:
                               '-fopenmp',
                               SIMD_WIDTH
                           ],
-                          'nvcc': [
-                              '-O3',
-                              '--use_fast_math',
-                              '-gencode',
-                              'arch=compute_61,code=compute_61',
-                              '-gencode',
-                              'arch=compute_70,code=compute_70',
-                              '-std=c++14',
-                              '-U__CUDA_NO_HALF_OPERATORS__',
-                              '-U__CUDA_NO_HALF_CONVERSIONS__',
-                              '-U__CUDA_NO_HALF2_OPERATORS__'
-                          ]
+                          'nvcc': nvcc_flags
                       }))
 
 ## Transformer ##
 if BUILD_MASK & DS_BUILD_TRANSFORMER:
+    nvcc_flags= ['-O3', '-std=c++14'] + version_dependent_macros
+    include_dirs=['csrc/includes']
+    if is_rocm_pytorch:
+        sources = [
+            'csrc/transformer/hip/ds_transformer_hip.cpp',
+            'csrc/transformer/hip/cublas_wrappers.hip',
+            'csrc/transformer/hip/transform_kernels.hip',
+            'csrc/transformer/hip/gelu_kernels.hip',
+            'csrc/transformer/hip/dropout_kernels.hip',
+#            'csrc/transformer/hip/normalize_kernels.hip',
+            'csrc/transformer/hip/softmax_kernels.hip',
+            'csrc/transformer/hip/general_kernels.hip'
+        ]
+        include_dirs.extend(['/opt/rocm/include/rocrand', '/opt/rocm/include/hiprand'])
+        nvcc_flags.extend(['-U__HIP_NO_HALF_OPERATORS__',
+                           '-U__HIP_NO_HALF_CONVERSIONS__',
+                           '-U__HIP_NO_HALF2_OPERATORS__'
+        ])
+    else:
+        sources=[
+            'csrc/transformer/ds_transformer_cuda.cpp',
+            'csrc/transformer/cublas_wrappers.cu',
+            'csrc/transformer/transform_kernels.cu',
+            'csrc/transformer/gelu_kernels.cu',
+            'csrc/transformer/dropout_kernels.cu',
+            'csrc/transformer/normalize_kernels.cu',
+            'csrc/transformer/softmax_kernels.cu',
+            'csrc/transformer/general_kernels.cu'
+        ]
+        nvcc_flags.extend(['--use_fast_math',
+                           '-gencode',
+                           'arch=compute_61,code=compute_61',
+                           '-gencode',
+                           'arch=compute_70,code=compute_70',
+                           '-U__CUDA_NO_HALF_OPERATORS__',
+                           '-U__CUDA_NO_HALF_CONVERSIONS__',
+                           '-U__CUDA_NO_HALF2_OPERATORS__'
+        ])
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.transformer.transformer_cuda',
-                      sources=[
-                          'csrc/transformer/ds_transformer_cuda.cpp',
-                          'csrc/transformer/cublas_wrappers.cu',
-                          'csrc/transformer/transform_kernels.cu',
-                          'csrc/transformer/gelu_kernels.cu',
-                          'csrc/transformer/dropout_kernels.cu',
-                          'csrc/transformer/normalize_kernels.cu',
-                          'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
-                      ],
-                      include_dirs=['csrc/includes'],
+                      sources=sources,
+                      include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': ['-O3',
                                   '-std=c++14',
                                   '-g',
                                   '-Wno-reorder'],
-                          'nvcc': [
-                              '-O3',
-                              '--use_fast_math',
-                              '-gencode',
-                              'arch=compute_61,code=compute_61',
-                              '-gencode',
-                              'arch=compute_70,code=compute_70',
-                              '-std=c++14',
-                              '-U__CUDA_NO_HALF_OPERATORS__',
-                              '-U__CUDA_NO_HALF_CONVERSIONS__',
-                              '-U__CUDA_NO_HALF2_OPERATORS__'
-                          ]
+                          'nvcc': nvcc_flags
                       }))
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.transformer.stochastic_transformer_cuda',
-                      sources=[
-                          'csrc/transformer/ds_transformer_cuda.cpp',
-                          'csrc/transformer/cublas_wrappers.cu',
-                          'csrc/transformer/transform_kernels.cu',
-                          'csrc/transformer/gelu_kernels.cu',
-                          'csrc/transformer/dropout_kernels.cu',
-                          'csrc/transformer/normalize_kernels.cu',
-                          'csrc/transformer/softmax_kernels.cu',
-                          'csrc/transformer/general_kernels.cu'
-                      ],
-                      include_dirs=['csrc/includes'],
+                      sources=sources,
+                      include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': ['-O3',
                                   '-std=c++14',
                                   '-g',
                                   '-Wno-reorder'],
-                          'nvcc': [
-                              '-O3',
-                              '--use_fast_math',
-                              '-gencode',
-                              'arch=compute_61,code=compute_61',
-                              '-gencode',
-                              'arch=compute_70,code=compute_70',
-                              '-std=c++14',
-                              '-U__CUDA_NO_HALF_OPERATORS__',
-                              '-U__CUDA_NO_HALF_CONVERSIONS__',
-                              '-U__CUDA_NO_HALF2_OPERATORS__',
-                              '-D__STOCHASTIC_MODE__'
-                          ]
+                          'nvcc': nvcc_flags + ['-D__STOCHASTIC_MODE__']
                       }))
 
 
