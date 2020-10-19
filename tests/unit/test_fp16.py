@@ -8,9 +8,6 @@ from deepspeed.ops.adam import FusedAdam
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 
-lamb_available = True  #pytest.mark.skipif(not deepspeed.ops.__installed_ops__['fused-lamb'],
-#                                    reason="lamb is not installed")
-
 try:
     from apex import amp
     _amp_available = True
@@ -19,7 +16,6 @@ except ImportError:
 amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
 
 
-@lamb_available
 def test_lamb_fp32_grad_clip(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -55,7 +51,6 @@ def test_lamb_fp32_grad_clip(tmpdir):
     _test_lamb_fp32_grad_clip(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@lamb_available
 def test_lamb_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -93,7 +88,6 @@ def test_lamb_fp16_basic(tmpdir):
     _test_lamb_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@lamb_available
 def test_lamb_fp16_empty_grad(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -523,7 +517,6 @@ def test_adam_amp_basic(tmpdir):
 
 
 @amp_available
-@lamb_available
 def test_lamb_amp_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
