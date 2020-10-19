@@ -1,1 +1,1 @@
-global-include *.cpp *.h *.cu *.tr *.cuh
+global-include *.cpp *.h *.cu *.tr *.cuh *.cc
