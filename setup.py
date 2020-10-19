@@ -66,6 +66,7 @@ op_builders = {op.name: op for op in ALL_OPS}
 OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 1))
 print(f"DS_BUILD_CUDA={OP_DEFAULT}")
 
+
 def op_enabled(op_name):
     assert hasattr(op_builders[op_name], 'BUILD_VAR'), \
         f"{op_name} is missing BUILD_VAR field"
