@@ -3,6 +3,8 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import os
+from pickle import FALSE
+import sys
 import torch
 import warnings
 import torch.distributed as dist
@@ -33,6 +35,8 @@ from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
+
+from deepspeed.profiler.flops_count import add_flops_counting_methods,start_flops_count,stop_flops_count,print_model_with_flops
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -157,6 +161,12 @@ class DeepSpeedEngine(Module):
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
 
+        # Configure flops counter
+        if self.flops_count() and self.global_rank == 0:
+            # model = add_flops_counting_methods(model)
+            self.module = add_flops_counting_methods(self.module)
+            model.start_flops_count(ost=sys.stdout, verbose=False, ignore_list=None)
+
         # Throughput timer
         self.tput_timer = ThroughputTimer(
             batch_size=self.train_micro_batch_size_per_gpu(),
@@ -262,6 +272,9 @@ class DeepSpeedEngine(Module):
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
+
+    def flops_count(self):
+        return self._config.flops_count
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -771,6 +784,15 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
+
+        # print flops
+        if self.flops_count() and self.global_steps == 1 and self.global_rank == 0:
+            flops_count, params_count = self.module.compute_average_flops_cost()
+            print_model_with_flops(self.module,
+                                   flops_count,
+                                   params_count,
+                                   ost=sys.stdout)
+            self.module.stop_flops_count()
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:

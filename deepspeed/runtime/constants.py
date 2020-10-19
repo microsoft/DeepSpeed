@@ -266,6 +266,19 @@ MEMORY_BREAKDOWN = 'memory_breakdown'
 MEMORY_BREAKDOWN_DEFAULT = False
 
 #########################################
+# Flops count
+#########################################
+# Flops count. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+FLOPS_COUNT_FORMAT = '''
+Flops count should be enabled as:
+"[flops_count]": true
+'''
+FLOPS_COUNT = 'flops_count'
+FLOPS_COUNT_DEFAULT = False
+FLOPS_COUNT_ITERATIONS = 1
+
+#########################################
 # Tensorboard
 #########################################
 # Tensorboard. By default, this feature is not enabled.

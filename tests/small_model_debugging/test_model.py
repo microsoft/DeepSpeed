@@ -45,9 +45,11 @@ def get_args(tmpdir, config_dict):
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument('--zero', type=int, default=0)
+    parser.add_argument('--flops-count', type=bool, default=False)
     args = parser.parse_args()  #args=''
 
     config_dict["zero_optimization"]["stage"] = args.zero
+    config_dict["flops_count"] = args.flops_count
     print('config_dict["zero_optimization"]', config_dict["zero_optimization"])
     config_path = create_config_from_dict(tmpdir, config_dict)
 
