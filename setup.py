@@ -63,7 +63,9 @@ from op_builder import ALL_OPS
 # Map of op name -> op builder
 op_builders = {op.name: op for op in ALL_OPS}
 
-OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 1))
+# Default to pre-install kernels to false so we rely on JIT
+# TODO: make sure ninja is installed so we can actually JIT install
+OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
 print(f"DS_BUILD_CUDA={OP_DEFAULT}")
 
 

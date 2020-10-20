@@ -64,7 +64,7 @@ class OpBuilder(ABC):
         '''
         return True
 
-    def compute_capability_args(self, cross_compile_archs=['60', '61', '70']):
+    def compute_capability_args(self, cross_compile_archs=['52', '60', '61', '70']):
         args = []
         if self.jit_mode:
             # Compile for underlying architecture since we know it at runtime
@@ -119,6 +119,10 @@ class OpBuilder(ABC):
             return self.jit_load()
 
     def jit_load(self):
+        if not self.is_compatible():
+            raise RuntimeError(
+                f"Unable to JIT load the {self.name} op due to it not being compatible with the underlying hardware."
+            )
         self.jit_mode = True
         from torch.utils.cpp_extension import load
         return load(name=self.name,
