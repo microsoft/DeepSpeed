@@ -64,7 +64,7 @@ from op_builder import ALL_OPS
 OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
 print(f"DS_BUILD_CUDA={OP_DEFAULT}")
 
-if not OP_DEFAULT and op_builder.command_exists('ninja'):
+if not OP_DEFAULT and not op_builder.command_exists('ninja'):
     raise Exception("Delaying DeepSpeed op installation will result in ops being JIT "
                     "compiled, this requires ninja to be installed. Please install "
                     "ninja e.g., apt-get install build-ninja")
