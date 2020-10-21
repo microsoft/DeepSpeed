@@ -61,9 +61,13 @@ ext_modules = []
 from op_builder import ALL_OPS
 
 # Default to pre-install kernels to false so we rely on JIT
-# TODO: make sure ninja is installed so we can actually JIT install
 OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
 print(f"DS_BUILD_CUDA={OP_DEFAULT}")
+
+if not OP_DEFAULT and op_builder.command_exists('ninja'):
+    raise Exception("Delaying DeepSpeed op installation will result in ops being JIT "
+                    "compiled, this requires ninja to be installed. Please install "
+                    "ninja e.g., apt-get install build-ninja")
 
 
 def op_enabled(op_name):

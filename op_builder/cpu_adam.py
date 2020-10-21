@@ -1,9 +1,9 @@
 import os
 import torch
-from .builder import OpBuilder
+from .builder import CUDAOpBuilder
 
 
-class CPUAdamBuilder(OpBuilder):
+class CPUAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     OP_NAME = "cpu_adam_op"
 

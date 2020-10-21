@@ -1,8 +1,8 @@
 import torch
-from .builder import OpBuilder
+from .builder import CUDAOpBuilder
 
 
-class FusedLambBuilder(OpBuilder):
+class FusedLambBuilder(CUDAOpBuilder):
     BUILD_VAR = 'DS_BUILD_FUSED_LAMB'
     OP_NAME = "fused_lamb_op"
 

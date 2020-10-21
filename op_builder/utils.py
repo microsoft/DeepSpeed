@@ -6,7 +6,7 @@ class UtilsBuilder(OpBuilder):
     OP_NAME = "utils_op"
 
     def __init__(self, name_prefix=''):
-        super().__init__(name=self.OP_NAME, name_prefix=name_prefix, cuda=False)
+        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
 
     def sources(self):
         return ['csrc/utils/flatten_unflatten.cpp']

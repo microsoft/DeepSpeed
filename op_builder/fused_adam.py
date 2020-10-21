@@ -1,8 +1,8 @@
 import torch
-from .builder import OpBuilder
+from .builder import CUDAOpBuilder
 
 
-class FusedAdamBuilder(OpBuilder):
+class FusedAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_FUSED_ADAM"
     OP_NAME = "fused_adam_op"
 

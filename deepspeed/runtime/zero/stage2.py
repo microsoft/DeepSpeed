@@ -22,14 +22,9 @@ from deepspeed.utils import logger
 #with gradient partitioning and without
 pg_correctness_test = False
 
-try:
-    from deepspeed.ops.utils import flatten, unflatten
-except ImportError:
-    logger.warning(
-        "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-    )
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
+# Delay loading until zero-2 is created
+flatten = None
+unflatten = None
 
 
 def input(msg):
@@ -127,6 +122,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1):
+
+        from .ops.op_builder import UtilsBuilder
+        global flatten, unflatten
+        if flatten is None or unflatten is None:
+            utils_op = UtilsBuilder().load()
+            flatten = utils_op.flatten
+            unflatten = utils_op.unflatten
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")

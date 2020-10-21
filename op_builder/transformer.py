@@ -1,8 +1,8 @@
 import torch
-from .builder import OpBuilder
+from .builder import CUDAOpBuilder
 
 
-class TransformerBuilder(OpBuilder):
+class TransformerBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
     OP_NAME = "transformer_op"
 

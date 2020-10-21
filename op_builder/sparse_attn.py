@@ -39,4 +39,4 @@ class SparseAttnBuilder(OpBuilder):
                 f'Sparse attention requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
             )
 
-        return compatible
+        return super().is_compatible() and compatible

@@ -35,14 +35,9 @@ from .utils import ensure_directory_exists
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
 
-try:
-    from deepspeed.ops.utils import flatten, unflatten
-except ImportError:
-    logger.warning(
-        "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-    )
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
+# Delay loading (un)flatten ops until init time
+flatten = None
+unflatten = None
 
 try:
     from apex import amp
@@ -193,6 +188,13 @@ class DeepSpeedEngine(Module):
             self._config.print('DeepSpeedLight configuration')
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
+
+        from .ops.op_builder import UtilsBuilder
+        global flatten, unflatten
+        if flatten is None or unflatten is None:
+            utils_op = UtilsBuilder().load()
+            flatten = utils_op.flatten
+            unflatten = utils_op.unflatten
 
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
