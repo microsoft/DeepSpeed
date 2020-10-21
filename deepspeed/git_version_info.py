@@ -12,7 +12,7 @@ except ModuleNotFoundError:
         'fused_lamb_op': False,
         'sparse_attn_op': False,
         'transformer_op': False,
-        'transformer_op_stochastic': False,
+        'stochastic_transformer_op': False,
         'utils_op': False
     }
     compatible_ops = {
@@ -21,6 +21,6 @@ except ModuleNotFoundError:
         'fused_lamb_op': False,
         'sparse_attn_op': False,
         'transformer_op': False,
-        'transformer_op_stochastic': False,
+        'stochastic_transformer_op': False,
         'utils_op': False
     }

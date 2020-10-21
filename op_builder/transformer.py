@@ -6,10 +6,8 @@ class TransformerBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
     OP_NAME = "transformer_op"
 
-    def __init__(self, name_prefix='', stochastic_mode=False):
-        name = self.OP_NAME + "_stochastic" if stochastic_mode else self.OP_NAME
-        super().__init__(name=name, name_prefix=name_prefix)
-        self.stochastic_mode = stochastic_mode
+    def __init__(self, name_prefix=''):
+        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
 
     def sources(self):
         return [
@@ -36,25 +34,7 @@ class TransformerBuilder(OpBuilder):
             '-U__CUDA_NO_HALF2_OPERATORS__'
         ]
 
-        if self.jit_mode:
-            # Compile for underlying architecture since we know it at runtime
-            CC_MAJOR, CC_MINOR = torch.cuda.get_device_capability()
-            compute_capability = f"{CC_MAJOR}{CC_MINOR}"
-            args.append('-gencode')
-            args.append(
-                f'arch=compute_{compute_capability},code=compute_{compute_capability}')
-        else:
-            # Cross-compile mode, compile for various architectures
-            for compute_capability in ['60', '61', '70']:
-                args.append('-gencode')
-                args.append(
-                    f'arch=compute_{compute_capability},code=compute_{compute_capability}'
-                )
-
-        if self.stochastic_mode:
-            args.append('-D__STOCHASTIC_MODE__')
-
-        return args
+        return args + self.compute_capability_args()
 
     def cxx_args(self):
         return ['-O3', '-std=c++14', '-g', '-Wno-reorder']

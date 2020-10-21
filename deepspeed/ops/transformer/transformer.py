@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.autograd import Function
 
-from ..op_builder import TransformerBuilder
+from ..op_builder import TransformerBuilder, StochasticTransformerBuilder
 
 # Cuda modules will be imported if needed
 transformer_cuda_module = None
@@ -488,11 +488,9 @@ class DeepSpeedTransformerLayer(nn.Module):
         # Load cuda modules if needed
         global transformer_cuda_module, stochastic_transformer_cuda_module
         if transformer_cuda_module is None and not self.config.stochastic_mode:
-            transformer_cuda_module = TransformerBuilder(
-                stochastic_mode=self.config.stochastic_mode).load()
+            transformer_cuda_module = TransformerBuilder().load()
         if stochastic_transformer_cuda_module is None and self.config.stochastic_mode:
-            stochastic_transformer_cuda_module = TransformerBuilder(
-                stochastic_mode=self.config.stochastic_mode).load()
+            stochastic_transformer_cuda_module = StochasticTransformerBuilder().load()
 
         # create the layer in cuda kernels.
         cuda_module = stochastic_transformer_cuda_module if self.config.stochastic_mode else transformer_cuda_module
