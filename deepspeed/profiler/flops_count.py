@@ -16,9 +16,10 @@ def linear_flops_compute(input, weight, bias=None):
     Bias: (out_features)
     Output: (N, *, out_features)
     """
-    print(input.shape)
+    # print(input.shape)
+    # print((weight.shape))
     output_last_dim = weight.shape[-1]
-    print((weight.shape))
+    return "nn.functional.linear", 111
     return "nn.functional.linear", int(np.prod(input.shape) * output_last_dim)
 
 
@@ -32,7 +33,7 @@ def batch_counter_hook(module, input, output):
         pass
         print('Warning! No positional inputs found for a module,'
               ' assuming batch size is 1.')
-    module.__batch_counter__ += batch_size
+    module.__batch__ += batch_size
 
 
 def register_batch_counter_hook(module):
@@ -142,8 +143,9 @@ def get_model_complexity_info(model,
             batch = torch.ones(()).new_empty((1, *input_res))
 
         _ = model(batch)
-
-    flops_count, params_count = model.compute_average_flops_cost()
+        _ = model(batch)
+        _ = model(batch)
+    flops_count, params_count = model.compute_total_flops()
     if print_per_layer_stat:
         print_model_with_flops(model, flops_count, params_count, ost=ost)
     model.stop_flops_count()
@@ -211,7 +213,7 @@ def print_model_with_flops(model,
     def accumulate_flops(self):
         has_children = len(self._modules.items()) != 0
         if not has_children:
-            return self.__flops__ / model.__batch_counter__
+            return self.__flops__ / self.__batch__
         else:
             sum = 0
             for m in self.children():
@@ -259,50 +261,46 @@ def get_model_parameters_number(model):
     return params_num
 
 
-def add_flops_counting_methods(net_main_module):
+def add_flops_counting_methods(model):
     # adding additional methods to the existing module object,
     # this is done this way so that each function has access to self object
-    net_main_module.start_flops_count = start_flops_count.__get__(net_main_module)
-    net_main_module.stop_flops_count = stop_flops_count.__get__(net_main_module)
-    net_main_module.reset_flops_count = reset_flops_count.__get__(net_main_module)
-    net_main_module.compute_average_flops_cost = compute_average_flops_cost.__get__(
-        net_main_module)
+    model.start_flops_count = start_flops_count.__get__(model)
+    model.stop_flops_count = stop_flops_count.__get__(model)
+    model.reset_flops_count = reset_flops_count.__get__(model)
+    model.compute_total_flops = compute_total_flops.__get__(model)
 
-    net_main_module.reset_flops_count()
+    model.reset_flops_count()
 
-    print("XXXXXXXX batch counter = ", type(net_main_module).__name__)
-
-    return net_main_module
+    return model
 
 
-def compute_average_flops_cost(self):
-    batches_count = self.__batch_counter__
+def compute_total_flops(self):
     flops_sum = 0
     params_sum = 0
-    for module in self.modules():
+    for name, module in self.named_children():
+        _ = name
         flops_sum += module.__flops__
     params_sum = get_model_parameters_number(self)
-    return flops_sum / batches_count, params_sum
+    return flops_sum / self.__batch__, params_sum
 
 
 def start_flops_count(self, **kwargs):
-
-    # register_batch_counter_hook(self)
-
     def register_module_hooks(module, verbose, ost, ignore_list):
         has_children = len(module._modules.items()) != 0
 
         def pre_hook(module, input):
             module_flop_count.clear()
+            module.__batch__ += 1
 
         if has_children:
 
             def post_hook(module, input, output):
                 module.__flops__ = sum([child.__flops__ for child in module.children()
                                         ]) + sum([elem[1] for elem in module_flop_count])
-                # print("class ", module.__class__.__name__, " = ",
+                # print("class ",
+                #       module.__class__.__name__,
+                #       " = ",
                 #       len(mod._modules.items()))
-                # print("module_flop_count = {}".format(module_flop_count))
                 # print("flops={}".format(module.__flops__))
                 module_flop_count.clear()
 
@@ -311,8 +309,14 @@ def start_flops_count(self, **kwargs):
         else:
 
             def post_hook(module, input, output):
+                # print("module_flop_count = {}".format(module_flop_count))
                 flops = sum([elem[1] for elem in module_flop_count])
-                module.__flops__ = flops
+                module.__flops__ += flops
+                # print("class ",
+                #       module.__class__.__name__,
+                #       " = ",
+                #       len(mod._modules.items()))
+                # print("flops={}".format(module.__flops__))
                 module_flop_count.clear()
 
             module.register_forward_pre_hook(pre_hook)
@@ -321,23 +325,26 @@ def start_flops_count(self, **kwargs):
     self.apply(partial(register_module_hooks, **kwargs))
 
 
-def add_flops_counter_variable_or_reset(module):
-    if hasattr(module, '__flops__') or hasattr(module, '__params__'):
-        print('Warning: variables __flops__ or __params__ are already '
-              'defined for the module' + type(module).__name__ +
-              ' ptflops can affect your code!')
+def add_variable_or_reset(module):
+    if hasattr(module,
+               '__flops__') or hasattr(module,
+                                       '__params__') or hasattr(module,
+                                                                '__batch__'):
+        print('Warning: variables __flops__ or __params__ or __batch__'
+              ' are already defined for the module' + type(module).__name__ +
+              ' the profiler can affect your code!')
     module.__flops__ = 0
-    module.__batch_counter__ = 1
+    module.__batch__ = 0
     module.__params__ = get_model_parameters_number(module)
 
 
 def reset_flops_count(self):
-    self.apply(add_flops_counter_variable_or_reset)
+    self.apply(add_variable_or_reset)
 
 
 def stop_flops_count(self):
-    if hasattr(self, '__batch_counter__'):
-        del self.__batch_counter__
+    if hasattr(self, '__batch__'):
+        del self.__batch__
     if hasattr(self, '__flops__'):
         del self.__flops__
     if hasattr(self, '__params__'):
@@ -385,7 +392,7 @@ class LeNet5(nn.Module):
 
 if __name__ == "__main__":
     mod = LeNet5(10)
-    input = torch.randn(1, 1, 32, 32)
+    input = torch.randn(3, 1, 32, 32)
     macs, params = get_model_complexity_info(mod,
                                              tuple(input.shape)[1:],
                                              as_strings=True,
