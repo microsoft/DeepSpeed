@@ -85,8 +85,8 @@ class _sparse_matmul(torch.autograd.Function):
     ##########################
     # SPARSE = DENSE x DENSE #
     ##########################
-    cpp_utils = None  #SparseAttnBuilder().load()
-    sdd_segment = None  #cpp_utils.sdd_segment
+    cpp_utils = None
+    sdd_segment = None
 
     @staticmethod
     def _load_utils():

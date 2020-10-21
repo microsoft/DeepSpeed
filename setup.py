@@ -60,9 +60,6 @@ ext_modules = []
 
 from op_builder import ALL_OPS
 
-# Map of op name -> op builder
-op_builders = {op.name: op for op in ALL_OPS}
-
 # Default to pre-install kernels to false so we rely on JIT
 # TODO: make sure ninja is installed so we can actually JIT install
 OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
@@ -70,24 +67,24 @@ print(f"DS_BUILD_CUDA={OP_DEFAULT}")
 
 
 def op_enabled(op_name):
-    assert hasattr(op_builders[op_name], 'BUILD_VAR'), \
+    assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
         f"{op_name} is missing BUILD_VAR field"
-    env_var = op_builders[op_name].BUILD_VAR
+    env_var = ALL_OPS[op_name].BUILD_VAR
     return int(os.environ.get(env_var, OP_DEFAULT))
 
 
-install_ops = dict.fromkeys(op_builders.keys(), False)
-for op_name in op_builders.keys():
+install_ops = dict.fromkeys(ALL_OPS.keys(), False)
+for op_name in ALL_OPS.keys():
     # Is op disabled from environment variable
     if op_enabled(op_name):
-        builder = op_builders[op_name]
+        builder = ALL_OPS[op_name]
         builder.prefix_name = 'deepspeed.'
         # Is op compatible with machine arch/deps
         if builder.is_compatible():
             install_ops[op_name] = op_enabled(op_name)
             ext_modules.append(builder.builder())
 
-compatible_ops = {op_name: op.is_compatible() for (op_name, op) in op_builders.items()}
+compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 
 print(f'Install Ops={install_ops}')
 

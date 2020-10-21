@@ -8,7 +8,6 @@ class StochasticTransformerBuilder(TransformerBuilder):
 
     def __init__(self, name_prefix=''):
         super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
-        self.stochastic_mode = stochastic_mode
 
     def nvcc_args(self):
         args = super().nvcc_args()

@@ -6,8 +6,9 @@ class TransformerBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
     OP_NAME = "transformer_op"
 
-    def __init__(self, name_prefix=''):
-        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
+    def __init__(self, name=None, name_prefix=''):
+        name = self.OP_NAME if name is None else name
+        super().__init__(name=name, name_prefix=name_prefix)
 
     def sources(self):
         return [
