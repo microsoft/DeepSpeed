@@ -3,7 +3,7 @@ try:
     from .git_version_info_installed import *
 except ModuleNotFoundError:
     # Will be missing from checkouts that haven't been installed (e.g., readthedocs)
-    version = '0.3.0+[none]'
+    version = '0.3.0'
     git_hash = '[none]'
     git_branch = '[none]'
     installed_ops = {
