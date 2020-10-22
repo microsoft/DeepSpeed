@@ -4,10 +4,13 @@ from .transformer import TransformerBuilder
 
 class StochasticTransformerBuilder(TransformerBuilder):
     BUILD_VAR = "DS_BUILD_STOCHASTIC_TRANSFORMER"
-    OP_NAME = "stochastic_transformer_op"
+    NAME = "stochastic_transformer_op"
 
-    def __init__(self, name_prefix=''):
-        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
+    def __init__(self):
+        super().__init__(name=self.NAME)
+
+    def absolute_name(self):
+        return f'deepspeed.ops.transformer.{self.NAME}'
 
     def nvcc_args(self):
         args = super().nvcc_args()

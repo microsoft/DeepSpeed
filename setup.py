@@ -82,7 +82,6 @@ for op_name in ALL_OPS.keys():
     # Is op disabled from environment variable
     if op_enabled(op_name):
         builder = ALL_OPS[op_name]
-        builder.prefix_name = 'deepspeed.'
         # Is op compatible with machine arch/deps
         if builder.is_compatible():
             install_ops[op_name] = op_enabled(op_name)

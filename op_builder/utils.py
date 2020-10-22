@@ -3,10 +3,13 @@ from .builder import OpBuilder
 
 class UtilsBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_UTILS"
-    OP_NAME = "utils_op"
+    NAME = "utils"
 
-    def __init__(self, name_prefix=''):
-        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
+    def __init__(self):
+        super().__init__(name=self.NAME)
+
+    def absolute_name(self):
+        return f'deepspeed.ops.{self.NAME}'
 
     def sources(self):
         return ['csrc/utils/flatten_unflatten.cpp']

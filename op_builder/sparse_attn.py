@@ -5,10 +5,13 @@ from .builder import OpBuilder, command_exists
 
 class SparseAttnBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_SPARSE_ATTN"
-    OP_NAME = "sparse_attn_op"
+    NAME = "sparse_attn"
 
-    def __init__(self, name_prefix=''):
-        super().__init__(name=self.OP_NAME, name_prefix=name_prefix)
+    def __init__(self):
+        super().__init__(name=self.NAME)
+
+    def absolute_name(self):
+        return f'deepspeed.ops.sparse_attention.{self.NAME}'
 
     def sources(self):
         return ['csrc/sparse_attention/utils.cpp']

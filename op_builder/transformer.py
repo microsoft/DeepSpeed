@@ -4,11 +4,14 @@ from .builder import CUDAOpBuilder
 
 class TransformerBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
-    OP_NAME = "transformer_op"
+    NAME = "transformer_op"
 
-    def __init__(self, name=None, name_prefix=''):
-        name = self.OP_NAME if name is None else name
-        super().__init__(name=name, name_prefix=name_prefix)
+    def __init__(self, name=None):
+        name = self.NAME if name is None else name
+        super().__init__(name=name)
+
+    def absolute_name(self):
+        return f'deepspeed.ops.transformer.{self.NAME}'
 
     def sources(self):
         return [

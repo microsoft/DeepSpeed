@@ -4,7 +4,7 @@ import torch
 import importlib
 from pathlib import Path
 import subprocess
-from abc import ABC
+from abc import ABC, abstractmethod
 
 YELLOW = '\033[93m'
 END = '\033[0m'
@@ -32,19 +32,24 @@ def command_exists(cmd):
 
 
 class OpBuilder(ABC):
-    def __init__(self, name, name_prefix=''):
+    def __init__(self, name):
         self.name = name
-        self.name_prefix = name_prefix
         self.jit_mode = False
 
+    @abstractmethod
     def absolute_name(self):
-        return self.name_prefix + self.name
+        '''
+        Returns absolute build path for cases where the op is pre-installed, e.g., deepspeed.ops.adam.cpu_adam
+        will be installed as something like: deepspeed/ops/adam/cpu_adam.so
+        '''
+        pass
 
+    @abstractmethod
     def sources(self):
         '''
         Returns list of source files for your op, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
         '''
-        raise NotImplemented
+        pass
 
     def include_paths(self):
         '''
@@ -144,6 +149,21 @@ class CUDAOpBuilder(OpBuilder):
                     f'arch=compute_{compute_capability},code=compute_{compute_capability}'
                 )
         return args
+
+    def version_dependent_macros(self):
+        # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
+        TORCH_MAJOR = int(torch.__version__.split('.')[0])
+        TORCH_MINOR = int(torch.__version__.split('.')[1])
+        version_ge_1_1 = []
+        if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
+            version_ge_1_1 = ['-DVERSION_GE_1_1']
+        version_ge_1_3 = []
+        if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 2):
+            version_ge_1_3 = ['-DVERSION_GE_1_3']
+        version_ge_1_5 = []
+        if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 4):
+            version_ge_1_5 = ['-DVERSION_GE_1_5']
+        return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def is_compatible(self):
         return super().is_compatible() and command_exists('nvcc')
