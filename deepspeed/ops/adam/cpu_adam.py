@@ -16,7 +16,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                         0.999),
                  eps=1e-8,
                  weight_decay=0,
-                 amsgrad=False):
+                 amsgrad=False,
+                 adamw_mode=True):
 
         default_args = dict(lr=lr,
                             betas=betas,
@@ -30,7 +31,13 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
         global ds_opt_adam
         ds_opt_adam = importlib.import_module('deepspeed.ops.adam.cpu_adam_op')
-        ds_opt_adam.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay)
+        ds_opt_adam.create_adam(self.opt_id,
+                                lr,
+                                betas[0],
+                                betas[1],
+                                eps,
+                                weight_decay,
+                                adamw_mode)
 
     def __setstate__(self, state):
         super(DeepSpeedCPUAdam, self).__setstate__(state)
