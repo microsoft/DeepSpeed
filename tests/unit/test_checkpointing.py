@@ -154,7 +154,7 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
-@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.OP_NAME],
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
                     reason="lamb is not compatible")
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
