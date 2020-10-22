@@ -1,3 +1,4 @@
+from numpy.core.fromnumeric import prod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,7 +6,8 @@ from torch.nn.modules.module import register_module_forward_hook
 from functools import partial
 import numpy as np
 import sys
-# from ptflops import get_model_complexity_info
+
+
 
 module_flop_count = []
 
@@ -20,30 +22,30 @@ def linear_flops_compute(input, weight, bias=None):
     output: (N, *, out_features)
     """
     out_features = weight.shape[0]
-    return "nn.functional.linear", int(np.prod(input.shape) * out_features)
+    return torch.numel(input) * out_features
 
 
 def relu_flops_compute(input, inplace=False):
-    return "nn.functional.relu", 0
+    return torch.numel(input)
 
 
-def avg_pool2d_flops_compute(input,
-                             kernel_size,
-                             stride=None,
-                             padding=0,
-                             ceil_mode=False,
-                             count_include_pad=True,
-                             divisor_override=None):
-    return "nn.functional.avg_pool2d", 0
+def pool_flops_compute(input,
+                       kernel_size,
+                       stride=None,
+                       padding=0,
+                       ceil_mode=False,
+                       count_include_pad=True,
+                       divisor_override=None):
+    return torch.numel(input)
 
 
-def conv2d_flops_compute(input,
-                         weight,
-                         bias=None,
-                         stride=1,
-                         padding=0,
-                         dilation=1,
-                         groups=1):
+def conv_flops_compute(input,
+                       weight,
+                       bias=None,
+                       stride=1,
+                       padding=0,
+                       dilation=1,
+                       groups=1):
     """
     input – input tensor of shape (minibatch , in_channels , iH , iW)
     weight – filters of shape (out_channels , in_channels/groups , kH , kW)
@@ -55,17 +57,9 @@ def conv2d_flops_compute(input,
     """
     assert weight.shape[1] * groups == input.shape[1]
 
-    print(input.shape)
-    print(weight.shape)
-
-    # return "nn.functional.conv2d", 555
     batch_size = input.shape[0]
     in_channels = input.shape[1]
-    # in_h = input.shape[2]
-    # in_w = input.shape[3]
     out_channels = weight.shape[0]
-    # k_h = weight.shap[2]
-    # k_w = weight.shap[3]
     kernel_dims = list(weight.shape[-2:])
     input_dims = list(input.shape[2:])
 
@@ -74,105 +68,239 @@ def conv2d_flops_compute(input,
     dilations = dilation if type(dilation) is tuple else (dilation, dilation)
 
     output_dims = [0, 0]
-    output_dims[0] = (input_dims[0] + paddings[0] -
+    output_dims[0] = (input_dims[0] + 2 * paddings[0] -
                       (dilations[0] * (kernel_dims[0] - 1) + 1)) // strides[0] + 1
-    output_dims[1] = (input_dims[1] + paddings[1] -
+    output_dims[1] = (input_dims[1] + 2 * paddings[1] -
                       (dilations[1] * (kernel_dims[1] - 1) + 1)) // strides[1] + 1
 
     filters_per_channel = out_channels // groups
-    conv_per_position_flops = int(np.prod(kernel_dims)) * \
-        in_channels * filters_per_channel
-
+    conv_per_position_flops = int(
+        np.prod(kernel_dims)) * in_channels * filters_per_channel
     active_elements_count = batch_size * int(np.prod(output_dims))
-
     overall_conv_flops = conv_per_position_flops * active_elements_count
 
     bias_flops = 0
-
     if bias is not None:
-
         bias_flops = out_channels * active_elements_count
 
     overall_flops = overall_conv_flops + bias_flops
 
-    return "nn.functional.conv2d", int(overall_flops)
+    return int(overall_flops)
 
 
-def is_supported_functional(func):
-    if func in FUNCS_MAPPING:
-        return True
-    return False
+def conv_trans_flops_compute(input,
+                             weight,
+                             bias=None,
+                             stride=1,
+                             padding=0,
+                             output_padding=0,
+                             groups=1,
+                             dilation=1):
+    batch_size = input.shape[0]
+    in_channels = input.shape[1]
+    out_channels = weight.shape[0]
+    kernel_dims = list(weight.shape[-2:])
+    input_dims = list(input.shape[2:])
+
+    paddings = padding if type(padding) is tuple else (padding, padding)
+    strides = stride if type(stride) is tuple else (stride, stride)
+    dilations = dilation if type(dilation) is tuple else (dilation, dilation)
+
+    output_dims = [0, 0]
+    output_dims[0] = (input_dims[0] + 2 * paddings[0] -
+                      (dilations[0] * (kernel_dims[0] - 1) + 1)) // strides[0] + 1
+    output_dims[1] = (input_dims[1] + 2 * paddings[1] -
+                      (dilations[1] * (kernel_dims[1] - 1) + 1)) // strides[1] + 1
+
+    filters_per_channel = out_channels // groups
+    conv_per_position_flops = int(
+        np.prod(kernel_dims)) * in_channels * filters_per_channel
+    active_elements_count = batch_size * int(np.prod(input_dims))
+    overall_conv_flops = conv_per_position_flops * active_elements_count
+
+    bias_flops = 0
+    if bias is not None:
+        bias_flops = out_channels * batch_size * int(prod(output_dims))
+
+    overall_flops = overall_conv_flops + bias_flops
+
+    return int(overall_flops)
 
 
-FUNCS_MAPPING = {
-    # # convolutions
-    # nn.Conv1d: conv_flops_counter_hook,
-    # nn.Conv2d: conv_flops_counter_hook,
-    # nn.Conv3d: conv_flops_counter_hook,
-    # # activations
-    nn.functional.relu:
-    relu_flops_compute,
-    # nn.PReLU: relu_flops_counter_hook,
-    # nn.ELU: relu_flops_counter_hook,
-    # nn.LeakyReLU: relu_flops_counter_hook,
-    # nn.ReLU6: relu_flops_counter_hook,
-    # # poolings
-    # nn.MaxPool1d: pool_flops_counter_hook,
-    # nn.AvgPool1d: pool_flops_counter_hook,
-    nn.functional.avg_pool2d:
-    avg_pool2d_flops_compute,
-    # nn.MaxPool2d: pool_flops_counter_hook,
-    # nn.MaxPool3d: pool_flops_counter_hook,
-    # nn.AvgPool3d: pool_flops_counter_hook,
-    # nn.AdaptiveMaxPool1d: pool_flops_counter_hook,
-    # nn.AdaptiveAvgPool1d: pool_flops_counter_hook,
-    # nn.AdaptiveMaxPool2d: pool_flops_counter_hook,
-    # nn.AdaptiveAvgPool2d: pool_flops_counter_hook,
-    # nn.AdaptiveMaxPool3d: pool_flops_counter_hook,
-    # nn.AdaptiveAvgPool3d: pool_flops_counter_hook,
-    # # BNs
-    # nn.BatchNorm1d: bn_flops_counter_hook,
-    # nn.BatchNorm2d: bn_flops_counter_hook,
-    # nn.BatchNorm3d: bn_flops_counter_hook,
-    # FC
-    nn.functional.linear:
-    linear_flops_compute,
-    nn.functional.conv2d:
-    conv2d_flops_compute
-    # # Upscale
-    # nn.Upsample: upsample_flops_counter_hook,
-    # # Deconvolution
-    # nn.ConvTranspose2d: deconv_flops_counter_hook,
-    # # RNN
-    # nn.RNN: rnn_flops_counter_hook,
-    # nn.GRU: rnn_flops_counter_hook,
-    # nn.LSTM: rnn_flops_counter_hook,
-    # nn.RNNCell: rnn_cell_flops_counter_hook,
-    # nn.LSTMCell: rnn_cell_flops_counter_hook,
-    # nn.GRUCell: rnn_cell_flops_counter_hook
-}
+def batch_norm_flops_compute(input,
+                             running_mean,
+                             running_var,
+                             weight=None,
+                             bias=None,
+                             training=False,
+                             momentum=0.1,
+                             eps=1e-05):
+    # assume affine is true
+    flops = 2 * torch.numel(input)
+    return flops
+
+
+def upsample_flops_compute(input,
+                           size=None,
+                           scale_factor=None,
+                           mode='nearest',
+                           align_corners=None):
+    if size is not None:
+        return int(prod(size))
+    assert scale_factor is not None
+    flops = torch.numel(input)
+    if len(scale_factor) == len(input):
+        flops * int(prod(scale_factor))
+    else:
+        flops * scale_factor**len(input)
+    return flops
+
+def rnn_flops_compute():
 
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
 
     def newFunc(*args, **kwds):
-        name, flops = funcFlopCompute(*args, **kwds)
+        flops = funcFlopCompute(*args, **kwds)
+        name = "nn.functional." + func.__name__
         module_flop_count.append((name, flops))
         return oldFunc(*args, **kwds)
 
     return newFunc
 
 
+def wrapModule(func, funcFlopCompute):
+    oldFunc = func
+
+    def newFunc(*args, **kwds):
+        flops = funcFlopCompute(*args, **kwds)
+        name = "nn.functional." + func.__name__
+        module_flop_count.append((name, flops))
+        return oldFunc(*args, **kwds)
+
+    return newFunc
+
+
+# FUNCS_MAPPING = {
+#     nn.functional.avg_pool2d: pool_flops_compute,
+#     nn.functional.linear: linear_flops_compute,
+#     nn.functional.conv2d: conv_flops_compute
+# }
+#
 # for f in FUNCS_MAPPING:
 #     print(f.__name__)
 #     setattr(sys.modules[f.__module__], f.__name__, wrapFunc(f, FUNCS_MAPPING[f]))
 
-nn.functional.conv2d = wrapFunc(nn.functional.conv2d,
-                                FUNCS_MAPPING[nn.functional.conv2d])
+# FC
+nn.functional.linear = wrapFunc(nn.functional.linear, linear_flops_compute)
 
-# nn.functional.avg_pool2d = wrapFunc(nn.functional.avg_pool2d,
-#                                     FUNCS_MAPPING[nn.functional.avg_pool2d])
+# convolutions
+nn.functional.conv1d = wrapFunc(nn.functional.conv1d, conv_flops_compute)
+nn.functional.conv2d = wrapFunc(nn.functional.conv2d, conv_flops_compute)
+nn.functional.conv3d = wrapFunc(nn.functional.conv3d, conv_flops_compute)
+
+# conv transposed
+nn.functional.conv_transpose1d = wrapFunc(nn.functional.conv_transpose1d,
+                                          conv_trans_flops_compute)
+nn.functional.conv_transpose2d = wrapFunc(nn.functional.conv_transpose2d,
+                                          conv_trans_flops_compute)
+nn.functional.conv_transpose3d = wrapFunc(nn.functional.conv_transpose3d,
+                                          conv_trans_flops_compute)
+
+# activations
+nn.functional.relu = wrapFunc(nn.functional.relu, relu_flops_compute)
+nn.functional.prelu = wrapFunc(nn.functional.prelu, relu_flops_compute)
+nn.functional.elu = wrapFunc(nn.functional.elu, relu_flops_compute)
+nn.functional.leaky_relu = wrapFunc(nn.functional.leaky_relu, relu_flops_compute)
+nn.functional.relu6 = wrapFunc(nn.functional.relu6, relu_flops_compute)
+
+# BatchNorms
+nn.functional.batch_norm = wrapFunc(nn.functional.batch_norm, batch_norm_flops_compute)
+
+# poolings
+nn.functional.avg_pool1d = wrapFunc(nn.functional.avg_pool1d, pool_flops_compute)
+nn.functional.avg_pool2d = wrapFunc(nn.functional.avg_pool2d, pool_flops_compute)
+nn.functional.avg_pool3d = wrapFunc(nn.functional.avg_pool3d, pool_flops_compute)
+nn.functional.max_pool1d = wrapFunc(nn.functional.max_pool1d, pool_flops_compute)
+nn.functional.max_pool2d = wrapFunc(nn.functional.max_pool2d, pool_flops_compute)
+nn.functional.max_pool3d = wrapFunc(nn.functional.max_pool3d, pool_flops_compute)
+nn.functional.adaptive_avg_pool1d = wrapFunc(nn.functional.adaptive_avg_pool1d,
+                                             pool_flops_compute)
+nn.functional.adaptive_avg_pool2d = wrapFunc(nn.functional.adaptive_avg_pool2d,
+                                             pool_flops_compute)
+nn.functional.adaptive_avg_pool3d = wrapFunc(nn.functional.adaptive_avg_pool3d,
+                                             pool_flops_compute)
+nn.functional.adaptive_max_pool1d = wrapFunc(nn.functional.adaptive_max_pool1d,
+                                             pool_flops_compute)
+nn.functional.adaptive_max_pool2d = wrapFunc(nn.functional.adaptive_max_pool2d,
+                                             pool_flops_compute)
+nn.functional.adaptive_max_pool3d = wrapFunc(nn.functional.adaptive_max_pool3d,
+                                             pool_flops_compute)
+
+# upsample
+nn.functional.upsample = wrapFunc(nn.functional.upsample, upsample_flops_compute)
+nn.functional.interpolate = wrapFunc(nn.functional.interpolate, upsample_flops_compute)
+
+
+def rnn_forward_hook(rnn_module, input, output):
+    """
+    Takes into account batch goes at first position, contrary
+    to pytorch common rule (but actually it doesn't matter).
+    IF sigmoid and tanh are made hard, only a comparison FLOPS should be accurate
+    """
+    flops = 0
+    # input is a tuple containing a sequence to process and (optionally) hidden state
+    inp = input[0]
+    batch_size = inp.shape[0]
+    seq_length = inp.shape[1]
+    num_layers = rnn_module.num_layers
+
+    for i in range(num_layers):
+        w_ih = rnn_module.__getattr__('weight_ih_l' + str(i))
+        w_hh = rnn_module.__getattr__('weight_hh_l' + str(i))
+        if i == 0:
+            input_size = rnn_module.input_size
+        else:
+            input_size = rnn_module.hidden_size
+        flops = rnn_flops(flops, rnn_module, w_ih, w_hh, input_size)
+        if rnn_module.bias:
+            b_ih = rnn_module.__getattr__('bias_ih_l' + str(i))
+            b_hh = rnn_module.__getattr__('bias_hh_l' + str(i))
+            flops += b_ih.shape[0] + b_hh.shape[0]
+
+    flops *= batch_size
+    flops *= seq_length
+    if rnn_module.bidirectional:
+        flops *= 2
+    rnn_module.__flops__ += int(flops)
+
+
+def rnn_cell_forward_hook(rnn_cell_module, input, output):
+    flops = 0
+    inp = input[0]
+    batch_size = inp.shape[0]
+    w_ih = rnn_cell_module.__getattr__('weight_ih')
+    w_hh = rnn_cell_module.__getattr__('weight_hh')
+    input_size = inp.shape[1]
+    flops = rnn_flops(flops, rnn_cell_module, w_ih, w_hh, input_size)
+    if rnn_cell_module.bias:
+        b_ih = rnn_cell_module.__getattr__('bias_ih')
+        b_hh = rnn_cell_module.__getattr__('bias_hh')
+        flops += b_ih.shape[0] + b_hh.shape[0]
+
+    flops *= batch_size
+    rnn_cell_module.__flops__ += int(flops)
+
+MODULE_HOOK_MAPPING = {
+    # RNN
+    nn.RNN: rnn_forward_hook,
+    nn.GRU: rnn_forward_hook,
+    nn.LSTM: rnn_forward_hook,
+    nn.RNNCell: rnn_cell_forward_hook,
+    nn.LSTMCell: rnn_cell_forward_hook,
+    nn.GRUCell: rnn_cell_forward_hook
+}
 
 
 def get_model_parameters_number(model):
@@ -204,6 +332,12 @@ def compute_total_flops(self):
 
 def start_flops_count(self, **kwargs):
     def register_module_hooks(module, verbose, ost, ignore_list):
+        # if compute the flops of a module directly
+        if type(module) in MODULE_HOOK_MAPPING:
+            module.__flops_handle__ = module.register_forward_hook(MODULE_HOOK_MAPPING[type(module)])
+            return
+        
+        # if compute the flops of the functionals in a module
         def pre_hook(module, input):
             module_flop_count.clear()
             batch_size = 1
@@ -243,6 +377,7 @@ def start_flops_count(self, **kwargs):
                 module_flop_count.clear()
 
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
+         
 
     self.apply(partial(register_module_hooks, **kwargs))
 
@@ -277,6 +412,9 @@ def remove_flops_count_attrs(module):
     if hasattr(module, '__post_hook_handle__'):
         module.__post_hook_handle__.remove()
         del module.__post_hook_handle__
+    if hasattr(module, '__flops_handle__'):
+        module.__flops_handle__.remove()
+        del module.__flops_handle__
 
 
 def stop_flops_count(self):
