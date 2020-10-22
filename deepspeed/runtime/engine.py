@@ -31,6 +31,7 @@ from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
+from ..ops.op_builder import UtilsBuilder
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -189,7 +190,6 @@ class DeepSpeedEngine(Module):
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
 
-        from .ops.op_builder import UtilsBuilder
         global flatten, unflatten
         if flatten is None or unflatten is None:
             utils_op = UtilsBuilder().load()

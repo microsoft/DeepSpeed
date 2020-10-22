@@ -12,6 +12,8 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.pipe.topology import *
 PipeTopo = PipeDataParallelTopology
 
+from deepspeed.ops.op_builder import FusedLambBuilder
+
 import argparse
 import pytest
 import json
@@ -152,8 +154,8 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
-#@pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'],
-#                    reason="lamb is not installed")
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.OP_NAME],
+                    reason="lamb is not compatible")
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,

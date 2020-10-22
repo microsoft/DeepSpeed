@@ -127,9 +127,6 @@ class OpBuilder(ABC):
 
 
 class CUDAOpBuilder(OpBuilder):
-    def __init__(self, name, name_prefix=''):
-        super().__init__(name, name_prefix)
-
     def compute_capability_args(self, cross_compile_archs=['52', '60', '61', '70']):
         args = []
         if self.jit_mode:

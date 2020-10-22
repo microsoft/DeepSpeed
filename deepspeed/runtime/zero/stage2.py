@@ -18,6 +18,8 @@ from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 from deepspeed.utils import logger
+from ...ops.op_builder import UtilsBuilder
+
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
 pg_correctness_test = False
@@ -123,7 +125,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1):
 
-        from .ops.op_builder import UtilsBuilder
         global flatten, unflatten
         if flatten is None or unflatten is None:
             utils_op = UtilsBuilder().load()
