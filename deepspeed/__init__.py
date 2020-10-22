@@ -17,12 +17,7 @@ from .utils import log_dist
 
 from .pipe import PipelineModule
 
-try:
-    from .git_version_info import version, git_hash, git_branch
-except ImportError:
-    version = "0.0.0"
-    git_hash = None
-    git_branch = None
+from .git_version_info import version, git_hash, git_branch
 
 
 def _parse_version(version_str):

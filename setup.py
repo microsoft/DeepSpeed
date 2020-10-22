@@ -25,16 +25,24 @@ def fetch_requirements(path):
 
 
 install_requires = fetch_requirements('requirements/requirements.txt')
-dev_requires = fetch_requirements('requirements/requirements-dev.txt')
-sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn.txt')
+extras_require = {
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse-attn.txt'),
+    '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    'dev': fetch_requirements('requirements/requirements-dev.txt'),
+}
 
 # If MPI is available add 1bit-adam requirements
 if torch.cuda.is_available():
     if shutil.which('ompi_info') or shutil.which('mpiname'):
-        onebit_adam_requires = fetch_requirements(
-            'requirements/requirements-1bit-adam.txt')
-        onebit_adam_requires.append(f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}")
-        install_requires += onebit_adam_requires
+        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+        extras_require['1bit_adam'].append(cupy)
+
+# Make an [all] extra that installs all needed dependencies
+all_extras = set()
+for extra in extras_require.items():
+    for req in extra[1]:
+        all_extras.add(req)
+extras_require['all'] = list(all_extras)
 
 cmdclass = {}
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
@@ -115,12 +123,13 @@ print(f'compatible_ops={compatible_ops}')
 print(f'ext_modules={ext_modules}')
 
 setup(name='deepspeed',
-      version=f"{version_str}",
+      version=version_str,
       description='DeepSpeed library',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',
       install_requires=install_requires,
+      extras_require=extras_require,
       packages=find_packages(exclude=["docker",
                                       "third_party"]),
       include_package_data=True,
