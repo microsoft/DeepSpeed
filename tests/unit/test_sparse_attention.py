@@ -6,9 +6,11 @@
 import pytest
 import torch
 import deepspeed
+from deepspeed.ops.op_builder import SparseAttnBuilder
 
-if not deepspeed.git_version_info.compatible_ops['sparse_attn_op']:
-    pytest.skip("cpu-adam is not compatible on this system", allow_module_level=True)
+if not deepspeed.ops.__compatible_ops__[SparseAttnBuilder.NAME]:
+    pytest.skip("sparse attention op is not compatible on this system",
+                allow_module_level=True)
 
 
 def test_sparse_attention_module_availability():
