@@ -50,9 +50,7 @@ jobs:
   - script: |
       source activate $(conda_env)
       pip install --progress-bar=off torch==$(pytorch.version) torchvision==$(torchvision.version)
-      #-f https://download.pytorch.org/whl/torch_stable.html
-      #./install.sh --local_only
-      pip install .
+      pip install .[dev]
       python -I basic_install_test.py
     displayName: 'Install DeepSpeed'
 
