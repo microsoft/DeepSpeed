@@ -548,12 +548,15 @@ class DeepSpeedEngine(Module):
             raise ValueError(
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
-        if self.optimizer_name() == ADAM_OPTIMIZER:
-            if self.zero_cpu_offload():
-                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+        if self.zero_cpu_offload():
+            if self.optimizer_name() == DEEPSPEED_ADAM:
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
             else:
-                from apex.optimizers.fused_adam import FusedAdam
-                optimizer = FusedAdam(model_parameters, **optimizer_parameters)
+                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == ADAM_OPTIMIZER:
+            from apex.optimizers.fused_adam import FusedAdam
+            optimizer = FusedAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == DEEPSPEED_ADAM:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
