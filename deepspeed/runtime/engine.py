@@ -20,7 +20,7 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, DEEPSPEED_ADAM, DEEPSPEED_OPTIMIZERS
+    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, DEEPSPEED_ADAM, DEEPSPEED_ADAMW, DEEPSPEED_OPTIMIZERS
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
@@ -549,9 +549,16 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
         if self.zero_cpu_offload():
-            if self.optimizer_name() == DEEPSPEED_ADAM:
+            if self.optimizer_name() == DEEPSPEED_ADAMW:
                 from deepspeed.ops.adam import DeepSpeedCPUAdam
                 optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
+            elif self.optimizer_name() == DEEPSPEED_ADAM:
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                optimizer = DeepSpeedCPUAdam(model_parameters,
+                                             **optimizer_parameters,
+                                             adamw_mode=False)
+            elif self.optimizer_name() == ADAMW_OPTIMIZER:
+                optimizer = torch.optim.AdamW(model_parameters, **optimizer_parameters)
             else:
                 optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ADAM_OPTIMIZER:
