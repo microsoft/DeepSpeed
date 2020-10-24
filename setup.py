@@ -18,8 +18,6 @@ from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtensio
 
 import op_builder
 
-VERSION = "0.3.0"
-
 
 def fetch_requirements(path):
     with open(path, 'r') as fd:
@@ -27,19 +25,24 @@ def fetch_requirements(path):
 
 
 install_requires = fetch_requirements('requirements/requirements.txt')
-dev_requires = fetch_requirements('requirements/requirements-dev.txt')
-sparse_attn_requires = fetch_requirements('requirements/requirements-sparse-attn.txt')
-
-# Add development requirements
-install_requires += dev_requires
+extras_require = {
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse-attn.txt'),
+    '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    'dev': fetch_requirements('requirements/requirements-dev.txt'),
+}
 
 # If MPI is available add 1bit-adam requirements
 if torch.cuda.is_available():
     if shutil.which('ompi_info') or shutil.which('mpiname'):
-        onebit_adam_requires = fetch_requirements(
-            'requirements/requirements-1bit-adam.txt')
-        onebit_adam_requires.append(f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}")
-        install_requires += onebit_adam_requires
+        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+        extras_require['1bit_adam'].append(cupy)
+
+# Make an [all] extra that installs all needed dependencies
+all_extras = set()
+for extra in extras_require.items():
+    for req in extra[1]:
+        all_extras.add(req)
+extras_require['all'] = list(all_extras)
 
 cmdclass = {}
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
@@ -108,9 +111,17 @@ if command_exists('git'):
 else:
     git_hash = "unknown"
     git_branch = "unknown"
-print(f"version={VERSION}+{git_hash}, git_hash={git_hash}, git_branch={git_branch}")
+
+# Parse the DeepSpeed version string from version.txt
+version_str = open('version.txt', 'r').read().strip()
+
+# Build specifiers like .devX can be added at install time. Otherwise, add the git hash.
+# example: DS_BUILD_STR=".dev20201022" python setup.py sdist bdist_wheel
+version_str += os.environ.get('DS_BUILD_STRING', f'+{git_hash}')
+
+print(f"version={version_str}, git_hash={git_hash}, git_branch={git_branch}")
 with open('deepspeed/git_version_info_installed.py', 'w') as fd:
-    fd.write(f"version='{VERSION}+{git_hash}'\n")
+    fd.write(f"version='{version_str}'\n")
     fd.write(f"git_hash='{git_hash}'\n")
     fd.write(f"git_branch='{git_branch}'\n")
     fd.write(f"installed_ops={install_ops}\n")
@@ -121,12 +132,13 @@ print(f'compatible_ops={compatible_ops}')
 print(f'ext_modules={ext_modules}')
 
 setup(name='deepspeed',
-      version=f"{VERSION}+{git_hash}",
+      version=version_str,
       description='DeepSpeed library',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',
       install_requires=install_requires,
+      extras_require=extras_require,
       packages=find_packages(exclude=["docker",
                                       "third_party"]),
       include_package_data=True,
