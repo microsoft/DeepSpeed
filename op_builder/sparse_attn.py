@@ -1,6 +1,6 @@
 import torch
 import warnings
-from .builder import OpBuilder, command_exists
+from .builder import OpBuilder  #, command_exists
 
 
 class SparseAttnBuilder(OpBuilder):
@@ -22,24 +22,25 @@ class SparseAttnBuilder(OpBuilder):
     def is_compatible(self):
         # Check to see if llvm and cmake are installed since they are dependencies
         required_commands = ['llvm-config|llvm-config-9', 'cmake']
-        command_status = list(map(command_exists, required_commands))
-        compatible = False
-        if not all(command_status):
-            zipped_status = list(zip(required_commands, command_status))
-            warnings.warn(
-                f'Missing non-python requirements, please install the missing packages: {zipped_status}'
-            )
-            warnings.warn(
-                'Skipping sparse attention installation due to missing required packages'
-            )
+        command_status = list(map(self.command_exists, required_commands))
+        deps_compatible = all(command_status)
 
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
         TORCH_MINOR = int(torch.__version__.split('.')[1])
-        if TORCH_MAJOR == 1 and TORCH_MINOR >= 5:
-            compatible = True
-        else:
-            warnings.warn(
-                f'Sparse attention requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
+        torch_compatible = TORCH_MAJOR == 1 and TORCH_MINOR >= 5
+        if not torch_compatible:
+            self.warning(
+                f'{self.NAME} requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
             )
 
-        return super().is_compatible() and compatible
+        try:
+            import triton
+            triton_installed = True
+        except ImportError:
+            triton_installed = False
+        if not triton_installed:
+            self.warning(
+                f"{self.NAME} requires the python package 'triton' to be installed")
+
+        return super().is_compatible(
+        ) and deps_compatible and torch_compatible and triton_installed

@@ -4,7 +4,7 @@ from .transformer import TransformerBuilder
 
 class StochasticTransformerBuilder(TransformerBuilder):
     BUILD_VAR = "DS_BUILD_STOCHASTIC_TRANSFORMER"
-    NAME = "stochastic_transformer_op"
+    NAME = "stochastic_transformer"
 
     def __init__(self):
         super().__init__(name=self.NAME)

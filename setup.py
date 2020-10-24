@@ -64,7 +64,13 @@ from op_builder import ALL_OPS
 OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
 print(f"DS_BUILD_CUDA={OP_DEFAULT}")
 
-if not OP_DEFAULT and not op_builder.command_exists('ninja'):
+
+def command_exists(cmd):
+    result = subprocess.Popen('type ninja', stdout=subprocess.PIPE, shell=True)
+    return result.wait() == 0
+
+
+if not OP_DEFAULT and not command_exists('ninja'):
     raise Exception("Delaying DeepSpeed op installation will result in ops being JIT "
                     "compiled, this requires ninja to be installed. Please install "
                     "ninja e.g., apt-get install build-ninja")
@@ -94,7 +100,7 @@ print(f'Install Ops={install_ops}')
 # Write out version/git info
 git_hash_cmd = "git rev-parse --short HEAD"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
-if op_builder.command_exists('git'):
+if command_exists('git'):
     result = subprocess.check_output(git_hash_cmd, shell=True)
     git_hash = result.decode('utf-8').strip()
     result = subprocess.check_output(git_branch_cmd, shell=True)
@@ -124,10 +130,13 @@ setup(name='deepspeed',
       packages=find_packages(exclude=["docker",
                                       "third_party"]),
       include_package_data=True,
-      scripts=['bin/deepspeed',
-               'bin/deepspeed.pt',
-               'bin/ds',
-               'bin/ds_ssh'],
+      scripts=[
+          'bin/deepspeed',
+          'bin/deepspeed.pt',
+          'bin/ds',
+          'bin/ds_ssh',
+          'bin/ds_report'
+      ],
       classifiers=[
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',

@@ -4,7 +4,7 @@ from .builder import CUDAOpBuilder
 
 class TransformerBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_TRANSFORMER"
-    NAME = "transformer_op"
+    NAME = "transformer"
 
     def __init__(self, name=None):
         name = self.NAME if name is None else name

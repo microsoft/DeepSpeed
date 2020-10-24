@@ -13,24 +13,6 @@ WARNING = f"{YELLOW} [WARNING] {END}"
 DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
 
 
-def command_exists(cmd):
-    if '|' in cmd:
-        cmds = cmd.split("|")
-    else:
-        cmds = [cmd]
-    valid = False
-    for cmd in cmds:
-        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-        valid = valid or result.wait() == 0
-
-    if not valid and len(cmds) > 1:
-        print(f"[{WARNING}] one of the following commands '{cmds}' does not exist!")
-    elif not valid and len(cmds) == 0:
-        print(f"[{WARNING}] command '{cmd}' does not exist!")
-
-    return valid
-
-
 class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
@@ -75,6 +57,29 @@ class OpBuilder(ABC):
         '''
         return True
 
+    def command_exists(self, cmd):
+        if '|' in cmd:
+            cmds = cmd.split("|")
+        else:
+            cmds = [cmd]
+        valid = False
+        for cmd in cmds:
+            result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+            valid = valid or result.wait() == 0
+
+        if not valid and len(cmds) > 1:
+            print(
+                f"{WARNING} {self.name} requires one of the following commands '{cmds}', but it does not exist!"
+            )
+        elif not valid and len(cmds) == 1:
+            print(
+                f"{WARNING} {self.name} requires the '{cmd}' command, but it does not exist!"
+            )
+        return valid
+
+    def warning(self, msg):
+        print(f"{WARNING} {msg}")
+
     def deepspeed_src_path(self, code_path):
         if os.path.isabs(code_path):
             return code_path
@@ -100,7 +105,7 @@ class OpBuilder(ABC):
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
             )
-        if not command_exists('ninja'):
+        if not self.command_exists('ninja'):
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
             )
@@ -166,7 +171,7 @@ class CUDAOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def is_compatible(self):
-        return super().is_compatible() and command_exists('nvcc')
+        return super().is_compatible() and self.command_exists('nvcc')
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension
