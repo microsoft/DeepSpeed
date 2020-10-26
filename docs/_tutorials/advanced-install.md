@@ -3,7 +3,7 @@ title: "Installation Details"
 date: 2020-10-28
 ---
 
-The quickist way to get started with DeepSpeed is via pip, this will install
+The quickest way to get started with DeepSpeed is via pip, this will install
 the latest release of DeepSpeed which is not tied to specific PyTorch or CUDA
 versions. By default, all of DeepSpeed's C++/CUDA ops will be built
 just-in-time (JIT) using [torch's JIT C++ extension loader that relies on
@@ -16,7 +16,7 @@ pip install deepspeed
 After installation you can validate your install and see which ops your machine
 is compatible with via the DeepSpeed environment report with `ds_report` or
 `python -m deepspeed.env_report`. We've found this report useful when debugging
-DeepSpeed install or compatability issues.
+DeepSpeed install or compatibility issues.
 
 ```bash
 ds_report
@@ -73,7 +73,7 @@ DS_BUILD_FUSED_LAMB=1 pip install .
 Some DeepSpeed features require specific dependencies outside of the general
 dependencies of DeepSpeed.
 
-* Python package dependecies per feature/op please
+* Python package dependencies per feature/op please
 see our [requirements
 directory](https://github.com/microsoft/DeepSpeed/tree/master/requirements).
 
