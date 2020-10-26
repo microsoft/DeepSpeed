@@ -61,7 +61,7 @@ tool described above.
 If you want to install only a specific op (e.g., FusedLamb) you can view the op
 specific build environment variable (set as `BUILD_VAR`) in the corresponding
 op builder class in the
-[https://github.com/microsoft/DeepSpeed/tree/master/op_builder](op\_builder)
+[op\_builder](https://github.com/microsoft/DeepSpeed/tree/master/op_builder)
 directory. For example to install only the Fused Lamb op you would install via:
 
 ```bash
