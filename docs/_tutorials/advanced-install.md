@@ -1,7 +1,5 @@
 ---
-title: "Installation"
-permalink: /installation/
-excerpt: "DeepSpeed Installation"
+title: "Installation Details"
 date: 2020-10-28
 ---
 
