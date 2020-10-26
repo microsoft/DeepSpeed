@@ -68,6 +68,17 @@ directory. For example to install only the Fused Lamb op you would install via:
 DS_BUILD_FUSED_LAMB=1 pip install .
 ```
 
+## Feature specific dependencies
+
+Some DeepSpeed features require specific dependencies outside of the general
+dependencies of DeepSpeed.
+
+* Python package dependecies per feature/op please
+see our [requirements
+directory](https://github.com/microsoft/DeepSpeed/tree/master/requirements).
+
+* We attempt to keep the system level dependencies to a minimum, however some features do require special system-level packages. Please see our `ds_report` tool output to see if you are missing any system-level packages for a given feature.
+
 ## Pre-compiled DeepSpeed builds from PyPI
 
 Coming soon
