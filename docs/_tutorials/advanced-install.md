@@ -24,9 +24,13 @@ ds_report
 
 ## Install DeepSpeed from source
 
-After cloning the DeepSpeed repo from github you can install deepspeed in the
-JIT mode (described above) via `pip install .`. This install should complete
+After cloning the DeepSpeed repo from github you can install DeepSpeed in
+JIT mode via pip (see below). This install should complete
 quickly since it is not compiling any C++/CUDA source files.
+
+```bash
+pip install .
+```
 
 For installs spanning multiple nodes we find it useful to install DeepSpeed
 using the
@@ -44,13 +48,25 @@ specific ops.
 
 You can indicate to our installer (either install.sh or pip install) that you
 want to attempt to install all of our ops by setting the `DS_BUILD_OPS`
-environment variable to 1, for example: `DS_BUILD_OPS=1 pip install .`.
+environment variable to 1, for example:
+
+```bash
+DS_BUILD_OPS=1 pip install .
+```
+
+We will only install any ops that are compatible with your machine, for more
+details on which ops are compatible with your system please try our `ds_report`
+tool described above.
 
 If you want to install only a specific op (e.g., FusedLamb) you can view the op
 specific build environment variable (set as `BUILD_VAR`) in the corresponding
 op builder class in the
 [https://github.com/microsoft/DeepSpeed/tree/master/op_builder](op\_builder)
-directory.
+directory. For example to install only the Fused Lamb op you would install via:
+
+```bash
+DS_BUILD_FUSED_LAMB=1 pip install .
+```
 
 ## Pre-compiled DeepSpeed builds from PyPI
 
