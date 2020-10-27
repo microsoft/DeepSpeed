@@ -787,7 +787,7 @@ class DeepSpeedEngine(Module):
         # print flops
         if self.flops_count() and self.global_steps == 0 and self.global_rank == 0:
             # flops_count, params_count = self.module.compute_total_flops()
-            flops_count = self.module.__flops__
+            flops_count = self.module.compute_total_flops_count()
             params_count = self.module.__params__
             batch_size = self.module.__batch__
             print('{:<30}  {:<8}'.format('Computational complexity: ', flops_count))

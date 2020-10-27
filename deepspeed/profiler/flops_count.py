@@ -6,6 +6,7 @@ from torch.nn.modules.module import register_module_forward_hook
 from functools import partial
 import numpy as np
 import sys
+# from queue import LifoQueue
 
 module_flop_count = []
 
@@ -311,6 +312,7 @@ def add_flops_counting_methods(model):
     model.start_flops_count = start_flops_count.__get__(model)
     model.stop_flops_count = stop_flops_count.__get__(model)
     model.reset_flops_count = reset_flops_count.__get__(model)
+    model.compute_total_flops_count = compute_total_flops_count.__get__(model)
 
     model.reset_flops_count()
 
@@ -337,38 +339,17 @@ def start_flops_count(self, **kwargs):
 
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
+        def post_hook(module, input, output):
+            if module.__class__.__name__ == "ModuleList":
+                print("xxxx")
+                for child in module.children():
+                    print(child.__class__.__name__)
+            module.__flops__ = sum([elem[1] for elem in module_flop_count])
+            # module.__flops__ += sum([child.__flops__ for child in module.children()])
+            module_flop_count.clear()
+
         has_children = len(module._modules.items()) != 0
-        if True or has_children:
-
-            def post_hook(module, input, output):
-                a = sum([child.__flops__ for child in module.children()])
-                b = sum([elem[1] for elem in module_flop_count])
-                module.__flops__ += a + b
-                if module.__class__.__name__ == "ParallelTransformer":
-                    print("CCCC AFTER ",
-                          module.__class__.__name__,
-                          " = ",
-                          len(module._modules.items()))
-                    print("flops={}".format(module.__flops__))
-                    print("batch={}".format(module.__batch__))
-                    fc = next(module.children())
-                    print(fc.__flops__, fc.__class__.__name__)
-                module_flop_count.clear()
-
-            module.__post_hook_handle__ = module.register_forward_hook(post_hook)
-        else:
-
-            def post_hook(module, input, output):
-                # print("module_flop_count = {}".format(module_flop_count))
-                flops = sum([elem[1] for elem in module_flop_count])
-                module.__flops__ += flops
-                # print("class ",
-                #       module.__class__.__name__,
-                #       " = ",
-                #       len(mod._modules.items()))
-                # print("flops={}".format(module.__flops__))
-                module_flop_count.clear()
-
+        if not has_children:
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
     self.apply(partial(register_module_hooks, **kwargs))
@@ -407,6 +388,13 @@ def remove_flops_count_attrs(module):
     if hasattr(module, '__flops_handle__'):
         module.__flops_handle__.remove()
         del module.__flops_handle__
+
+
+def compute_total_flops_count(self):
+    sum = 0
+    for module in self.modules():
+        sum += module.__flops__
+    return sum
 
 
 def stop_flops_count(self):
@@ -457,36 +445,24 @@ def print_model_with_flops(model,
                            units=None,
                            precision=3,
                            ost=sys.stdout):
-    def accumulate_params(self):
-        has_children = len(self._modules.items()) != 0
-        if not has_children:
-            return self.__params__
-        else:
-            sum = 0
-            for m in self.children():
-                sum += m.accumulate_params()
-            return sum
-
     def accumulate_flops(self):
         has_children = len(self._modules.items()) != 0
         if not has_children:
             return self.__flops__
         else:
             sum = 0
-            # print("YYYYY - ", self.__class__.__name__)
             for m in self.children():
-                # print("XXXXX - ", m.__class__.__name__, m.accumulate_flops())
                 sum += m.accumulate_flops()
-            return sum
+        return sum
 
     def flops_repr(self):
-        accumulated_params_num = self.accumulate_params()
+        params = self.__params__
         accumulated_flops_cost = self.accumulate_flops()
         return ', '.join([
-            params_to_string(accumulated_params_num,
+            params_to_string(params,
                              units=units,
                              precision=precision),
-            '{:.3%} Params'.format(accumulated_params_num / total_params),
+            '{:.3%} Params'.format(params / total_params),
             flops_to_string(accumulated_flops_cost,
                             units=units,
                             precision=precision),
@@ -497,7 +473,6 @@ def print_model_with_flops(model,
 
     def add_extra_repr(m):
         m.accumulate_flops = accumulate_flops.__get__(m)
-        m.accumulate_params = accumulate_params.__get__(m)
         flops_extra_repr = flops_repr.__get__(m)
         if m.extra_repr != flops_extra_repr:
             m.original_extra_repr = m.extra_repr
@@ -545,7 +520,8 @@ def get_model_complexity_info(model,
 
         _ = model(batch)
         # _ = model(batch)
-    flops_count, params_count = model.compute_total_flops()
+    flops_count = model.compute_total_flops_count()
+    params_count = model.__params__
     if print_per_layer_stat:
         print_model_with_flops(model, flops_count, params_count, ost=ost)
     model.stop_flops_count()
