@@ -25,6 +25,13 @@ def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
 
 ZERO_SUPPORTED_OPTIMIZERS = [torch.optim.Adam, FusedAdam, DeepSpeedCPUAdam]
 
+# Add apex FusedAdam to supported list if apex is installed
+try:
+    import apex
+    ZERO_SUPPORTED_OPTIMIZERS.append(apex.optimizers.FusedAdam)
+except ImportError:
+    pass
+
 
 def is_zero_supported_optimizer(optimizer):
     print(

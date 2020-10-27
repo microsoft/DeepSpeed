@@ -13,6 +13,25 @@ WARNING = f"{YELLOW} [WARNING] {END}"
 DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
 
 
+def assert_no_cuda_mismatch():
+    import torch.utils.cpp_extension
+    cuda_home = torch.utils.cpp_extension.CUDA_HOME
+    # Ensure there is not a cuda version mismatch between torch and nvcc compiler
+    output = subprocess.check_output([cuda_home + "/bin/nvcc",
+                                      "-V"],
+                                     universal_newlines=True)
+    output_split = output.split()
+    release_idx = output_split.index("release")
+    release = output_split[release_idx + 1].replace(',', '').split(".")
+    installed_cuda_version = ".".join(release)
+    # This is a show-stopping error, should probably not proceed past this
+    if installed_cuda_version != torch.version.cuda:
+        raise Exception(
+            f"Installed CUDA version {installed_cuda_version} does not match the "
+            f"version torch was compiled with {torch.version.cuda}, unable to compile "
+            "cuda/cpp extensions without a matching cuda version.")
+
+
 class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
@@ -171,7 +190,8 @@ class CUDAOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def is_compatible(self):
-        return super().is_compatible() and self.command_exists('nvcc')
+        assert_no_cuda_mismatch()
+        return super().is_compatible()
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension

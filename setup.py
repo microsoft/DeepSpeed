@@ -78,6 +78,10 @@ if not OP_DEFAULT and not command_exists('ninja'):
                     "compiled, this requires ninja to be installed. Please install "
                     "ninja e.g., apt-get install build-ninja")
 
+# Ensure there is not a cuda version mismatch between torch and nvcc compiler
+from op_builder.builder import assert_no_cuda_mismatch
+assert_no_cuda_mismatch()
+
 
 def op_enabled(op_name):
     assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
