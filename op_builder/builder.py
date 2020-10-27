@@ -23,9 +23,11 @@ def assert_no_cuda_mismatch():
     output_split = output.split()
     release_idx = output_split.index("release")
     release = output_split[release_idx + 1].replace(',', '').split(".")
-    installed_cuda_version = ".".join(release)
+    # Ignore patch versions, only look at major + minor
+    installed_cuda_version = ".".join(release[:2])
+    torch_cuda_version = ".".join(torch.version.cuda.split('.', 2))
     # This is a show-stopping error, should probably not proceed past this
-    if installed_cuda_version != torch.version.cuda:
+    if installed_cuda_version != torch_cuda_version:
         raise Exception(
             f"Installed CUDA version {installed_cuda_version} does not match the "
             f"version torch was compiled with {torch.version.cuda}, unable to compile "
