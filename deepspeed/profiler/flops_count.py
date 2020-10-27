@@ -7,8 +7,6 @@ from functools import partial
 import numpy as np
 import sys
 
-
-
 module_flop_count = []
 
 # https://pytorch.org/docs/stable/nn.functional.html
@@ -155,8 +153,6 @@ def upsample_flops_compute(input,
         flops * scale_factor**len(input)
     return flops
 
-def rnn_flops_compute():
-
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
@@ -292,6 +288,7 @@ def rnn_cell_forward_hook(rnn_cell_module, input, output):
     flops *= batch_size
     rnn_cell_module.__flops__ += int(flops)
 
+
 MODULE_HOOK_MAPPING = {
     # RNN
     nn.RNN: rnn_forward_hook,
@@ -314,29 +311,20 @@ def add_flops_counting_methods(model):
     model.start_flops_count = start_flops_count.__get__(model)
     model.stop_flops_count = stop_flops_count.__get__(model)
     model.reset_flops_count = reset_flops_count.__get__(model)
-    model.compute_total_flops = compute_total_flops.__get__(model)
 
     model.reset_flops_count()
 
     return model
 
 
-def compute_total_flops(self):
-    flops_sum = 0
-    params_sum = 0
-    for module in self.children():
-        flops_sum += module.__flops__
-    params_sum = get_model_parameters_number(self)
-    return flops_sum / self.__batch__, params_sum
-
-
 def start_flops_count(self, **kwargs):
     def register_module_hooks(module, verbose, ost, ignore_list):
         # if compute the flops of a module directly
         if type(module) in MODULE_HOOK_MAPPING:
-            module.__flops_handle__ = module.register_forward_hook(MODULE_HOOK_MAPPING[type(module)])
+            module.__flops_handle__ = module.register_forward_hook(
+                MODULE_HOOK_MAPPING[type(module)])
             return
-        
+
         # if compute the flops of the functionals in a module
         def pre_hook(module, input):
             module_flop_count.clear()
@@ -350,16 +338,21 @@ def start_flops_count(self, **kwargs):
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
         has_children = len(module._modules.items()) != 0
-        if has_children:
+        if True or has_children:
 
             def post_hook(module, input, output):
-                module.__flops__ = sum([child.__flops__ for child in module.children()
-                                        ]) + sum([elem[1] for elem in module_flop_count])
-                # print("class ",
-                #       module.__class__.__name__,
-                #       " = ",
-                #       len(mod._modules.items()))
-                # print("flops={}".format(module.__flops__))
+                a = sum([child.__flops__ for child in module.children()])
+                b = sum([elem[1] for elem in module_flop_count])
+                module.__flops__ += a + b
+                if module.__class__.__name__ == "ParallelTransformer":
+                    print("CCCC AFTER ",
+                          module.__class__.__name__,
+                          " = ",
+                          len(module._modules.items()))
+                    print("flops={}".format(module.__flops__))
+                    print("batch={}".format(module.__batch__))
+                    fc = next(module.children())
+                    print(fc.__flops__, fc.__class__.__name__)
                 module_flop_count.clear()
 
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
@@ -377,7 +370,6 @@ def start_flops_count(self, **kwargs):
                 module_flop_count.clear()
 
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
-         
 
     self.apply(partial(register_module_hooks, **kwargs))
 
@@ -478,10 +470,12 @@ def print_model_with_flops(model,
     def accumulate_flops(self):
         has_children = len(self._modules.items()) != 0
         if not has_children:
-            return self.__flops__ / self.__batch__
+            return self.__flops__
         else:
             sum = 0
+            # print("YYYYY - ", self.__class__.__name__)
             for m in self.children():
+                # print("XXXXX - ", m.__class__.__name__, m.accumulate_flops())
                 sum += m.accumulate_flops()
             return sum
 

@@ -784,10 +784,15 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
-
         # print flops
-        if self.flops_count() and self.global_steps == 1 and self.global_rank == 0:
-            flops_count, params_count = self.module.compute_average_flops_cost()
+        if self.flops_count() and self.global_steps == 0 and self.global_rank == 0:
+            # flops_count, params_count = self.module.compute_total_flops()
+            flops_count = self.module.__flops__
+            params_count = self.module.__params__
+            batch_size = self.module.__batch__
+            print('{:<30}  {:<8}'.format('Computational complexity: ', flops_count))
+            print('{:<30}  {:<8}'.format('Number of parameters: ', params_count))
+            print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
             print_model_with_flops(self.module,
                                    flops_count,
                                    params_count,
