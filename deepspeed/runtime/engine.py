@@ -36,7 +36,7 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler.flops_count import add_flops_counting_methods,start_flops_count,stop_flops_count,print_model_with_flops
+from deepspeed.profiler.flops_count import add_flops_counting_methods,start_flops_count,stop_flops_count,print_model_with_flops, flops_to_string, params_to_string
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -790,8 +790,8 @@ class DeepSpeedEngine(Module):
             flops_count = self.module.compute_total_flops_count()
             params_count = self.module.__params__
             batch_size = self.module.__batch__
-            print('{:<30}  {:<8}'.format('Computational complexity: ', flops_count))
-            print('{:<30}  {:<8}'.format('Number of parameters: ', params_count))
+            print('{:<30}  {:<8}'.format('Computational complexity: ', flops_to_string(flops_count)))
+            print('{:<30}  {:<8}'.format('Number of parameters: ', params_to_string(params_count)))
             print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
             print_model_with_flops(self.module,
                                    flops_count,

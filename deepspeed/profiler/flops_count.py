@@ -6,7 +6,6 @@ from torch.nn.modules.module import register_module_forward_hook
 from functools import partial
 import numpy as np
 import sys
-# from queue import LifoQueue
 
 module_flop_count = []
 
@@ -155,6 +154,17 @@ def upsample_flops_compute(input,
     return flops
 
 
+def softmax_flops_compute(input, dim=None, _stacklevel=3, dtype=None):
+    return torch.numel(input)
+
+
+def embedding_flops_compute(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False)
+    return 0
+
+
+def dropout_embedding_flops_compute(input, p=0.5, training=True, inplace=False)
+    return 0
+
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
 
@@ -239,6 +249,16 @@ nn.functional.adaptive_max_pool3d = wrapFunc(nn.functional.adaptive_max_pool3d,
 nn.functional.upsample = wrapFunc(nn.functional.upsample, upsample_flops_compute)
 nn.functional.interpolate = wrapFunc(nn.functional.interpolate, upsample_flops_compute)
 
+# softmax
+nn.functional.softmax = wrapFunc(nn.functional.softmax, softmax_flops_compute)
+
+# embedding
+nn.functional.embedding = wrapFunc(nn.functional.embedding, embedding_flops_compute)
+
+# dropout
+nn.functional.dropout = wrapFunc(nn.functional.dropout, dropout_flops_compute)
+nn.functional.dropout2d = wrapFunc(nn.functional.dropout2d, dropout_flops_compute)
+nn.functional.dropout3d = wrapFunc(nn.functional.dropout3d, dropout_flops_compute)
 
 def rnn_forward_hook(rnn_module, input, output):
     """
@@ -340,10 +360,6 @@ def start_flops_count(self, **kwargs):
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
         def post_hook(module, input, output):
-            if module.__class__.__name__ == "ModuleList":
-                print("xxxx")
-                for child in module.children():
-                    print(child.__class__.__name__)
             module.__flops__ = sum([elem[1] for elem in module_flop_count])
             # module.__flops__ += sum([child.__flops__ for child in module.children()])
             module_flop_count.clear()
