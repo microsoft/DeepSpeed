@@ -11,7 +11,7 @@ class SparseAttnBuilder(OpBuilder):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
-        return f'deepspeed.ops.sparse_attention.{self.NAME}'
+        return f'deepspeed.ops.sparse_attention.{self.NAME}_op'
 
     def sources(self):
         return ['csrc/sparse_attention/utils.cpp']

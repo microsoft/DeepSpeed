@@ -10,7 +10,7 @@ class FusedAdamBuilder(CUDAOpBuilder):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
-        return f'deepspeed.ops.adam.{self.NAME}'
+        return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
         return ['csrc/adam/fused_adam_frontend.cpp', 'csrc/adam/multi_tensor_adam.cu']

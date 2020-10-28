@@ -36,10 +36,6 @@ from ..ops.op_builder import UtilsBuilder
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
 
-# Delay loading (un)flatten ops until init time
-flatten = None
-unflatten = None
-
 try:
     from apex import amp
 except ImportError:
@@ -190,11 +186,10 @@ class DeepSpeedEngine(Module):
             if self.dump_state():
                 print_configuration(self, 'DeepSpeedLight')
 
-        global flatten, unflatten
-        if flatten is None or unflatten is None:
-            utils_op = UtilsBuilder().load()
-            flatten = utils_op.flatten
-            unflatten = utils_op.unflatten
+        # Load pre-installed or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
 
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
@@ -1021,7 +1016,7 @@ class DeepSpeedEngine(Module):
                  ranks=[0])
 
     def allreduce_bucket(self, bucket):
-        tensor = flatten(bucket)
+        tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
@@ -1049,7 +1044,7 @@ class DeepSpeedEngine(Module):
 
     def allreduce_and_copy(self, small_bucket):
         allreduced = self.allreduce_bucket(small_bucket)
-        for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
+        for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
             buf.copy_(synced)
 
     def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):

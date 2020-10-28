@@ -10,7 +10,7 @@ class StochasticTransformerBuilder(TransformerBuilder):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
-        return f'deepspeed.ops.transformer.{self.NAME}'
+        return f'deepspeed.ops.transformer.{self.NAME}_op'
 
     def nvcc_args(self):
         args = super().nvcc_args()

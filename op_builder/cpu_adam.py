@@ -11,7 +11,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         super().__init__(name=self.NAME)
 
     def absolute_name(self):
-        return f'deepspeed.ops.adam.{self.NAME}'
+        return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
         return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']

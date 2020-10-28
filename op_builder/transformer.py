@@ -11,7 +11,7 @@ class TransformerBuilder(CUDAOpBuilder):
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.ops.transformer.{self.NAME}'
+        return f'deepspeed.ops.transformer.{self.NAME}_op'
 
     def sources(self):
         return [

@@ -49,6 +49,21 @@ def ninja_installed():
     return result.wait() == 0
 
 
+def nvcc_version():
+    import torch.utils.cpp_extension
+    cuda_home = torch.utils.cpp_extension.CUDA_HOME
+    try:
+        output = subprocess.check_output([cuda_home + "/bin/nvcc",
+                                          "-V"],
+                                         universal_newlines=True)
+    except FileNotFoundError:
+        return f"{RED} [FAIL] nvcc missing {END}"
+    output_split = output.split()
+    release_idx = output_split.index("release")
+    release = output_split[release_idx + 1].replace(',', '').split(".")
+    return ".".join(release)
+
+
 def debug_report():
     max_dots = 23
     report = [
@@ -58,6 +73,8 @@ def debug_report():
          torch.__version__),
         ("torch cuda version",
          torch.version.cuda),
+        ("nvcc version",
+         nvcc_version()),
         ("deepspeed install path",
          deepspeed.__path__),
         ("deepspeed info",
@@ -70,8 +87,8 @@ def debug_report():
 
 
 def main():
-    op_report()
     debug_report()
+    op_report()
 
 
 if __name__ == "__main__":

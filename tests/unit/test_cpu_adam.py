@@ -7,12 +7,10 @@ import pytest
 import copy
 
 import deepspeed
+from deepspeed.ops.op_builder import CPUAdamBuilder
 
-#TODO: not sure how we want to skip tests now that we're building at runtime
-#if not deepspeed.ops.__installed_ops__['cpu-adam']:
-#    pytest.skip("cpu-adam is not installed", allow_module_level=True)
-#else:
-#    from deepspeed.ops.adam import DeepSpeedCPUAdam
+if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+    pytest.skip("cpu-adam is not compatible")
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):

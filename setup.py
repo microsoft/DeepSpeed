@@ -45,6 +45,8 @@ for extra in extras_require.items():
 extras_require['all'] = list(all_extras)
 
 cmdclass = {}
+
+# For any pre-installed ops force disable ninja
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -64,23 +66,17 @@ ext_modules = []
 from op_builder import ALL_OPS
 
 # Default to pre-install kernels to false so we rely on JIT
-OP_DEFAULT = int(os.environ.get('DS_BUILD_CUDA', 0))
-print(f"DS_BUILD_CUDA={OP_DEFAULT}")
-
-
-def command_exists(cmd):
-    result = subprocess.Popen('type ninja', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
-
-
-if not OP_DEFAULT and not command_exists('ninja'):
-    raise Exception("Delaying DeepSpeed op installation will result in ops being JIT "
-                    "compiled, this requires ninja to be installed. Please install "
-                    "ninja e.g., apt-get install build-ninja")
+OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
+print(f"DS_BUILD_OPS={OP_DEFAULT}")
 
 # Ensure there is not a cuda version mismatch between torch and nvcc compiler
 from op_builder.builder import assert_no_cuda_mismatch
 assert_no_cuda_mismatch()
+
+
+def command_exists(cmd):
+    result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+    return result.wait() == 0
 
 
 def op_enabled(op_name):
