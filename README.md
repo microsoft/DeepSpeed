@@ -1,4 +1,5 @@
 [![Build Status](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_apis/build/status/microsoft.DeepSpeed?branchName=master)](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_build/latest?definitionId=1&branchName=master)
+[![PyPI Version](https://pypip.in/v/deepspeed/badge.svg)](https://pypi.python.org/pypi/deepspeed/)
 [![Documentation Status](https://readthedocs.org/projects/deepspeed/badge/?version=latest)](https://deepspeed.readthedocs.io/en/latest/?badge=latest)
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/deepspeed/deepspeed)](https://hub.docker.com/r/deepspeed/deepspeed)
@@ -44,11 +45,11 @@ information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)
 | Section                                 | Description                                 |
 | --------------------------------------- | ------------------------------------------- |
 | [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
-| [Install](#installation)                |  Installation                               |
-| [Features](#features)                   |  Features                                   |
+| [Install](#installation)                |  Installation details                       |
+| [Features](#features)                   |  Feature list and overview                  |
 | [Further Reading](#further-reading)     |  Documentation, tutorials, etc.             |
 | [Contributing](#contributing)           |  Instructions for contributing              |
-| [Publications](#publications)           |  Publications                               |
+| [Publications](#publications)           |  Publications related to DeepSpeed          |
 
 # Why DeepSpeed?
 Training advanced deep learning models is challenging. Beyond model design,
