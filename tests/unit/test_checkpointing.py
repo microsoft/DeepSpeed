@@ -540,6 +540,7 @@ def test_checkpoint_fp32_optimizer(tmpdir):
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1])
+@skipIfRocm
 def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
     config_dict = {
         "train_batch_size": 2,
@@ -606,6 +607,7 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
                               PipeTopo(num_pp=2,
                                        num_dp=2)),
                          ])
+@skipIfRocm
 def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
     @distributed_test(world_size=4)
     def _test(base_topo, test_topo, save_folder):
