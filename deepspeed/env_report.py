@@ -82,7 +82,7 @@ def debug_report():
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
         ("deepspeed compiled w. versions",
-         f"torch {torch_info['version']}, cuda {torch_info['version']}"),
+         f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}"),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:
