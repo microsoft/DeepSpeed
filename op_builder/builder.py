@@ -35,6 +35,22 @@ def assert_no_cuda_mismatch():
             "cuda/cpp extensions without a matching cuda version.")
 
 
+def assert_torch_info(torch_info):
+    install_torch_version = torch_info['version']
+    install_cuda_version = torch_info['cuda_version']
+
+    current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+    current_torch_version = torch.__version__.split('.')[:2]
+
+    if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
+        raise RuntimeError(
+            "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
+            "with a different version than what is being used at runtime. Please re-install "
+            f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+            f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
+            f"torch={current_torch_version}, cuda={current_cuda_version}")
+
+
 class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
@@ -116,8 +132,13 @@ class OpBuilder(ABC):
                             extra_compile_args={'cxx': self.cxx_args()})
 
     def load(self, verbose=True):
-        from ...git_version_info import installed_ops
+        from ...git_version_info import installed_ops, torch_info
         if installed_ops[self.name]:
+            # Ensure the op we're about to load was compiled with the same
+            # torch/cuda versions we are currently using at runtime.
+            if isinstance(self, CUDAOpBuilder):
+                assert_torch_info(torch_info)
+
             return importlib.import_module(self.absolute_name())
         else:
             return self.jit_load(verbose)

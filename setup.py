@@ -49,8 +49,8 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja
 cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
 
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
+TORCH_MAJOR = torch.__version__.split('.')[0]
+TORCH_MINOR = torch.__version__.split('.')[1]
 
 if not torch.cuda.is_available():
     # Fix to allow docker buils, similar to https://github.com/NVIDIA/apex/issues/486
@@ -115,6 +115,10 @@ version_str = open('version.txt', 'r').read().strip()
 # example: DS_BUILD_STR=".dev20201022" python setup.py sdist bdist_wheel
 version_str += os.environ.get('DS_BUILD_STRING', f'+{git_hash}')
 
+torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
+cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+torch_info = {"version": torch_version, "cuda_version": cuda_version}
+
 print(f"version={version_str}, git_hash={git_hash}, git_branch={git_branch}")
 with open('deepspeed/git_version_info_installed.py', 'w') as fd:
     fd.write(f"version='{version_str}'\n")
@@ -122,6 +126,7 @@ with open('deepspeed/git_version_info_installed.py', 'w') as fd:
     fd.write(f"git_branch='{git_branch}'\n")
     fd.write(f"installed_ops={install_ops}\n")
     fd.write(f"compatible_ops={compatible_ops}\n")
+    fd.write(f"torch_info={torch_info}\n")
 
 print(f'install_requires={install_requires}')
 print(f'compatible_ops={compatible_ops}')

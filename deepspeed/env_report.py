@@ -2,7 +2,7 @@ import torch
 import deepspeed
 import subprocess
 from .ops.op_builder import ALL_OPS
-from .git_version_info import installed_ops
+from .git_version_info import installed_ops, torch_info
 from .ops import __compatible_ops__ as compatible_ops
 
 GREEN = '\033[92m'
@@ -24,6 +24,7 @@ def op_report():
     max_dots = 23
     max_dots2 = 11
     h = ["op name", "installed", "compatible"]
+    print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
     print("DeepSpeed cpp/cuda extension op report")
     print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
     print("JIT compiled ops requires ninja")
@@ -65,7 +66,7 @@ def nvcc_version():
 
 
 def debug_report():
-    max_dots = 23
+    max_dots = 33
     report = [
         ("torch install path",
          torch.__path__),
@@ -79,7 +80,9 @@ def debug_report():
          deepspeed.__path__),
         ("deepspeed info",
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
-         )
+         ),
+        ("deepspeed compiled w. versions",
+         f"torch {torch_info['version']}, cuda {torch_info['version']}"),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:
