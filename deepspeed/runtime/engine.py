@@ -555,7 +555,7 @@ class DeepSpeedEngine(Module):
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE_PARAM, True)
 
-            # zero-offload	torch-adam	adam_w_mode	optimizer
+            # zero-offload  torch-adam  adam_w_mode optimizer
             # T|F           T           T           torch.optim.AdamW
             # T|F           T           F           torch.optim.Adam
             # T             F           T|F         DeepSpeedCPUAdam(adam_w_mode)
