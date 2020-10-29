@@ -133,7 +133,6 @@ class OpBuilder(ABC):
             )
 
         if isinstance(self, CUDAOpBuilder):
-            print(f'cuda mismatch check! {self}')
             assert_no_cuda_mismatch()
 
         self.jit_mode = True
