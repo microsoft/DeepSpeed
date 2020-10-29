@@ -16,6 +16,7 @@ DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
 def assert_no_cuda_mismatch():
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
+    assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
     # Ensure there is not a cuda version mismatch between torch and nvcc compiler
     output = subprocess.check_output([cuda_home + "/bin/nvcc",
                                       "-V"],
@@ -131,6 +132,10 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
             )
 
+        if isinstance(self, CUDAOpBuilder):
+            print(f'cuda mismatch check! {self}')
+            assert_no_cuda_mismatch()
+
         self.jit_mode = True
         from torch.utils.cpp_extension import load
 
@@ -192,11 +197,11 @@ class CUDAOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def is_compatible(self):
-        assert_no_cuda_mismatch()
         return super().is_compatible()
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension
+        assert_no_cuda_mismatch()
         return CUDAExtension(name=self.absolute_name(),
                              sources=self.sources(),
                              include_dirs=self.include_paths(),
