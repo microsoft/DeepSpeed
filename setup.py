@@ -66,12 +66,8 @@ ext_modules = []
 from op_builder import ALL_OPS
 
 # Default to pre-install kernels to false so we rely on JIT
-OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
-print(f"DS_BUILD_OPS={OP_DEFAULT}")
-
-# Ensure there is not a cuda version mismatch between torch and nvcc compiler
-from op_builder.builder import assert_no_cuda_mismatch
-assert_no_cuda_mismatch()
+BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
+print(f"DS_BUILD_OPS={BUILD_OP_DEFAULT}")
 
 
 def command_exists(cmd):
@@ -83,7 +79,7 @@ def op_enabled(op_name):
     assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
         f"{op_name} is missing BUILD_VAR field"
     env_var = ALL_OPS[op_name].BUILD_VAR
-    return int(os.environ.get(env_var, OP_DEFAULT))
+    return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
 
 
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
