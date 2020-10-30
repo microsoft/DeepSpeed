@@ -1,5 +1,5 @@
 [![Build Status](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_apis/build/status/microsoft.DeepSpeed?branchName=master)](https://dev.azure.com/DeepSpeedMSFT/DeepSpeed/_build/latest?definitionId=1&branchName=master)
-[![PyPI Version](https://pypip.in/v/deepspeed/badge.svg)](https://pypi.python.org/pypi/deepspeed/)
+[![PyPI version](https://badge.fury.io/py/deepspeed.svg)](https://badge.fury.io/py/deepspeed)
 [![Documentation Status](https://readthedocs.org/projects/deepspeed/badge/?version=latest)](https://deepspeed.readthedocs.io/en/latest/?badge=latest)
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/deepspeed/deepspeed)](https://hub.docker.com/r/deepspeed/deepspeed)
@@ -65,23 +65,25 @@ accelerate model development *and* training.
 
 The quickest way to get started with DeepSpeed is via pip, this will install
 the latest release of DeepSpeed which is not tied to specific PyTorch or CUDA
-versions. By default, all of DeepSpeed's C++/CUDA ops will be built
+versions. DeepSpeed includes several C++/CUDA extensions that we commonly refer
+to as our 'ops'.  By default, all of these extensions/ops will be built
 just-in-time (JIT) using [torch's JIT C++ extension loader that relies on
-ninja](https://pytorch.org/docs/stable/cpp_extension.html).
+ninja](https://pytorch.org/docs/stable/cpp_extension.html) to build and
+dynamically link them at runtime.
 
 ```bash
 pip install deepspeed
 ```
 
-After installation you can validate your install and see which ops your machine
-is compatible with via the DeepSpeed environment report.
+After installation you can validate your install and see which extensions/ops
+your machine is compatible with via the DeepSpeed environment report.
 
 ```bash
 ds_report
 ```
 
-If you would like to pre-install any of the DeepSpeed ops (instead of JIT
-compiling) or install pre-compiled ops via PyPI please see our [advanced
+If you would like to pre-install any of the DeepSpeed extensions/ops (instead
+of JIT compiling) or install pre-compiled ops via PyPI please see our [advanced
 installation instructions](https://www.deepspeed.ai/installation/).
 
 # Features
