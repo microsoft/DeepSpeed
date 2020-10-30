@@ -7,10 +7,10 @@ import pytest
 import copy
 
 import deepspeed
-if not deepspeed.ops.__installed_ops__['cpu-adam']:
-    pytest.skip("cpu-adam is not installed", allow_module_level=True)
-else:
-    from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.op_builder import CPUAdamBuilder
+
+if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+    pytest.skip("cpu-adam is not compatible")
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
@@ -32,6 +32,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                              (1048576),
                          ]) # yapf: disable
 def test_cpu_adam_opt(model_size):
+    from deepspeed.ops.adam import DeepSpeedCPUAdam
     device = 'cpu'
     rng_state = torch.get_rng_state()
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
