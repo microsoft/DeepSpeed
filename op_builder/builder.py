@@ -40,7 +40,7 @@ def assert_torch_info(torch_info):
     install_cuda_version = torch_info['cuda_version']
 
     current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    current_torch_version = torch.__version__.split('.')[:2]
+    current_torch_version = ".".join(torch.__version__.split('.')[:2])
 
     if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
         raise RuntimeError(
