@@ -84,7 +84,7 @@ ds_report
 
 If you would like to pre-install any of the DeepSpeed extensions/ops (instead
 of JIT compiling) or install pre-compiled ops via PyPI please see our [advanced
-installation instructions](https://www.deepspeed.ai/installation/).
+installation instructions](https://www.deepspeed.ai/tutorials/advanced-install/).
 
 # Features
 Below we provide a brief feature list, see our detailed [feature
