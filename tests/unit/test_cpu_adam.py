@@ -1,12 +1,12 @@
 import argparse
 import torch
-import apex
 import time
 import numpy as np
 import pytest
 import copy
 
 import deepspeed
+from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
 if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
@@ -43,7 +43,7 @@ def test_cpu_adam_opt(model_size):
     param2 = torch.nn.Parameter(param2_data)
 
     optimizer1 = torch.optim.AdamW([param1])
-    optimizer2 = apex.optimizers.FusedAdam([param2])
+    optimizer2 = FusedAdam([param2])
     optimizer = DeepSpeedCPUAdam([param])
 
     for i in range(10):

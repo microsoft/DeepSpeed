@@ -21,7 +21,7 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -n, --no_clean          Do not clean prior build state, by default prior build files are removed before building wheels
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
-    -k, --skip_requirements Skip installing DeepSpeed requirements
+    -v, --verbose           Verbose logging
     -h, --help              This help text
   """
 }
@@ -39,27 +39,12 @@ apex_commit=""
 skip_requirements=0
 allow_sudo=0
 no_clean=0
+verbose=0
 
 while [[ $# -gt 0 ]]
 do
 key="$1"
 case $key in
-    -d|--deepspeed_only)
-    deepspeed_install=1;
-    third_party_install=0;
-    ds_only=1;
-    shift
-    ;;
-    -t|--third_party_only)
-    deepspeed_install=0;
-    third_party_install=1;
-    tp_only=1;
-    shift
-    ;;
-    -l|--local_only)
-    local_only=1;
-    shift
-    ;;
     -s|--pip_sudo)
     pip_sudo=1;
     shift
@@ -69,13 +54,8 @@ case $key in
     shift
     shift
     ;;
-    -a|--apex_commit)
-    apex_commit=$2;
-    shift
-    shift
-    ;;
-    -k|--skip_requirements)
-    skip_requirements=1;
+    -v|--verbose)
+    verbose=1;
     shift
     ;;
     -r|--allow_sudo)
@@ -123,12 +103,18 @@ if [ "$ds_only" == "1" ] && [ "$tp_only" == "1" ]; then
     exit 1
 fi
 
+if [ "$verbose" == "1" ]; then
+    VERBOSE="-v"
+else
+    VERBOSE=""
+fi
+
 rm_if_exist() {
     echo "Attempting to remove $1"
     if [ -f $1 ]; then
-        rm -v $1
+        rm $VERBOSE $1
     elif [ -d $1 ]; then
-        rm -vr $1
+        rm -r $VERBOSE $1
     fi
 }
 
@@ -147,23 +133,19 @@ else
 fi
 
 if [ "$pip_mirror" != "" ]; then
-    PIP_INSTALL="pip install -v -i $pip_mirror"
+    PIP_INSTALL="pip install $VERBOSE -i $pip_mirror"
 else
-    PIP_INSTALL="pip install -v"
+    PIP_INSTALL="pip install $VERBOSE"
 fi
+
 
 if [ ! -f $hostfile ]; then
     echo "No hostfile exists at $hostfile, installing locally"
     local_only=1
 fi
 
-if [ "$skip_requirements" == "0" ]; then
-   # Ensure dependencies are installed locally
-   $PIP_SUDO $PIP_INSTALL -r requirements/requirements.txt
-fi
-
 echo "Building deepspeed wheel"
-python setup.py -v bdist_wheel
+python setup.py $VERBOSE bdist_wheel
 
 if [ "$local_only" == "1" ]; then
     echo "Installing deepspeed"
@@ -183,9 +165,6 @@ else
 
     pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*.whl; else mkdir -pv $tmp_wheel_path; fi"
     pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
-    if [ "$skip_requirements" == "0" ]; then
-       pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL -r ${tmp_wheel_path}/requirements.txt"
-    fi
 
     echo "Installing deepspeed"
     pdsh -w $hosts "$PIP_SUDO pip uninstall -y deepspeed"
