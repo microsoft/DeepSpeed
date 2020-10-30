@@ -158,12 +158,19 @@ def softmax_flops_compute(input, dim=None, _stacklevel=3, dtype=None):
     return torch.numel(input)
 
 
-def embedding_flops_compute(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False)
+def embedding_flops_compute(input,
+                            weight,
+                            padding_idx=None,
+                            max_norm=None,
+                            norm_type=2.0,
+                            scale_grad_by_freq=False,
+                            sparse=False):
     return 0
 
 
-def dropout_embedding_flops_compute(input, p=0.5, training=True, inplace=False)
+def dropout_flops_compute(input, p=0.5, training=True, inplace=False):
     return 0
+
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
@@ -255,10 +262,11 @@ nn.functional.softmax = wrapFunc(nn.functional.softmax, softmax_flops_compute)
 # embedding
 nn.functional.embedding = wrapFunc(nn.functional.embedding, embedding_flops_compute)
 
-# dropout
-nn.functional.dropout = wrapFunc(nn.functional.dropout, dropout_flops_compute)
-nn.functional.dropout2d = wrapFunc(nn.functional.dropout2d, dropout_flops_compute)
-nn.functional.dropout3d = wrapFunc(nn.functional.dropout3d, dropout_flops_compute)
+# dropout, NOT SUPPORTED
+# nn.functional.dropout = wrapFunc(nn.functional.dropout, dropout_flops_compute)
+# nn.functional.dropout2d = wrapFunc(nn.functional.dropout2d, dropout_flops_compute)
+# nn.functional.dropout3d = wrapFunc(nn.functional.dropout3d, dropout_flops_compute)
+
 
 def rnn_forward_hook(rnn_module, input, output):
     """
@@ -340,7 +348,7 @@ def add_flops_counting_methods(model):
 
 
 def start_flops_count(self, **kwargs):
-    def register_module_hooks(module, verbose, ost, ignore_list):
+    def register_module_hooks(module, verbose, ost, ignore_list, time):
         # if compute the flops of a module directly
         if type(module) in MODULE_HOOK_MAPPING:
             module.__flops_handle__ = module.register_forward_hook(
@@ -367,6 +375,19 @@ def start_flops_count(self, **kwargs):
         has_children = len(module._modules.items()) != 0
         if not has_children:
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
+
+        if time:
+
+            def start_time_hook(module, input):
+                module.__start_time__ = time.time()
+
+            module._start_time_hook_handle_ = module.register_forward_pre_hook(
+                start_time_hook)
+
+            def end_time_hook(module, input, output):
+                module.__end_time__ = time.time()
+
+            module._end_time_hook_handle_ = module.register_forward_hook(end_time_hook)
 
     self.apply(partial(register_module_hooks, **kwargs))
 
