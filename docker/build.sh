@@ -1,0 +1,25 @@
+#!/bin/bash
+
+DEEPSPEED_COMMIT=${1:-master}
+
+CUDA_VERSION=10.0
+TORCH_VERSION=1.2.0
+TORCH_VISION_VERSION=0.4.0
+
+#CUDA_VERSION=10.1
+#TORCH_VERSION="1.6.0+cu101"
+#TORCH_VISION_VERSION=0.7.0
+
+#CUDA_VERSION=10.2
+#TORCH_VERSION=1.6.0
+#TORCH_VISION_VERSION=0.7.0
+
+build_id=`date +%m%d%Y`
+docker build \
+    -t deepspeed:cuda${CUDA_VERSION}-torch${TORCH_VERSION//+*/}-${build_id} \
+    -f Dockerfile \
+    --build-arg CUDA_VERSION=$CUDA_VERSION \
+    --build-arg TORCH_VERSION=$TORCH_VERSION \
+    --build-arg TORCH_VISION_VERSION=$TORCH_VISION_VERSION \
+    --build-arg DEEPSPEED_COMMIT=$DEEPSPEED_COMMIT \
+    .
