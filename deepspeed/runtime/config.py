@@ -412,6 +412,9 @@ def get_wall_clock_breakdown(param_dict):
 def get_flops_count(param_dict):
     return get_scalar_param(param_dict, FLOPS_COUNT, FLOPS_COUNT_DEFAULT)
 
+def get_profile_step(param_dict):
+    return get_scalar_param(param_dict, PROFILE_STEP, PROFILE_STEP_DEFAULT)
+
 
 def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
@@ -536,6 +539,7 @@ class DeepSpeedConfig(object):
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
         self.flops_count = get_flops_count(param_dict)
+        self.profile_step = get_profile_step(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)

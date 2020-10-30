@@ -161,12 +161,6 @@ class DeepSpeedEngine(Module):
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
 
-        # Configure flops counter
-        if self.flops_count() and self.global_rank == 0:
-            # model = add_flops_counting_methods(model)
-            self.module = add_flops_counting_methods(self.module)
-            model.start_flops_count(ost=sys.stdout, verbose=False, ignore_list=None)
-
         # Throughput timer
         self.tput_timer = ThroughputTimer(
             batch_size=self.train_micro_batch_size_per_gpu(),
@@ -275,6 +269,9 @@ class DeepSpeedEngine(Module):
 
     def flops_count(self):
         return self._config.flops_count
+
+    def profile_step(self):
+        return self._config.profile_step
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -747,6 +744,14 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
 
+        # Configure flops counter
+        if self.flops_count() and self.global_steps == self.profile_step() and self.global_rank == 0:
+            # model = add_flops_counting_methods(model)
+            self.module = add_flops_counting_methods(self.module)
+            self.module.start_flops_count(ost=sys.stdout,
+                                          verbose=False,
+                                          ignore_list=None)
+
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
             self.timers('forward').start()
@@ -784,11 +789,12 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
-        # print flops
-        if self.flops_count() and self.global_steps == 0 and self.global_rank == 0:
+        # print flopsmodule
+        if self.flops_count() and self.global_steps == self.profile_step() and self.global_rank == 0:
             # flops_count, params_count = self.module.compute_total_flops()
             flops_count = self.module.compute_total_flops_count()
             params_count = self.module.__params__
+            duration = self.module.compute_total_duration()
             batch_size = self.module.__batch__
             print('{:<30}  {:<8}({:<8})'.format('Computational complexity: ',
                                                 flops_to_string(flops_count),
@@ -800,6 +806,7 @@ class DeepSpeedEngine(Module):
             print_model_with_flops(self.module,
                                    flops_count,
                                    params_count,
+                                   duration,
                                    ost=sys.stdout)
             self.module.stop_flops_count()
 

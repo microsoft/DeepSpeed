@@ -276,7 +276,13 @@ Flops count should be enabled as:
 '''
 FLOPS_COUNT = 'flops_count'
 FLOPS_COUNT_DEFAULT = False
-FLOPS_COUNT_ITERATIONS = 1
+
+PROFILE_STEP_FORMAT = '''
+Profile step can be specified as:
+"[profile_step]": 5
+'''
+PROFILE_STEP = 'profile_step'
+PROFILE_STEP_DEFAULT = 5
 
 #########################################
 # Tensorboard

@@ -392,21 +392,16 @@ def start_flops_count(self, **kwargs):
     self.apply(partial(register_module_hooks, **kwargs))
 
 
-def add_variable_or_reset(module):
-    if hasattr(module,
-               '__flops__') or hasattr(module,
-                                       '__params__') or hasattr(module,
-                                                                '__batch__'):
-        print('Warning: variables __flops__ or __params__ or __batch__'
-              ' are already defined for the module' + type(module).__name__ +
-              ' the profiler can affect your code!')
+def add_or_reset_attrs(module):
     module.__flops__ = 0
     module.__batch__ = 0
     module.__params__ = get_model_parameters_number(module)
+    module.__start_time__ = 0
+    module.__end_time__ = 0
 
 
 def reset_flops_count(self):
-    self.apply(add_variable_or_reset)
+    self.apply(add_or_reset_attrs)
 
 
 def remove_flops_count_attrs(module):
@@ -416,6 +411,10 @@ def remove_flops_count_attrs(module):
         del module.__flops__
     if hasattr(module, '__params__'):
         del module.__params__
+    if hasattr(module, '__start_time__'):
+        del module.__start_time__
+    if hasattr(module, '__end_time__'):
+        del module.__end_time__
     if hasattr(module, '__pre_hook_handle__'):
         module.__pre_hook_handle__.remove()
         del module.__pre_hook_handle__
@@ -540,8 +539,11 @@ def print_model_with_flops(model,
         ]
         duration = self.__end_time__ - self.__start_time__
         items.append(duration_to_string(duration, None, precision=precision))
-        items.append('{:.2%} time'.format(duration / total_duration))
-        items.append('{:.2} TFLOPS'.format(2 * flops / duration / 10**12))
+        items.append('{:.2%} time'.format(0 if total_duration == 0 else duration /
+                                          total_duration))
+        items.append('0' if duration ==
+                     0 else str(round(2 * flops / duration / 10**12,
+                                      precision)) + ' TFLOPS')
         items.append(self.original_extra_repr())
         return ', '.join(items)
 
@@ -573,13 +575,29 @@ def get_model_complexity_info(model,
                               ost=sys.stdout,
                               verbose=False,
                               ignore_modules=[],
-                              custom_funcs_hooks={}):
+                              custom_funcs_hooks={},
+                              warm_up=10):
     assert type(input_res) is tuple
     assert len(input_res) >= 1
     assert isinstance(model, nn.Module)
     model = add_flops_counting_methods(model)
     model.eval()
     model.start_flops_count(ost=ost, verbose=verbose, ignore_list=ignore_modules)
+    for _ in range(warm_up):
+        if input_constructor:
+            input = input_constructor(input_res)
+            _ = model(**input)
+        else:
+            try:
+                batch = torch.ones(()).new_empty((1,
+                                                  *input_res),
+                                                 dtype=next(model.parameters()).dtype,
+                                                 device=next(model.parameters()).device)
+            except StopIteration:
+                batch = torch.ones(()).new_empty((1, *input_res))
+            _ = model(batch)
+    model.reset_flops_count()
+
     if input_constructor:
         input = input_constructor(input_res)
         _ = model(**input)
@@ -591,9 +609,8 @@ def get_model_complexity_info(model,
                                              device=next(model.parameters()).device)
         except StopIteration:
             batch = torch.ones(()).new_empty((1, *input_res))
-
         _ = model(batch)
-        # _ = model(batch)
+
     flops_count = model.compute_total_flops_count()
     duration = model.compute_total_duration()
     params_count = model.__params__
