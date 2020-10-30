@@ -566,9 +566,11 @@ class DeepSpeedEngine(Module):
             # F             F           T|F         FusedAdam(adam_w_mode)
             if torch_adam:
                 if adam_w_mode:
-                    optimizer = torch.optim.AdamW(model_parameters, **optimizer_parameters)
+                    optimizer = torch.optim.AdamW(model_parameters,
+                                                  **optimizer_parameters)
                 else:
-                    optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+                    optimizer = torch.optim.Adam(model_parameters,
+                                                 **optimizer_parameters)
             elif self.zero_cpu_offload():
                 optimizer = DeepSpeedCPUAdam(model_parameters,
                                              **optimizer_parameters,
