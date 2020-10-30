@@ -20,9 +20,36 @@ class CPUAdamBuilder(CUDAOpBuilder):
         CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
         return ['csrc/includes', CUDA_INCLUDE]
 
+    def available_vector_instructions(self):
+        try:
+            import cpufeature
+        except ImportError:
+            warnings.warn(
+                f'import cpufeature failed - CPU vector optimizations are not available for CPUAdam'
+            )
+            return {}
+
+        cpu_vector_instructions = {}
+        try:
+            cpu_vector_instructions = cpufeature.CPUFeature
+        except _:
+            warnings.warn(
+                f'cpufeature.CPUFeature failed - CPU vector optimizations are not available for CPUAdam'
+            )
+            return {}
+
+        return cpu_vector_instructions
+
     def cxx_args(self):
         CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
-        SIMD_WIDTH = '-D__AVX256__'
+        cpu_info = self.available_vector_instructions()
+        SIMD_WIDTH = ''
+        if 'Intel' in cpu_info.get('VendorId', ''):
+            if cpu_info.get('AVX512f', False):
+                SIMD_WIDTH = '-D__AVX512__'
+            elif cpu_info.get('AVX2', False):
+                SIMD_WIDTH = '-D__AVX256__'
+
         return [
             '-O3',
             '-std=c++14',
