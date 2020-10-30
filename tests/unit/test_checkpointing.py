@@ -266,7 +266,7 @@ def test_checkpoint_fused_optimizer(tmpdir):
                               'Adam'),
                              (2,
                               True,
-                              'deepspeed_adam'),
+                              'Adam'),
                          ])
 def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
@@ -322,7 +322,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                               "Adam"),
                              (2,
                               True,
-                              'deepspeed_adam'),
+                              'Adam'),
                          ])
 def test_checkpoint_zero_no_optimizer(tmpdir,
                                       zero_stage,
@@ -387,7 +387,7 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                               'Adam'),
                              (2,
                               True,
-                              'deepspeed_adam'),
+                              'Adam'),
                          ])
 def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
@@ -461,7 +461,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                               'Adam'),
                              (2,
                               True,
-                              'deepspeed_adam'),
+                              'Adam'),
                          ])
 def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
