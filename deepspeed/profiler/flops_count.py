@@ -6,6 +6,7 @@ from torch.nn.modules.module import register_module_forward_hook
 from functools import partial
 import numpy as np
 import sys
+import time
 
 module_flop_count = []
 
@@ -341,6 +342,7 @@ def add_flops_counting_methods(model):
     model.stop_flops_count = stop_flops_count.__get__(model)
     model.reset_flops_count = reset_flops_count.__get__(model)
     model.compute_total_flops_count = compute_total_flops_count.__get__(model)
+    model.compute_total_duration = compute_total_duration.__get__(model)
 
     model.reset_flops_count()
 
@@ -348,7 +350,7 @@ def add_flops_counting_methods(model):
 
 
 def start_flops_count(self, **kwargs):
-    def register_module_hooks(module, verbose, ost, ignore_list, time):
+    def register_module_hooks(module, verbose, ost, ignore_list):
         # if compute the flops of a module directly
         if type(module) in MODULE_HOOK_MAPPING:
             module.__flops_handle__ = module.register_forward_hook(
@@ -376,18 +378,16 @@ def start_flops_count(self, **kwargs):
         if not has_children:
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
-        if time:
+        def start_time_hook(module, input):
+            module.__start_time__ = time.time()
 
-            def start_time_hook(module, input):
-                module.__start_time__ = time.time()
+        module.__start_time_hook_handle__ = module.register_forward_pre_hook(
+            start_time_hook)
 
-            module._start_time_hook_handle_ = module.register_forward_pre_hook(
-                start_time_hook)
+        def end_time_hook(module, input, output):
+            module.__end_time__ = time.time()
 
-            def end_time_hook(module, input, output):
-                module.__end_time__ = time.time()
-
-            module._end_time_hook_handle_ = module.register_forward_hook(end_time_hook)
+        module.__end_time_hook_handle__ = module.register_forward_hook(end_time_hook)
 
     self.apply(partial(register_module_hooks, **kwargs))
 
@@ -425,12 +425,25 @@ def remove_flops_count_attrs(module):
     if hasattr(module, '__flops_handle__'):
         module.__flops_handle__.remove()
         del module.__flops_handle__
+    if hasattr(module, '__start_time_hook_handle__'):
+        module.__start_time_hook_handle__.remove()
+        del module.__start_time_hook_handle__
+    if hasattr(module, '__end_time_hook_handle__'):
+        module.__end_time_hook_handle__.remove()
+        del module.__end_time_hook_handle__
 
 
 def compute_total_flops_count(self):
     sum = 0
     for module in self.modules():
         sum += module.__flops__
+    return sum
+
+
+def compute_total_duration(self):
+    sum = 0
+    for module in self.children():
+        sum += module.__end_time__ - module.__start_time__
     return sum
 
 
@@ -476,9 +489,29 @@ def params_to_string(params_num, units=None, precision=2):
             return str(params_num)
 
 
+def duration_to_string(duration, units=None, precision=2):
+    if units is None:
+        if duration > 1:
+            return str(round(duration, precision)) + ' s'
+        elif duration * 10**3 > 1:
+            return str(round(duration * 10**3, precision)) + ' ms'
+        elif duration * 10**6 > 1:
+            return str(round(duration * 10**6, precision)) + ' us'
+        else:
+            return str(duration)
+    else:
+        if units == 'us':
+            return str(round(duration * 10.**6, precision)) + ' ' + units
+        elif units == 'ms':
+            return str(round(duration * 10.**3, precision)) + ' ' + units
+        else:
+            return str(round(duration, precision)) + ' s'
+
+
 def print_model_with_flops(model,
                            total_flops,
                            total_params,
+                           total_duration,
                            units=None,
                            precision=3,
                            ost=sys.stdout):
@@ -494,19 +527,23 @@ def print_model_with_flops(model,
 
     def flops_repr(self):
         params = self.__params__
-        accumulated_flops_cost = self.accumulate_flops()
-        return ', '.join([
+        flops = self.accumulate_flops()
+        items = [
             params_to_string(params,
                              units=units,
                              precision=precision),
             '{:.3%} Params'.format(params / total_params),
-            flops_to_string(accumulated_flops_cost,
+            flops_to_string(flops,
                             units=units,
                             precision=precision),
-            '{:.3%} MACs'.format(0 if total_flops == 0 else accumulated_flops_cost /
-                                 total_flops),
-            self.original_extra_repr()
-        ])
+            '{:.3%} MACs'.format(0 if total_flops == 0 else flops / total_flops)
+        ]
+        duration = self.__end_time__ - self.__start_time__
+        items.append(duration_to_string(duration, None, precision=precision))
+        items.append('{:.2%} time'.format(duration / total_duration))
+        items.append('{:.2} TFLOPS'.format(2 * flops / duration / 10**12))
+        items.append(self.original_extra_repr())
+        return ', '.join(items)
 
     def add_extra_repr(m):
         m.accumulate_flops = accumulate_flops.__get__(m)
@@ -558,9 +595,10 @@ def get_model_complexity_info(model,
         _ = model(batch)
         # _ = model(batch)
     flops_count = model.compute_total_flops_count()
+    duration = model.compute_total_duration()
     params_count = model.__params__
     if print_per_layer_stat:
-        print_model_with_flops(model, flops_count, params_count, ost=ost)
+        print_model_with_flops(model, flops_count, params_count, duration, ost=ost)
     model.stop_flops_count()
 
     if as_strings:
