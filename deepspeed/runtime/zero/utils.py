@@ -31,6 +31,8 @@ try:
     ZERO_SUPPORTED_OPTIMIZERS.append(apex.optimizers.FusedAdam)
 except ImportError:
     pass
+except AttributeError:
+    pass
 
 
 def is_zero_supported_optimizer(optimizer):
