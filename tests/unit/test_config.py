@@ -115,7 +115,6 @@ def test_temp_config_json(tmpdir):
     assert 'train_batch_size' in config_json
 
 
-@skipIfRocm
 def test_deprecated_deepscale_config(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -157,7 +156,6 @@ def test_deprecated_deepscale_config(tmpdir):
     _test_deprecated_deepscale_config(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm
 def test_dist_init_true(tmpdir):
     config_dict = {
         "train_batch_size": 1,

@@ -28,7 +28,6 @@ def create_config_dict(micro_batch_size, grad_accumulation_steps, world_size):
     }
 
 
-@skipIfRocm
 def test_two_output_model(tmpdir):
     gradient_accumulation_steps = 2
     micro_batch_size = 1
@@ -82,7 +81,6 @@ def test_two_output_model(tmpdir):
     _test_two_output_model(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm
 def test_three_output_model(tmpdir):
     gradient_accumulation_steps = 3
     micro_batch_size = 1

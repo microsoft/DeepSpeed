@@ -18,7 +18,6 @@ from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_f
                            }),
                           ("LRRangeTest",
                            {})])
-@skipIfRocm
 def test_get_lr_before_train(tmpdir, scheduler_type, params):
     config_dict = {
         "train_batch_size": 2,

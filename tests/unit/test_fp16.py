@@ -160,7 +160,6 @@ def test_adam_fp32_empty_grad(tmpdir):
     _test_adam_fp32_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm
 def test_adamw_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -192,7 +191,6 @@ def test_adamw_fp16_basic(tmpdir):
     _test_adamw_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm
 def test_adamw_fp16_empty_grad(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -233,7 +231,6 @@ def test_adamw_fp16_empty_grad(tmpdir):
                              (2,
                               True),
                          ])
-@skipIfRocm
 def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 1,
@@ -400,7 +397,6 @@ def test_zero_static_scale_deprecated_format(tmpdir):
                              (2,
                               True),
                          ])
-@skipIfRocm
 def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
     config_dict = {
         "train_batch_size": 4,
@@ -486,7 +482,6 @@ def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
     _test_zero_empty_partition(args)
 
 
-@skipIfRocm
 def test_adam_amp_basic(tmpdir):
     config_dict = {"train_batch_size": 1, "steps_per_print": 1, "amp": {"enabled": True}}
     args = args_from_dict(tmpdir, config_dict)
@@ -635,7 +630,6 @@ def test_adam_amp_o2_empty_grad(tmpdir):
                            torch.optim.Adam),
                           (2,
                            apex.optimizers.FusedAdam)])
-@skipIfRocm
 def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_constructor):
     config_dict = {
         "train_batch_size": 2,
