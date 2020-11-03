@@ -95,6 +95,18 @@ class OpBuilder(ABC):
         '''
         return True
 
+    def python_requirements(self):
+        '''
+        Override if op wants to define special dependencies, otherwise will
+        take self.name and load requirements-<op-name>.txt if it exists.
+        '''
+        path = f'requirements/requirements-{self.name}.txt'
+        requirements = []
+        if os.path.isfile():
+            with open(path, 'r') as fd:
+                requirements = [r.strip() for r in fd.readlines()]
+        return requirements
+
     def command_exists(self, cmd):
         if '|' in cmd:
             cmds = cmd.split("|")

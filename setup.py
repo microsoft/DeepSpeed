@@ -26,8 +26,8 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
-    'sparse_attn': fetch_requirements('requirements/requirements-sparse-attn.txt'),
     '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
 }
 
@@ -91,6 +91,8 @@ for op_name in ALL_OPS.keys():
         if builder.is_compatible():
             install_ops[op_name] = op_enabled(op_name)
             ext_modules.append(builder.builder())
+            # Add any necessary python requirements for this op
+            install_requires += builder.python_requirements()
 
 compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 

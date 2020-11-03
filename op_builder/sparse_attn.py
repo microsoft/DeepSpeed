@@ -1,6 +1,6 @@
 import torch
 import warnings
-from .builder import OpBuilder  #, command_exists
+from .builder import OpBuilder
 
 
 class SparseAttnBuilder(OpBuilder):
@@ -32,15 +32,6 @@ class SparseAttnBuilder(OpBuilder):
             self.warning(
                 f'{self.NAME} requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
             )
-
-        try:
-            import triton
-            triton_installed = True
-        except ImportError:
-            triton_installed = False
-        if not triton_installed:
-            self.warning(
-                f"{self.NAME} requires the python package 'triton' to be installed")
 
         return super().is_compatible(
         ) and deps_compatible and torch_compatible and triton_installed
