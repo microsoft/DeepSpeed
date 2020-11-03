@@ -33,5 +33,4 @@ class SparseAttnBuilder(OpBuilder):
                 f'{self.NAME} requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
             )
 
-        return super().is_compatible(
-        ) and deps_compatible and torch_compatible and triton_installed
+        return super().is_compatible() and deps_compatible and torch_compatible

@@ -83,16 +83,18 @@ def op_enabled(op_name):
 
 
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
-for op_name in ALL_OPS.keys():
-    # Is op disabled from environment variable
-    if op_enabled(op_name):
-        builder = ALL_OPS[op_name]
-        # Is op compatible with machine arch/deps
-        if builder.is_compatible():
-            install_ops[op_name] = op_enabled(op_name)
-            ext_modules.append(builder.builder())
-            # Add any necessary python requirements for this op
-            install_requires += builder.python_requirements()
+for op_name, builder in ALL_OPS.items():
+    op_compatible = builder.is_compatible()
+
+    # If op is compatible update install reqs so it can potentially build/run later
+    if op_compatible:
+        reqs = builder.python_requirements()
+        install_requires += builder.python_requirements()
+
+    # If op install enabled, add builder to extensions
+    if op_enabled(op_name) and op_compatible:
+        install_ops[op_name] = op_enabled(op_name)
+        ext_modules.append(builder.builder())
 
 compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 

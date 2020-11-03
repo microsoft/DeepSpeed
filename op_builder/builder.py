@@ -102,7 +102,7 @@ class OpBuilder(ABC):
         '''
         path = f'requirements/requirements-{self.name}.txt'
         requirements = []
-        if os.path.isfile():
+        if os.path.isfile(path):
             with open(path, 'r') as fd:
                 requirements = [r.strip() for r in fd.readlines()]
         return requirements
