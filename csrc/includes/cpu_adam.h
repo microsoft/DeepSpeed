@@ -102,6 +102,7 @@ public:
             _betta2_t *= _betta2;
         }
     }
+    inline void update_lr(float lr) { _alpha = lr; }
 
 private:
 #if defined(__AVX512__) or defined(__AVX256__)

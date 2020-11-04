@@ -29,7 +29,7 @@ void Adam_Optimizer::Step(float* _params,
     float betta2_minus1 = 1 - _betta2;
 
     float bias_correction1 = 1 - _betta1_t;
-    float bias_correction2 = 1 / (1 - _betta2_t);
+    float bias_correction2 = 1 / sqrt(1 - _betta2_t);
 
     float step_size = -1 * _alpha / bias_correction1;
     float w_decay = -1 * _alpha * _weight_decay;
@@ -88,9 +88,8 @@ void Adam_Optimizer::Step(float* _params,
             grad_4.data = SIMD_MUL(grad_4.data, grad_4.data);
             variance_4.data = SIMD_FMA(grad_4.data, betta2_minus1_4.data, variance_4.data);
 
-            grad_4.data = SIMD_MUL(variance_4.data, bias2_sqrt.data);
-            grad_4.data = SIMD_SQRT(grad_4.data);
-            grad_4.data = SIMD_ADD(grad_4.data, eps_4.data);
+            grad_4.data = SIMD_SQRT(variance_4.data);
+            grad_4.data = SIMD_FMA(grad_4.data, bias2_sqrt.data, eps_4.data);
             grad_4.data = SIMD_DIV(momentum_4.data, grad_4.data);
             if (_weight_decay > 0 && _adamw_mode) {
                 param_4.data = SIMD_FMA(param_4.data, weight_decay4.data, param_4.data);
@@ -130,8 +129,9 @@ void Adam_Optimizer::Step(float* _params,
             grad = grad * grad;
             variance = grad * betta2_minus1 + variance;
 
-            grad = sqrt(variance * bias_correction2);
-            grad = momentum / (grad + _eps);
+            grad = sqrt(variance);
+            grad = grad * bias_correction2 + _eps;
+            grad = momentum / grad;
             if (_weight_decay > 0 && _adamw_mode) { param += w_decay * param; }
             param = grad * step_size + param;
             if (dev_params) _doubled_buffer[_buf_index][k - rounded_size] = (__half)param;
@@ -173,7 +173,7 @@ void Adam_Optimizer::Step_4(float* _params,
     betta2_minus1_4.data = SIMD_SET(betta2_minus1);
 
     float bias_correction1 = 1 - _betta1_t;
-    float bias_correction2 = 1 / (1 - _betta2_t);
+    float bias_correction2 = 1 / sqrt(1 - _betta2_t);
     // AVX_Data bias_correction1_4 = SIMD_SET(bias_correction1);
     AVX_Data bias2_sqrt;
     bias2_sqrt.data = SIMD_SET(bias_correction2);
@@ -250,19 +250,15 @@ void Adam_Optimizer::Step_4(float* _params,
             variance_4[2].data = SIMD_FMA(grad_4[2].data, betta2_minus1_4.data, variance_4[2].data);
             variance_4[3].data = SIMD_FMA(grad_4[3].data, betta2_minus1_4.data, variance_4[3].data);
 
-            grad_4[0].data = SIMD_MUL(variance_4[0].data, bias2_sqrt.data);
-            grad_4[0].data = SIMD_SQRT(grad_4[0].data);
-            grad_4[1].data = SIMD_MUL(variance_4[1].data, bias2_sqrt.data);
-            grad_4[1].data = SIMD_SQRT(grad_4[1].data);
-            grad_4[2].data = SIMD_MUL(variance_4[2].data, bias2_sqrt.data);
-            grad_4[2].data = SIMD_SQRT(grad_4[2].data);
-            grad_4[3].data = SIMD_MUL(variance_4[3].data, bias2_sqrt.data);
-            grad_4[3].data = SIMD_SQRT(grad_4[3].data);
+            grad_4[0].data = SIMD_SQRT(variance_4[0].data);
+            grad_4[1].data = SIMD_SQRT(variance_4[1].data);
+            grad_4[2].data = SIMD_SQRT(variance_4[2].data);
+            grad_4[3].data = SIMD_SQRT(variance_4[3].data);
 
-            grad_4[0].data = SIMD_ADD(grad_4[0].data, eps_4.data);
-            grad_4[1].data = SIMD_ADD(grad_4[1].data, eps_4.data);
-            grad_4[2].data = SIMD_ADD(grad_4[2].data, eps_4.data);
-            grad_4[3].data = SIMD_ADD(grad_4[3].data, eps_4.data);
+            grad_4[0].data = SIMD_FMA(grad_4[0].data, bias2_sqrt.data, eps_4.data);
+            grad_4[1].data = SIMD_FMA(grad_4[1].data, bias2_sqrt.data, eps_4.data);
+            grad_4[2].data = SIMD_FMA(grad_4[2].data, bias2_sqrt.data, eps_4.data);
+            grad_4[3].data = SIMD_FMA(grad_4[3].data, bias2_sqrt.data, eps_4.data);
             grad_4[0].data = SIMD_DIV(momentum_4[0].data, grad_4[0].data);
             grad_4[1].data = SIMD_DIV(momentum_4[1].data, grad_4[1].data);
             grad_4[2].data = SIMD_DIV(momentum_4[2].data, grad_4[2].data);
@@ -391,7 +387,7 @@ void Adam_Optimizer::Step_8(float* _params,
     betta2_minus1_4.data = SIMD_SET(betta2_minus1);
 
     float bias_correction1 = 1 - _betta1_t;
-    float bias_correction2 = 1 / (1 - _betta2_t);
+    float bias_correction2 = 1 / sqrt(1 - _betta2_t);
     // AVX_Data bias_correction1_4 = SIMD_SET(bias_correction1);
     AVX_Data bias2_sqrt;
     bias2_sqrt.data = SIMD_SET(bias_correction2);
@@ -508,31 +504,23 @@ void Adam_Optimizer::Step_8(float* _params,
             variance_4[6].data = SIMD_FMA(grad_4[6].data, betta2_minus1_4.data, variance_4[6].data);
             variance_4[7].data = SIMD_FMA(grad_4[7].data, betta2_minus1_4.data, variance_4[7].data);
 
-            grad_4[0].data = SIMD_MUL(variance_4[0].data, bias2_sqrt.data);
-            grad_4[0].data = SIMD_SQRT(grad_4[0].data);
-            grad_4[1].data = SIMD_MUL(variance_4[1].data, bias2_sqrt.data);
-            grad_4[1].data = SIMD_SQRT(grad_4[1].data);
-            grad_4[2].data = SIMD_MUL(variance_4[2].data, bias2_sqrt.data);
-            grad_4[2].data = SIMD_SQRT(grad_4[2].data);
-            grad_4[3].data = SIMD_MUL(variance_4[3].data, bias2_sqrt.data);
-            grad_4[3].data = SIMD_SQRT(grad_4[3].data);
-            grad_4[4].data = SIMD_MUL(variance_4[4].data, bias2_sqrt.data);
-            grad_4[4].data = SIMD_SQRT(grad_4[4].data);
-            grad_4[5].data = SIMD_MUL(variance_4[5].data, bias2_sqrt.data);
-            grad_4[5].data = SIMD_SQRT(grad_4[5].data);
-            grad_4[6].data = SIMD_MUL(variance_4[6].data, bias2_sqrt.data);
-            grad_4[6].data = SIMD_SQRT(grad_4[6].data);
-            grad_4[7].data = SIMD_MUL(variance_4[7].data, bias2_sqrt.data);
-            grad_4[7].data = SIMD_SQRT(grad_4[7].data);
+            grad_4[0].data = SIMD_SQRT(variance_4[0].data);
+            grad_4[1].data = SIMD_SQRT(variance_4[1].data);
+            grad_4[2].data = SIMD_SQRT(variance_4[2].data);
+            grad_4[3].data = SIMD_SQRT(variance_4[3].data);
+            grad_4[4].data = SIMD_SQRT(variance_4[4].data);
+            grad_4[5].data = SIMD_SQRT(variance_4[5].data);
+            grad_4[6].data = SIMD_SQRT(variance_4[6].data);
+            grad_4[7].data = SIMD_SQRT(variance_4[7].data);
 
-            grad_4[0].data = SIMD_ADD(grad_4[0].data, eps_4.data);
-            grad_4[1].data = SIMD_ADD(grad_4[1].data, eps_4.data);
-            grad_4[2].data = SIMD_ADD(grad_4[2].data, eps_4.data);
-            grad_4[3].data = SIMD_ADD(grad_4[3].data, eps_4.data);
-            grad_4[4].data = SIMD_ADD(grad_4[4].data, eps_4.data);
-            grad_4[5].data = SIMD_ADD(grad_4[5].data, eps_4.data);
-            grad_4[6].data = SIMD_ADD(grad_4[6].data, eps_4.data);
-            grad_4[7].data = SIMD_ADD(grad_4[7].data, eps_4.data);
+            grad_4[0].data = SIMD_FMA(grad_4[0].data, bias2_sqrt.data, eps_4.data);
+            grad_4[1].data = SIMD_FMA(grad_4[1].data, bias2_sqrt.data, eps_4.data);
+            grad_4[2].data = SIMD_FMA(grad_4[2].data, bias2_sqrt.data, eps_4.data);
+            grad_4[3].data = SIMD_FMA(grad_4[3].data, bias2_sqrt.data, eps_4.data);
+            grad_4[4].data = SIMD_FMA(grad_4[4].data, bias2_sqrt.data, eps_4.data);
+            grad_4[5].data = SIMD_FMA(grad_4[5].data, bias2_sqrt.data, eps_4.data);
+            grad_4[6].data = SIMD_FMA(grad_4[6].data, bias2_sqrt.data, eps_4.data);
+            grad_4[7].data = SIMD_FMA(grad_4[7].data, bias2_sqrt.data, eps_4.data);
             grad_4[0].data = SIMD_DIV(momentum_4[0].data, grad_4[0].data);
             grad_4[1].data = SIMD_DIV(momentum_4[1].data, grad_4[1].data);
             grad_4[2].data = SIMD_DIV(momentum_4[2].data, grad_4[2].data);
@@ -622,6 +610,7 @@ void Adam_Optimizer::Step_8(float* _params,
 
 int ds_adam_step(int optimizer_id,
                  size_t step,
+                 float lr,
                  torch::Tensor& params,
                  torch::Tensor& grads,
                  torch::Tensor& exp_avg,
@@ -640,6 +629,7 @@ int ds_adam_step(int optimizer_id,
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step);
+    opt->update_lr(lr);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
     return 0;
@@ -647,6 +637,7 @@ int ds_adam_step(int optimizer_id,
 
 int ds_adam_step_plus_copy(int optimizer_id,
                            size_t step,
+                           float lr,
                            torch::Tensor& params,
                            torch::Tensor& grads,
                            torch::Tensor& exp_avg,
@@ -668,6 +659,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step);
+    opt->update_lr(lr);
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 

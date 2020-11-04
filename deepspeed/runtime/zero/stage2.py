@@ -1414,14 +1414,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #torch.set_num_threads(12)
         timers('optimizer_step').start()
         if self.deepspeed_adam_offload:
-            #from deepspeed.ops.adam import DeepSpeedCPUAdam
-            #if type(self.optimizer) == DeepSpeedCPUAdam:
-            #    self.optimizer.step(
-            #        fp16_param_groups=self.parallel_partitioned_fp16_groups, partition_id=partition_id)
-            #else:
-            self.optimizer.step()
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
+            if type(self.optimizer) == DeepSpeedCPUAdam:
+                fp16_param_groups = [
+                    fp16_partitions[partition_id]
+                    for fp16_partitions in self.parallel_partitioned_fp16_groups
+                ]
+                self.optimizer.step(fp16_param_groups=fp16_param_groups)
+            else:
+                self.optimizer.step()
+                for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         else:
             self.optimizer.step()
 
