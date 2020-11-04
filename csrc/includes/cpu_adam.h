@@ -27,6 +27,7 @@
 #define SIMD_LOAD(x) _mm512_loadu_ps(x)
 #define SIMD_SET(x) _mm512_set1_ps(x)
 #define SIMD_MUL(x, y) _mm512_mul_ps(x, y)
+#define SIMD_ADD(x, y) _mm512_add_ps(x, y)
 #define SIMD_FMA(x, y, c) _mm512_fmadd_ps(x, y, c)
 #define SIMD_SQRT(x) _mm512_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
@@ -36,7 +37,8 @@
 #define SIMD_STORE(a, d) _mm256_storeu_ps(a, d)
 #define SIMD_LOAD(x) _mm256_loadu_ps(x)
 #define SIMD_SET(x) _mm256_set1_ps(x)
-#define SIMD_MUL(x, y) _mm256_mul_ps(x, y)
+#define SIMD_MUL(x, y) _mm256_add_ps(x, y)
+#define SIMD_ADD(x, y) _mm512_add_ps(x, y)
 #define SIMD_FMA(x, y, c) _mm256_fmadd_ps(x, y, c)
 #define SIMD_SQRT(x) _mm256_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm256_div_ps(x, y)
@@ -59,6 +61,7 @@ public:
           _weight_decay(weight_decay),
           _betta1_t(1.0),
           _betta2_t(1.0),
+          _step(0),
           _buf_index(false),
           _adamw_mode(adamw_mode)
     {
@@ -88,10 +91,16 @@ public:
                 float* _exp_avg_sq,
                 size_t _param_size,
                 __half* dev_params = nullptr);
-    inline void IncrementStep()
+    inline void IncrementStep(size_t step)
     {
-        _betta1_t *= _betta1;
-        _betta2_t *= _betta2;
+        if (_step < step) {
+            _step++;
+            if (_step != step) {
+                throw std::runtime_error("Optimizer lost track of step count!\n");
+            }
+            _betta1_t *= _betta1;
+            _betta2_t *= _betta2;
+        }
     }
 
 private:
@@ -114,6 +123,7 @@ private:
 
     float _betta1_t;
     float _betta2_t;
+    size_t _step;
 
     float* _doubled_buffer[2];
     bool _buf_index;

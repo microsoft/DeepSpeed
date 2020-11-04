@@ -95,7 +95,6 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
 
-                grad = p.grad.data
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
@@ -106,21 +105,22 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                     # gradient variances
                     state['exp_avg_sq'] = torch.zeros_like(p.data, device='cpu')
 
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 state['step'] += 1
 
                 if fp16_param_groups is not None:
-                    p_fp16 = fp16_param_groups[group_id][param_id]
-                    ds_opt_adam.adam_update_copy(self.opt_id,
-                                                 p.data,
-                                                 grad,
-                                                 exp_avg,
-                                                 exp_avg_sq,
-                                                 p_fp16)
+                    ds_opt_adam.adam_update_copy(
+                        self.opt_id,
+                        state['step'],
+                        p.data,
+                        p.grad.data,
+                        state['exp_avg'],
+                        state['exp_avg_sq'],
+                        fp16_param_groups[group_id][param_id].data)
                 else:
                     ds_opt_adam.adam_update(self.opt_id,
+                                            state['step'],
                                             p.data,
-                                            grad,
-                                            exp_avg,
-                                            exp_avg_sq)
+                                            p.grad.data,
+                                            state['exp_avg'],
+                                            state['exp_avg_sq'])
         return loss
