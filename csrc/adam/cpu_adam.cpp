@@ -333,7 +333,7 @@ int create_adam_optimizer(int optimizer_id,
 #if defined(__AVX512__)
     std::cout << "Adam Optimizer #" << optimizer_id
               << " is created with AVX512 arithmetic capability." << std::endl;
-    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d",
+    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
            alpha,
            betta1,
            betta2,
@@ -343,7 +343,7 @@ int create_adam_optimizer(int optimizer_id,
 #if defined(__AVX256__)
     std::cout << "Adam Optimizer #" << optimizer_id
               << " is created with AVX2 arithmetic capability." << std::endl;
-    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d",
+    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
            alpha,
            betta1,
            betta2,
@@ -352,7 +352,7 @@ int create_adam_optimizer(int optimizer_id,
 #else
     std::cout << "Adam Optimizer #" << optimizer_id
               << " is created with scalar arithmetic capability." << std::endl;
-    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d",
+    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
            alpha,
            betta1,
            betta2,
