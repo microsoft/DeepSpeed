@@ -402,6 +402,11 @@ class CheckpointFunction(torch.autograd.Function):
                         contiguous_data_buffers[i] = tensor_list
                         data_offsets[i] = 0
 
+                    contiguous_data_buffers[i][data_offsets[i]].data[range(
+                        0,
+                        contiguous_data_buffers[i][data_offsets[i]].data.shape[0],
+                        int(4096 / contiguous_data_buffers[i][
+                            data_offsets[i]].data.element_size()))] = 0
                     contiguous_partition = contiguous_data_buffers[i][
                         data_offsets[i]].data.copy_(partition.data)
                     data_offsets[i] = data_offsets[i] + 1
