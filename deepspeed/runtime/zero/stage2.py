@@ -155,6 +155,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.overlap_comm = overlap_comm
 
+        if overlap_comm:
+            self.async_buff = torch.empty(1, dtype=torch.float).pin_memory()
+
         self.cpu_offload = cpu_offload
 
         self.deepspeed_adam_offload = cpu_offload
@@ -775,8 +778,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
             current_offset += num_elements
 
     def update_overflow_tracker_for_param_grad(self, param):
-        if param.grad is not None and self._has_inf_or_nan(param.grad.data):
-            self.local_overflow = True
+        if param.grad is not None:
+            if self.overlap_comm:
+                self.local_overflow = self._async_has_inf_or_nan(
+                    param.grad.data,
+                    self.async_buff)
+            else:
+                self.local_overflow = self._has_inf_or_nan(param.grad.data)
 
     def async_accumulate_grad_in_cpu(self, param):
         param_id = self.get_param_id(param)
@@ -1561,6 +1569,27 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # Pytorch's .sum() creates a one-element tensor of the same type as x
             # (which is true for some recent version of pytorch).
             cpu_sum = float(x.float().sum())
+            # More efficient version that can be used if .sum() returns a Python scalar
+            # cpu_sum = float(x.sum())
+        except RuntimeError as instance:
+            # We want to check if inst is actually an overflow exception.
+            # RuntimeError could come from a different error.
+            # If so, we still want the exception to propagate.
+            if "value cannot be converted" not in instance.args[0]:
+                raise
+            return True
+        else:
+            if cpu_sum == float('inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
+                return True
+            return False
+
+    @staticmethod
+    def _async_has_inf_or_nan(x, async_buff, j=None):
+        try:
+            # if x is half, the .float() incurs an additional deep copy, but it's necessary if
+            # Pytorch's .sum() creates a one-element tensor of the same type as x
+            # (which is true for some recent version of pytorch).
+            cpu_sum = float(async_buff.copy_(x.float().sum(), non_blocking=True))
             # More efficient version that can be used if .sum() returns a Python scalar
             # cpu_sum = float(x.sum())
         except RuntimeError as instance:
