@@ -105,7 +105,19 @@ Next, one can load a DeepSpeed style checkpoint with the following command, whic
 model.load_state_dict(checkpoint_state_dict['module'], strict=False)
 ```
 
-Finally, the `run_glue_classifier_bert_base.sh` script invokes pre-training and setups several hyperparameters relevant to fine-tuning. If you have multiple GPUs in one node for fine-tuning, we also provide a parallel fine-tuning launcher called "parallel_finetune_glue_bert_base.sh", which automatically launches the parallel fine-tuning for you.
+Finally, the `run_glue_classifier_bert_base.sh` script invokes pre-training and setups several hyperparameters relevant to fine-tuning. 
+
+```shell
+bash run_glue_bert_base_finetune.sh [task] [batch size] [learning rate] [number of epochs] [job name] [checkpoint path]
+```
+
+An example would be:
+
+```shell
+bash run_glue_bert_base_finetune.sh MNLI 32 3e-5 5 "fine_tune_MNLI" deepspeed_checkpoint.pt
+```
+
+
 
 ### Expected Results
 
