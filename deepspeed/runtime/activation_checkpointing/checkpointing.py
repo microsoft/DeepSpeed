@@ -17,6 +17,7 @@ import copy
 import torch
 import contextlib
 import torch.distributed as dist
+import mmap
 
 from torch import _C
 from torch.cuda import _lazy_call, device as device_ctx_manager
@@ -405,7 +406,7 @@ class CheckpointFunction(torch.autograd.Function):
                     contiguous_data_buffers[i][data_offsets[i]].data[range(
                         0,
                         contiguous_data_buffers[i][data_offsets[i]].data.shape[0],
-                        int(4096 / contiguous_data_buffers[i][
+                        int(mmap.PAGESIZE / contiguous_data_buffers[i][
                             data_offsets[i]].data.element_size()))] = 0
                     contiguous_partition = contiguous_data_buffers[i][
                         data_offsets[i]].data.copy_(partition.data)
