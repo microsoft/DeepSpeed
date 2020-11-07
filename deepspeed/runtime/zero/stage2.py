@@ -155,14 +155,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.overlap_comm = overlap_comm
 
-        if self.overlap_comm:
-            self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
-
         self.cpu_offload = cpu_offload
 
         self.deepspeed_adam_offload = cpu_offload
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
+
+        if self.overlap_comm:
+            self.gpu_sum = torch.zeros(1, dtype=torch.float, device=self.device)
 
         self.dp_process_group = dp_process_group
 
@@ -1540,7 +1540,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if partition_gradients:
             if self.overlap_comm and self.cpu_offload:
                 self.local_overflow = self._has_inf_or_nan(self.gpu_sum)
-                self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
+                self.gpu_sum = torch.zeros(1, dtype=torch.float, device=self.device)
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial(
             )
             overflow_gpu = torch.cuda.ByteTensor([overflow])
