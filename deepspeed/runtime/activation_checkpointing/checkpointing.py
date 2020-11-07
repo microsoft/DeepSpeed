@@ -403,11 +403,19 @@ class CheckpointFunction(torch.autograd.Function):
                         contiguous_data_buffers[i] = tensor_list
                         data_offsets[i] = 0
 
+                    # Because the 'new_empty' returns uninitialized pages,
+                    # the pages need to be populated during the cudaMemcpy time
+                    # which increases the data copy time. To avoid this, we
+                    # pre-populate these pages by simply writing 0 ahead of
+                    # the actual cudaMemcpy operation time. Due to the
+                    # previously launched GPU kernels, there is a small
+                    # window of time here for CPUs to populate pages asynchronously.
                     contiguous_data_buffers[i][data_offsets[i]].data[range(
                         0,
                         contiguous_data_buffers[i][data_offsets[i]].data.shape[0],
                         int(mmap.PAGESIZE / contiguous_data_buffers[i][
                             data_offsets[i]].data.element_size()))] = 0
+
                     contiguous_partition = contiguous_data_buffers[i][
                         data_offsets[i]].data.copy_(partition.data)
                     data_offsets[i] = data_offsets[i] + 1
