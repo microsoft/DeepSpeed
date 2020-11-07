@@ -782,7 +782,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if self.overlap_comm:
                 self.gpu_sum = self.gpu_sum + param.grad.data.float().sum()
             elif self._has_inf_or_nan(param.grad.data):
-                self.overflow = True
+                self.local_overflow = True
 
     def async_accumulate_grad_in_cpu(self, param):
         param_id = self.get_param_id(param)
@@ -1538,7 +1538,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
-            if self.overlap_comm:
+            if self.overlap_comm and self.cpu_offload:
                 self.local_overflow = self._has_inf_or_nan(self.gpu_sum)
                 self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
             overflow = self.local_overflow if self.cpu_offload else self.has_overflow_partitioned_grads_serial(
