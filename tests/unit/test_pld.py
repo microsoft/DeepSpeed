@@ -9,16 +9,12 @@ from simple_model import SimpleModel, PLD_SimpleModel, SimpleOptimizer, random_d
 @pytest.mark.parametrize('theta', [0, 0.1, 0.9, 1.0])
 def test_pld_schedule(tmpdir, theta):
     gamma = 0.001
-    pld_config = {
-        'enabled': True,
-        'theta': theta,
-        'gamma': gamma
-    }
+    pld_config = {'enabled': True, 'theta': theta, 'gamma': gamma}
 
     pld_scheduler = ProgressiveLayerDrop(pld_config)
     for i in range(10):
         pld_scheduler.update_state(i)
-        expected_theta = (1.-theta) * np.exp(-gamma * i) + theta
+        expected_theta = (1. - theta) * np.exp(-gamma * i) + theta
         actual_theta = pld_scheduler.get_theta()
         assert expected_theta == actual_theta
 
@@ -66,16 +62,15 @@ def test_pld_model(tmpdir, theta):
             model.backward(loss)
             model.step()
 
-            expected_theta = (1.-theta) * np.exp(-gamma * i) + theta
+            expected_theta = (1. - theta) * np.exp(-gamma * i) + theta
             actual_theta = model.get_pld_theta()
             assert expected_theta == actual_theta
 
-
     _test_pld_model(args=args,
-                        model=model,
-                        hidden_dim=hidden_dim,
-                        theta=theta,
-                        gamma=gamma)
+                    model=model,
+                    hidden_dim=hidden_dim,
+                    theta=theta,
+                    gamma=gamma)
 
 
 def test_non_pld_model(tmpdir):
@@ -116,11 +111,8 @@ def test_non_pld_model(tmpdir):
                                         hidden_dim=hidden_dim,
                                         device=model.device)
 
-
         for i, batch in enumerate(data_loader):
             with pytest.raises(TypeError):
                 loss = model(batch[0], batch[1])
 
-    _test_non_pld_model(args=args,
-                        model=model,
-                        hidden_dim=hidden_dim)
+    _test_non_pld_model(args=args, model=model, hidden_dim=hidden_dim)

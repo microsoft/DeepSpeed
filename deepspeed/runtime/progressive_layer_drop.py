@@ -10,12 +10,8 @@ class ProgressiveLayerDrop(object):
         self.current_theta = 1.0
         log_dist(f'Enabled progressive layer dropping (theta = {self.theta})', ranks=[0])
 
-
     def get_state(self):
-        kwargs = {
-            'progressive_layer_drop': True,
-            'pld_theta': self.get_theta()
-        }
+        kwargs = {'progressive_layer_drop': True, 'pld_theta': self.get_theta()}
         return kwargs
 
     def get_theta(self):
@@ -23,6 +19,6 @@ class ProgressiveLayerDrop(object):
 
     def update_state(self, global_step):
         def _prob(x, gamma, p):
-            return (1.-p) * np.exp(-gamma * x) + p
+            return (1. - p) * np.exp(-gamma * x) + p
 
         self.current_theta = _prob(global_step, self.gamma, self.theta)
