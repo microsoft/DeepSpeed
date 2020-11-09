@@ -18,9 +18,11 @@ already been modified to use DeepSpeed. The  `ds_train_bert_progressive_layer_dr
 bash ds_train_bert_progressive_layer_drop_bsz4k_seq128.sh
 ```
 
-Most of the flags in the above script should be familiar if you have stepped through the BERT pre-training [tutorial](/tutorials/bert-pretraining/). To use PLD, one needs to enable PLD in both the client script and in DeepSpeed. To enable PLD in the client script, one needs to add the following command line flag to enable progressive layer dropping on Transformer blocks.  
+Most of the flags in the above script should be familiar if you have stepped through the BERT pre-training [tutorial](/tutorials/bert-pretraining/). To enable training with PLD, one needs to enable PLD in both the client script and in the DeepSpeed engine. To enable PLD in the client script, one needs to add the following command line flag to enable progressive layer dropping on Transformer blocks.  
 
+```bash
 --progressive_layer_drop
+```
 
 To enable PLD in DeepSpeed, one needs to update the json configuration file with an appropriate PLD configuration dictionary like below:
 
