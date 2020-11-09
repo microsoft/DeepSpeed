@@ -3,7 +3,7 @@ title: "Accelerating Training of Transformer-Based Language Models with Progress
 
 ---
 
-In this tutorial, we are going to introduce the progressive layer dropping (PLD) in DeepSpeed and provide examples on how to use PLD. PLD allows to train Transformer networks such as BERT 24% faster under the same number of samples and 2.5 times faster to get similar accuracy on downstream tasks. Detailed description of PLD and the experimental results are available in our [technical report](XXX).
+In this tutorial, we are going to introduce the progressive layer dropping (PLD) in DeepSpeed and provide examples on how to use PLD. PLD allows to train Transformer networks such as BERT 24% faster under the same number of samples and 2.5 times faster to get similar accuracy on downstream tasks. Detailed description of PLD and the experimental results are available in our [technical report](git push --set-upstream origin staging-pld-v1).
 
 To illustrate how to use PLD in DeepSpeed, we show how to enable PLD to pre-train a BERT model and fine-tune the pre-trained model on the GLUE datasets.
 
@@ -146,8 +146,10 @@ bash run_glue_bert_base_finetune.sh MNLI 32 3e-5 5 "fine_tune_MNLI" deepspeed_ch
 
 The fine-tuning results can be found under the "logs" directory, and below are expected results for PLD on GLUE tasks. The "Lr" row indicates the learning rate we use for getting the corresponding accuracy result for each task.
 
-|         | RTE  | MRPC      | STS-B     | CoLA | SST-2 | QNLI | QQP       | MNLI-m/mm |
-| ------- | :--: | --------- | --------- | ---- | ----- | ---- | --------- | --------- |
-| Metrics | Acc. | F1/Acc.   | PCC/SCC   | Acc. | Acc.  | Acc. | F1/Acc.   | Acc.      |
-| PLD     | 69.3 | 86.6/84.3 | 90.0/89.6 | 55.8 | 91.6  | 90.7 | 89.6/91.2 | 84.1/83.8 |
-| Lr      | 7e-5 | 9e-5      | 7e-5      | 5e-5 | 7e-5  | 9e-5 | 2e-4      | 3e-5      |
+|                        | RTE  | MRPC      | STS-B     | CoLA | SST-2 | QNLI | QQP       | MNLI-m/mm | GLUE |
+| ---------------------- | :--: | --------- | --------- | ---- | ----- | ---- | --------- | --------- | ---- |
+| Metrics                | Acc. | F1/Acc.   | PCC/SCC   | Acc. | Acc.  | Acc. | F1/Acc.   | Acc.      |      |
+| Bert_{base} (original) | 66.4 | 88.9/84.8 | 87.1/89.2 | 52.1 | 93.5  | 90.5 | 71.2/89.2 | 84.6/83.4 | 80.7 |
+| Bert_{base} (Our impl) | 67.8 | 88.0/86.0 | 89.5/89.2 | 52.5 | 91.2  | 87.1 | 89.0/90.6 | 82.5/83.4 | 82.1 |
+| PLD                    | 69.3 | 86.6/84.3 | 90.0/89.6 | 55.8 | 91.6  | 90.7 | 89.6/91.2 | 84.1/83.8 | 82.9 |
+| Lr                     | 7e-5 | 9e-5      | 7e-5      | 5e-5 | 7e-5  | 9e-5 | 2e-4      | 3e-5      |      |
