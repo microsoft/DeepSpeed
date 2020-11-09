@@ -50,7 +50,8 @@ public:
                    float betta1 = 0.9,
                    float betta2 = 0.999,
                    float eps = 1e-8,
-                   float weight_decay = 0)
+                   float weight_decay = 0,
+                   bool adamw_mode = true)
         : _alpha(alpha),
           _betta1(betta1),
           _betta2(betta2),
@@ -58,7 +59,9 @@ public:
           _weight_decay(weight_decay),
           _betta1_t(1.0),
           _betta2_t(1.0),
-          _buf_index(false)
+          _step(0),
+          _buf_index(false),
+          _adamw_mode(adamw_mode)
     {
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
@@ -86,11 +89,18 @@ public:
                 float* _exp_avg_sq,
                 size_t _param_size,
                 __half* dev_params = nullptr);
-    inline void IncrementStep()
+    inline void IncrementStep(size_t step)
     {
-        _betta1_t *= _betta1;
-        _betta2_t *= _betta2;
+        if (_step < step) {
+            _step++;
+            if (_step != step) {
+                throw std::runtime_error("Optimizer lost track of step count!\n");
+            }
+            _betta1_t *= _betta1;
+            _betta2_t *= _betta2;
+        }
     }
+    inline void update_lr(float lr) { _alpha = lr; }
 
 private:
 #if defined(__AVX512__) or defined(__AVX256__)
@@ -112,7 +122,9 @@ private:
 
     float _betta1_t;
     float _betta2_t;
+    size_t _step;
 
     float* _doubled_buffer[2];
     bool _buf_index;
+    bool _adamw_mode;
 };
