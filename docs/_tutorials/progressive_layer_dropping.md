@@ -18,13 +18,30 @@ already been modified to use DeepSpeed. The  `ds_train_bert_progressive_layer_dr
 bash ds_train_bert_progressive_layer_drop_bsz4k_seq128.sh
 ```
 
-Most of the flags in the above script should be familiar if you have stepped through the BERT pre-training [tutorial](/tutorials/bert-pretraining/). To enable PLD, one needs to add the following flags.  The first flag enables progressive layer dropping on Transformer blocks. The second flag determines the progressive drop schedule. We recommend 0.5, a value that worked well in our experiments. 
+Most of the flags in the above script should be familiar if you have stepped through the BERT pre-training [tutorial](/tutorials/bert-pretraining/). To enable training with PLD, one needs to enable PLD in both the client script and in the DeepSpeed engine. To enable PLD in the client script, one needs to add the following command line flag to enable progressive layer dropping on Transformer blocks.  
 
-    --progressive_layer_drop --layerdrop_theta 0.5
+```bash
+--progressive_layer_drop
+```
 
-Setting these flags should print a message as below:
+To enable PLD in DeepSpeed, one needs to update the json configuration file with an appropriate PLD configuration dictionary like below:
 
-    Enabled progressive layer dropping (theta = 0.5). 
+```json
+{
+  ...
+  "progressive_layer_drop": {
+    "enabled": true,
+    "theta": 0.5,
+    "gamma": 0.001
+  }
+}
+```
+
+we recommend a PLD theta value of 0.5 and gamma of 0.001 because these have worked well in our experiments. 
+
+With these configuration changes, the DeepSpeed engine should print a runtime message as below:
+
+    [INFO] [logging.py:60:log_dist] [Rank 0] Enabled progressive layer dropping (theta = 0.5)
 
 The `deepspeed_bsz4k_progressive_layer_drop_config_seq128.json` file allows users to specify DeepSpeed options in terms of batch size, micro batch size, optimizer, learning rate, sequence length, and other parameters. Below is the DeepSpeed configuration file we use for running BERT and PLD.
 
@@ -50,6 +67,12 @@ The `deepspeed_bsz4k_progressive_layer_drop_config_seq128.json` file allows user
   "fp16": {
     "enabled": true,
     "loss_scale": 0
+  },
+
+  "progressive_layer_drop": {
+    "enabled": true,
+    "theta": 0.5,
+    "gamma": 0.001
   }
 }
 ```
