@@ -79,7 +79,7 @@
 
      *Read more*: [GPT tutorial](/tutorials/megatron/)
 
-   
+
 
    ## Memory efficiency
 
