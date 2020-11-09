@@ -37,7 +37,7 @@ To enable PLD in DeepSpeed, one needs to update the json configuration file with
 }
 ```
 
-we recommend a PLD theta value of 0.5 and gamma of 0.001 because these have worked well in our experiments. 
+we recommend a PLD theta value of 0.5 and gamma of 0.001 because these have worked well in our experiments.
 
 With these configuration changes, the DeepSpeed engine should print a runtime message as below:
 
@@ -99,7 +99,7 @@ Table 1. Pre-training hyperparameters
 
 ## Fine-tuning with DeepSpeed on GLUE Tasks
 
-We use GLUE for fine-tuning tasks. GLUE (General Language Understanding Evaluation benchmark) (https://gluebenchmark.com/) is a  collection of sentence or sentence-pair natural language understanding tasks including question answering, sentiment analysis, and textual entailment.  It is designed to favor sample-efficient learning and knowledge-transfer across a range of different linguistic tasks in different domains. 
+We use GLUE for fine-tuning tasks. GLUE (General Language Understanding Evaluation benchmark) (https://gluebenchmark.com/) is a  collection of sentence or sentence-pair natural language understanding tasks including question answering, sentiment analysis, and textual entailment.  It is designed to favor sample-efficient learning and knowledge-transfer across a range of different linguistic tasks in different domains.
 
 One can download all GLUE data using the provided helper [script](https://gist.github.com/W4ngatang/60c2bdb54d156a41194446737ce03e2e). Once the data has been downloaded, one can set up the data and move the data to "/data/GlueData", which is the default location for hosting GLUE data. We then can use the PLD pre-trained BERT model checkpoint to run the fine-tuning.
 
@@ -128,7 +128,7 @@ Next, one can load a DeepSpeed style checkpoint with the following command, whic
 model.load_state_dict(checkpoint_state_dict['module'], strict=False)
 ```
 
-Finally, the `run_glue_classifier_bert_base.sh` script invokes pre-training and setups several hyperparameters relevant to fine-tuning. 
+Finally, the `run_glue_classifier_bert_base.sh` script invokes pre-training and setups several hyperparameters relevant to fine-tuning.
 
 ```shell
 bash run_glue_bert_base_finetune.sh [task] [batch size] [learning rate] [number of epochs] [job name] [checkpoint path]
