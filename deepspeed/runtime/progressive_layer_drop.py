@@ -5,6 +5,8 @@ from deepspeed.utils import log_dist
 
 class ProgressiveLayerDrop(object):
     def __init__(self, pld_params):
+        super().__init__()
+
         self.theta = pld_params[PLD_THETA]
         self.gamma = pld_params[PLD_GAMMA]
         self.current_theta = 1.0
