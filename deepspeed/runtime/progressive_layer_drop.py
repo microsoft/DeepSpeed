@@ -1,14 +1,21 @@
 import numpy as np
-from deepspeed.runtime.constants import PLD_THETA, PLD_GAMMA
 from deepspeed.utils import log_dist
 
 
 class ProgressiveLayerDrop(object):
-    def __init__(self, pld_params):
+    r""" Progressive Layer Dropping (PLD) for model training.
+        This implements the PLD technique for compressed model training
+        from this paper: https://arxiv.org/pdf/2010.13369.pdf
+    Args:
+        theta (float): a hyper-parameter that controls the trade-off between training time and robustness.
+        The lower the theta value, the faster the training speed. Default value: 0.5.
+        gamma (float): a hyper-parameter that controls how fast the drop ratio increases. Default value: 0.001.
+    """
+    def __init__(self, theta=0.5, gamma=0.001):
         super().__init__()
 
-        self.theta = pld_params[PLD_THETA]
-        self.gamma = pld_params[PLD_GAMMA]
+        self.theta = theta
+        self.gamma = gamma
         self.current_theta = 1.0
         log_dist(f'Enabled progressive layer dropping (theta = {self.theta})', ranks=[0])
 

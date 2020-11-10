@@ -9,9 +9,8 @@ from simple_model import SimpleModel, PLD_SimpleModel, SimpleOptimizer, random_d
 @pytest.mark.parametrize('theta', [0, 0.1, 0.9, 1.0])
 def test_pld_schedule(tmpdir, theta):
     gamma = 0.001
-    pld_config = {'enabled': True, 'theta': theta, 'gamma': gamma}
 
-    pld_scheduler = ProgressiveLayerDrop(pld_config)
+    pld_scheduler = ProgressiveLayerDrop(theta, gamma)
     for i in range(10):
         pld_scheduler.update_state(i)
         expected_theta = (1. - theta) * np.exp(-gamma * i) + theta

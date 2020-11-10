@@ -26,7 +26,7 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT
+    TORCH_DISTRIBUTED_DEFAULT_PORT, PLD_THETA, PLD_GAMMA
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
@@ -195,7 +195,7 @@ class DeepSpeedEngine(Module):
         self._configure_checkpointing(dist_init_required)
 
         if self.pld_enabled():
-            self.progressive_layer_drop = ProgressiveLayerDrop(self.pld_params())
+            self.progressive_layer_drop = self._configure_progressive_layer_drop()
 
         if self.global_rank == 0:
             self._config.print('DeepSpeedEngine configuration')
@@ -246,6 +246,12 @@ class DeepSpeedEngine(Module):
 
     def pld_params(self):
         return self._config.pld_params
+
+    def pld_theta(self):
+        return self.pld_params()[PLD_THETA]
+
+    def pld_gamma(self):
+        return self.pld_params()[PLD_GAMMA]
 
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
@@ -676,6 +682,11 @@ class DeepSpeedEngine(Module):
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
         return optimizer
+
+    def _configure_progressive_layer_drop(self):
+        pld = ProgressiveLayerDrop(theta=self.pld_theta(), gamma=self.pld_gamma())
+
+        return pld
 
     def deepspeed_io(self,
                      dataset,
