@@ -25,7 +25,13 @@ def op_report():
     max_dots2 = 11
     h = ["op name", "installed", "compatible"]
     print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
-    print("DeepSpeed cpp/cuda extension op report")
+    print("DeepSpeed C++/CUDA extension op report")
+    print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
+
+    print("NOTE: Ops not installed will be just-in-time (JIT) compiled at\n"
+          "      runtime if needed. Op compatibility means that your system\n"
+          "      meet the required dependencies to JIT install the op.")
+
     print("-" * (max_dots + max_dots2 + len(h[0]) + len(h[1])))
     print("JIT compiled ops requires ninja")
     ninja_status = OKAY if ninja_installed() else FAIL
@@ -81,7 +87,7 @@ def debug_report():
         ("deepspeed info",
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
-        ("deepspeed compiled w. versions",
+        ("deepspeed wheel compiled w.",
          f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}"),
     ]
     print("DeepSpeed general environment info:")
@@ -90,8 +96,8 @@ def debug_report():
 
 
 def main():
-    debug_report()
     op_report()
+    debug_report()
 
 
 if __name__ == "__main__":
