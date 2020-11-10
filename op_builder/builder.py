@@ -160,7 +160,9 @@ class OpBuilder(ABC):
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
             )
-        if not self.command_exists('ninja'):
+        try:
+            import ninja
+        except ImportError:
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
             )

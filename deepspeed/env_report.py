@@ -52,8 +52,11 @@ def op_report():
 
 
 def ninja_installed():
-    result = subprocess.Popen('type ninja', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
+    try:
+        import ninja
+    except ImportError:
+        return False
+    return True
 
 
 def nvcc_version():
