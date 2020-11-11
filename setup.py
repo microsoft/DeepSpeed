@@ -103,11 +103,15 @@ print(f'Install Ops={install_ops}')
 # Write out version/git info
 git_hash_cmd = "git rev-parse --short HEAD"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
-if command_exists('git'):
-    result = subprocess.check_output(git_hash_cmd, shell=True)
-    git_hash = result.decode('utf-8').strip()
-    result = subprocess.check_output(git_branch_cmd, shell=True)
-    git_branch = result.decode('utf-8').strip()
+if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
+    try:
+        result = subprocess.check_output(git_hash_cmd, shell=True)
+        git_hash = result.decode('utf-8').strip()
+        result = subprocess.check_output(git_branch_cmd, shell=True)
+        git_branch = result.decode('utf-8').strip()
+    except subprocess.CalledProcessError:
+        git_hash = "unknown"
+        git_branch = "unknown"
 else:
     git_hash = "unknown"
     git_branch = "unknown"
@@ -117,7 +121,22 @@ version_str = open('version.txt', 'r').read().strip()
 
 # Build specifiers like .devX can be added at install time. Otherwise, add the git hash.
 # example: DS_BUILD_STR=".dev20201022" python setup.py sdist bdist_wheel
-version_str += os.environ.get('DS_BUILD_STRING', f'+{git_hash}')
+#version_str += os.environ.get('DS_BUILD_STRING', f'+{git_hash}')
+
+# Building wheel for distribution, update version file
+
+if 'DS_BUILD_STRING' in os.environ:
+    # Build string env specified, probably building for distribution
+    with open('build.txt', 'w') as fd:
+        fd.write(os.environ.get('DS_BUILD_STRING'))
+    version_str += os.environ.get('DS_BUILD_STRING')
+elif os.path.isfile('build.txt'):
+    # build.txt exists, probably installing from distribution
+    with open('build.txt', 'r') as fd:
+        version_str += fd.read().strip()
+else:
+    # None of the above, probably installing from source
+    version_str += f'+{git_hash}'
 
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
 cuda_version = ".".join(torch.version.cuda.split('.')[:2])
