@@ -197,7 +197,7 @@ class OpBuilder(ABC):
 
 
 class CUDAOpBuilder(OpBuilder):
-    def compute_capability_args(self, cross_compile_archs=['52', '60', '61', '70']):
+    def compute_capability_args(self, cross_compile_archs=['60', '61', '70']):
         args = []
         if self.jit_mode:
             # Compile for underlying architecture since we know it at runtime
