@@ -24,13 +24,14 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT
+    TORCH_DISTRIBUTED_DEFAULT_PORT, PLD_THETA, PLD_GAMMA
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
 from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
@@ -38,7 +39,6 @@ from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
-SUMMARY_WRITER_DIR_NAME = "JobId"
 
 try:
     from apex import amp
@@ -120,6 +120,7 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
+        self.progressive_layer_drop = None
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -185,10 +186,13 @@ class DeepSpeedEngine(Module):
         self.save_zero_checkpoint = False
         self._configure_checkpointing(dist_init_required)
 
+        if self.pld_enabled():
+            self.progressive_layer_drop = self._configure_progressive_layer_drop()
+
         if self.global_rank == 0:
-            self._config.print('DeepSpeedLight configuration')
+            self._config.print('DeepSpeedEngine configuration')
             if self.dump_state():
-                print_configuration(self, 'DeepSpeedLight')
+                print_configuration(self, 'DeepSpeedEngine')
 
         # Load pre-installed or JIT compile (un)flatten ops
         util_ops = UtilsBuilder().load()
@@ -234,6 +238,18 @@ class DeepSpeedEngine(Module):
                 assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
                     world_size, dist.get_world_size())
 
+    def pld_enabled(self):
+        return self._config.pld_enabled
+
+    def pld_params(self):
+        return self._config.pld_params
+
+    def pld_theta(self):
+        return self.pld_params()[PLD_THETA]
+
+    def pld_gamma(self):
+        return self.pld_params()[PLD_GAMMA]
+
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
 
@@ -252,9 +268,17 @@ class DeepSpeedEngine(Module):
         else:
             if self.tensorboard_job_name():
                 name = self.tensorboard_job_name()
+
+            # Infrastructure-specific job-id
             if 'DLWS_JOB_ID' in os.environ:
-                SUMMARY_WRITER_DIR_NAME = os.path.join(os.environ['DLWS_JOB_ID'], "logs")
-            log_dir = os.path.join(base, SUMMARY_WRITER_DIR_NAME, name)
+                infra_job_id = os.environ['DLWS_JOB_ID']
+            elif 'DLTS_JOB_ID' in os.environ:
+                infra_job_id = os.environ['DLTS_JOB_ID']
+            else:
+                infra_job_id = 'unknown-job-id'
+
+            summary_writer_dir_name = os.path.join(infra_job_id, "logs")
+            log_dir = os.path.join(base, summary_writer_dir_name, name)
 
         os.makedirs(log_dir, exist_ok=True)
 
@@ -670,6 +694,11 @@ class DeepSpeedEngine(Module):
 
         return optimizer
 
+    def _configure_progressive_layer_drop(self):
+        pld = ProgressiveLayerDrop(theta=self.pld_theta(), gamma=self.pld_gamma())
+
+        return pld
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -754,6 +783,9 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+
+        if self.module.training and self.progressive_layer_drop:
+            kwargs.update(self.progressive_layer_drop.get_state())
 
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
@@ -935,6 +967,9 @@ class DeepSpeedEngine(Module):
 
         # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():
+            if self.progressive_layer_drop:
+                self.progressive_layer_drop.update_state(self.global_steps)
+
             self._take_model_step()
 
         self.tput_timer.stop(report_progress)
@@ -1027,6 +1062,12 @@ class DeepSpeedEngine(Module):
             return self._get_optimizer_param('momentum')
         else:
             return self._get_optimizer_param('betas')
+
+    def get_pld_theta(self):
+        if self.progressive_layer_drop:
+            return self.progressive_layer_drop.get_theta()
+        else:
+            return None
 
     def _report_progress(self, step):
         lr = self.get_lr()
