@@ -50,7 +50,7 @@ jobs:
   - script: |
       source activate $(conda_env)
       pip install --progress-bar=off torch==$(pytorch.version) torchvision==$(torchvision.version)
-      DS_BUILD_OPS=1 pip install .[dev]
+      pip install .[dev]
       ds_report
     displayName: 'Install DeepSpeed'
 
