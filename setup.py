@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 try:
     import torch
     from torch.utils.cpp_extension import BuildExtension
-except ImportError, err:
+except ImportError:
     raise ImportError('Unable to import torch, please visit https://pytorch.org/ '
                       'to see how to properly install torch on your system.')
 
