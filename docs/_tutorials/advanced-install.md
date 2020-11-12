@@ -11,11 +11,15 @@ just-in-time (JIT) using [torch's JIT C++ extension loader that relies on
 ninja](https://pytorch.org/docs/stable/cpp_extension.html) to build and
 dynamically link them at runtime.
 
+**Note:** [PyTorch](https://pytorch.org/) must be installed _before_ installing
+DeepSpeed.
+{: .notice--info}
+
 ```bash
 pip install deepspeed
 ```
 
-After installation you can validate your install and see which ops your machine
+After installation, you can validate your install and see which ops your machine
 is compatible with via the DeepSpeed environment report with `ds_report` or
 `python -m deepspeed.env_report`. We've found this report useful when debugging
 DeepSpeed install or compatibility issues.
@@ -26,7 +30,7 @@ ds_report
 
 ## Install DeepSpeed from source
 
-After cloning the DeepSpeed repo from github you can install DeepSpeed in
+After cloning the DeepSpeed repo from GitHub, you can install DeepSpeed in
 JIT mode via pip (see below). This install should complete
 quickly since it is not compiling any C++/CUDA source files.
 
