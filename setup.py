@@ -9,7 +9,6 @@ The wheel will be located at: dist/*.whl
 """
 
 import os
-import torch
 import shutil
 import subprocess
 import warnings
