@@ -188,6 +188,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         self.default_device = self.optimizer.param_groups[0]['params'][0].device
 
+        self.local_sub_partitions = []
+
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
