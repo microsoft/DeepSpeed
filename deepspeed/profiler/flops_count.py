@@ -1,4 +1,4 @@
-from numpy.core.fromnumeric import prod
+from numpy.core.fromnumeric import prod, sort
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -567,9 +567,68 @@ def print_model_with_flops(model,
     model.apply(del_extra_repr)
 
 
+def print_aggregated_info(model, depth=-1, top_num=3, ost=sys.stdout):
+    info = {}
+    if not hasattr(model, '__flops__'):
+        print(
+            "no __flops__ attribute in the model, call this function after start_flops_count and before stop_flops_count"
+        )
+        return
+
+    def walk_module(module, curr_depth, info):
+        if curr_depth not in info:
+            info[curr_depth] = {}
+        if module.__class__.__name__ not in info[curr_depth]:
+            info[curr_depth][module.__class__.__name__] = [0,
+                                                           0,
+                                                           0]  # flops, params, time
+        info[curr_depth][module.__class__.__name__][0] += module.__flops__
+        info[curr_depth][module.__class__.__name__][1] += module.__params__
+        info[curr_depth][
+            module.__class__.__name__][2] += module.__end_time__ - module.__start_time__
+        has_children = len(module._modules.items()) != 0
+        if has_children:
+            for child in module.children():
+                walk_module(child, curr_depth + 1, info)
+
+    walk_module(model, 0, info)
+
+    max_depth = len(info)
+    if depth == -1:
+        depth = max_depth - 1
+
+    num_items = min(top_num, len(info[depth]))
+
+    sort_flops = {
+        k: flops_to_string(v[0])
+        for k,
+        v in sorted(info[depth].items(),
+                    key=lambda item: item[1][0],
+                    reverse=True)[:num_items]
+    }
+    sort_params = {
+        k: params_to_string(v[1])
+        for k,
+        v in sorted(info[depth].items(),
+                    key=lambda item: item[1][1],
+                    reverse=True)[:num_items]
+    }
+    sort_time = {
+        k: duration_to_string(v[2])
+        for k,
+        v in sorted(info[depth].items(),
+                    key=lambda item: item[1][2],
+                    reverse=True)[:num_items]
+    }
+    print(f"Top {num_items} modules in flops at depth {depth} are {sort_flops}")
+    print(f"Top {num_items} modules in params at depth {depth} are {sort_params}")
+    print(f"Top {num_items} modules in time at depth {depth} are {sort_time}")
+
+
 def get_model_complexity_info(model,
                               input_res,
-                              print_per_layer_stat=True,
+                              print_per_layer_info=True,
+                              print_module_info=True,
                               as_strings=True,
                               input_constructor=None,
                               ost=sys.stdout,
@@ -614,10 +673,11 @@ def get_model_complexity_info(model,
     flops_count = model.compute_total_flops_count()
     duration = model.compute_total_duration()
     params_count = model.__params__
-    if print_per_layer_stat:
+    if print_per_layer_info:
         print_model_with_flops(model, flops_count, params_count, duration, ost=ost)
+    if print_module_info:
+        print_aggregated_info(model, depth=-1, top_num=3, ost=ost)
     model.stop_flops_count()
-
     if as_strings:
         return flops_to_string(flops_count), params_to_string(params_count)
 
@@ -669,7 +729,8 @@ if __name__ == "__main__":
     macs, params = get_model_complexity_info(mod,
                                              tuple(input.shape)[1:],
                                              as_strings=True,
-                                             print_per_layer_stat=True,
+                                             print_per_layer_info=True,
+                                             print_module_info=True,
                                              verbose=True)
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
