@@ -73,7 +73,8 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                  dtype=tensor_list[0].dtype)
         aligned_tensor_list = tensor_list + [pad_tensor]
 
-    return _flatten_dense_tensors(aligned_tensor_list)
+    flat_tensors = _flatten_dense_tensors(aligned_tensor_list)
+    return flat_tensors
 
 
 def _single_range_check(current_index, start_index, end_index, tensor_size):
@@ -192,12 +193,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
-            self.fp16_groups_flat.append(
-                flatten_dense_tensors_sub_partition_aligned(
-                    tensor_list=self.fp16_groups[i],
-                    dp=dist.get_world_size(group=self.dp_process_group),
-                    max_elements_per_comm=self.max_elements_per_comm,
-                    pg=self.dp_process_group))
+            flat_aligned_params = flatten_dense_tensors_sub_partition_aligned(
+                tensor_list=self.fp16_groups[i],
+                dp=dist.get_world_size(group=self.dp_process_group),
+                max_elements_per_comm=self.max_elements_per_comm,
+                pg=self.dp_process_group)
+            self.fp16_groups_flat.append(flat_aligned_params)
 
             # TODO: I don't think this does anything?
             # set model fp16 weight to slices of flattened buffer
@@ -533,6 +534,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         world_size = dist.get_world_size(group=self.dp_process_group)
         local_rank = dist.get_rank(group=self.dp_process_group)
 
+        self.local_sub_partitions = []
         for i, group in enumerate(self.fp16_groups):
             partition_param_map = {}
             param_partition_map = {}
@@ -575,6 +577,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             if not postscale_gradients:
                 raise NotImplementedError("pre-scale_gradients is not implemented")
 
+            local_comm_partitions = []
             all_comm_partitions = []
             for comm_idx in range(num_comm_intervals):
                 single_comm_all_partitions = []
@@ -585,26 +588,63 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                                     group=self.dp_process_group)
 
                 if gradient_average:
-                    for partition in single_comm_all_partitions:
-                        partition.mul_(gradient_predivide_factor / world_size)
+                    single_comm_all_partitions[local_rank].mul_(
+                        gradient_predivide_factor / world_size)
+                    # for partition in single_comm_all_partitions:
+                    #     partition.mul_(gradient_predivide_factor / world_size)
 
                 all_comm_partitions.append(single_comm_all_partitions)
+                # TODO: can we update fp16_groups_flat here to copy the the updated grads directly into the flat
+                #       comm_idx grads          rank0     rank1
+                # single_comm_all_partitions = [[a,b,c], [d,e,f]]
+                #
+                # known: rank, comm-idx, partition-size
+                # e.g.,  rank=2 comm-idx=1, partition-size 10
 
-            # stitch together all rank sub partitions for each comm idx
-            flat_comm_grads = []
-            for comm_idx, rank_partitions in enumerate(all_comm_partitions):
-                flat_comm_grads.append(torch.cat(rank_partitions))
+                #TODO: megatron example never escapes overflow for some reason, what's going on there? did we break overflow checks?
+                #TODO: check with small model, easier repro of never escaping overflow
 
-            flat_all_grads = torch.cat(flat_comm_grads)
+                # append comm-idx partition
+                local_comm_partitions.append(single_comm_all_partitions[local_rank].to(
+                    torch.float32))
 
-            # copy back reduced gradients but only those needed for this local rank
-            for param, updated_grad in zip(self.fp16_groups[i], _unflatten_dense_tensors(flat_all_grads, self.fp16_groups[i])):
-                if param in my_params:
-                    param.grad.copy_(updated_grad)
+            # append group partitions
+            self.local_sub_partitions.append(local_comm_partitions)
+
+        # print(f'rank={dist.get_rank()}, local_sub_partitions={self.local_sub_partitions}')
+
+        # Copy back reduced gradients for this partition
+        #partition_offset = (comm_idx * world_size * self.sub_partition_sizes[i]) + (local_rank * self.sub_partition_sizes[i])
+        #print(f'[{dist.get_rank()}] partition offset={partition_offset}, partition_size={self.sub_partition_sizes[i]}')
+        #self.fp16_groups_flat[i].narrow(0, partition_offset, self.sub_partition_sizes[i]).copy_(single_comm_all_partitions[local_rank])
+
+        # print(f'[{dist.get_rank()}] comm_idx={comm_idx}, single_comm_all_partitions={single_comm_all_partitions[local_rank]}')
+
+        # for param, updated_grad in zip(self.fp16_groups[i], _unflatten_dense_tensors(self.fp16_groups_flat[i], self.fp16_groups[i])):
+        #     if param in my_params:
+        #         param.grad.copy_(updated_grad)
+
+        # print(f'[{dist.get_rank()}] param_offsets={param_offsets}')
+        # print(f'[{dist.get_rank()}] self.fp16_groups_flat[{i}]={self.fp16_groups_flat[i]}')
+
+        # # stitch together all rank sub partitions for each comm idx
+        # flat_comm_grads = []
+        # for comm_idx, rank_partitions in enumerate(all_comm_partitions):
+        #     flat_comm_grads.append(torch.cat(rank_partitions))
+
+        # flat_all_grads = torch.cat(flat_comm_grads)
+
+        # # copy back reduced gradients but only those needed for this local rank
+        # for param, updated_grad in zip(self.fp16_groups[i], _unflatten_dense_tensors(flat_all_grads, self.fp16_groups[i])):
+        #     if param in my_params:
+        #         param.grad.copy_(updated_grad)
 
     def step(self, closure=None):
         # First compute norm for all group so we know if there is overflow
-        self.overflow = self.overflow_checker.check()
+        # print(f'[STEP] rank={dist.get_rank()}, local_sub_partitions={self.local_sub_partitions}')
+        self.overflow = self.overflow_checker.check(
+            param_groups=self.local_sub_partitions,
+            raw_grad_tensors=True)
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
@@ -641,14 +681,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             #TODO RS: can we safely use dtype of the first sub-partition? i think so
             # create flat gradient partitions for parameters updated by this process
-            local_grad_sub_partitions = self.get_flat_sub_partitions(
-                comm_tensor_list=self.params_in_rank_sub_partitions[i][partition_id],
-                comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
-                [partition_id],
-                sub_partition_size=self.sub_partition_sizes[i],
-                dtype=self.local_sub_partitions_of_fp32_groups[i][0].dtype,
-                num_comm_intervals=self.num_comm_intervals_per_group[i],
-                default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
+
+            local_grad_sub_partitions = self.local_sub_partitions[i]
+            assert len(local_grad_sub_partitions) == len(self.local_sub_partitions_of_fp32_groups[i]), f"{len(local_grad_sub_partitions)} !== {len(self.local_sub_partitions_of_fp32_groups[i])}"
+
+            # local_grad_sub_partitions = self.get_flat_sub_partitions(
+            #     comm_tensor_list=self.params_in_rank_sub_partitions[i][partition_id],
+            #     comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
+            #     [partition_id],
+            #     sub_partition_size=self.sub_partition_sizes[i],
+            #     dtype=self.local_sub_partitions_of_fp32_groups[i][0].dtype,
+            #     num_comm_intervals=self.num_comm_intervals_per_group[i],
+            #     default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
 
             #RS: update all our local params with sub-partition grads
             #logger. info("self.local_sub_partitions_of_fp32_groups[i]={}, local_grad_sub_partitions={}".format(len(self.local_sub_partitions_of_fp32_groups[i]), len(local_grad_sub_partitions)))
@@ -662,6 +706,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 self.params_in_rank_sub_partitions[i][partition_id])
 
             local_sub_partitions_grad_groups.append(local_grad_sub_partitions)
+            # print(f'[rank[{dist.get_rank()}] group={i}, local_grad_sub_partitions={local_grad_sub_partitions}')
 
         #RS: update unscale/clip with sub partitions
         self.unscale_and_clip_grads(local_sub_partitions_grad_groups, norm_groups)
