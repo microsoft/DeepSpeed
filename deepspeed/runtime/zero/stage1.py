@@ -190,6 +190,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         self.group_paddings = []
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
+        self.default_device = self.optimizer.param_groups[0]['params'][0].device
+
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
@@ -419,7 +421,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     def get_flat_sub_partitions(comm_tensor_list,
                                 comm_param_offsets,
                                 sub_partition_size,
-                                dtype,
+                                dtype=None,
                                 num_comm_intervals=None,
                                 default_device=None,
                                 return_partition_params=False):
@@ -434,6 +436,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             if dtype is None:
                 dtype = tensor_list[0].dtype
+
+            if default_device is None:
+                default_device = tensor_list[0].device
 
             for i, tensor in enumerate(tensor_list):
                 if tensor.grad is None:
@@ -540,108 +545,54 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         self.local_sub_partitions = []
         for i, group in enumerate(self.fp16_groups):
-            partition_param_map = {}
-            param_partition_map = {}
-            my_params = set()
-
-            # [rank] -> [comm] -> partition
             num_comm_intervals = self.num_comm_intervals_per_group[i]
             all_sub_partitions = []
             for rank in range(world_size):
                 # gsp is list of partitions indexed by comm_idx
-                #FIXME: currently hardcoding fp16, should infer dtype
-                grad_sub_partitions, partition_params, param_offsets = self.get_flat_sub_partitions(
+                grad_sub_partitions = self.get_flat_sub_partitions(
                     comm_tensor_list=self.params_in_rank_sub_partitions[i][rank],
-                    comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i][rank],
+                    comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
+                    [rank],
                     sub_partition_size=self.sub_partition_sizes[i],
-                    dtype=torch.half, #self.params_in_rank_sub_partitions[i][rank][0][0].dtype,
-                    num_comm_intervals=self.num_comm_intervals_per_group[i],
-                    default_device='cuda', #self.params_in_rank_sub_partitions[i][rank][0][0].device,
-                    return_partition_params=True)
+                    num_comm_intervals=self.num_comm_intervals_per_group[i])
                 all_sub_partitions.append(grad_sub_partitions)
-
-                # create map from partition -> params in that partition
-                for comm_idx, part in enumerate(grad_sub_partitions):
-                    partition_param_map[part] = (partition_params[comm_idx],
-                                                 param_offsets[comm_idx])
-
-                for comm_idx, params in enumerate(partition_params):
-                    for pidx, p in enumerate(params):
-                        # store the parameters we care about locally
-                        if rank == local_rank:
-                            my_params.add(p)
-                        # map from param -> partitions
-                        if p in param_partition_map:
-                            param_partition_map[p].append(grad_sub_partitions[comm_idx])
-                        else:
-                            param_partition_map[p] = [grad_sub_partitions[comm_idx]]
 
                 assert len(grad_sub_partitions) == num_comm_intervals
 
-            if not postscale_gradients:
-                raise NotImplementedError("pre-scale_gradients is not implemented")
-
             local_comm_partitions = []
-            all_comm_partitions = []
             for comm_idx in range(num_comm_intervals):
                 single_comm_all_partitions = []
                 for rank in range(world_size):
                     single_comm_all_partitions.append(all_sub_partitions[rank][comm_idx])
-                dist.reduce_scatter(output=single_comm_all_partitions[local_rank],
-                                    input_list=single_comm_all_partitions,
-                                    group=self.dp_process_group)
 
-                if gradient_average:
-                    single_comm_all_partitions[local_rank].mul_(
-                        gradient_predivide_factor / world_size)
-                    # for partition in single_comm_all_partitions:
-                    #     partition.mul_(gradient_predivide_factor / world_size)
+                if postscale_gradients:
+                    if gradient_predivide_factor != 1.0:
+                        for partition in single_comm_all_partitions:
+                            partition.mul_(1. / gradient_predivide_factor)
 
-                all_comm_partitions.append(single_comm_all_partitions)
-                # TODO: can we update fp16_groups_flat here to copy the the updated grads directly into the flat
-                #       comm_idx grads          rank0     rank1
-                # single_comm_all_partitions = [[a,b,c], [d,e,f]]
-                #
-                # known: rank, comm-idx, partition-size
-                # e.g.,  rank=2 comm-idx=1, partition-size 10
+                    dist.reduce_scatter(output=single_comm_all_partitions[local_rank],
+                                        input_list=single_comm_all_partitions,
+                                        group=self.dp_process_group)
 
-                #TODO: megatron example never escapes overflow for some reason, what's going on there? did we break overflow checks?
-                #TODO: check with small model, easier repro of never escaping overflow
+                    if gradient_average:
+                        # Only need to average our local grads in post scaling
+                        if gradient_predivide_factor != world_size:
+                            single_comm_all_partitions[local_rank].mul_(
+                                gradient_predivide_factor / world_size)
+                else:
+                    for partition in single_comm_all_partitions:
+                        partition.div_(world_size)
 
-                # append comm-idx partition
+                    dist.reduce_scatter(output=single_comm_all_partitions[local_rank],
+                                        input_list=single_comm_all_partitions,
+                                        group=self.dp_process_group)
+
+                # append comm-idx partition as fp32 for later consumption by step
                 local_comm_partitions.append(single_comm_all_partitions[local_rank].to(
                     torch.float32))
 
-            # append group partitions
+            # append to group partitions to be consumed by step
             self.local_sub_partitions.append(local_comm_partitions)
-
-        # print(f'rank={dist.get_rank()}, local_sub_partitions={self.local_sub_partitions}')
-
-        # Copy back reduced gradients for this partition
-        #partition_offset = (comm_idx * world_size * self.sub_partition_sizes[i]) + (local_rank * self.sub_partition_sizes[i])
-        #print(f'[{dist.get_rank()}] partition offset={partition_offset}, partition_size={self.sub_partition_sizes[i]}')
-        #self.fp16_groups_flat[i].narrow(0, partition_offset, self.sub_partition_sizes[i]).copy_(single_comm_all_partitions[local_rank])
-
-        # print(f'[{dist.get_rank()}] comm_idx={comm_idx}, single_comm_all_partitions={single_comm_all_partitions[local_rank]}')
-
-        # for param, updated_grad in zip(self.fp16_groups[i], _unflatten_dense_tensors(self.fp16_groups_flat[i], self.fp16_groups[i])):
-        #     if param in my_params:
-        #         param.grad.copy_(updated_grad)
-
-        # print(f'[{dist.get_rank()}] param_offsets={param_offsets}')
-        # print(f'[{dist.get_rank()}] self.fp16_groups_flat[{i}]={self.fp16_groups_flat[i]}')
-
-        # # stitch together all rank sub partitions for each comm idx
-        # flat_comm_grads = []
-        # for comm_idx, rank_partitions in enumerate(all_comm_partitions):
-        #     flat_comm_grads.append(torch.cat(rank_partitions))
-
-        # flat_all_grads = torch.cat(flat_comm_grads)
-
-        # # copy back reduced gradients but only those needed for this local rank
-        # for param, updated_grad in zip(self.fp16_groups[i], _unflatten_dense_tensors(flat_all_grads, self.fp16_groups[i])):
-        #     if param in my_params:
-        #         param.grad.copy_(updated_grad)
 
     def step(self, closure=None):
         # First compute norm for all group so we know if there is overflow
