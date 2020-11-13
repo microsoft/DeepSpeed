@@ -67,7 +67,7 @@ class CheckOverflow(object):
 
         return bool(overflow)
 
-    def check(self, param_groups=None):
+    def check(self, param_groups=None, raw_grad_tensors=False):
 
         #TODO: what's the equivalent here? do we need this?
         # for group in self.fp32_from_fp32_groups:
@@ -85,17 +85,20 @@ class CheckOverflow(object):
                 for param in group:
                     params.append(param)
 
-        return self.has_overflow(params)
+        return self.has_overflow(params, raw_grad_tensors)
 
     # `params` is a list / generator of torch.Variable
-    def has_overflow_serial(self, params):
+    def has_overflow_serial(self, params, raw_grad_tensors=False):
         for i, p in enumerate(params):
-            if p.grad is not None and self._has_inf_or_nan(p.grad.data, i):
+            grad = p if raw_grad_tensors else p.grad
+            if grad is not None and self._has_inf_or_nan(grad.data, i):
                 return True
         return False
 
-    def has_overflow(self, params):
-        overflow = self.has_overflow_serial(params)
+    def has_overflow(self, params, raw_grad_tensors=False):
+        # print(f'rank=[torch.distributed.get_rank()] CheckOverflow.check.has_overflow params={params}')
+        overflow = self.has_overflow_serial(params, raw_grad_tensors)
+        # print(f'rank=[torch.distributed.get_rank()] overflow={overflow}')
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = torch.cuda.ByteTensor([overflow])
