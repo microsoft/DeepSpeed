@@ -79,7 +79,7 @@ class CheckOverflow(object):
                 for param in group:
                     params.append(param)
 
-        return self.has_overflow(params, raw_grad_tensors)
+        return self.has_overflow(params)
 
     # `params` is a list / generator of torch.Variable
     def has_overflow_serial(self, params):
