@@ -590,18 +590,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                                         group=self.dp_process_group)
 
                 # append comm-idx partition as fp32 for later consumption by step
-                local_comm_partitions.append(single_comm_all_partitions[local_rank].to(
-                    torch.float32))
+                # local_comm_partitions.append(single_comm_all_partitions[local_rank].to(torch.float32))
 
             # append to group partitions to be consumed by step
-            self.local_sub_partitions.append(local_comm_partitions)
+            # self.local_sub_partitions.append(local_comm_partitions)
 
     def step(self, closure=None):
         # First compute norm for all group so we know if there is overflow
         # print(f'[STEP] rank={dist.get_rank()}, local_sub_partitions={self.local_sub_partitions}')
-        self.overflow = self.overflow_checker.check(
-            param_groups=self.local_sub_partitions,
-            raw_grad_tensors=True)
+        self.overflow = self.overflow_checker.check()
+        # param_groups=self.local_sub_partitions,
+        # raw_grad_tensors=True)
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
@@ -639,17 +638,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             #TODO RS: can we safely use dtype of the first sub-partition? i think so
             # create flat gradient partitions for parameters updated by this process
 
-            local_grad_sub_partitions = self.local_sub_partitions[i]
-            assert len(local_grad_sub_partitions) == len(self.local_sub_partitions_of_fp32_groups[i]), f"{len(local_grad_sub_partitions)} !== {len(self.local_sub_partitions_of_fp32_groups[i])}"
+            # local_grad_sub_partitions = self.local_sub_partitions[i]
+            # assert len(local_grad_sub_partitions) == len(self.local_sub_partitions_of_fp32_groups[i]), f"{len(local_grad_sub_partitions)} !== {len(self.local_sub_partitions_of_fp32_groups[i])}"
 
-            # local_grad_sub_partitions = self.get_flat_sub_partitions(
-            #     comm_tensor_list=self.params_in_rank_sub_partitions[i][partition_id],
-            #     comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
-            #     [partition_id],
-            #     sub_partition_size=self.sub_partition_sizes[i],
-            #     dtype=self.local_sub_partitions_of_fp32_groups[i][0].dtype,
-            #     num_comm_intervals=self.num_comm_intervals_per_group[i],
-            #     default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
+            local_grad_sub_partitions = self.get_flat_sub_partitions(
+                comm_tensor_list=self.params_in_rank_sub_partitions[i][partition_id],
+                comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
+                [partition_id],
+                sub_partition_size=self.sub_partition_sizes[i],
+                dtype=self.local_sub_partitions_of_fp32_groups[i][0].dtype,
+                num_comm_intervals=self.num_comm_intervals_per_group[i],
+                default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
 
             #RS: update all our local params with sub-partition grads
             #logger. info("self.local_sub_partitions_of_fp32_groups[i]={}, local_grad_sub_partitions={}".format(len(self.local_sub_partitions_of_fp32_groups[i]), len(local_grad_sub_partitions)))
