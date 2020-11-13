@@ -423,10 +423,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     def get_flat_sub_partitions(comm_tensor_list,
                                 comm_param_offsets,
                                 sub_partition_size,
-                                dtype=None,
+                                dtype,
+                                default_device,
                                 num_comm_intervals=None,
-                                default_device=None,
                                 return_partition_params=False):
+
         partition_params = []
         final_param_offsets = []
         flat_sub_partitions = []
@@ -435,12 +436,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             current_size = 0
             my_offsets = []
             my_params = []
-
-            if dtype is None:
-                dtype = tensor_list[0].dtype
-
-            if default_device is None:
-                default_device = tensor_list[0].device
 
             for i, tensor in enumerate(tensor_list):
                 if tensor.grad is None:
@@ -555,6 +550,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                     comm_tensor_list=self.params_in_rank_sub_partitions[i][rank],
                     comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
                     [rank],
+                    dtype=torch.half,
+                    default_device=self.default_device,
                     sub_partition_size=self.sub_partition_sizes[i],
                     num_comm_intervals=self.num_comm_intervals_per_group[i])
                 all_sub_partitions.append(grad_sub_partitions)
@@ -624,7 +621,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 sub_partition_size=self.sub_partition_sizes[i],
                 dtype=self.local_sub_partitions_of_fp32_groups[i][0].dtype,
                 num_comm_intervals=self.num_comm_intervals_per_group[i],
-                default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
+                default_device=self.default_device)
 
             #RS: update all our local params with sub-partition grads
             for idx, sub_partition_param in enumerate(self.local_sub_partitions_of_fp32_groups[i]):
