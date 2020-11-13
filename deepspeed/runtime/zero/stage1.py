@@ -589,18 +589,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                                         input_list=single_comm_all_partitions,
                                         group=self.dp_process_group)
 
-                # append comm-idx partition as fp32 for later consumption by step
-                # local_comm_partitions.append(single_comm_all_partitions[local_rank].to(torch.float32))
-
-            # append to group partitions to be consumed by step
-            # self.local_sub_partitions.append(local_comm_partitions)
-
     def step(self, closure=None):
         # First compute norm for all group so we know if there is overflow
-        # print(f'[STEP] rank={dist.get_rank()}, local_sub_partitions={self.local_sub_partitions}')
         self.overflow = self.overflow_checker.check()
-        # param_groups=self.local_sub_partitions,
-        # raw_grad_tensors=True)
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
@@ -618,7 +609,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         partition_id = dist.get_rank(group=self.dp_process_group)
         for i, group in enumerate(self.fp16_groups):
-
             #TODO RS: update get grad norm to support sub partitions
             norm_groups.append(get_grad_norm(group, mpu=self.mpu))
 
@@ -626,21 +616,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             #free gradients for all the parameters that are not updated by this process
             self.free_grad_in_param_list(self.params_not_local[i])
 
-            #create flat gradients for parameters updated by this process
-            #tensor_list, first_offset, partition_size, dtype
-            #single_grad_partition = self.get_flat_partition(
-            #    tensor_list=self.params_in_partition[i],
-            #    first_offset=self.first_offset[i],
-            #    partition_size=self.partition_size[i],
-            #    dtype=self.single_partition_of_fp32_groups[i].dtype
-            #)
-
-            #TODO RS: can we safely use dtype of the first sub-partition? i think so
             # create flat gradient partitions for parameters updated by this process
-
-            # local_grad_sub_partitions = self.local_sub_partitions[i]
-            # assert len(local_grad_sub_partitions) == len(self.local_sub_partitions_of_fp32_groups[i]), f"{len(local_grad_sub_partitions)} !== {len(self.local_sub_partitions_of_fp32_groups[i])}"
-
             local_grad_sub_partitions = self.get_flat_sub_partitions(
                 comm_tensor_list=self.params_in_rank_sub_partitions[i][partition_id],
                 comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
@@ -651,10 +627,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 default_device=self.local_sub_partitions_of_fp32_groups[i][0].device)
 
             #RS: update all our local params with sub-partition grads
-            #logger. info("self.local_sub_partitions_of_fp32_groups[i]={}, local_grad_sub_partitions={}".format(len(self.local_sub_partitions_of_fp32_groups[i]), len(local_grad_sub_partitions)))
             for idx, sub_partition_param in enumerate(self.local_sub_partitions_of_fp32_groups[i]):
                 sub_partition_param.grad = local_grad_sub_partitions[idx]
-            #self.single_partition_of_fp32_groups[i].grad = single_grad_partition
 
             #RS: update free grads for sub-partitions
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
@@ -662,7 +636,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 self.params_in_rank_sub_partitions[i][partition_id])
 
             local_sub_partitions_grad_groups.append(local_grad_sub_partitions)
-            # print(f'[rank[{dist.get_rank()}] group={i}, local_grad_sub_partitions={local_grad_sub_partitions}')
 
         #RS: update unscale/clip with sub partitions
         self.unscale_and_clip_grads(local_sub_partitions_grad_groups, norm_groups)
