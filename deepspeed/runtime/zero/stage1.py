@@ -145,8 +145,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         self.all_gather_partitions = all_gather_partitions
         self.allgather_size = allgather_size
 
-        self.max_elements_per_comm = max_elements_per_comm
-        logger.info("max_elements_per_comm={}".format(max_elements_per_comm))
+        # self.max_elements_per_comm = max_elements_per_comm
+        # logger.info("max_elements_per_comm={}".format(max_elements_per_comm))
 
         self.elastic_checkpoint = elastic_checkpoint
         logger.info(f'ZeRO Elastic Checkpoint = {elastic_checkpoint}')
@@ -192,19 +192,26 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         self.default_device = self.optimizer.param_groups[0]['params'][0].device
 
-        self.local_sub_partitions = []
+        # max elems per param group
+        self.max_elems_per_comm = []
 
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
 
+            # calculate best max elements per comm based to minimize padding
+            self.max_elems_per_comm.append(
+                self.best_max_elems_per_comm(
+                    num_elements=sum(t.numel() for t in self.fp16_groups[i]),
+                    max_elements_per_comm=max_elements_per_comm))
+
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
             flat_aligned_params = flatten_dense_tensors_sub_partition_aligned(
                 tensor_list=self.fp16_groups[i],
                 dp=dist.get_world_size(group=self.dp_process_group),
-                max_elements_per_comm=self.max_elements_per_comm,
+                max_elements_per_comm=self.max_elems_per_comm[i],
                 pg=self.dp_process_group)
             self.fp16_groups_flat.append(flat_aligned_params)
 
@@ -221,7 +228,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             comm_partitions, dp_sub_partitions, element_intervals, sub_partition_size, num_comm_intervals = \
                 self.get_data_parallel_sub_partitions(
                     tensor=self.fp16_groups_flat[i],
-                    max_elements_per_comm=self.max_elements_per_comm,
+                    max_elements_per_comm=self.max_elems_per_comm[i],
                     world_size=dist.get_world_size(
                         group=self.dp_process_group),
                     dp_process_group=self.dp_process_group
@@ -307,6 +314,30 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         for group in self.local_sub_partitions_of_fp32_groups:
             for idx, sub_partition_param in enumerate(group):
                 sub_partition_param.grad = None
+
+    @staticmethod
+    def best_max_elems_per_comm(num_elements, max_elements_per_comm):
+        # if we use max-elems-per-comm as is, how many comm intervals will there be
+        max_comm_intervals = math.ceil(num_elements / max_elements_per_comm)
+        padding_for_max_comm = (max_elements_per_comm *
+                                max_comm_intervals) - num_elements
+
+        # if we use 1 less comm interval how much extra comm padding would be required
+        min_comm_intervals = num_elements // max_elements_per_comm
+        padding_for_min_comm = math.ceil(
+            num_elements / min_comm_intervals) - max_elements_per_comm
+
+        # choose padding that uses least amount of overhead
+        if padding_for_max_comm > padding_for_min_comm:
+            new_max_elements_per_comm = padding_for_min_comm + max_elements_per_comm
+            log_dist(
+                f'Updating max_elements_per_comm from {max_elements_per_comm} -> {new_max_elements_per_comm}',
+                ranks=[0])
+            return new_max_elements_per_comm
+        else:
+            log_dist(f'Using default max_elements_per_comm {max_elements_per_comm}',
+                     ranks=[0])
+            return max_elements_per_comm
 
     @staticmethod
     def get_data_parallel_sub_partitions(tensor,
@@ -540,7 +571,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         world_size = dist.get_world_size(group=self.dp_process_group)
         local_rank = dist.get_rank(group=self.dp_process_group)
 
-        self.local_sub_partitions = []
         for i, group in enumerate(self.fp16_groups):
             num_comm_intervals = self.num_comm_intervals_per_group[i]
             all_sub_partitions = []
