@@ -185,7 +185,7 @@ def get_optimizer_gradient_clipping(param_dict):
 
 def get_optimizer_legacy_fusion(param_dict):
     if OPTIMIZER in param_dict.keys() and \
-        LEGACY_FUSION in param_dict[OPTIMIZER].keys():
+            LEGACY_FUSION in param_dict[OPTIMIZER].keys():
         return param_dict[OPTIMIZER][LEGACY_FUSION]
     else:
         return LEGACY_FUSION_DEFAULT
@@ -258,6 +258,19 @@ def get_tensorboard_job_name(param_dict):
                                 TENSORBOARD_JOB_NAME_DEFAULT)
     else:
         return TENSORBOARD_JOB_NAME_DEFAULT
+
+
+def print_config(config):
+    for arg in sorted(vars(config)):
+        if arg != '_param_dict':
+            arg_object = getattr(config, arg)
+            dots = '.' * (29 - len(arg))
+            if hasattr(arg_object, '__dict__'):
+                logger.info('  {} {} Begin'.format(arg, dots))
+                print_config(arg_object)
+                logger.info('  {} {} End'.format(arg, dots))
+            else:
+                logger.info('  {} {} {}'.format(arg, dots, arg_object))
 
 
 '''Write deepspeed config files by modifying basic templates.
@@ -340,7 +353,7 @@ class DeepSpeedConfig(object):
 
         self.optimizer_name = get_optimizer_name(param_dict)
         if self.optimizer_name is not None and \
-            self.optimizer_name.lower() in DEEPSPEED_OPTIMIZERS:
+                self.optimizer_name.lower() in DEEPSPEED_OPTIMIZERS:
             self.optimizer_name = self.optimizer_name.lower()
 
         self.optimizer_params = get_optimizer_params(param_dict)
@@ -374,9 +387,9 @@ class DeepSpeedConfig(object):
             f'Gradient accumulation steps: {grad_acc} has to be greater than 0'
 
         assert train_batch == micro_batch * grad_acc * self.world_size, \
-                (f'Check batch related parameters. train_batch_size is not equal'
-                ' to micro_batch_per_gpu * gradient_acc_step * world_size'
-                f'{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}')
+            (f'Check batch related parameters. train_batch_size is not equal'
+             ' to micro_batch_per_gpu * gradient_acc_step * world_size'
+             f'{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}')
 
     def _set_batch_related_parameters(self):
 
@@ -384,29 +397,29 @@ class DeepSpeedConfig(object):
         micro_batch = self.train_micro_batch_size_per_gpu
         grad_acc = self.gradient_accumulation_steps
 
-        #all values are provided nothing needs to be set
+        # all values are provided nothing needs to be set
         if train_batch is not None and \
-            micro_batch is not None and \
-            grad_acc is not None:
+                micro_batch is not None and \
+                grad_acc is not None:
             return
 
-        #global_accumulation_steps needs to be set
+        # global_accumulation_steps needs to be set
         elif train_batch is not None and \
-            micro_batch is not None:
+                micro_batch is not None:
             grad_acc = train_batch // micro_batch
             grad_acc //= self.world_size
             self.gradient_accumulation_steps = grad_acc
 
-        #micro_batch_per_gpu needs to be set
+        # micro_batch_per_gpu needs to be set
         elif train_batch is not None and \
-            grad_acc is not None:
+                grad_acc is not None:
             micro_batch = train_batch // self.world_size
             micro_batch //= grad_acc
             self.train_micro_batch_size_per_gpu = micro_batch
 
-        #train_batch_size needs to be set
+        # train_batch_size needs to be set
         elif micro_batch is not None and \
-            grad_acc is not None:
+                grad_acc is not None:
             train_batch_size = micro_batch * grad_acc
             train_batch_size *= self.world_size
             self.train_batch_size = train_batch_size
@@ -421,7 +434,7 @@ class DeepSpeedConfig(object):
             self.train_batch_size = micro_batch * self.world_size
             self.gradient_accumulation_steps = 1
 
-        #either none of the three parameters are provided or just gradient_accumulation_step is provided
+        # either none of the three parameters are provided or just gradient_accumulation_step is provided
         else:
             assert False, \
                 'Either train_batch_size or micro_batch_per_gpu needs to be provided'
@@ -441,10 +454,7 @@ class DeepSpeedConfig(object):
 
     def print(self, name):
         logger.info('{}:'.format(name))
-        for arg in sorted(vars(self)):
-            if arg != '_param_dict':
-                dots = '.' * (29 - len(arg))
-                logger.info('  {} {} {}'.format(arg, dots, getattr(self, arg)))
+        print_config(self)
 
         logger.info('  json = {}'.format(
             json.dumps(self._param_dict,
@@ -456,9 +466,11 @@ class DeepSpeedConfig(object):
     def _do_error_check(self):
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
-            assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
+            assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(
+                MAX_STAGE_ZERO_OPTIMIZATION)
 
-        assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(TRAIN_MICRO_BATCH_SIZE_PER_GPU)
+        assert self.train_micro_batch_size_per_gpu, "DeepSpeedConfig: {} is not defined".format(
+            TRAIN_MICRO_BATCH_SIZE_PER_GPU)
 
         assert self.gradient_accumulation_steps, 'DeepSpeedConfig: {} is not defined'.format(
             GRADIENT_ACCUMULATION_STEPS)

@@ -19,12 +19,24 @@ def get_alignment_padding(flattened_lean_size, sub_partition_id, sub_partition_s
         return min(sub_partition_size, sub_partition_high_limit - flattened_lean_size)
 
 
-def get_group_alignment_padding(tensor_list, sub_partition_size, sub_partition_count):
+def get_group_alignment_padding(tensor_list,
+                                sub_partition_size,
+                                sub_partition_count,
+                                group_index,
+                                dp_process_group):
     group_paddings = []
     flattened_size = sum([tensor.numel() for tensor in tensor_list])
     for i in range(sub_partition_count):
         padding = get_alignment_padding(flattened_size, i, sub_partition_size)
         group_paddings.append(padding)
+
+    if not dist.is_initialized() or dist.get_rank(group=dp_process_group) == 0:
+        logger.info(f"****Group Padding information {group_index}*****")
+        logger.info(f"tensor_size = {flattened_size}")
+        logger.info(f"sub_partition_size = {sub_partition_size}")
+        logger.info(f"sub_partition_count = {sub_partition_count}")
+        for i, padding in enumerate(group_paddings):
+            logger.info(f"padding[{i}] = {padding}")
 
     return group_paddings
 
@@ -124,7 +136,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                  all_gather_partitions=True,
                  allgather_size=500000000,
                  clip_grad=0.0,
-                 max_elements_per_comm=5e8):
+                 max_elements_per_comm=5e8,
+                 elastic_checkpoint=False):
 
         if dp_process_group is not None and partition_size is not None:
             raise ValueError("Cannot specify both dp_process_group "
@@ -146,6 +159,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         self.max_elements_per_comm = max_elements_per_comm
         logger.info("max_elements_per_comm={}".format(max_elements_per_comm))
+
+        self.elastic_checkpoint = elastic_checkpoint
+        logger.info(f'ZeRO Elastic Checkpointing: {elastic_checkpoint}')
 
         # param flattened by groups
         self.fp16_groups = []
@@ -243,7 +259,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             sub_partition_paddings = get_group_alignment_padding(
                 tensor_list=self.fp16_groups[i],
                 sub_partition_size=sub_partition_size,
-                sub_partition_count=num_comm_intervals * self.partition_count)
+                sub_partition_count=num_comm_intervals * self.partition_count,
+                group_index=i,
+                dp_process_group=dp_process_group)
             self.group_paddings.append(sub_partition_paddings)
 
             # modify optimizer of have flat master weight
@@ -315,7 +333,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         # Ensure partition alignment was done correctly
         num_sub_partitions = int(total_num_elements // sub_partition_size)
-        assert total_num_elements % sub_partition_size == 0, "{} % {} != 0".format(total_num_elements, sub_partition_size)
+        assert total_num_elements % sub_partition_size == 0, "{} % {} != 0".format(
+            total_num_elements, sub_partition_size)
 
         # Ensure comm interval alignment was done correctly.
         num_comm_intervals = int(num_sub_partitions // world_size)
@@ -379,14 +398,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             prev_comm_idx = 0
             for iii, tensor in enumerate(tensor_list):
                 tensor_size = tensor.numel()
-                #if local_rank == 0:
+                # if local_rank == 0:
                 #    # logger.info("rank={}, current_index={}, tensor_size={}, tensor-idx={}".format(rank,
                 #        current_index, tensor_size, iii))
                 results_list = _range_check(current_index,
                                             all_element_intervals[rank],
                                             tensor_size)
                 for contained, offset, comm_idx in results_list:
-                    #if local_rank == 0:
+                    # if local_rank == 0:
                     #    logger.info("rank={}, contained={}, offset={}, comm_idx={}".format(rank, contained,
                     #        offset, comm_idx))
                     if contained:
@@ -441,7 +460,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 num_elements = tensor.numel()
                 tensor_offset = 0
 
-                #we need to offset to get to the right element
+                # we need to offset to get to the right element
                 if i == 0 and param_offsets[i] > 0:
                     tensor_offset = param_offsets[i]
                     num_elements = num_elements - tensor_offset
@@ -451,8 +470,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 if num_elements > (sub_partition_size - current_size):
                     num_elements = sub_partition_size - current_size
 
-                #we need a narrow view of the tensor based on the tensor offset and number of elements that
-                #we need from this tensor
+                # we need a narrow view of the tensor based on the tensor offset and number of elements that
+                # we need from this tensor
                 if tensor_offset > 0 or num_elements < tensor.numel():
                     flat_tensor_list.append(tensor.contiguous().view(-1).narrow(
                         0,
@@ -462,12 +481,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                     flat_tensor_list.append(tensor.to(dtype))
                 my_params.append(param)
 
-                #remember offset into partition and #elems for this tensor
+                # remember offset into partition and #elems for this tensor
                 my_offsets.append((current_size, num_elements))
 
                 current_size = current_size + num_elements
 
-            #this means its the last partition and does not align with the dp boundary. We need to pad before flattening
+            # this means its the last partition and does not align with the dp boundary. We need to pad before flattening
             if current_size < sub_partition_size:
                 my_offsets.append((None, None))
                 my_params.append(None)
@@ -482,7 +501,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                         torch.zeros(int(sub_partition_size - current_size),
                                     dtype=dtype,
                                     device=tensor_list[0].device))
-            partition_params.append(my_params)  #flat_tensor_list)
+            partition_params.append(my_params)  # flat_tensor_list)
             final_param_offsets.append(my_offsets)
             assert len(flat_tensor_list) == len(my_offsets), "{} {}".format(len(flat_tensor_list), len(my_offsets))
             flat_sub_partitions.append(_flatten_dense_tensors(flat_tensor_list))
@@ -500,7 +519,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         if return_partition_params:
             assert len(flat_sub_partitions) == len(partition_params)
-            assert len(partition_params) == len(final_param_offsets), "{} {}".format(len(partition_params), len(final_param_offsets))
+            assert len(partition_params) == len(final_param_offsets), "{} {}".format(
+                len(partition_params), len(final_param_offsets))
             return flat_sub_partitions, partition_params, final_param_offsets
         return flat_sub_partitions
 
@@ -601,8 +621,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         for i, group in enumerate(self.fp16_groups):
             norm_groups.append(get_grad_norm(group, mpu=self.mpu))
 
-            #RS: update free grads w.r.t. sub partitions
-            #free gradients for all the parameters that are not updated by this process
+            # RS: update free grads w.r.t. sub partitions
+            # free gradients for all the parameters that are not updated by this process
             self.free_grad_in_param_list(self.params_not_local[i])
 
             # create flat gradient partitions for parameters updated by this process
@@ -619,20 +639,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             for idx, sub_partition_param in enumerate(self.local_sub_partitions_of_fp32_groups[i]):
                 sub_partition_param.grad = local_grad_sub_partitions[idx]
 
-            #RS: update free grads for sub-partitions
-            #release all the gradient since we have already created a necessary copy in dp_grad_partition
+            # RS: update free grads for sub-partitions
+            # release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(
                 self.params_in_rank_sub_partitions[i][partition_id])
 
             local_sub_partitions_grad_groups.append(local_grad_sub_partitions)
 
-        #RS: update unscale/clip with sub partitions
+        # RS: update unscale/clip with sub partitions
         self.unscale_and_clip_grads(local_sub_partitions_grad_groups, norm_groups)
 
         self.optimizer.step()
 
-        #RS: clear our sub partition grads
-        #get rid of the fp32 gradients. Not needed anymore
+        # RS: clear our sub partition grads
+        # get rid of the fp32 gradients. Not needed anymore
         for group in self.local_sub_partitions_of_fp32_groups:
             for idx, sub_partition_param in enumerate(group):
                 sub_partition_param.grad = None
@@ -645,8 +665,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 local_sub_partition_param_fp16.data.copy_(
                     local_sub_partition_param_fp32.data)
 
-        #RS: all_gather/broadcast sub-partitions in separate comm calls
-        #gather the updated weights from everyone
+        # RS: all_gather/broadcast sub-partitions in separate comm calls
+        # gather the updated weights from everyone
         for fp16_all_sub_partitions in self.parallel_comm_sub_partitioned_fp16_groups:
             for comm_id, sub_partitions in enumerate(fp16_all_sub_partitions):
                 dist.all_gather(sub_partitions,
@@ -767,7 +787,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return optimizer_groups_state
 
-    def state_dict(self):
+    def _rigid_state_dict(self):
+        """
+            Returns a dict that can be loaded for continued training with same DP degree
+        """
         """
         Returns a dict containing the current state of this :class:`FP16_Optimizer` instance.
         This dict contains attributes of :class:`FP16_Optimizer`, as well as the state_dict
@@ -777,6 +800,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             checkpoint['model'] = model.state_dict()
             checkpoint['optimizer'] = optimizer.state_dict()
             torch.save(checkpoint, "saved.pth")
+        """
+        state_dict = {}
+        state_dict['loss_scaler'] = self.loss_scaler
+        state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
+        state_dict['overflow'] = self.overflow
+        state_dict['base_optimizer_state'] = self.optimizer.state_dict()
+        state_dict[
+            'local_sub_partitions_of_fp32_groups'] = self.local_sub_partitions_of_fp32_groups
+        return state_dict
+
+    def _elastic_state_dict(self):
+        """
+            Returns a dict that can be loaded for elastic training with different DP degree
         """
         state_dict = {}
         state_dict['loss_scaler'] = self.loss_scaler
@@ -794,6 +830,22 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         state_dict['local_sub_partitions_of_fp32_groups'] = fp32_groups_without_padding
 
         return state_dict
+
+    def state_dict(self):
+        """
+        Returns a dict containing the current state of this :class:`FP16_Optimizer` instance.
+        This dict contains attributes of :class:`FP16_Optimizer`, as well as the state_dict
+        of the contained Pytorch optimizer.
+        Example::
+            checkpoint = {}
+            checkpoint['model'] = model.state_dict()
+            checkpoint['optimizer'] = optimizer.state_dict()
+            torch.save(checkpoint, "saved.pth")
+        """
+        if self.elastic_checkpoint:
+            return self._elastic_state_dict()
+
+        return self._rigid_state_dict()
 
     def _retrieve_group_sub_partition_weights(self, all_partition_fp32_weights):
         partition_id = dist.get_rank(group=self.dp_process_group)
@@ -912,10 +964,23 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     def refresh_fp32_params(self):
         self._restore_from_fp16_weights()
 
-    def load_state_dict(self,
-                        state_dict_list,
-                        load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+    def _rigid_load_state_dict(self, state_dict, load_optimizer_states=True):
+
+        # I think it should actually be ok to reload the optimizer before the model.
+        self.loss_scaler = state_dict['loss_scaler']
+        self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
+        self.overflow = state_dict['overflow']
+        if load_optimizer_states:
+            self.optimizer.load_state_dict(state_dict['base_optimizer_state'])
+
+        for curr_group, saved_group in zip(self.local_sub_partitions_of_fp32_groups, state_dict['local_sub_partitions_of_fp32_groups']):
+            for curr_param, saved_param in zip(curr_group, saved_group):
+                curr_param.data.copy_(saved_param.data)
+
+    def _elastic_load_state_dict(self,
+                                 state_dict_list,
+                                 load_optimizer_states=True,
+                                 load_from_fp32_weights=False):
         """
         Loads a state_dict created by an earlier call to state_dict().
         If ``fp16_optimizer_instance`` was constructed from some ``init_optimizer``,
@@ -943,3 +1008,31 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             self._restore_from_fp32_weights(state_dict_list)
         else:
             self._restore_from_fp16_weights()
+
+    def load_state_dict(self,
+                        state_dict_list,
+                        load_optimizer_states=True,
+                        load_from_fp32_weights=False):
+        """
+        Loads a state_dict created by an earlier call to state_dict().
+        If ``fp16_optimizer_instance`` was constructed from some ``init_optimizer``,
+        whose parameters in turn came from ``model``, it is expected that the user
+        will call ``model.load_state_dict()`` before
+        ``fp16_optimizer_instance.load_state_dict()`` is called.
+        Example::
+            model = torch.nn.Linear(D_in, D_out).cuda().half()
+            optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+            optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
+            ...
+            checkpoint = torch.load("saved.pth")
+            model.load_state_dict(checkpoint['model'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+        """
+        if self.elastic_checkpoint:
+            self._elastic_load_state_dict(state_dict_list,
+                                          load_optimizer_states,
+                                          load_from_fp32_weights)
+        else:
+            self._rigid_load_state_dict(
+                state_dict_list[dist.get_rank(group=self.dp_process_group)],
+                load_optimizer_states)
