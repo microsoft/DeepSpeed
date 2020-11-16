@@ -27,6 +27,7 @@ class DeepSpeedElasticityConfig(object):
         self._initialize(param_dict)
 
     def _initialize(self, param_dict):
+        pass
 
 
 '''Thirty eight smallest highly composite numbers.
@@ -117,7 +118,7 @@ def get_best_candidates(candidate_batch_sizes, micro_batches, min_gpus, max_gpus
         we return the batch size with the most number of total compatible GPU counts.
     
     '''
-def _get_compatible_gpus(micro_batches,
+def get_compatible_gpus(micro_batches,
                         max_acceptable_batch_size,
                         min_gpus = None,
                         max_gpus = None,
@@ -156,7 +157,7 @@ def _get_compatible_gpus(micro_batches,
 
     return final_batch_size, valid_gpus
 
-def get_compatible_gpus(ds_config_file):
+#def get_compatible_gpus(ds_config_file):
 
 
 def small_test():
@@ -187,3 +188,5 @@ def small_test():
                 print(f"GPU count : {gpu_num} Micro_batch: {mb} GAS = {batch_per_gpu/mb}")
                 break
         assert found_valid_mb, "No valid mb found"
+
+#small_test()
