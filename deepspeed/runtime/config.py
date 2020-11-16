@@ -15,16 +15,37 @@ from deepspeed.runtime.activation_checkpointing.config import DeepSpeedActivatio
 from deepspeed.utils import logger
 
 TENSOR_CORE_ALIGN_SIZE = 8
+
 ADAM_OPTIMIZER = 'adam'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
-DEEPSPEED_ADAM = 'deepspeed_adam'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
-    DEEPSPEED_ADAM
 ]
+
+# extra optimizer parameters for adam
+TORCH_ADAM_PARAM = "torch_adam"
+ADAM_W_MODE_PARAM = "adam_w_mode"
+
+
+def get_pld_enabled(param_dict):
+    if PROGRESSIVE_LAYER_DROP in param_dict.keys():
+        return get_scalar_param(param_dict[PROGRESSIVE_LAYER_DROP],
+                                PLD_ENABLED,
+                                PLD_ENABLED_DEFAULT)
+    else:
+        return False
+
+
+def get_pld_params(param_dict):
+    if PROGRESSIVE_LAYER_DROP in param_dict.keys():
+        pld_params = copy.copy(param_dict[PROGRESSIVE_LAYER_DROP])
+        pld_params.pop(PLD_ENABLED)
+        return pld_params
+    else:
+        return False
 
 
 def get_amp_enabled(param_dict):
@@ -538,6 +559,9 @@ class DeepSpeedConfig(object):
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)
+
+        self.pld_enabled = get_pld_enabled(param_dict)
+        self.pld_params = get_pld_params(param_dict)
 
     def _batch_assertion(self):
 
