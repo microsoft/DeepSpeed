@@ -36,7 +36,7 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler.flops_count import add_flops_counting_methods,start_flops_count,stop_flops_count,print_model_with_flops, flops_to_string, params_to_string
+from deepspeed.profiler.flops_count import add_profile_methods, start_profile, stop_profile, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
 import deepspeed.profiler.tracer as tracer
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
@@ -752,11 +752,9 @@ class DeepSpeedEngine(Module):
         # Configure flops counter
         if self.flops_count() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
-            # model = add_flops_counting_methods(model)
-            self.module = add_flops_counting_methods(self.module)
-            self.module.start_flops_count(ost=sys.stdout,
-                                          verbose=False,
-                                          ignore_list=None)
+            # model = add_profile_methods(model)
+            self.module = add_profile_methods(self.module)
+            self.module.start_profile(ignore_list=None)
 
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
@@ -803,27 +801,22 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
-        # print flopsmodule
         if self.flops_count() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
-            # flops_count, params_count = self.module.compute_total_flops()
-            flops_count = self.module.compute_total_flops_count()
+            flops_count = self.module.compute_total_flops()
             params_count = self.module.__params__
             duration = self.module.compute_total_duration()
             batch_size = self.module.__batch__
-            print('{:<30}  {:<8}({:<8})'.format('Computational complexity: ',
+            print('{:<30}  {:<8}({:<8})'.format('Number of multiply-adds: ',
                                                 flops_to_string(flops_count),
                                                 flops_count))
             print('{:<30}  {:<8}({:<8})'.format('Number of parameters: ',
                                                 params_to_string(params_count),
                                                 params_count))
             print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
-            print_model_with_flops(self.module,
-                                   flops_count,
-                                   params_count,
-                                   duration,
-                                   ost=sys.stdout)
-            self.module.stop_flops_count()
+            print_model_profile(self.module, flops_count, params_count, duration)
+            print_model_aggregated_profile(self.module, depth=-1, top_num=3)
+            self.module.stop_profile()
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
