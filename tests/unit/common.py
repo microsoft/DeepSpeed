@@ -41,6 +41,8 @@ def distributed_test(world_size=2, backend='nccl'):
             if torch.cuda.is_available():
                 torch.cuda.set_device(local_rank)
 
+            assert 'args' in func_kwargs, 'must pass args, later consumed for device binding'
+            func_kwargs['args'].local_rank = local_rank
             run_func(*func_args, **func_kwargs)
 
         def dist_launcher(num_procs, *func_args, **func_kwargs):
