@@ -744,13 +744,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     def _get_groups_without_padding(self, groups_with_padding):
         groups_without_padding = []
         local_rank = dist.get_rank(group=self.dp_process_group)
-        for i, group in enumerate(groups_with_padding):
-            low_index = local_rank * len(group)
-            high_index = (local_rank + 1) * len(group)
-            group_paddings = self.group_paddings[i][low_index:high_index]
+        for group_index, group in enumerate(groups_with_padding):
+            sub_partition_indices = [local_rank + (comm_idx * self.partition_count)
+                            for comm_idx in range(self.num_comm_intervals_per_group[group_index])]
+            group_paddings = [self.group_paddings[group_index][sub_idx] for sub_idx in sub_partition_indices]
+
             lean_sub_partitions = []
-            for j, sub_partition in enumerate(group):
-                lean_length = sub_partition.numel() - group_paddings[j]
+            for sub_partition, padding in zip(group, group_paddings):
+                lean_length = sub_partition.numel() - padding
                 lean_sub_partitions.append(sub_partition[:lean_length])
             groups_without_padding.append(lean_sub_partitions)
 
@@ -773,11 +774,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     def _get_base_optimizer_state(self):
         optimizer_groups_state = []
         local_rank = dist.get_rank(group=self.dp_process_group)
-        for group_idx, group in enumerate(self.optimizer.param_groups):
+        for group_index, group in enumerate(self.optimizer.param_groups):
+            sub_partition_indices = [local_rank + (comm_idx * self.partition_count)
+                                     for comm_idx in range(self.num_comm_intervals_per_group[group_index])]
+            param_paddings = [self.group_paddings[group_index][sub_idx] for sub_idx in sub_partition_indices]
+
             group_lean_state = []
-            low_index = local_rank * self.num_comm_intervals_per_group[group_idx]
-            high_index = (local_rank + 1) * self.num_comm_intervals_per_group[group_idx]
-            param_paddings = self.group_paddings[group_idx][low_index:high_index]
             for param_idx, param in enumerate(group['params']):
                 lean_state = self._get_state_without_padding(self.optimizer.state[param],
                                                              param_paddings[param_idx])
@@ -847,13 +849,24 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return self._rigid_state_dict()
 
+    # Extract the fp32 weights of the current rank from checkpoint by merging the
+    # sub partitions of communication intervals across ranks.
+    # Let sub_i_j = sub partition of rank i and comm interval j
+    # For 2 ranks and 2 comm intervals, checkpoints (minus padding) are as follows:
+    # rank 0 = [sub_0_0, sub_0_1]
+    # rank 1 = [sub_1_0, sub_1_1]
+    # Merge to get [sub_0_0, sub_1_0, sub_0_1, sub_1_1] => original un-padded flattened tensor.
     def _retrieve_group_sub_partition_weights(self, all_partition_fp32_weights):
-        partition_id = dist.get_rank(group=self.dp_process_group)
+        num_partitions = len(all_partition_fp32_weights)
+        num_comm_intervals = len(all_partition_fp32_weights[0])
+        num_sub_partitions = num_partitions * num_comm_intervals
+        all_sub_partition_weights = [None] * num_sub_partitions
 
-        all_sub_partition_weights = []
-        for partition_weights in all_partition_fp32_weights:
-            for sub_partition_weights in partition_weights:
-                all_sub_partition_weights.append(sub_partition_weights)
+        for rank, partition_weights in enumerate(all_partition_fp32_weights):
+            for comm_idx, sub_partition_weights in enumerate(partition_weights):
+                #all_sub_partition_weights.append(sub_partition_weights)
+                sub_partition_idx = (comm_idx * num_partitions) + rank
+                all_sub_partition_weights[sub_partition_idx] = sub_partition_weights
 
         flat_merged_weights = flatten_dense_tensors_sub_partition_aligned(
             tensor_list=all_sub_partition_weights,
@@ -869,6 +882,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 dp_process_group=self.dp_process_group
             )
 
+        partition_id = dist.get_rank(group=self.dp_process_group)
         return [sub_partition for sub_partition in dp_sub_partitions[partition_id]]
 
     # Restore base optimizer fp32 weights from checkpoint by:
@@ -917,13 +931,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     # 3) Return state corresponding to local partition
     def _retrieve_group_optimizer_states(self, all_partition_states):
         merged_optimizer_states = {}
-        for partition_state in all_partition_states:
-            for sub_partition_state in partition_state:
+        num_partitions = len(all_partition_states)
+        num_comm_intervals = len(all_partition_states[0])
+        num_sub_partitions = num_partitions * num_comm_intervals
+
+        for rank, partition_state in enumerate(all_partition_states):
+            for comm_idx, sub_partition_state in enumerate(partition_state):
                 for key, value in sub_partition_state.items():
                     if not key in merged_optimizer_states.keys():
-                        merged_optimizer_states[key] = [value]
-                    else:
-                        merged_optimizer_states[key].append(value)
+                        merged_optimizer_states[key] = [None] * num_sub_partitions
+
+                    sub_partition_idx = (comm_idx * num_partitions) + rank
+                    merged_optimizer_states[key][sub_partition_idx] = value
 
         group_optimizer_states = {}
         for key, value in merged_optimizer_states.items():
@@ -1036,3 +1055,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             self._rigid_load_state_dict(
                 state_dict_list[dist.get_rank(group=self.dp_process_group)],
                 load_optimizer_states)
+
+    def _dump_optimizer_state(self, message):
+        logger.info(f'{message}')
+        for i, group in enumerate(self.optimizer.param_groups):
+            for j, param in enumerate(group['params']):
+                for key, value in self.optimizer.state[param].items():
+                    t_stats = [value.min(), value.max(), (value.max() - value.min()), value.mean()]
+                    stats = [float(t) for t in t_stats]
+                    logger.info(f'group/param/key/min/max/delta/mean = {i}, {j}, {key}: {stats}')
