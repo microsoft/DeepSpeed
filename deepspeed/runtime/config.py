@@ -409,11 +409,20 @@ def get_wall_clock_breakdown(param_dict):
                             WALL_CLOCK_BREAKDOWN_DEFAULT)
 
 
-def get_flops_count(param_dict):
-    return get_scalar_param(param_dict, FLOPS_COUNT, FLOPS_COUNT_DEFAULT)
+def get_pytorch_profiler(param_dict):
+    return get_scalar_param(param_dict, PYTORCH_PROFILER, PYTORCH_PROFILER_DEFAULT)
+
 
 def get_profile_step(param_dict):
     return get_scalar_param(param_dict, PROFILE_STEP, PROFILE_STEP_DEFAULT)
+
+
+def get_profile_depth(param_dict):
+    return get_scalar_param(param_dict, PROFILE_DEPTH, PROFILE_DEPTH_DEFAULT)
+
+
+def get_profile_top_num(param_dict):
+    return get_scalar_param(param_dict, PROFILE_TOP_NUM, PROFILE_TOP_NUM_DEFAULT)
 
 
 def get_memory_breakdown(param_dict):
@@ -538,8 +547,10 @@ class DeepSpeedConfig(object):
         self.scheduler_params = get_scheduler_params(param_dict)
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
-        self.flops_count = get_flops_count(param_dict)
+        self.pytorch_profiler = get_pytorch_profiler(param_dict)
         self.profile_step = get_profile_step(param_dict)
+        self.profile_depth = get_profile_depth(param_dict)
+        self.profile_top_num = get_profile_top_num(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)

@@ -36,8 +36,8 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler.flops_count import add_profile_methods, start_profile, stop_profile, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
-import deepspeed.profiler.tracer as tracer
+from deepspeed.profiler.pytorch_profiler.profiler import add_profile_methods, start_profile, stop_profile, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
+import deepspeed.profiler.xsp.tracer as tracer
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -272,11 +272,17 @@ class DeepSpeedEngine(Module):
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
 
-    def flops_count(self):
-        return self._config.flops_count
+    def pytorch_profiler(self):
+        return self._config.pytorch_profiler
 
     def profile_step(self):
         return self._config.profile_step
+
+    def profile_depth(self):
+        return self._config.profile_depth
+
+    def profile_top_num(self):
+        return self._config.profile_top_num
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -750,7 +756,7 @@ class DeepSpeedEngine(Module):
         """
 
         # Configure flops counter
-        if self.flops_count() and self.global_steps == self.profile_step(
+        if self.pytorch_profiler() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
             # model = add_profile_methods(model)
             self.module = add_profile_methods(self.module)
@@ -801,18 +807,16 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
-        if self.flops_count() and self.global_steps == self.profile_step(
+        if self.pytorch_profiler() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
             flops_count = self.module.compute_total_flops()
             params_count = self.module.__params__
             duration = self.module.compute_total_duration()
             batch_size = self.module.__batch__
-            print('{:<30}  {:<8}({:<8})'.format('Number of multiply-adds: ',
-                                                flops_to_string(flops_count),
-                                                flops_count))
-            print('{:<30}  {:<8}({:<8})'.format('Number of parameters: ',
-                                                params_to_string(params_count),
-                                                params_count))
+            print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
+                                         flops_to_string(flops_count)))
+            print('{:<30}  {:<8}'.format('Number of parameters: ',
+                                         params_to_string(params_count)))
             print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
             print_model_profile(self.module, flops_count, params_count, duration)
             print_model_aggregated_profile(self.module, depth=-1, top_num=3)

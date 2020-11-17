@@ -266,23 +266,37 @@ MEMORY_BREAKDOWN = 'memory_breakdown'
 MEMORY_BREAKDOWN_DEFAULT = False
 
 #########################################
-# Flops count
+# PyTorch profiler
 #########################################
-# Flops count. By default, this feature is not enabled.
+# PyTorch Profiler. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
-FLOPS_COUNT_FORMAT = '''
-Flops count should be enabled as:
-"[flops_count]": true
+PYTORCH_PROFILER_FORMAT = '''
+PyTorch profiler should be enabled as:
+"pytorch_profiler": true
 '''
-FLOPS_COUNT = 'flops_count'
-FLOPS_COUNT_DEFAULT = False
+PYTORCH_PROFILER = 'pytorch_profiler'
+PYTORCH_PROFILER_DEFAULT = True
 
 PROFILE_STEP_FORMAT = '''
 Profile step can be specified as:
-"[profile_step]": 5
+"profile_step": 5
 '''
 PROFILE_STEP = 'profile_step'
 PROFILE_STEP_DEFAULT = 5
+
+PROFILE_DEPTH_FORMAT = '''
+Profile depth can be specified as:
+"profile_depth": -1
+'''
+PROFILE_DEPTH = 'profile_depth'
+PROFILE_DEPTH_DEFAULT = -1
+
+PROFILE_TOP_NUM_FORMAT = '''
+Profile top num can be specified as:
+"profile_top_num": 3
+'''
+PROFILE_TOP_NUM = 'num_top_modules'
+PROFILE_TOP_NUM_DEFAULT = 3
 
 #########################################
 # Tensorboard
