@@ -890,7 +890,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     # rank 0 = [sub_0_0, sub_0_1]
     # rank 1 = [sub_1_0, sub_1_1]
     # Merge to get [sub_0_0, sub_1_0, sub_0_1, sub_1_1] => original un-padded flattened tensor.
-    def _retrieve_group_sub_partition_weights(self, all_partition_fp32_weights, max_elems_per_comm):
+    def _retrieve_group_sub_partition_weights(self,
+                                              all_partition_fp32_weights,
+                                              max_elems_per_comm):
         num_partitions = len(all_partition_fp32_weights)
         num_comm_intervals = len(all_partition_fp32_weights[0])
         num_sub_partitions = num_partitions * num_comm_intervals
