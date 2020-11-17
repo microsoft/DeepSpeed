@@ -328,7 +328,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             log_dist(f'Using default max_elements_per_comm {max_elements_per_comm}',
                      ranks=[0])
             return max_elements_per_comm
-        padding_for_min_comm = math.ceil(num_elements / min_comm_intervals) - max_elements_per_comm
+        padding_for_min_comm = math.ceil(
+            num_elements / min_comm_intervals) - max_elements_per_comm
 
         # choose padding that uses least amount of overhead
         if padding_for_max_comm > padding_for_min_comm:
