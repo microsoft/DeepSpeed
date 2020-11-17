@@ -199,12 +199,7 @@ def test_dist_init_true(tmpdir):
 
 def test_init_no_optimizer(tmpdir):
 
-    config_dict = {
-        "train_batch_size": 1,
-        "fp16": {
-            "enabled": True
-        }
-    }
+    config_dict = {"train_batch_size": 1, "fp16": {"enabled": True}}
     config_path = create_config_from_dict(tmpdir, config_dict)
 
     @distributed_test(world_size=1)
@@ -218,7 +213,7 @@ def test_init_no_optimizer(tmpdir):
 
         model = SimpleModel(hidden_dim=hidden_dim)
 
-        model, _, _,_ = deepspeed.initialize(args=args, model=model)
+        model, _, _, _ = deepspeed.initialize(args=args, model=model)
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
                                         hidden_dim=hidden_dim,
@@ -229,5 +224,5 @@ def test_init_no_optimizer(tmpdir):
                 model.backward(loss)
             with pytest.raises(AssertionError):
                 model.step()
-    
+
     _helper()
