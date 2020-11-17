@@ -761,14 +761,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     loss_scale = property(_get_loss_scale, _set_loss_scale)
     cur_scale = property(_get_loss_scale, _set_loss_scale)
 
-
-
     # Return communication interval paddings for local rank and group
     def _get_local_group_paddings(self, group_index):
         local_rank = dist.get_rank(group=self.dp_process_group)
-        sub_partition_indices = [local_rank + (comm_idx * self.partition_count)
-                        for comm_idx in range(self.num_comm_intervals_per_group[group_index])]
-        group_paddings = [self.group_paddings[group_index][sub_idx] for sub_idx in sub_partition_indices]
+        sub_partition_indices = [
+            local_rank + (comm_idx * self.partition_count)
+            for comm_idx in range(self.num_comm_intervals_per_group[group_index])
+        ]
+        group_paddings = [
+            self.group_paddings[group_index][sub_idx]
+            for sub_idx in sub_partition_indices
+        ]
         return group_paddings
 
     # Return group tensor after removing paddings that are added for alignment to DP world size.
@@ -816,7 +819,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             optimizer_groups_state.append(group_lean_state)
 
         return optimizer_groups_state
-
 
     def _rigid_state_dict(self):
         """
@@ -877,8 +879,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             return self._elastic_state_dict()
 
         return self._rigid_state_dict()
-
-
 
     # Extract the fp32 weights of the current rank from checkpoint by merging the
     # sub partitions of communication intervals across ranks.
@@ -983,7 +983,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return group_optimizer_states
 
-
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
     # 2) Extracting optimizer state for current partition from the merged state
@@ -1014,7 +1013,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     # Refresh the fp32 master params from the fp16 copies.
     def refresh_fp32_params(self):
         self._restore_from_fp16_weights()
-
 
     def _rigid_load_state_dict(self, state_dict, load_optimizer_states=True):
 
@@ -1094,7 +1092,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         for i, group in enumerate(self.optimizer.param_groups):
             for j, param in enumerate(group['params']):
                 for key, value in self.optimizer.state[param].items():
-                    t_stats = [value.min(), value.max(), (value.max() - value.min()), value.mean()]
+                    t_stats = [
+                        value.min(),
+                        value.max(),
+                        (value.max() - value.min()),
+                        value.mean()
+                    ]
                     stats = [float(t) for t in t_stats]
-                    logger.info(f'group/param/key/min/max/delta/mean = {i}, {j}, {key}: {stats}')
-
+                    logger.info(
+                        f'group/param/key/min/max/delta/mean = {i}, {j}, {key}: {stats}')

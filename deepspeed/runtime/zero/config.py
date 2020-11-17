@@ -96,6 +96,7 @@ class DeepSpeedZeroConfig(object):
                                             ZERO_OPTIMIZATION_CPU_OFFLOAD,
                                             ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT)
 
-        self.elastic_checkpoint = get_scalar_param(zero_config_dict,
-                                                   ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT,
-                                                   ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT_DEFAULT)
+        self.elastic_checkpoint = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT,
+            ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT_DEFAULT)
