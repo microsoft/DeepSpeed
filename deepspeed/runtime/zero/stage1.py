@@ -205,7 +205,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             self.max_elems_per_comm.append(
                 self.best_max_elems_per_comm(
                     num_elements=sum(t.numel() for t in self.fp16_groups[i]),
-                    max_elements_per_comm=max_elements_per_comm))
+                    max_elements_per_comm=max_elements_per_comm,
+                    dp=dist.get_world_size(group=self.dp_process_group)))
 
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
@@ -317,7 +318,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 sub_partition_param.grad = None
 
     @staticmethod
-    def best_max_elems_per_comm(num_elements, max_elements_per_comm):
+    def best_max_elems_per_comm(num_elements, max_elements_per_comm, dp):
         # if we use max-elems-per-comm as is, how many comm intervals will there be
         max_comm_intervals = math.ceil(num_elements / max_elements_per_comm)
         padding_for_max_comm = (max_elements_per_comm *
@@ -334,7 +335,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         # choose padding that uses least amount of overhead
         if padding_for_max_comm > padding_for_min_comm:
-            new_max_elements_per_comm = padding_for_min_comm + max_elements_per_comm
+            # add dp size to ensure we have enough padding to split partitions across all ranks
+            new_max_elements_per_comm = padding_for_min_comm + max_elements_per_comm + dp
             log_dist(
                 f'Updating max_elements_per_comm from {max_elements_per_comm} -> {new_max_elements_per_comm}',
                 ranks=[0])
