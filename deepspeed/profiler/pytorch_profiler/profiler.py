@@ -719,7 +719,8 @@ class LeNet5(nn.Module):
 
 if __name__ == "__main__":
     mod = LeNet5(10)
-    input = torch.randn(1, 1, 32, 32)
+    batch_size = 1024
+    input = torch.randn(batch_size, 1, 32, 32)
     macs, params, steps = get_model_profile(
         mod,
         tuple(input.shape),
@@ -732,6 +733,7 @@ if __name__ == "__main__":
         as_strings=True,
         ignore_modules=None,
     )
+    print("{:<30}  {:<8}".format("Batch size: ", batch_size))
     print("{:<30}  {:<8}".format("Number of multiply-adds: ", macs))
     print("{:<30}  {:<8}".format("Number of parameters: ", params))
     print("{:<30}  {:<8}".format("Number of steps profiled: ", steps))

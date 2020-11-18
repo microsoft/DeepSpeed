@@ -31,9 +31,10 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         net.cuda(device=args.device)
 
+    batch_size = 256
     macs, params, steps = get_model_profile(
         net,
-        (1, 3, 224, 224),
+        (batch_size, 3, 224, 224),
         print_profile=True,
         print_aggregated_profile=True,
         depth=-1,
@@ -43,6 +44,7 @@ if __name__ == '__main__':
         as_strings=True,
         ignore_modules=None)
 
+    print("{:<30}  {:<8}".format("Batch size: ", batch_size))
     print('{:<30}  {:<8}'.format('Number of MACs: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
     print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
