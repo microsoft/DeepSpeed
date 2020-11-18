@@ -3,7 +3,7 @@ from functools import partial
 import torch
 from transformers import BertForSequenceClassification, BertTokenizer
 
-from pytorch_profiler import get_model_profile
+from deepspeed.profiler.pytorch_profiler import get_model_profile
 
 
 def bert_input_constructor(input_shape, tokenizer):

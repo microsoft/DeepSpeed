@@ -36,8 +36,7 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler.pytorch_profiler.profiler import add_profile_methods, start_profile, stop_profile, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
-import deepspeed.profiler.xsp.tracer as tracer
+from deepspeed.profiler import tracer, add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -755,10 +754,9 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
 
-        # Configure flops counter
+        # Configure the pytorch_profiler
         if self.pytorch_profiler() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
-            # model = add_profile_methods(model)
             self.module = add_profile_methods(self.module)
             self.module.start_profile(ignore_list=None)
 

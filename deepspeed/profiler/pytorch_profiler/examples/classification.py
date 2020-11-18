@@ -2,7 +2,7 @@ import argparse
 import sys
 import torch
 import torchvision.models as models
-from pytorch_profiler import get_model_profile
+from deepspeed.profiler.pytorch_profiler import get_model_profile
 
 pt_models = {
     'resnet18': models.resnet18,

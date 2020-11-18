@@ -49,13 +49,12 @@ In DeepSpeed config file, specify:
 * ```"profile_depth": -1``` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
 * ```"profile_top_num": 3```to set the number of top modules to print aggregated profile
 
-
-### With API directly
+### Use the high level-API and run the model for profiling purpose
 
 ```python
 import torchvision.models as models
 import torch
-from pytorch_profiler import get_model_profile
+from deepspeed.profiler.pytorch_profiler import get_model_profile
 
 with torch.cuda.device(0):
     mod = models.alexnet()
@@ -75,3 +74,52 @@ with torch.cuda.device(0):
 
 Examples of this usage is given in [examples](examples).
 
+### Insert the low-level APIs into the existing model training workflow
+
+* ```add_profile_methods```: 
+* ```start_profile```:
+* ```stop_profile```
+* ```print_model_profile```
+* ```print_model_aggregated_profile
+* ```flops_to_string```
+* ```params_to_string```
+* ```duration_to_string```
+
+
+Below is an example of this usage in pseudo code.
+
+```python
+import deepspeed.profiler as Profiler
+
+model = Model()
+model = profiler.add_profile_methods(model)
+profile_iter = 5
+
+for batch in batches:
+  if step == pro
+    ds_profile.start_profile()
+    loss = model(batch)
+    loss.backward()
+    optimizer.step()
+    ds_profile.end_profile()
+
+
+ds_profiler.print_profile(normalize = len(batches))
+
+
+for step, batch in enumerate(data_loader):
+  if step == profile_step:
+    model.start_profile()
+
+    # forward() method
+    loss = model_engine(batch)
+
+  if model == profile_step:
+    model.stop_profile()
+    model.print
+    # runs backpropagation
+    loss.backward()
+
+    # weight update
+    optimizer.step()
+```
