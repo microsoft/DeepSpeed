@@ -120,4 +120,4 @@ for n, batch in enumerate(data_loader):
     model.backward(loss)
     model.step()
     #print_params('step={}'.format(n), model)
-    if n == 5: break
+    if n == 10: break

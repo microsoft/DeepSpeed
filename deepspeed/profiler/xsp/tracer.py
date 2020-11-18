@@ -52,6 +52,10 @@ def init(service="deepspeed"):
     return tracer
 
 
+def get_tracer():
+    return tracer
+
+
 if __name__ == "__main__":
     log_level = logging.DEBUG
     logging.getLogger('').handlers = []

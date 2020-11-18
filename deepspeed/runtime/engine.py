@@ -36,7 +36,8 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler import tracer, add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
+from deepspeed.profiler.pytorch_profiler.profiler import add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
+import deepspeed.profiler.xsp as xsp
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -130,9 +131,12 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
 
-        tracer.init()
+        xsp.init()
+        # print(xsp.get_tracer())
+        tracer = xsp.get_tracer()
+        # print(xsp.tracer)
 
-        init_span = tracer.tracer.start_span("init", child_of=tracer.root_span)
+        init_span = tracer.start_span("init", child_of=xsp.root_span)
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
@@ -766,12 +770,11 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
-        # tracer = get_tracer()
+        tracer = xsp.get_tracer()
         # root_span = get_root_span()
-        fwd_span = tracer.tracer.start_span(
-            "forward",
-            tags={"module_name": type(self.module).__name__},
-            child_of=tracer.root_span)
+        fwd_span = tracer.start_span("forward",
+                                     tags={"module_name": type(self.module).__name__},
+                                     child_of=xsp.root_span)
         # print("creating a forward span...")
         loss = self.module(*inputs, **kwargs)
         fwd_span.finish()
@@ -807,17 +810,17 @@ class DeepSpeedEngine(Module):
         """
         if self.pytorch_profiler() and self.global_steps == self.profile_step(
         ) and self.global_rank == 0:
-            flops_count = self.module.compute_total_flops()
-            params_count = self.module.__params__
-            duration = self.module.compute_total_duration()
+            flops = self.module.get_total_flops()
+            params = self.module.get_total_params()
+            duration = self.module.get_total_duration()
             batch_size = self.module.__batch__
             print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
-                                         flops_to_string(flops_count)))
+                                         flops_to_string(flops)))
             print('{:<30}  {:<8}'.format('Number of parameters: ',
-                                         params_to_string(params_count)))
+                                         params_to_string(params)))
             print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
-            print_model_profile(self.module, flops_count, params_count, duration)
-            print_model_aggregated_profile(self.module, depth=-1, top_num=3)
+            self.module.print_model_profile()
+            self.module.print_model_aggregated_profile(depth=-1, top_num=3)
             self.module.stop_profile()
 
         # scale loss w.r.t. gradient accumulation if needed
@@ -843,10 +846,10 @@ class DeepSpeedEngine(Module):
 
         assert self.optimizer is not None, "must provide optimizer during " \
                                            "init in order to use backward"
-        bwd_span = tracer.tracer.start_span(
-            "backward",
-            tags={"module_name": type(self.module).__name__},
-            child_of=tracer.root_span)
+        tracer = xsp.get_tracer()
+        bwd_span = tracer.start_span("backward",
+                                     tags={"module_name": type(self.module).__name__},
+                                     child_of=xsp.root_span)
         if self.wall_clock_breakdown():
             self.timers('backward_inner_microstep').start()
             self.timers('backward_inner').start()
@@ -872,7 +875,7 @@ class DeepSpeedEngine(Module):
             self.timers('backward_inner').stop()
             self.timers('backward_inner_microstep').stop()
 
-        bwd_all_reduce_span = tracer.tracer.start_span(
+        bwd_all_reduce_span = tracer.start_span(
             "backward_all_reduce",
             tags={"module_name": type(self.module).__name__},
             child_of=bwd_span)
@@ -965,10 +968,10 @@ class DeepSpeedEngine(Module):
             self.timers('step_microstep').start()
             self.timers('step').start()
 
-        step_span = tracer.tracer.start_span(
-            "step",
-            tags={"module_name": type(self.module).__name__},
-            child_of=tracer.root_span)
+        tracer = xsp.get_tracer()
+        step_span = tracer.start_span("step",
+                                      tags={"module_name": type(self.module).__name__},
+                                      child_of=xsp.root_span)
 
         assert self.optimizer is not None, "must provide optimizer during " \
                                            "init in order to use step"

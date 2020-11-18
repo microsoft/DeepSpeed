@@ -2,7 +2,8 @@
 
 > Measures the time, number of estimated flop and parameters of each module in a PyTorch Model.
 
-The pytorch-profiler prints the model graph with the measured profile attached to each module, and shows how time, flops and parameters are spent in a PyTorch model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user.
+The pytorch-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user.
+
 
 The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that pytorch-profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops, thus allowing customized modules in the module (e.g. ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). pytorch-profiler also supports flops computation at module level (for RNNs).
 
@@ -82,8 +83,8 @@ Examples of this usage is given in [examples](examples).
   * ```compute_total_duration``` - returns the total duration
   * ```compute_total_params``` - returns the total number of params
   * ```print_model_profile``` - prints the profile annotated 
-  * ```print_model_aggregated_profile``` - prints aggregated profile for top modules
-  * ```stop_profile``` - stops profiling and cleans up, should be invoked at the end of the profiling and before any printing method.
+  * ```print_model_aggregated_profile``` - prints the aggregated profile for the top modules
+  * ```stop_profile``` - stops profiling and cleans up, invoked at the end of the profiling and before any printing method.
 
 ```flops_to_string```,  ```params_to_string```, ```duration_to_string``` are utility functions to convert the metric number to string.
 
@@ -113,9 +114,9 @@ for step, batch in enumerate(data_loader):
     duration = model.get_total_duration()
     params = model.compute_ta
     if print_profile:
-        model.print_model_profile())
+        model.print_model_profile()
     if print_aggregated_profile:
-        print_model_aggregated_profile(depth=-1, top_num=3)
+        model.print_model_aggregated_profile(depth=-1, top_num=3)
     model.stop_profile()
 
   # runs backpropagation

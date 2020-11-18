@@ -9,4 +9,4 @@ export RANK=0
 export WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
 # python test_model.py
-python test_model.py --pytorch_profiler true --profile_step=1
+python test_model.py --pytorch_profiler true --profile_step=5
