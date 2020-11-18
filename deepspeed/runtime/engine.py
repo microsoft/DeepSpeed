@@ -278,8 +278,11 @@ class DeepSpeedEngine(Module):
     def pytorch_profiler(self):
         return self._config.pytorch_profiler
 
-    def profile_step(self):
-        return self._config.profile_step
+    def profile_start_step(self):
+        return self._config.profile_start_step
+
+    def profile_end_step(self):
+        return self._config.profile_end_step
 
     def profile_depth(self):
         return self._config.profile_depth
@@ -757,12 +760,24 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
-
-        # Configure the pytorch_profiler
-        if self.pytorch_profiler() and self.global_steps == self.profile_step(
+        if self.pytorch_profiler() and self.global_steps == self.profile_start_step(
         ) and self.global_rank == 0:
             self.module = add_profile_methods(self.module)
             self.module.start_profile(ignore_list=None)
+
+        if self.pytorch_profiler() and self.global_steps == self.profile_end_step(
+        ) and self.global_rank == 0:
+            flops = self.module.get_total_flops()
+            params = self.module.get_total_params()
+            steps = self.module.get_total_steps()
+            print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
+                                         flops_to_string(flops)))
+            print('{:<30}  {:<8}'.format('Number of parameters: ',
+                                         params_to_string(params)))
+            print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
+            self.module.print_model_profile()
+            self.module.print_model_aggregated_profile(depth=-1, top_num=3)
+            self.module.stop_profile()
 
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
@@ -770,6 +785,7 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
+
         tracer = xsp.get_tracer()
         # root_span = get_root_span()
         fwd_span = tracer.start_span("forward",
@@ -808,21 +824,6 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
-        if self.pytorch_profiler() and self.global_steps == self.profile_step(
-        ) and self.global_rank == 0:
-            flops = self.module.get_total_flops()
-            params = self.module.get_total_params()
-            duration = self.module.get_total_duration()
-            batch_size = self.module.__batch__
-            print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
-                                         flops_to_string(flops)))
-            print('{:<30}  {:<8}'.format('Number of parameters: ',
-                                         params_to_string(params)))
-            print('{:<30}  {:<8}'.format('Batch size: ', batch_size))
-            self.module.print_model_profile()
-            self.module.print_model_aggregated_profile(depth=-1, top_num=3)
-            self.module.stop_profile()
-
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
             loss = self._scale_loss(loss.float())

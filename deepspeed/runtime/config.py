@@ -413,8 +413,12 @@ def get_pytorch_profiler(param_dict):
     return get_scalar_param(param_dict, PYTORCH_PROFILER, PYTORCH_PROFILER_DEFAULT)
 
 
-def get_profile_step(param_dict):
-    return get_scalar_param(param_dict, PROFILE_STEP, PROFILE_STEP_DEFAULT)
+def get_profile_start_step(param_dict):
+    return get_scalar_param(param_dict, PROFILE_START_STEP, PROFILE_START_STEP_DEFAULT)
+
+
+def get_profile_end_step(param_dict):
+    return get_scalar_param(param_dict, PROFILE_END_STEP, PROFILE_START_STEP_DEFAULT)
 
 
 def get_profile_depth(param_dict):
@@ -548,7 +552,10 @@ class DeepSpeedConfig(object):
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
         self.pytorch_profiler = get_pytorch_profiler(param_dict)
-        self.profile_step = get_profile_step(param_dict)
+        self.profile_start_step = get_profile_start_step(param_dict)
+        self.profile_end_step = get_profile_end_step(param_dict)
+        if self.profile_end_step < self.profile_start_step:
+            self.profile_end_step = self.profile_start_step
         self.profile_depth = get_profile_depth(param_dict)
         self.profile_top_num = get_profile_top_num(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)

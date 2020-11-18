@@ -320,11 +320,12 @@ def add_profile_methods(model):
     # adding additional methods to the existing module object,
     # this is done this way so that each function has access to self object
     model.start_profile = start_profile.__get__(model)
-    model.stop_profile = stop_profile.__get__(model)
+    model.end_profile = end_profile.__get__(model)
     model.reset_profile = reset_profile.__get__(model)
     model.get_total_flops = get_total_flops.__get__(model)
     model.get_total_duration = get_total_duration.__get__(model)
     model.get_total_params = get_total_params.__get__(model)
+    model.get_total_steps = get_total_steps.__get__(model)
     model.print_model_profile = print_model_profile.__get__(model)
     model.print_model_aggregated_profile = print_model_aggregated_profile.__get__(model)
 
@@ -347,12 +348,11 @@ def start_profile(self, **kwargs):
         # if compute the flops of the functionals in a module
         def pre_hook(module, input):
             module_flop_count.clear()
-            batch_size = 1
             if len(input) > 0:
                 # Can have multiple inputs, getting the first one
                 input = input[0]
                 batch_size = len(input)
-            module.__batch__ += batch_size
+            module.__steps__ += 1
 
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
@@ -380,7 +380,7 @@ def start_profile(self, **kwargs):
 
 def add_or_reset_attrs(module):
     module.__flops__ = 0
-    module.__batch__ = 0
+    module.__steps__ = 0
     module.__params__ = get_model_parameters_number(module)
     module.__start_time__ = 0
     module.__end_time__ = 0
@@ -391,8 +391,8 @@ def reset_profile(self):
 
 
 def remove_profile_attrs(module):
-    if hasattr(module, "__batch__"):
-        del module.__batch__
+    if hasattr(module, "__steps__"):
+        del module.__steps__
     if hasattr(module, "__flops__"):
         del module.__flops__
     if hasattr(module, "__params__"):
@@ -433,7 +433,11 @@ def get_total_params(self):
     return self.__params__
 
 
-def stop_profile(self):
+def get_total_steps(self):
+    return self.__steps__
+
+
+def end_profile(self):
     self.apply(remove_profile_attrs)
 
 
@@ -553,7 +557,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
     info = {}
     if not hasattr(self, "__flops__"):
         print(
-            "no __flops__ attribute in the model, call this function after start_profile and before stop_profile"
+            "no __flops__ attribute in the model, call this function after start_profile and before end_profile"
         )
         return
 
@@ -617,7 +621,8 @@ def get_model_profile(
     print_aggregated_profile=True,
     depth=-1,
     top_num=3,
-    warm_up=10,
+    warm_up=5,
+    num_steps=10,
     as_strings=True,
     ignore_modules=[],
 ):
@@ -626,7 +631,6 @@ def get_model_profile(
     assert isinstance(model, nn.Module)
     model = add_profile_methods(model)
     model.eval()
-    model.start_profile(ignore_list=ignore_modules)
     for _ in range(warm_up):
         if input_constructor:
             input = input_constructor(input_res)
@@ -634,43 +638,43 @@ def get_model_profile(
         else:
             try:
                 batch = torch.ones(()).new_empty(
-                    (1,
-                     *input_res),
+                    (*input_res),
                     dtype=next(model.parameters()).dtype,
                     device=next(model.parameters()).device,
                 )
             except StopIteration:
-                batch = torch.ones(()).new_empty((1, *input_res))
+                batch = torch.ones(()).new_empty((*input_res))
             _ = model(batch)
-    model.reset_profile()
 
-    if input_constructor:
-        input = input_constructor(input_res)
-        _ = model(**input)
-    else:
-        try:
-            batch = torch.ones(()).new_empty(
-                (1,
-                 *input_res),
-                dtype=next(model.parameters()).dtype,
-                device=next(model.parameters()).device,
-            )
-        except StopIteration:
-            batch = torch.ones(()).new_empty((1, *input_res))
-        _ = model(batch)
+    model.start_profile(ignore_list=ignore_modules)
+
+    for _ in range(num_steps):
+        if input_constructor:
+            input = input_constructor(input_res)
+            _ = model(**input)
+        else:
+            try:
+                batch = torch.ones(()).new_empty(
+                    (*input_res),
+                    dtype=next(model.parameters()).dtype,
+                    device=next(model.parameters()).device,
+                )
+            except StopIteration:
+                batch = torch.ones(()).new_empty((*input_res))
+            _ = model(batch)
 
     flops = model.get_total_flops()
-    duration = model.get_total_duration()
-    params = model.__params__
+    params = model.get_total_params()
+    steps = model.get_total_steps()
     if print_profile:
         model.print_model_profile()
     if print_aggregated_profile:
         model.print_model_aggregated_profile(depth=depth, top_num=top_num)
-    model.stop_profile()
+    model.end_profile()
     if as_strings:
-        return flops_to_string(flops), params_to_string(params)
+        return flops_to_string(flops), params_to_string(params), steps
 
-    return flops, params
+    return flops, params, steps
 
 
 class LeNet5(nn.Module):
@@ -715,17 +719,19 @@ class LeNet5(nn.Module):
 
 if __name__ == "__main__":
     mod = LeNet5(10)
-    input = torch.randn(3, 1, 32, 32)
-    macs, params = get_model_profile(
+    input = torch.randn(1, 1, 32, 32)
+    macs, params, steps = get_model_profile(
         mod,
-        tuple(input.shape)[1:],
+        tuple(input.shape),
         print_profile=True,
         print_aggregated_profile=True,
         depth=-1,
         top_num=3,
-        warm_up=10,
+        warm_up=5,
+        num_steps=10,
         as_strings=True,
         ignore_modules=None,
     )
     print("{:<30}  {:<8}".format("Number of multiply-adds: ", macs))
     print("{:<30}  {:<8}".format("Number of parameters: ", params))
+    print("{:<30}  {:<8}".format("Number of steps profiled: ", steps))

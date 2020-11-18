@@ -277,12 +277,19 @@ PyTorch profiler should be enabled as:
 PYTORCH_PROFILER = 'pytorch_profiler'
 PYTORCH_PROFILER_DEFAULT = True
 
-PROFILE_STEP_FORMAT = '''
-Profile step can be specified as:
-"profile_step": 5
+PROFILE_START_STEP_FORMAT = '''
+Profile start step can be specified as:
+"profile_start_step": 5
 '''
-PROFILE_STEP = 'profile_step'
-PROFILE_STEP_DEFAULT = 5
+PROFILE_START_STEP = 'profile_start_step'
+PROFILE_START_STEP_DEFAULT = 5
+
+PROFILE_END_STEP_FORMAT = '''
+Profile end step can be specified as:
+"profile_end_step": 5
+'''
+PROFILE_END_STEP = 'profile_end_step'
+PROFILE_END_STEP_DEFAULT = PROFILE_START_STEP_DEFAULT + 1
 
 PROFILE_DEPTH_FORMAT = '''
 Profile depth can be specified as:

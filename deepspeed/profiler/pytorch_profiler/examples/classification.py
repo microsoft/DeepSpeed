@@ -31,16 +31,18 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         net.cuda(device=args.device)
 
-    macs, params = get_model_profile(
+    macs, params, steps = get_model_profile(
         net,
-        (3, 224, 224),
+        (1, 3, 224, 224),
         print_profile=True,
         print_aggregated_profile=True,
         depth=-1,
         top_num=3,
-        warm_up=10,
+        warm_up=5,
+        num_steps=10,
         as_strings=True,
         ignore_modules=None)
 
-    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    print('{:<30}  {:<8}'.format('Number of MACs: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+    print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))

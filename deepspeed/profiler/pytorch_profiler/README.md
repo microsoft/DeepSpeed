@@ -2,10 +2,11 @@
 
 > Measures the time, number of estimated flop and parameters of each module in a PyTorch Model.
 
-The pytorch-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user.
-
+The pytorch-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input. If multiple forward passes are specified by the user to caputre (in the case where the model have different paths or for more accurate timing), the average profile of the multiple batches is taken.
 
 The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that pytorch-profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops, thus allowing customized modules in the module (e.g. ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). pytorch-profiler also supports flops computation at module level (for RNNs).
+
+For models running on multi-node or multi-gpu runs, only the model parallelism affects the number of flops and parameters (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size * flops = total_flops, model_parallel_size * parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
 
 Below is an example output for LeNet5:
 <!-- ![](header.png) -->
@@ -38,8 +39,6 @@ Number of multiply-adds:        429.25 KMac
 Number of parameters:           61.71 k
 ```
 
-For models running on multi-node or multi-gpu runs, only the model parallelism affects the number of flops and parameters (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size * flops = total_flops, model_parallel_size * parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
-
 ## Usage
 
 ### With DeepSpeed runtime
@@ -60,7 +59,7 @@ from deepspeed.profiler.pytorch_profiler import get_model_profile
 with torch.cuda.device(0):
     mod = models.alexnet()
     macs, params = get_model_profile(mod, # model
-                                     (3, 224, 224), # input shape or input to the input_constructor
+                                     (1, 3, 224, 224), # input shape or input to the input_constructor
                                      input_constructor=None, # if specified, a constructor taking the the parameter before is used as input to the model
                                      print_profile=True, # print model graph with the profile annotated
                                      print_aggregated_profile=True, # print aggregated profile for top modules
@@ -82,9 +81,10 @@ Examples of this usage is given in [examples](examples).
   * ```compute_total_flops``` - returns the total number of flops
   * ```compute_total_duration``` - returns the total duration
   * ```compute_total_params``` - returns the total number of params
+  * ```compute_total_steps``` - returns the total number of steps profiled
   * ```print_model_profile``` - prints the profile annotated 
   * ```print_model_aggregated_profile``` - prints the aggregated profile for the top modules
-  * ```stop_profile``` - stops profiling and cleans up, invoked at the end of the profiling and before any printing method.
+  * ```end_profile``` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
 
 ```flops_to_string```,  ```params_to_string```, ```duration_to_string``` are utility functions to convert the metric number to string.
 
@@ -96,28 +96,28 @@ import deepspeed.profiler as prof
 model = Model()
 model = prof.add_profile_methods(model)
 
-profile_setp = 5
+profile_start_setp = 5
+profile_stop_step = 6
 print_profile = True
 pring_aggregated_profile = True
 
 for step, batch in enumerate(data_loader):
   # start profiling at training step "profile_step"
-  if step == profile_step:
+  if step == profile_start_step:
     model.start_profile()
 
-  # forward() method
-  loss = model(batch)
-
   # stop profiling and print output at training step "profile_step"
-  if model == profile_step:
+  if model == profile_end_step:
     flops = model.get_total_flops()
-    duration = model.get_total_duration()
-    params = model.compute_ta
+    params = model.get_total_params()
     if print_profile:
         model.print_model_profile()
     if print_aggregated_profile:
         model.print_model_aggregated_profile(depth=-1, top_num=3)
-    model.stop_profile()
+    model.end_profile()
+
+  # forward() method
+  loss = model(batch)
 
   # runs backpropagation
   loss.backward()
