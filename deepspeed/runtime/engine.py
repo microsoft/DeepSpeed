@@ -777,7 +777,7 @@ class DeepSpeedEngine(Module):
             print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
             self.module.print_model_profile()
             self.module.print_model_aggregated_profile(depth=-1, top_num=3)
-            self.module.stop_profile()
+            self.module.end_profile()
 
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()

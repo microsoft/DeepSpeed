@@ -351,13 +351,12 @@ def start_profile(self, **kwargs):
             if len(input) > 0:
                 # Can have multiple inputs, getting the first one
                 input = input[0]
-                batch_size = len(input)
             module.__steps__ += 1
 
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
         def post_hook(module, input, output):
-            module.__flops__ = sum([elem[1] for elem in module_flop_count])
+            module.__flops__ += sum([elem[1] for elem in module_flop_count])
             module_flop_count.clear()
 
         has_children = len(module._modules.items()) != 0
@@ -371,7 +370,7 @@ def start_profile(self, **kwargs):
             start_time_hook)
 
         def end_time_hook(module, input, output):
-            module.__end_time__ = time.time()
+            module.__duration__ += time.time() - module.__start_time__
 
         module.__end_time_hook_handle__ = module.register_forward_hook(end_time_hook)
 
@@ -383,7 +382,7 @@ def add_or_reset_attrs(module):
     module.__steps__ = 0
     module.__params__ = get_model_parameters_number(module)
     module.__start_time__ = 0
-    module.__end_time__ = 0
+    module.__duration__ = 0
 
 
 def reset_profile(self):
@@ -399,8 +398,8 @@ def remove_profile_attrs(module):
         del module.__params__
     if hasattr(module, "__start_time__"):
         del module.__start_time__
-    if hasattr(module, "__end_time__"):
-        del module.__end_time__
+    if hasattr(module, "__duration__"):
+        del module.__duration__
     if hasattr(module, "__pre_hook_handle__"):
         module.__pre_hook_handle__.remove()
         del module.__pre_hook_handle__
@@ -422,11 +421,11 @@ def get_total_flops(self):
     sum = 0
     for module in self.modules():
         sum += module.__flops__
-    return sum
+    return sum / self.__steps__
 
 
 def get_total_duration(self):
-    return self.__end_time__ - self.__start_time__
+    return self.__duration__ / self.__steps__
 
 
 def get_total_params(self):
@@ -515,21 +514,23 @@ def print_model_profile(self):
 
     def flops_repr(self):
         params = self.__params__
-        flops = self.accumulate_flops()
+        flops = self.accumulate_flops() / self.__steps__
         items = [
             params_to_string(params),
-            "{:.3%} Params".format(params / total_params),
+            "{:.2%} Params".format(params / total_params),
             flops_to_string(flops),
-            "{:.3%} MACs".format(0 if total_flops == 0 else flops / total_flops),
+            "{:.2%} MACs".format(0 if total_flops == 0 else flops / total_flops),
         ]
-        duration = self.__end_time__ - self.__start_time__
+        duration = self.__duration__ / self.__steps__
         items.append(duration_to_string(duration))
         items.append("{:.2%} time".format(0 if total_duration == 0 else duration /
                                           total_duration))
         # flops = 2 * MACs
-        items.append("0" if duration ==
-                     0 else str(round(2 * flops / duration / 10**12,
-                                      2)) + " TFLOPS")
+        # items.append("0" if duration ==
+        #              0 else str(round(2 * flops / duration / 10**12,
+        #                               2)) + " TFLOPS")
+        items.append(("{:.2} TFLOPS".format(0 if duration == 0 else 2 * flops /
+                                            duration / 10**12)))
         items.append(self.original_extra_repr())
         return ", ".join(items)
 
@@ -572,8 +573,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
             ]  # flops, params, time
         info[curr_depth][module.__class__.__name__][0] += module.__flops__
         info[curr_depth][module.__class__.__name__][1] += module.__params__
-        info[curr_depth][module.__class__.__name__][2] += (module.__end_time__ -
-                                                           module.__start_time__)
+        info[curr_depth][module.__class__.__name__][2] += (module.__duration__)
         has_children = len(module._modules.items()) != 0
         if has_children:
             for child in module.children():
@@ -588,7 +588,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
     num_items = min(top_num, len(info[depth]))
 
     sort_flops = {
-        k: flops_to_string(v[0])
+        k: flops_to_string(v[0] / self.__steps__)
         for k,
         v in sorted(info[depth].items(),
                     key=lambda item: item[1][0],
@@ -602,7 +602,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
                     reverse=True)[:num_items]
     }
     sort_time = {
-        k: duration_to_string(v[2])
+        k: duration_to_string(v[2] / self.__steps__)
         for k,
         v in sorted(info[depth].items(),
                     key=lambda item: item[1][2],
