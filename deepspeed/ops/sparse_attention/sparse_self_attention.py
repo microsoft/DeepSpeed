@@ -30,6 +30,7 @@ class SparseSelfAttention(nn.Module):
             sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on SparsityConfig class.
             key_padding_mask_mode: optional: a string determining if key padding mask needs to be added, `add`, or be multiplied, `mul`.
             attn_mask_mode: optional: a string determining if attention mask needs to be added, `add`, or be multiplied, `mul`.
+            max_seq_length: optional: the maximum sequence length this sparse attention module will be applied to; it controls the size of the master_layout.
         """
         super().__init__()
 
