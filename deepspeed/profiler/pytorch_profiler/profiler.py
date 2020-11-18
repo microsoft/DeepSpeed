@@ -322,8 +322,11 @@ def add_profile_methods(model):
     model.start_profile = start_profile.__get__(model)
     model.stop_profile = stop_profile.__get__(model)
     model.reset_profile = reset_profile.__get__(model)
-    model.compute_total_flops = compute_total_flops.__get__(model)
-    model.compute_total_duration = compute_total_duration.__get__(model)
+    model.get_total_flops = get_total_flops.__get__(model)
+    model.get_total_duration = get_total_duration.__get__(model)
+    model.get_total_params = get_total_params.__get__(model)
+    model.print_model_profile = print_model_profile.__get__(model)
+    model.print_model_aggregated_profile = print_model_aggregated_profile.__get__(model)
 
     model.reset_profile()
 
@@ -415,15 +418,19 @@ def remove_profile_attrs(module):
         del module.__end_time_hook_handle__
 
 
-def compute_total_flops(self):
+def get_total_flops(self):
     sum = 0
     for module in self.modules():
         sum += module.__flops__
     return sum
 
 
-def compute_total_duration(self):
+def get_total_duration(self):
     return self.__end_time__ - self.__start_time__
+
+
+def get_total_params(self):
+    return self.__params__
 
 
 def stop_profile(self):
@@ -487,12 +494,11 @@ def duration_to_string(duration, units=None, precision=2):
             return str(round(duration, precision)) + " s"
 
 
-def print_model_profile(model,
-                        total_flops,
-                        total_params,
-                        total_duration,
-                        units=None,
-                        precision=3):
+def print_model_profile(self):
+    total_flops = self.get_total_flops()
+    total_duration = self.get_total_duration()
+    total_params = self.__params__
+
     def accumulate_flops(self):
         has_children = len(self._modules.items()) != 0
         if not has_children:
@@ -507,22 +513,19 @@ def print_model_profile(model,
         params = self.__params__
         flops = self.accumulate_flops()
         items = [
-            params_to_string(params,
-                             units=units,
-                             precision=precision),
+            params_to_string(params),
             "{:.3%} Params".format(params / total_params),
-            flops_to_string(flops,
-                            units=units,
-                            precision=precision),
+            flops_to_string(flops),
             "{:.3%} MACs".format(0 if total_flops == 0 else flops / total_flops),
         ]
         duration = self.__end_time__ - self.__start_time__
-        items.append(duration_to_string(duration, None, precision=precision))
+        items.append(duration_to_string(duration))
         items.append("{:.2%} time".format(0 if total_duration == 0 else duration /
                                           total_duration))
+        # flops = 2 * MACs
         items.append("0" if duration ==
                      0 else str(round(2 * flops / duration / 10**12,
-                                      precision)) + " TFLOPS")
+                                      2)) + " TFLOPS")
         items.append(self.original_extra_repr())
         return ", ".join(items)
 
@@ -541,14 +544,14 @@ def print_model_profile(model,
         if hasattr(m, "accumulate_flops"):
             del m.accumulate_flops
 
-    model.apply(add_extra_repr)
-    print(model)
-    model.apply(del_extra_repr)
+    self.apply(add_extra_repr)
+    print(self)
+    self.apply(del_extra_repr)
 
 
-def print_model_aggregated_profile(model, depth=-1, top_num=3):
+def print_model_aggregated_profile(self, depth=-1, top_num=3):
     info = {}
-    if not hasattr(model, "__flops__"):
+    if not hasattr(self, "__flops__"):
         print(
             "no __flops__ attribute in the model, call this function after start_profile and before stop_profile"
         )
@@ -572,7 +575,7 @@ def print_model_aggregated_profile(model, depth=-1, top_num=3):
             for child in module.children():
                 walk_module(child, curr_depth + 1, info)
 
-    walk_module(model, 0, info)
+    walk_module(self, 0, info)
 
     max_depth = len(info)
     if depth == -1:
@@ -656,18 +659,18 @@ def get_model_profile(
             batch = torch.ones(()).new_empty((1, *input_res))
         _ = model(batch)
 
-    flops = model.compute_total_flops()
-    duration = model.compute_total_duration()
-    params_count = model.__params__
+    flops = model.get_total_flops()
+    duration = model.get_total_duration()
+    params = model.__params__
     if print_profile:
-        print_model_profile(model, flops, params_count, duration)
+        model.print_model_profile()
     if print_aggregated_profile:
-        print_model_aggregated_profile(model, depth=depth, top_num=top_num)
+        model.print_model_aggregated_profile(depth=depth, top_num=top_num)
     model.stop_profile()
     if as_strings:
-        return flops_to_string(flops), params_to_string(params_count)
+        return flops_to_string(flops), params_to_string(params)
 
-    return flops, params_count
+    return flops, params
 
 
 class LeNet5(nn.Module):

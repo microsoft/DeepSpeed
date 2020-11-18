@@ -74,52 +74,54 @@ with torch.cuda.device(0):
 
 Examples of this usage is given in [examples](examples).
 
-### Insert the low-level APIs into the existing model training workflow
+### Use the low-level APIs to profile the forward pass in the existing model training workflow
 
-* ```add_profile_methods```: 
-* ```start_profile```:
-* ```stop_profile```
-* ```print_model_profile```
-* ```print_model_aggregated_profile
-* ```flops_to_string```
-* ```params_to_string```
-* ```duration_to_string```
+```add_profile_methods```: adds the following methods to the model object: 
+  * ```start_profile``` - starts profiling
+  * ```compute_total_flops``` - returns the total number of flops
+  * ```compute_total_duration``` - returns the total duration
+  * ```compute_total_params``` - returns the total number of params
+  * ```print_model_profile``` - prints the profile annotated 
+  * ```print_model_aggregated_profile``` - prints aggregated profile for top modules
+  * ```stop_profile``` - stops profiling and cleans up, should be invoked at the end of the profiling and before any printing method.
 
+```flops_to_string```,  ```params_to_string```, ```duration_to_string``` are utility functions to convert the metric number to string.
 
-Below is an example of this usage in pseudo code.
+Below is an example of this usage in a typical training workflow.
 
 ```python
-import deepspeed.profiler as Profiler
+import deepspeed.profiler as prof
 
 model = Model()
-model = profiler.add_profile_methods(model)
-profile_iter = 5
+model = prof.add_profile_methods(model)
 
-for batch in batches:
-  if step == pro
-    ds_profile.start_profile()
-    loss = model(batch)
-    loss.backward()
-    optimizer.step()
-    ds_profile.end_profile()
-
-
-ds_profiler.print_profile(normalize = len(batches))
-
+profile_setp = 5
+print_profile = True
+pring_aggregated_profile = True
 
 for step, batch in enumerate(data_loader):
+  # start profiling at training step "profile_step"
   if step == profile_step:
     model.start_profile()
 
-    # forward() method
-    loss = model_engine(batch)
+  # forward() method
+  loss = model(batch)
 
+  # stop profiling and print output at training step "profile_step"
   if model == profile_step:
+    flops = model.get_total_flops()
+    duration = model.get_total_duration()
+    params = model.compute_ta
+    if print_profile:
+        model.print_model_profile())
+    if print_aggregated_profile:
+        print_model_aggregated_profile(depth=-1, top_num=3)
     model.stop_profile()
-    model.print
-    # runs backpropagation
-    loss.backward()
 
-    # weight update
-    optimizer.step()
+  # runs backpropagation
+  loss.backward()
+
+  # weight update
+  optimizer.step()
+
 ```
