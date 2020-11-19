@@ -213,6 +213,8 @@ class DeepSpeedEngine(Module):
                                                     args,
                                                     master_port=6105,
                                                     verbose=True):
+        '''Helper routine to get and set environment variables. This is adapted from Azure ML's documentation available from: https://azure.github.io/azureml-web/docs/cheatsheet/distributed-training/#environment-variables-from-openmpi
+'''
         os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
         os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
         single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
