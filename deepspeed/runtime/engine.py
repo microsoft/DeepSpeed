@@ -126,7 +126,7 @@ class DeepSpeedEngine(Module):
             dist_init_required = not dist.is_initialized()
 
         if self._in_aml():
-            self._set_environment_variables_for_nccl_backend()
+            self._set_environment_variables_for_nccl_backend(args)
         else:
             self._mpi_check(args, dist_init_required)
 
@@ -209,7 +209,7 @@ class DeepSpeedEngine(Module):
         else:
             return False
             
-    def _set_environment_variables_for_nccl_backend(self, master_port=6105, verbose=True):
+    def _set_environment_variables_for_nccl_backend(self, args, master_port=6105, verbose=True):
         os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
         os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
         single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(os.environ["WORLD_SIZE"])
