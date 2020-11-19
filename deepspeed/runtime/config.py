@@ -418,7 +418,7 @@ def get_profile_start_step(param_dict):
 
 
 def get_profile_end_step(param_dict):
-    return get_scalar_param(param_dict, PROFILE_END_STEP, PROFILE_START_STEP_DEFAULT)
+    return get_scalar_param(param_dict, PROFILE_END_STEP, PROFILE_END_STEP_DEFAULT)
 
 
 def get_profile_depth(param_dict):

@@ -763,6 +763,7 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler() and self.global_steps == self.profile_start_step(
         ) and self.global_rank == 0:
             self.module = add_profile_methods(self.module)
+            print("XXXXXX", self.module.__class__.__name__)
             self.module.start_profile(ignore_list=None)
 
         if self.flops_profiler() and self.global_steps == self.profile_end_step(

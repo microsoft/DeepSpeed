@@ -1,12 +1,12 @@
 # flops-profiler
 
-> Measures the time, number of estimated flop and parameters of each module in a PyTorch Model.
+> Measures the time, number of estimated flops and parameters of each module in a PyTorch Model.
 
 The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input. If multiple forward passes are specified by the user to caputre (in the case where the model have different paths or for more accurate timing), the average profile of the multiple batches is taken.
 
-The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that flops-profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops, thus allowing customized modules in the module (e.g. ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). flops-profiler also supports flops computation at module level (for RNNs).
+The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that flops-profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops, thus allowing customized modules in the model (e.g. ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). The flops-profiler also supports flops computation at module level (for RNNs).
 
-For models running on multi-node or multi-gpu runs, only the model parallelism affects the number of flops and parameters (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size * flops = total_flops, model_parallel_size * parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
+For models running on multi-node or multi-gpu, only the model parallelism affects the number of flops and parameters (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size * flops = total_flops, model_parallel_size * parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
 
 Below is an example output for LeNet5 with batch size 1024 on a V100 GPU:
 <!-- ![](header.png) -->
@@ -55,7 +55,7 @@ Refer to the [installaiton of DeepSpeed](https://www.deepspeed.ai/getting-starte
 
 ### With the DeepSpeed runtime
 
-If using DeepSpeed for model training, no explict API calls are needed to use the profiler. 
+If using DeepSpeed for model training, no explict API calls are needed to use the flops-profiler. 
 
 In DeepSpeed config file, specify:
 * ```"flops_profiler": true``` to enable the flops-profiler.
@@ -64,9 +64,9 @@ In DeepSpeed config file, specify:
 * ```"profile_top_num": 3```to set the number of top modules to print aggregated profile
 
 
-###  Without using the DeepSpeed runtime
+###  Without the DeepSpeed runtime
 
-The profiler can be used standalone outside of the deepspeed runtime. 
+The flops-profiler can be used as a standalone package outside of the deepspeed runtime. 
 #### Use the high level-API and run the model inference for profiling purpose
 
 ```python
@@ -129,7 +129,7 @@ for step, batch in enumerate(data_loader):
     model.start_profile()
 
   # end profiling and print output at training step "profile_step"
-  if model == profile_end_step:
+  if model == profile_end_step: # if using multi nodes, check global_rank == 0 as well
     flops = model.get_total_flops()
     params = model.get_total_params()
     if print_profile:
