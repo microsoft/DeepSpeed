@@ -36,8 +36,8 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 
 from .utils import ensure_directory_exists
 
-from deepspeed.profiler.pytorch_profiler.profiler import add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
-import deepspeed.profiler.xsp as xsp
+from deepspeed.profiling.flops_profiler.profiler import add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
+import deepspeed.profiling.xsp as xsp
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 SUMMARY_WRITER_DIR_NAME = "JobId"
@@ -275,8 +275,8 @@ class DeepSpeedEngine(Module):
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
 
-    def pytorch_profiler(self):
-        return self._config.pytorch_profiler
+    def flops_profiler(self):
+        return self._config.flops_profiler
 
     def profile_start_step(self):
         return self._config.profile_start_step
@@ -760,12 +760,12 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
-        if self.pytorch_profiler() and self.global_steps == self.profile_start_step(
+        if self.flops_profiler() and self.global_steps == self.profile_start_step(
         ) and self.global_rank == 0:
             self.module = add_profile_methods(self.module)
             self.module.start_profile(ignore_list=None)
 
-        if self.pytorch_profiler() and self.global_steps == self.profile_end_step(
+        if self.flops_profiler() and self.global_steps == self.profile_end_step(
         ) and self.global_rank == 0:
             flops = self.module.get_total_flops()
             params = self.module.get_total_params()

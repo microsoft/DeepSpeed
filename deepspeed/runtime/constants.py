@@ -270,12 +270,12 @@ MEMORY_BREAKDOWN_DEFAULT = False
 #########################################
 # PyTorch Profiler. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
-PYTORCH_PROFILER_FORMAT = '''
+FLOPS_PROFILER_FORMAT = '''
 PyTorch profiler should be enabled as:
-"pytorch_profiler": true
+"flops_profiler": true
 '''
-PYTORCH_PROFILER = 'pytorch_profiler'
-PYTORCH_PROFILER_DEFAULT = True
+FLOPS_PROFILER = 'flops_profiler'
+FLOPS_PROFILER_DEFAULT = True
 
 PROFILE_START_STEP_FORMAT = '''
 Profile start step can be specified as:

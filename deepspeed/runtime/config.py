@@ -409,8 +409,8 @@ def get_wall_clock_breakdown(param_dict):
                             WALL_CLOCK_BREAKDOWN_DEFAULT)
 
 
-def get_pytorch_profiler(param_dict):
-    return get_scalar_param(param_dict, PYTORCH_PROFILER, PYTORCH_PROFILER_DEFAULT)
+def get_flops_profiler(param_dict):
+    return get_scalar_param(param_dict, FLOPS_PROFILER, FLOPS_PROFILER_DEFAULT)
 
 
 def get_profile_start_step(param_dict):
@@ -551,7 +551,7 @@ class DeepSpeedConfig(object):
         self.scheduler_params = get_scheduler_params(param_dict)
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
-        self.pytorch_profiler = get_pytorch_profiler(param_dict)
+        self.flops_profiler = get_flops_profiler(param_dict)
         self.profile_start_step = get_profile_start_step(param_dict)
         self.profile_end_step = get_profile_end_step(param_dict)
         if self.profile_end_step < self.profile_start_step:

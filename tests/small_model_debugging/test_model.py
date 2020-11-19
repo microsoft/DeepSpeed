@@ -45,7 +45,7 @@ def get_args(tmpdir, config_dict):
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument('--zero', type=int, default=0)
-    parser.add_argument('--pytorch_profiler', type=bool, default=False)
+    parser.add_argument('--flops_profiler', type=bool, default=False)
     parser.add_argument('--profile_start_step', type=int, default=0)
     parser.add_argument('--profile_end_step', type=int, default=1)
     parser.add_argument('--profile_depth', type=int, default=-1)
@@ -53,7 +53,7 @@ def get_args(tmpdir, config_dict):
     args = parser.parse_args()  #args=''
 
     config_dict["zero_optimization"]["stage"] = args.zero
-    config_dict["pytorch_profiler"] = args.pytorch_profiler
+    config_dict["flops_profiler"] = args.flops_profiler
     config_dict["profile_start_step"] = args.profile_start_step
     config_dict["profile_end_step"] = args.profile_end_step
     config_dict["profile_depth"] = args.profile_depth
