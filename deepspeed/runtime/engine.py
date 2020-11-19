@@ -225,12 +225,16 @@ class DeepSpeedEngine(Module):
         print("NCCL_SOCKET_IFNAME original value = {}".format(os.environ["NCCL_SOCKET_IFNAME"]))
 
         os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+        arg.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        
         if verbose:
-            print("RANK = {}".format(os.environ["RANK"]))
-            print("WORLD_SIZE = {}".format(os.environ["WORLD_SIZE"]))
-            print("MASTER_ADDR = {}".format(os.environ["MASTER_ADDR"]))
-            print("MASTER_PORT = {}".format(os.environ["MASTER_PORT"]))
-            print("NCCL_SOCKET_IFNAME new value = {}".format(os.environ["NCCL_SOCKET_IFNAME"]))
+            logger.info(
+                "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+                .format(os.environ['RANK'],
+                        args.local_rank,
+                        os.environ['WORLD_SIZE'],
+                        os.environ['MASTER_ADDR'],
+                        os.environ['MASTER_PORT']))
             
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
