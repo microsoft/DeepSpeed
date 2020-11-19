@@ -59,7 +59,8 @@ If using DeepSpeed for model training, no explict API calls are needed to use th
 
 In DeepSpeed config file, specify:
 * ```"flops_profiler": true``` to enable the flops-profiler.
-* ```"profile_step": 5``` to set the profiler to start at step 5, this warm-up is necessary for getting accurate timing information.
+* ```"profile_start_step": 5``` to start the profiler at step 5. Note that warm-up is necessary for getting accurate timing information.
+* ```"profile_end_step": 6``` to end the profiler at step 6. Note that ```profile_end_step > profile_start_step```.
 * ```"profile_depth": -1``` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
 * ```"profile_top_num": 3```to set the number of top modules to print aggregated profile
 
