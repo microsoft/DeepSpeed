@@ -208,11 +208,15 @@ class DeepSpeedEngine(Module):
             return True
         else:
             return False
-            
-    def _set_environment_variables_for_nccl_backend(self, args, master_port=6105, verbose=True):
+
+    def _set_environment_variables_for_nccl_backend(self,
+                                                    args,
+                                                    master_port=6105,
+                                                    verbose=True):
         os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
         os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
-        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(os.environ["WORLD_SIZE"])
+        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
+            os.environ["WORLD_SIZE"])
         if not single_node:
             master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
             os.environ["MASTER_ADDR"] = master_node_params[0]
@@ -222,11 +226,12 @@ class DeepSpeedEngine(Module):
         else:
             os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
             os.environ["MASTER_PORT"] = "54965"
-        print("NCCL_SOCKET_IFNAME original value = {}".format(os.environ["NCCL_SOCKET_IFNAME"]))
+        print("NCCL_SOCKET_IFNAME original value = {}".format(
+            os.environ["NCCL_SOCKET_IFNAME"]))
 
         os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
         args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
-        
+
         if verbose:
             logger.info(
                 "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
@@ -235,7 +240,7 @@ class DeepSpeedEngine(Module):
                         os.environ['WORLD_SIZE'],
                         os.environ['MASTER_ADDR'],
                         os.environ['MASTER_PORT']))
-            
+
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
             from mpi4py import MPI
