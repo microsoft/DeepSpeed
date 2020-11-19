@@ -225,7 +225,7 @@ class DeepSpeedEngine(Module):
         print("NCCL_SOCKET_IFNAME original value = {}".format(os.environ["NCCL_SOCKET_IFNAME"]))
 
         os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-        arg.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
         
         if verbose:
             logger.info(
