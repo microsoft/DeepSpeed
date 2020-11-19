@@ -264,7 +264,9 @@ class DeepSpeedEngine(Module):
                            base=os.path.join(os.environ["HOME"],
                                              "tensorboard")):
         if self.tensorboard_output_path():
-            log_dir = self.tensorboard_output_path()
+            base_dir = self.tensorboard_output_path()
+            job_name = self.tensorboard_job_name()
+            log_dir = os.path.join(base_dir, job_name)
         else:
             if self.tensorboard_job_name():
                 name = self.tensorboard_job_name()
@@ -346,6 +348,9 @@ class DeepSpeedEngine(Module):
 
     def zero_load_from_fp32_weights(self):
         return self._config.zero_config.load_from_fp32_weights
+
+    def zero_elastic_checkpoint(self):
+        return self._config.zero_config.elastic_checkpoint
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -656,7 +661,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         logger.info('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage))
-
+        assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
@@ -669,6 +674,7 @@ class DeepSpeedEngine(Module):
                 allgather_size=self.zero_allgather_bucket_size(),
                 max_elements_per_comm=self.zero_reduce_bucket_size(),
                 dp_process_group=self.data_parallel_group,
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
