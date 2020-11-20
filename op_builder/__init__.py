@@ -5,6 +5,7 @@ from .sparse_attn import SparseAttnBuilder
 from .transformer import TransformerBuilder
 from .stochastic_transformer import StochasticTransformerBuilder
 from .utils import UtilsBuilder
+from .builder import DEFAULT_COMPUTE_CAPABILITIES
 
 # TODO: infer this list instead of hard coded
 # List of all available ops
