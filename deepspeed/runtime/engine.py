@@ -41,7 +41,6 @@ from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 
 from deepspeed.profiling.flops_profiler.profiler import add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
-import deepspeed.profiling.xsp as xsp
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -200,7 +199,55 @@ class DeepSpeedEngine(Module):
         if self.global_rank == 0:
             self._config.print('DeepSpeedEngine configuration')
             if self.dump_state():
-                print_configuration(self, 'DeepSpeedLight')
+                print_configuration(self, 'DeepSpeedEngine')
+
+        # Load pre-installed or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
+
+    def _in_aml(self):
+        # read and environment variable to detect if we are using an Azure ML environment
+        if 'AZUREML_EXPERIMENT_ID' in os.environ:
+            return True
+        else:
+            return False
+
+    def _set_environment_variables_for_nccl_backend(self,
+                                                    args,
+                                                    master_port=6105,
+                                                    verbose=True):
+        """Helper routine to get and set environment variables.
+        This is adapted from Azure ML's documentation available from:
+        https://azure.github.io/azureml-web/docs/cheatsheet/distributed-training/#environment-variables-from-openmpi
+        """
+        os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
+        os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
+        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
+            os.environ["WORLD_SIZE"])
+        if not single_node:
+            master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
+            os.environ["MASTER_ADDR"] = master_node_params[0]
+            # Do not overwrite master port with that defined in AZ_BATCH_MASTER_NODE
+            if "MASTER_PORT" not in os.environ:
+                os.environ["MASTER_PORT"] = str(master_port)
+        else:
+            os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
+            os.environ["MASTER_PORT"] = "54965"
+        print("NCCL_SOCKET_IFNAME original value = {}".format(
+            os.environ["NCCL_SOCKET_IFNAME"]))
+
+        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+
+        if verbose:
+            logger.info(
+                "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+                .format(os.environ['RANK'],
+                        args.local_rank,
+                        os.environ['WORLD_SIZE'],
+                        os.environ['MASTER_ADDR'],
+                        os.environ['MASTER_PORT']))
 
     def _mpi_check(self, args, dist_init_required):
         if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
