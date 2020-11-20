@@ -15,25 +15,14 @@ import collections
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 from deepspeed.utils import logger
+from ...ops.op_builder import UtilsBuilder
+
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
 pg_correctness_test = False
-
-try:
-    from apex_C import flatten
-    from apex_C import unflatten
-except ImportError:
-    try:
-        _ = warned_flatten
-    except NameError:
-        logger.warning(
-            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
-        warned_flatten = True
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
 
 
 def input(msg):
@@ -132,6 +121,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1):
 
+        # Load pre-installed or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
+
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {allgather_bucket_size}")
@@ -157,8 +151,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.cpu_offload = cpu_offload
 
-        self.deepspeed_adam_offload = (cpu_offload
-                                       and type(init_optimizer) == DeepSpeedCPUAdam)
+        self.deepspeed_adam_offload = cpu_offload
 
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
@@ -1054,7 +1047,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
         rank = None
-        tensor = flatten(bucket)
+        tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
@@ -1096,7 +1089,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         with torch.cuda.stream(stream):
             allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
+                for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
                     buf.copy_(synced)
 
     def allreduce_no_retain(self,
@@ -1416,10 +1409,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         timers('optimizer_step').start()
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
-            self.optimizer.step(fp16_param_groups=self.parallel_partitioned_fp16_groups)
-            #self.optimizer.step()
-            #for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-            #    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+            if type(self.optimizer) == DeepSpeedCPUAdam:
+                fp16_param_groups = [
+                    fp16_partitions[partition_id]
+                    for fp16_partitions in self.parallel_partitioned_fp16_groups
+                ]
+                self.optimizer.step(fp16_param_groups=fp16_param_groups)
+            else:
+                self.optimizer.step()
+                for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
         else:
             self.optimizer.step()
 

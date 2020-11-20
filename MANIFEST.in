@@ -1,0 +1,3 @@
+include version.txt build.txt
+graft deepspeed/ops/csrc
+graft deepspeed/ops/sparse_attention/trsrc

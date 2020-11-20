@@ -12,6 +12,8 @@ from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.pipe.topology import *
 PipeTopo = PipeDataParallelTopology
 
+from deepspeed.ops.op_builder import FusedLambBuilder, CPUAdamBuilder
+
 import argparse
 import pytest
 import json
@@ -152,8 +154,8 @@ def checkpoint_correctness_verification(args,
         compare_lr_scheduler_states(trained_model, loaded_model)
 
 
-@pytest.mark.skipif(not deepspeed.ops.__installed_ops__['lamb'],
-                    reason="lamb is not installed")
+@pytest.mark.skipif(not deepspeed.ops.__compatible_ops__[FusedLambBuilder.NAME],
+                    reason="lamb is not compatible")
 def test_checkpoint_unfused_optimizer(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -254,27 +256,24 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'deepspeed_adam'),
+                              True),
                          ])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
-    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
-        pytest.skip("cpu-adam is not installed")
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
+    if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        pytest.skip("cpu-adam is not compatible")
 
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -310,30 +309,24 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                                     load_optimizer_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              "Adam"),
+                              False),
                              (2,
-                              False,
-                              "Adam"),
+                              False),
                              (2,
-                              True,
-                              'deepspeed_adam'),
+                              True),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir,
-                                      zero_stage,
-                                      use_cpu_offload,
-                                      adam_optimizer):
-    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
-        pytest.skip("cpu-adam is not installed")
+def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
+    if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        pytest.skip("cpu-adam is not compatible")
 
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -372,30 +365,26 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                                        load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              'Adam'),
+                              False),
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'deepspeed_adam'),
+                              True),
                          ])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
-    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
-        pytest.skip("cpu-adam is not installed")
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
+    if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        pytest.skip("cpu-adam is not compatible")
 
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -446,30 +435,26 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                                   load_lr_scheduler_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              'Adam'),
+                              False),
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'deepspeed_adam'),
+                              True),
                          ])
-def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
-    if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
-        pytest.skip("cpu-adam is not installed")
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
+    if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
+        pytest.skip("cpu-adam is not compatible")
 
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 1e-5
             }
