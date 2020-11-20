@@ -11,7 +11,7 @@ END = '\033[0m'
 WARNING = f"{YELLOW} [WARNING] {END}"
 
 DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
-DEFAULT_COMPUTE_CAPABILITIES = "6.0;6.1;6.2;7.0;7.5"
+DEFAULT_COMPUTE_CAPABILITIES = "6.0;6.1;7.0"
 
 
 def installed_cuda_version():
