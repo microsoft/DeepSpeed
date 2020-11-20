@@ -13,9 +13,9 @@ Below is an example output for LeNet5 with batch size 1024 on a V100 GPU:
 
 ```
 LeNet5(
-  61.71 k, 100.00% Params, 439.55 MMACs, 100.00% MACs, 25.62 ms, 100.00% time, 0.034 TFLOPS, 
+  61.71 k, 100.00% Params, 439.55 MMACs, 100.00% MACs, 25.62 ms, 100.00% time, 0.034 TFLOPS,
   (feature_extractor): Sequential(
-    50.69 k, 82.15% Params, 428.37 MMACs, 97.46% MACs, 18.41 ms, 71.85% time, 0.047 TFLOPS, 
+    50.69 k, 82.15% Params, 428.37 MMACs, 97.46% MACs, 18.41 ms, 71.85% time, 0.047 TFLOPS,
     (0): Conv2d(156, 0.25% Params, 125.24 MMACs, 28.49% MACs, 10.56 ms, 41.21% time, 0.024 TFLOPS, 1, 6, kernel_size=(5, 5), stride=(1, 1))
     (1): Tanh(0, 0.00% Params, 0.0 MACs, 0.00% MACs, 2.25 ms, 8.79% time, 0.0 TFLOPS, )
     (2): AvgPool2d(0, 0.00% Params, 4.82 MMACs, 1.10% MACs, 2.47 ms, 9.63% time, 0.0039 TFLOPS, kernel_size=2, stride=2, padding=0)
@@ -26,7 +26,7 @@ LeNet5(
     (7): Tanh(0, 0.00% Params, 0.0 MACs, 0.00% MACs, 68.86 us, 0.27% time, 0.0 TFLOPS, )
   )
   (classifier): Sequential(
-    11.01 k, 17.85% Params, 11.18 MMACs, 2.54% MACs, 7.03 ms, 27.43% time, 0.0032 TFLOPS, 
+    11.01 k, 17.85% Params, 11.18 MMACs, 2.54% MACs, 7.03 ms, 27.43% time, 0.0032 TFLOPS,
     (0): Linear(10.16 k, 16.47% Params, 10.32 MMACs, 2.35% MACs, 2.71 ms, 10.57% time, 0.0076 TFLOPS, in_features=120, out_features=84, bias=True)
     (1): Tanh(0, 0.00% Params, 0.0 MACs, 0.00% MACs, 78.77 us, 0.31% time, 0.0 TFLOPS, )
     (2): Linear(850, 1.38% Params, 860.16 KMACs, 0.20% MACs, 4.17 ms, 16.27% time, 0.00041 TFLOPS, in_features=84, out_features=10, bias=True)
@@ -35,9 +35,9 @@ LeNet5(
 Top 3 modules in flops at depth 2 are {'Conv2d': '421.91 MMACs', 'Linear': '11.18 MMACs', 'AvgPool2d': '6.46 MMACs'}
 Top 3 modules in params at depth 2 are {'Conv2d': '50.69 k', 'Linear': '11.01 k', 'Tanh': '0'}
 Top 3 modules in time at depth 2 are {'Conv2d': '12.25 ms', 'Linear': '6.88 ms', 'AvgPool2d': '3.23 ms'}
-Batch size:                     1024    
+Batch size:                     1024  
 Number of multiply-adds:        439.55 MMACs
-Number of parameters:           61.71 k 
+Number of parameters:           61.71 k
 Number of steps profiled:       10
 ```
 
@@ -55,7 +55,7 @@ Refer to the [installaiton of DeepSpeed](https://www.deepspeed.ai/getting-starte
 
 ### With the DeepSpeed runtime
 
-If using DeepSpeed for model training, no explict API calls are needed to use the flops-profiler. 
+If using DeepSpeed for model training, no explict API calls are needed to use the flops-profiler.
 
 In DeepSpeed config file, specify:
 * ```"flops_profiler": true``` to enable the flops-profiler.
@@ -67,7 +67,7 @@ In DeepSpeed config file, specify:
 
 ###  Without the DeepSpeed runtime
 
-The flops-profiler can be used as a standalone package outside of the deepspeed runtime. 
+The flops-profiler can be used as a standalone package outside of the deepspeed runtime.
 #### Use the high level-API and run the model inference for profiling purpose
 
 ```python
@@ -98,13 +98,13 @@ Examples of this usage is given in [examples](examples).
 
 #### Use the low-level APIs to profile the forward pass in the existing model training workflow
 
-```add_profile_methods```: adds the following methods to the model object: 
+```add_profile_methods```: adds the following methods to the model object:
   * ```start_profile``` - starts profiling
   * ```compute_total_flops``` - returns the total number of flops
   * ```compute_total_duration``` - returns the total duration
   * ```compute_total_params``` - returns the total number of params
   * ```compute_total_steps``` - returns the total number of steps (or input batches) profiled.
-  * ```print_model_profile``` - prints the profile annotated 
+  * ```print_model_profile``` - prints the profile annotated
   * ```print_model_aggregated_profile``` - prints the aggregated profile for the top modules
   * ```end_profile``` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
 
