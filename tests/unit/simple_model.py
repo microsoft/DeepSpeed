@@ -33,7 +33,7 @@ class LinearStack(torch.nn.Module):
         self.hidden_dim = hidden_dim
 
         self.input_layer = torch.nn.Linear(in_features=self.input_dim,
-                                         out_features=self.hidden_dim)
+                                           out_features=self.hidden_dim)
         self.layers = torch.nn.ModuleList([
             torch.nn.Linear(in_features=self.hidden_dim,
                             out_features=self.hidden_dim,

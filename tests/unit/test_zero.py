@@ -14,14 +14,14 @@ def run_unbalanced_gradients(model, data_loader):
     def drop_some_gradients(model, iter):
         odd_iteration = iter % 2
         for i, p in enumerate(model.parameters()):
-            p.requires_grad = (i%2) == odd_iteration
+            p.requires_grad = (i % 2) == odd_iteration
 
     def enable_grads(model):
         for p in model.parameters():
             p.requires_grad = True
 
     for i, batch in enumerate(data_loader):
-        drop_some_gradients(model, i+1)
+        drop_some_gradients(model, i + 1)
         loss = model(batch[0], batch[1])
         model.backward(loss)
         model.step()
@@ -66,7 +66,4 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
 
         run_unbalanced_gradients(model, data_loader)
 
-    _test_zero_unbalanced_gradients(args=args,
-                                    model=model,
-                                    hidden_dim=hidden_dim)
-
+    _test_zero_unbalanced_gradients(args=args, model=model, hidden_dim=hidden_dim)
