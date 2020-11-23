@@ -12,6 +12,7 @@ from collections import Counter
 def get_scalar_param(param_dict, param_name, param_default_value):
     return param_dict.get(param_name, param_default_value)
 
+
 def get_list_param(param_dict, param_name, param_default_value):
     return param_dict.get(param_name, param_default_value)
 
