@@ -525,7 +525,6 @@ def print_model_profile(self):
     def flops_repr(self):
         params = self.__params__
         flops = self.accumulate_flops() / total_steps
-        # flops = 0.0 if self.__steps__ == 0 else self.accumulate_flops() / self.__steps__
         items = [
             params_to_string(params),
             "{:.2%} Params".format(params / total_params),
@@ -533,7 +532,6 @@ def print_model_profile(self):
             "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
         ]
         duration = self.__duration__ / total_steps
-        # duration = 0.0 if self.__steps__ == 0 else self.__duration__ / self.__steps__
         items.append(duration_to_string(duration))
         items.append("{:.2%} time".format(0.0 if total_duration == 0 else duration /
                                           total_duration))
@@ -566,6 +564,7 @@ def print_model_profile(self):
 
 def print_model_aggregated_profile(self, depth=-1, top_num=3):
     info = {}
+    total_steps = self.__steps__
     if not hasattr(self, "__flops__"):
         print(
             "no __flops__ attribute in the model, call this function after start_profile and before end_profile"
@@ -598,8 +597,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
     num_items = min(top_num, len(info[depth]))
 
     sort_flops = {
-        k: flops_to_string(v[0])
-        # k: flops_to_string(v[0] / self.__steps__)
+        k: flops_to_string(v[0] / total_steps)
         for k,
         v in sorted(info[depth].items(),
                     key=lambda item: item[1][0],
@@ -613,8 +611,7 @@ def print_model_aggregated_profile(self, depth=-1, top_num=3):
                     reverse=True)[:num_items]
     }
     sort_time = {
-        k: duration_to_string(v[2])
-        # k: duration_to_string(v[2] / self.__steps__)
+        k: duration_to_string(v[2] / total_steps)
         for k,
         v in sorted(info[depth].items(),
                     key=lambda item: item[1][2],
