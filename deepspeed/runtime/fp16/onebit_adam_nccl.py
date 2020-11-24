@@ -10,7 +10,10 @@ import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.utils.logging import logger
+
 from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
+
+import torch.distributed as dist
 
 
 class OnebitAdamNCCL(torch.optim.Optimizer):
@@ -70,12 +73,11 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                         max_grad_norm=max_grad_norm)
 
         super(OnebitAdamNCCL, self).__init__(params, defaults)
-        from mpi4py import MPI
         self.eps_mode = 0 if eps_inside_sqrt else 1
-
-        self.comm = MPI.COMM_WORLD
-        self.rank = self.comm.Get_rank()
-        self.size = self.comm.Get_size()
+        assert (dist.is_initialized())
+        self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
+        self.rank = dist.get_rank(group=self.world_group)
+        self.size = dist.get_world_size(group=self.world_group)
         self.comm_time = 0.0
         self.step_time = 0.0
         self.ave_step = 1
@@ -134,6 +136,9 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
                                                        world_size)
+
+        sign_list_packed = self.cupy2torch(cupy_sign_list_packed)
+
         cupy_compensated_buffer_m = None
 
         cupy_recvbuf_sign = cupy.zeros([world_size,
@@ -143,27 +148,18 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         # Communication Phase 1
         gather_start = time.time()
-        if self.cuda_aware:
-            gather_cuda(rank,
-                        world_size,
-                        comm,
-                        cupy_sign_list_packed,
-                        cupy_recvbuf_sign,
-                        cupy_worker_scale,
-                        cupy_recvbuf_scale)
-        else:
-            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(rank,
-               world_size,
-               comm,
-               cupy_sign_list_packed,
-               cupy_recvbuf_sign,
-               cupy_worker_scale,
-               cupy_recvbuf_scale)
+        gather_cuda(rank,
+                    world_size,
+                    comm,
+                    cupy_sign_list_packed,
+                    cupy_recvbuf_sign,
+                    cupy_worker_scale,
+                    cupy_recvbuf_scale)
         gather_end = time.time()
 
         cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
             world_size,
-            -1)
+            1)
         cupy_recvbuf_sign = None
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
         cupy_unpacked_sign = None
