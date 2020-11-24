@@ -121,22 +121,28 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
+        self.dist_backend = "nccl"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
-        self.dist_backend = "nccl"
+        if dist_init_required is False:
+            assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
+        # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
         if dist_init_required:
             # discover using mpi4py if user specifies the flag
             if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
+                # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
+                if self._in_aml():
+                    logger.info(
+                        "Please remove the --deepspeed_mpi flag if running on AzureML.")
                 self._mpi_check(args, dist_init_required)
             else:
                 # detect if we are in Azure ML environment
                 if self._in_aml():
                     self._set_environment_variables_for_nccl_backend(args)
 
-            # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
             logger.info("Initializing torch distributed with backend: {}".format(
                 self.dist_backend))
             dist.init_process_group(backend=self.dist_backend)
