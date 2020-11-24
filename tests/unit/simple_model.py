@@ -32,8 +32,8 @@ class LinearStack(torch.nn.Module):
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
 
-        self.input_layer = VerboseLinear(in_features=self.input_dim,
-                                         out_features=self.hidden_dim)
+        self.input_layer = torch.nn.Linear(in_features=self.input_dim,
+                                           out_features=self.hidden_dim)
         self.layers = torch.nn.ModuleList([
             torch.nn.Linear(in_features=self.hidden_dim,
                             out_features=self.hidden_dim,
@@ -97,6 +97,37 @@ class SimpleOptimizer(torch.optim.Optimizer):
                     continue
                 d_p = p.grad.data
                 p.data.add_(-group['lr'], d_p)
+
+        return loss
+
+
+class HybridStateOptimizer(torch.optim.Optimizer):
+    def __init__(self, params, lr=0.11072018):
+        defaults = dict(lr=lr)
+        super(HybridStateOptimizer, self).__init__(params, defaults)
+
+    def __setstate__(self, state):
+        super(HybridStateOptimizer, self).__setstate__(state)
+
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+
+                state = self.state[p]
+                if len(state) == 0:
+                    state['integer_step'] = 0
+                    state['tensor_step'] = torch.zeros(1)
+
+                d_p = p.grad.data
+                p.data.add_(-group['lr'], d_p)
+                state['integer_step'] += 1
+                state['tensor_step'] += 1
 
         return loss
 
