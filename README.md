@@ -1,4 +1,4 @@
-[![Build Status](https://github.com/microsoft/deepspeed/workflows/CI/badge.svg)](https://github.com/microsoft/DeepSpeed/actions)
+[![Build Status](https://github.com/microsoft/deepspeed/workflows/Build/badge.svg)](https://github.com/microsoft/DeepSpeed/actions)
 [![PyPI version](https://badge.fury.io/py/deepspeed.svg)](https://pypi.org/project/deepspeed/)
 [![Documentation Status](https://readthedocs.org/projects/deepspeed/badge/?version=latest)](https://deepspeed.readthedocs.io/en/latest/?badge=latest)
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
