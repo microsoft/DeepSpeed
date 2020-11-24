@@ -6,7 +6,7 @@ name: CI
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ master ]
+    branches: [ actions-test ]
   pull_request:
     branches: [ master ]
 
@@ -31,6 +31,7 @@ jobs:
           nvidia-smi
           echo $GITHUB_WORKSPACE
           pwd
+          which git
 
       # Runs a set of commands using the runners shell
       - name: Install deepspeed
@@ -40,7 +41,6 @@ jobs:
   
       - name: Formatting checks
         run: |
-           pip install pre-commit
            pre-commit run --all-files
       
       # Runs a set of commands using the runners shell
