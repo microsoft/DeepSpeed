@@ -1198,7 +1198,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """ Perform all reduce within model parallel group, if any.
         """
         if self.model_parallel_group is None:
-            torch.distributed.all_reduce(tensor=tensor, op=op)
+            pass
         else:
             torch.distributed.all_reduce(tensor=tensor,
                                          op=op,
@@ -1273,7 +1273,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         current_size = 0
         for i, tensor in enumerate(tensor_list):
             if tensor.grad is None:
-                continue
+                tensor.grad = torch.zeros_like(tensor)
 
             tensor = tensor.grad
             num_elements = tensor.numel()
