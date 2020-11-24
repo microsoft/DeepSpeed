@@ -136,9 +136,6 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
                                                        world_size)
-
-        sign_list_packed = self.cupy2torch(cupy_sign_list_packed)
-
         cupy_compensated_buffer_m = None
 
         cupy_recvbuf_sign = cupy.zeros([world_size,
@@ -146,25 +143,35 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                                        dtype=cupy_sign_list_packed[0].dtype)
         cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
 
-        # Communication Phase 1
+        sign_list_packed = self.cupy2torch(cupy_sign_list_packed)
+        worker_scale = self.cupy2torch(cupy_worker_scale)
+
+        recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
+        recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
+
+        # communication phase 1
         gather_start = time.time()
-        gather_cuda(rank,
-                    world_size,
-                    comm,
-                    cupy_sign_list_packed,
-                    cupy_recvbuf_sign,
-                    cupy_worker_scale,
-                    cupy_recvbuf_scale)
+        for idx in range(self.size):
+            dist.gather(recvbuf_sign, sign_list_packed[idx], self.world_group, idx)
+            h2 = dist.gather(recvbuf_scale, worker_scale, self.world_group, idx)
         gather_end = time.time()
+
+        #TODO: dist.sync and try async_op=True method
+
+        cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
+        cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
 
         cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
             world_size,
             1)
         cupy_recvbuf_sign = None
+
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
         cupy_unpacked_sign = None
+
         unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
         worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / world_size)
+
         compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
         unpacked_sign = None
 
@@ -193,19 +200,16 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                                                 1],
                                                dtype=cupy_worker_scale.dtype)
 
+        server_sign_packed = self.cupy2torch(cupy_server_sign_packed)
+        recvbuf_sign_server = self.cupy2torch(cupy_recvbuf_sign_server)
+        server_scale = self.cupy2torch(cupy_server_scale)
+        recvbuf_scale_server = self.cupy2torch(cupy_recvbuf_scale_server)
+
         # Communication Phase 2
-        if self.cuda_aware:
-            allgather_cuda(comm,
-                           cupy_server_sign_packed[0],
-                           cupy_recvbuf_sign_server,
-                           cupy_server_scale,
-                           cupy_recvbuf_scale_server)
-        else:
-            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather_host(comm,
-                  cupy_server_sign_packed[0],
-                  cupy_recvbuf_sign_server,
-                  cupy_server_scale,
-                  cupy_recvbuf_scale_server)
+        dist.all_gather(server_sign_packed[0], recvbuf_sign_server)
+        dist.all_gather(server_scale, recvbuf_scale_server)
+
+        cupy_recvbuf_sign_server = self.torch2cupy(recvbuf_sign_server)
 
         cupy_server_unpacked_sign = (cupy.unpackbits(
             cupy_recvbuf_sign_server.flatten())).reshape(world_size,
