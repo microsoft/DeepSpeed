@@ -351,6 +351,7 @@ def start_profile(self, **kwargs):
             if len(input) > 0:
                 # Can have multiple inputs, getting the first one
                 input = input[0]
+            module.__steps__ += 1
 
         module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
@@ -375,17 +376,13 @@ def start_profile(self, **kwargs):
 
     self.apply(partial(register_module_hooks, **kwargs))
 
-    def steps_hook(module, input, output):
-        module.__steps__ += 1
-
-    self.__steps__hook_handle__ = self.register_forward_hook(steps_hook)
-
 
 def add_or_reset_attrs(module):
     module.__flops__ = 0
     module.__params__ = get_model_parameters_number(module)
     module.__start_time__ = 0
     module.__duration__ = 0
+    module.__steps__ = 0
 
 
 def reset_profile(self):
@@ -394,6 +391,8 @@ def reset_profile(self):
 
 
 def remove_profile_attrs(module):
+    if hasattr(module, "__steps__"):
+        del module.__steps__
     if hasattr(module, "__flops__"):
         del module.__flops__
     if hasattr(module, "__params__"):
@@ -420,16 +419,18 @@ def remove_profile_attrs(module):
 
 
 def get_total_flops(self):
+    if self.get_total_steps() == 0:
+        return 0
     sum = 0
     for module in self.modules():
         sum += module.__flops__
-    return sum / self.__steps__
-    return sum
+    return sum / self.get_total_steps()
 
 
 def get_total_duration(self):
-    return self.__duration__ / self.__steps__
-    return self.__duration__
+    if self.get_total_steps() == 0:
+        return 0
+    return self.__duration__ / self.get_total_steps()
 
 
 def get_total_params(self):
@@ -437,15 +438,21 @@ def get_total_params(self):
 
 
 def get_total_steps(self):
-    return self.__steps__
+    def get_steps(module):
+        if module.__steps__ == 0:
+            sum = 0
+            for m in module.children():
+                sum += get_steps(m)
+            module.__steps__ = sum
+        return module.__steps__
+
+    total_steps = get_steps(self)
+    if total_steps == 0:
+        print("no step is profiled")
+    return total_steps
 
 
 def end_profile(self):
-    if hasattr(self, "__steps__"):
-        del self.__steps__
-    if hasattr(self, "__steps__hook_handle__"):
-        self.__steps__hook_handle__.remove()
-        del self.__steps__hook_handle__
     self.apply(remove_profile_attrs)
 
 
@@ -509,8 +516,8 @@ def duration_to_string(duration, units=None, precision=2):
 def print_model_profile(self):
     total_flops = self.get_total_flops()
     total_duration = self.get_total_duration()
-    total_params = self.__params__
-    total_steps = self.__steps__
+    total_params = self.get_total_params()
+    total_steps = self.get_total_steps()
 
     def accumulate_flops(self):
         has_children = len(self._modules.items()) != 0
@@ -524,21 +531,21 @@ def print_model_profile(self):
 
     def flops_repr(self):
         params = self.__params__
-        flops = self.accumulate_flops() / total_steps
+        flops = 0 if total_steps == 0 else self.accumulate_flops() / total_steps
         items = [
             params_to_string(params),
             "{:.2%} Params".format(params / total_params),
             flops_to_string(flops),
             "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
         ]
-        duration = self.__duration__ / total_steps
+        duration = 0 if total_steps == 0 else self.__duration__ / total_steps
         items.append(duration_to_string(duration))
         items.append("{:.2%} time".format(0.0 if total_duration == 0 else duration /
                                           total_duration))
         # flops = 2 * MACs
         items.append(("{:.2} TFLOPS".format(0.0 if duration == 0 else 2 * flops /
                                             duration / 10**12)))
-        items.append(str(total_steps))
+        items.append(str(self.__steps__))
         items.append(self.original_extra_repr())
         return ", ".join(items)
 
@@ -564,7 +571,9 @@ def print_model_profile(self):
 
 def print_model_aggregated_profile(self, depth=-1, top_num=3):
     info = {}
-    total_steps = self.__steps__
+    total_steps = self.get_total_steps()
+    if total_steps == 0:
+        return
     if not hasattr(self, "__flops__"):
         print(
             "no __flops__ attribute in the model, call this function after start_profile and before end_profile"
@@ -633,7 +642,7 @@ def get_model_profile(
     warm_up=5,
     num_steps=10,
     as_strings=True,
-    ignore_modules=[],
+    ignore_modules=None,
 ):
     assert type(input_res) is tuple
     assert len(input_res) >= 1
