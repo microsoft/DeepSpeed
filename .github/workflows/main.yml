@@ -41,6 +41,10 @@ jobs:
   
       - name: Formatting checks
         run: |
+           which git
+           pwd
+           ls
+           git status
            pre-commit run --all-files
       
       # Runs a set of commands using the runners shell
