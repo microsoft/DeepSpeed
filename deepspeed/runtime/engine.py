@@ -130,7 +130,7 @@ class DeepSpeedEngine(Module):
             assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
         # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
-        if dist_init_required:
+        if dist_init_required and not dist.is_initialized():
             # discover using mpi4py if user specifies the flag
             if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
                 # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
