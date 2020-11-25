@@ -107,7 +107,6 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                              server_error,
                              rank,
                              world_size,
-                             comm,
                              local_rank):
 
         all_start_time = time.time()
@@ -340,7 +339,6 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                                                           state['server_error'],
                                                           self.rank,
                                                           self.size,
-                                                          self.comm,
                                                           self.deepspeed.local_rank))
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
