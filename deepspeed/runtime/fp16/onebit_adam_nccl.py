@@ -141,18 +141,30 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                                         cupy_sign_list_packed[rank].size],
                                        dtype=cupy_sign_list_packed[0].dtype)
         cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
+        
+        sign_list_packed = [None] * self.size
 
-        sign_list_packed = self.cupy2torch(cupy_sign_list_packed)
-        worker_scale = self.cupy2torch(cupy_worker_scale)
+        for idx in range(self.size):
+            sign_list_packed[idx] = self.cupy2torch(cupy_sign_list_packed[idx])
+            print(sign_list_packed[idx].shape)
 
         recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
+        
+        worker_scale = self.cupy2torch(cupy_worker_scale)
         recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
+
+        print("sendbuf = ", worker_scale)
+        print("recvbuf = ", recvbuf_scale)
 
         # communication phase 1
         gather_start = time.time()
-        for idx in range(self.size):
-            dist.gather(recvbuf_sign, sign_list_packed[idx], self.world_group, idx)
-            h2 = dist.gather(recvbuf_scale, worker_scale, self.world_group, idx)
+        #for idx in range(self.size):
+            #dist.gather(tensor=sign_list_packed[idx], gather_list=recvbuf_sign, dst=idx)
+        if dist.get_rank() == 0:
+            dist.gather(worker_scale, gather_list=recvbuf_scale)
+        else:
+            dist.gather(worker_scale, gather_list=[])
+
         gather_end = time.time()
 
         #TODO: dist.sync and try async_op=True method
