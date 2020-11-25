@@ -674,10 +674,6 @@ __global__ void dropout_kernel(const int N,
 
         out_cast[j] = result_f;
         mask_32[j] = m_32;
-        // mask[i] = m[0];
-        // mask[i + 1] = m[1];
-        // mask[i + 2] = m[2];
-        // mask[i + 3] = m[3];
     }
 }
 

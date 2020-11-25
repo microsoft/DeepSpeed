@@ -106,10 +106,11 @@ __global__ void transform_0213<__half>(__half* output,
     int d1_out_stride = d2_stride;
     int d2_out_stride = d2_stride * seq_length;
 
-    int d0 = blockIdx.x;   // Batch
-    int d1 = blockIdx.y;   // Sequence ID (0-127)
-    int d2 = threadIdx.y;  // Head (0-11)
-    int d3 = threadIdx.x;  // Values (groups of 4)
+    int d0 = blockIdx.x;  // Batch
+    int d1 = blockIdx.y / head_ext;
+    ;                                                                     // Sequence ID (0-127)
+    int d2 = threadIdx.y + (blockIdx.y % head_ext) * (heads / head_ext);  // Head (0-11)
+    int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
     float4 vals_arr[1];
 
@@ -131,12 +132,12 @@ void launch_transform_0213<float>(float* output,
                                   cudaStream_t stream)
 {
     hidden_dim >>= 2;
-    int head_ext = (hidden_dim - 1) / 1024;
-    dim3 block_dim(hidden_dim / heads, (heads >> head_ext));
-    dim3 grid_dim(batch_size, (seq_length << head_ext));
+    int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
+    dim3 block_dim(hidden_dim / heads, (heads / head_ext));
+    dim3 grid_dim(batch_size, (seq_length * head_ext));
 
-    transform_0213<float><<<grid_dim, block_dim, 0, stream>>>(
-        output, vals, hidden_dim, seq_length, heads, (1 << head_ext));
+    transform_0213<float>
+        <<<grid_dim, block_dim, 0, stream>>>(output, vals, hidden_dim, seq_length, heads, head_ext);
 }
 
 template <>
@@ -149,10 +150,11 @@ void launch_transform_0213<__half>(__half* output,
                                    cudaStream_t stream)
 {
     hidden_dim >>= 3;
-    dim3 block_dim(hidden_dim / heads, heads);
-    dim3 grid_dim(batch_size, seq_length);
+    int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
+    dim3 block_dim(hidden_dim / heads, (heads / head_ext));
+    dim3 grid_dim(batch_size, (seq_length * head_ext));
     transform_0213<__half>
-        <<<grid_dim, block_dim, 0, stream>>>(output, vals, hidden_dim, seq_length, heads, 1);
+        <<<grid_dim, block_dim, 0, stream>>>(output, vals, hidden_dim, seq_length, heads, head_ext);
 }
 
 // Bias add
@@ -172,7 +174,7 @@ __global__ void bias_add_transform_0213<float>(float* output,
                                                int hidden_dim,
                                                int seq_length,
                                                int heads,
-                                               int head_ext)  // 1 << 1 : 2
+                                               int head_ext)
 {
     int d0_stride = hidden_dim * seq_length;
     int d1_stride = hidden_dim;
@@ -226,11 +228,11 @@ __global__ void bias_add_transform_0213<__half>(__half* output,
 
     int d2_out_stride = d2_stride * seq_length;
 
-    int d0 = blockIdx.x;   // Batch
-    int d1 = blockIdx.y;   // Sequence ID (0-127)
-    int cnt = blockIdx.z;  // blockIdx.z; // Hidden count
-    int d2 = threadIdx.y;  // Head (0-11)
-    int d3 = threadIdx.x;  // Values (groups of 4)
+    int d0 = blockIdx.x;                                                  // Batch
+    int d1 = blockIdx.y;                                                  // Sequence ID (0-127)
+    int cnt = blockIdx.z / head_ext;                                      // Hidden count
+    int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head (0-11)
+    int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
     float4 vals_arr;
     float4 bias_arr;
@@ -243,8 +245,8 @@ __global__ void bias_add_transform_0213<__half>(__half* output,
     const float4* bias_vec = reinterpret_cast<const float4*>(bias);
     float4* output_vec = reinterpret_cast<float4*>(output);
 
-    vals_vec += (d0 * d0_stride * gridDim.z);
-    vals_vec += (d1 * d1_stride * gridDim.z);
+    vals_vec += (d0 * d0_stride * (gridDim.z / head_ext));
+    vals_vec += (d1 * d1_stride * (gridDim.z / head_ext));
     vals_vec += (cnt * d1_stride);
     vals_vec += (d2 * d2_stride);
 
@@ -354,13 +356,13 @@ void launch_bias_add_transform_0213<float>(float* output,
                                            int trans_count)
 {
     hidden_dim >>= 2;
-    int head_ext = (hidden_dim - 1) / 1024;
+    int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
 
-    dim3 block_dim(hidden_dim / heads, (heads >> head_ext));
-    dim3 grid_dim(batch_size, seq_length, (trans_count << head_ext));
+    dim3 block_dim(hidden_dim / heads, (heads / head_ext));
+    dim3 grid_dim(batch_size, seq_length, (trans_count * head_ext));
 
     bias_add_transform_0213<float><<<grid_dim, block_dim, 0, stream>>>(
-        output, vals, bias, hidden_dim, seq_length, heads, (1 << head_ext));
+        output, vals, bias, hidden_dim, seq_length, heads, head_ext);
 }
 
 template <>
@@ -375,11 +377,12 @@ void launch_bias_add_transform_0213<__half>(__half* output,
                                             int trans_count)
 {
     hidden_dim >>= 3;
-    if (hidden_dim > 128) {
-        dim3 block_dim(hidden_dim / heads, heads);
-        dim3 grid_dim(batch_size, seq_length, trans_count);
+    if (hidden_dim > 128 || hidden_dim < 16) {
+        int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
+        dim3 block_dim(hidden_dim / heads, (heads / head_ext));
+        dim3 grid_dim(batch_size, seq_length, (trans_count * head_ext));
         bias_add_transform_0213<__half><<<grid_dim, block_dim, 0, stream>>>(
-            output, vals, bias, hidden_dim, seq_length, heads, 1);
+            output, vals, bias, hidden_dim, seq_length, heads, head_ext);
     } else {
         dim3 block_dim(hidden_dim / heads, heads, trans_count);
         dim3 grid_dim(batch_size, seq_length / 2);
@@ -389,14 +392,20 @@ void launch_bias_add_transform_0213<__half>(__half* output,
 }
 
 template <typename T>
-__global__ void transform4d_0213(T* out, const T* in, int heads, int seq_length, int hidden_dim);
+__global__ void transform4d_0213(T* out,
+                                 const T* in,
+                                 int heads,
+                                 int seq_length,
+                                 int hidden_dim,
+                                 int head_ext);
 
 template <>
 __global__ void transform4d_0213<float>(float* out,
                                         const float* in,
                                         int heads,
                                         int seq_length,
-                                        int hidden_dim)
+                                        int hidden_dim,
+                                        int head_ext)
 {
     int d0_stride = hidden_dim * seq_length;
     int d1_stride = d0_stride / heads;
@@ -428,19 +437,20 @@ __global__ void transform4d_0213<__half>(__half* out,
                                          const __half* in,
                                          int heads,
                                          int seq_length,
-                                         int hidden_dim)
+                                         int hidden_dim,
+                                         int head_ext)
 {
 #if __CUDA_ARCH__ >= 700
 
-    int d0_stride = hidden_dim * seq_length;
+    int d0_stride = hidden_dim * (seq_length / head_ext);
     int d1_stride = hidden_dim;
     int d2_stride = hidden_dim / heads;
 
-    int d0 = blockIdx.x;   // Batch
-    int d1 = threadIdx.y;  // Head
-    int d2 = blockIdx.z;   // Sequence
-    int cnt = blockIdx.y;  // Hidden count
-    int d3 = threadIdx.x;  // Values (groups of 8)
+    int d0 = blockIdx.x;                                                  // Batch
+    int d1 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head
+    int d2 = blockIdx.z / head_ext;                                       // Sequence
+    int cnt = blockIdx.y;                                                 // Hidden count
+    int d3 = threadIdx.x;                                                 // Values (groups of 8)
 
     const float4* in_vec = reinterpret_cast<const float4*>(in);
     float4* out_vec = reinterpret_cast<float4*>(out);
@@ -525,7 +535,7 @@ void launch_transform4d_0213<float>(float* out,
     dim3 grid_dims(batch_size, heads * ((seq_length - 1) / 8 + 1), trans_count);
     dim3 block_dims(hidden_dim / heads, 8);
     transform4d_0213<float>
-        <<<grid_dims, block_dims, 0, stream>>>(out, in, heads, seq_length, hidden_dim);
+        <<<grid_dims, block_dims, 0, stream>>>(out, in, heads, seq_length, hidden_dim, 1);
 }
 
 template <>
@@ -539,11 +549,12 @@ void launch_transform4d_0213<__half>(__half* out,
                                      int trans_count)
 {
     hidden_dim >>= 3;
-    if (hidden_dim > 128) {
-        dim3 grid_dims(batch_size, trans_count, seq_length);
-        dim3 block_dims(hidden_dim / heads, heads);
-        transform4d_0213<__half>
-            <<<grid_dims, block_dims, 0, stream>>>(out, in, heads, seq_length, hidden_dim);
+    if (hidden_dim > 128 || hidden_dim < 16) {
+        int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
+        dim3 grid_dims(batch_size, trans_count, (seq_length * head_ext));
+        dim3 block_dims(hidden_dim / heads, (heads / head_ext));
+        transform4d_0213<__half><<<grid_dims, block_dims, 0, stream>>>(
+            out, in, heads, seq_length, hidden_dim, head_ext);
     } else {
         dim3 grid_dims(batch_size, seq_length / 2);
         dim3 block_dims(hidden_dim / heads, heads, trans_count);
