@@ -135,7 +135,7 @@ class DeepSpeedEngine(Module):
             if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
                 # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
                 if self._in_aml():
-                    logger.info(
+                    logger.warning(
                         "Please remove the --deepspeed_mpi flag if running on AzureML.")
                 self._mpi_check(args, dist_init_required)
             else:
