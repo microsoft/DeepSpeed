@@ -106,9 +106,8 @@ __global__ void transform_0213<__half>(__half* output,
     int d1_out_stride = d2_stride;
     int d2_out_stride = d2_stride * seq_length;
 
-    int d0 = blockIdx.x;  // Batch
-    int d1 = blockIdx.y / head_ext;
-    ;                                                                     // Sequence ID (0-127)
+    int d0 = blockIdx.x;                                                  // Batch
+    int d1 = blockIdx.y / head_ext;                                       // Sequence ID (0-127)
     int d2 = threadIdx.y + (blockIdx.y % head_ext) * (heads / head_ext);  // Head (0-11)
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
