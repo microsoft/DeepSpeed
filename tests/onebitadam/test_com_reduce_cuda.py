@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import deepspeed
-from deepspeed.runtime.fp16.onebit_adam import OnebitAdam
+from deepspeed.runtime.fp16.onebit_adam_nccl import OnebitAdamNCCL
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -12,14 +12,14 @@ rank = comm.Get_rank()
 
 #TODO: Detect the hostname we are running on automatically
 torch.distributed.init_process_group(backend='nccl',
-                                     init_method='tcp://worker-1:2245',
+                                     init_method='tcp://worker-0:2245',
                                      world_size=size,
                                      rank=rank)
 
 dummy_model = [torch.nn.Parameter(torch.ones(10))]
 
 # Set cuda_aware to True to use CUDA buffers for communication
-dummy_optim = OnebitAdam(dummy_model, cuda_aware=True)
+dummy_optim = OnebitAdamNCCL(dummy_model, cuda_aware=True)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
@@ -65,7 +65,6 @@ a_after = dummy_optim.Compressed_Allreduce(a,
                                            server_error,
                                            rank,
                                            size,
-                                           comm,
                                            local_rank)
 threshold = 1e-6
 magnitude_threshold = 1e-6
