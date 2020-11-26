@@ -1,5 +1,7 @@
 #include "custom_cuda_layers.h"
 
+const int unroll_factor = 4;
+
 __global__ void dropout_kernel(const int N,
                                const float ratio,
                                float* out,
@@ -13,17 +15,17 @@ __global__ void dropout_kernel(const int N,
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
         float4 rand = curand_uniform4(&state);
-        uint8_t m[4];
+        uint8_t m[unroll_factor];
 
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
         m[2] = (uint8_t)(rand.z > ratio);
         m[3] = (uint8_t)(rand.w > ratio);
 
-        int i = j * 4;
+        int i = j * unroll_factor;
 
         mask[i] = (uint8_t)m[0];
         mask[i + 1] = (uint8_t)m[1];
@@ -66,7 +68,7 @@ __global__ void dropout_kernel(const int N,
     __half2 mask_h[2];
     float2 mask_f[2];
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
         float2 x_f = x_cast[j];
         __half2* x_h = reinterpret_cast<__half2*>(&x_f);
@@ -80,7 +82,7 @@ __global__ void dropout_kernel(const int N,
 
         float* mask_f_data = &mask_f[0].x;
 #pragma unroll
-        for (int i = 0; i < 4; i++) mask_f_data[i] = (float)(m[i]);
+        for (int i = 0; i < unroll_factor; i++) mask_f_data[i] = (float)(m[i]);
 
         mask_h[0] = __float22half2_rn(mask_f[0]);
         mask_h[1] = __float22half2_rn(mask_f[1]);
@@ -95,16 +97,16 @@ __global__ void dropout_kernel(const int N,
 
 #else
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
-        int i = j * 4;
+        int i = j * unroll_factor;
 
         const __half2* vals_half = reinterpret_cast<const __half2*>(Xdata + i);
         float2 vals_half_f[2];
         vals_half_f[0] = __half22float2(vals_half[0]);
         vals_half_f[1] = __half22float2(vals_half[1]);
 
-        uint8_t m[4];
+        uint8_t m[unroll_factor];
         float4 rand = curand_uniform4(&state);
         m[0] = (uint8_t)(rand.x > ratio);
         m[1] = (uint8_t)(rand.y > ratio);
@@ -133,9 +135,9 @@ __global__ void dropout_kernel_bwd(const int N,
                                    std::pair<uint64_t, uint64_t> seed)
 {
     const float scale = 1. / (1. - ratio);
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
-        int i = j * 4;
+        int i = j * unroll_factor;
 
         out[i] = mask[i] ? Xdata[i] * scale : 0.0;
         out[i + 1] = mask[i + 1] ? Xdata[i + 1] * scale : 0.0;
@@ -161,18 +163,20 @@ __global__ void dropout_kernel_bwd(const int N,
     float2* out_cast = reinterpret_cast<float2*>(out);
     uint32_t* mask_cast = reinterpret_cast<uint32_t*>(mask);
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
         float2 x_f = x_cast[j];
         __half2* x_h = reinterpret_cast<__half2*>(&x_f);
 
-        uint8_t* m = reinterpret_cast<uint8_t*>(mask_cast + j);
+        uint32_t m_32 = mask_cast[j];
+        uint8_t* m = (uint8_t*)&m_32;
+
         __half2 mask_h[2];
         float2 mask_f[2];
 
         float* mask_f_data = &mask_f[0].x;
 #pragma unroll
-        for (int i = 0; i < 4; i++) mask_f_data[i] = (float)(m[i]);
+        for (int i = 0; i < unroll_factor; i++) mask_f_data[i] = (float)(m[i]);
 
 #pragma unroll
         for (int i = 0; i < 2; i++) mask_h[i] = __float22half2_rn(mask_f[i]);
@@ -191,9 +195,9 @@ __global__ void dropout_kernel_bwd(const int N,
     const __half h_scale = __float2half(scale);
     const __half h_zero = __float2half(0.0);
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
-        int i = j * 4;
+        int i = j * unroll_factor;
 
         const __half2* vals_half = reinterpret_cast<const __half2*>(Xdata + i);
 
@@ -223,7 +227,7 @@ void launch_dropout(T* out,
                     cudaStream_t stream,
                     bool bwd)
 {
-    dim3 grid_dim = DS_GET_BLOCKS(total_count / 4);
+    dim3 grid_dim = DS_GET_BLOCKS(total_count / unroll_factor);
     dim3 block_dim = DS_CUDA_NUM_THREADS;
 
     if (dim > 512) {
@@ -264,55 +268,61 @@ __global__ void dropout_grad_kernel(const int N, const float scale, float* Xdata
 
 __global__ void dropout_grad_kernel(const int N, const float scale, __half* Xdata, uint8_t* mask)
 {
-#ifdef __STOCHASTIC_MODE__
-
     const __half2 h_scale = __float2half2_rn(scale);
     float2* x_cast = reinterpret_cast<float2*>(Xdata);
     uint32_t* mask_cast = reinterpret_cast<uint32_t*>(mask);
 
-    CUDA_1D_KERNEL_LOOP(j, N / 4)
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
-        uint8_t* m = reinterpret_cast<uint8_t*>(mask_cast + j);
+        float2 x_data = x_cast[j];
+        uint32_t m_32 = mask_cast[j];
+        uint8_t* m = (uint8_t*)&m_32;
+
+        float2 result_f;
+        __half2* result_h = reinterpret_cast<__half2*>(&result_f);
+
+#ifdef __STOCHASTIC_MODE__
+
+        __half2* x_data_h = reinterpret_cast<__half2*>(&x_data);
         __half2 mask_h[2];
         float2 mask_f[2];
 
         float* mask_f_data = &mask_f[0].x;
 #pragma unroll
-        for (int i = 0; i < 4; i++) *(mask_f_data++) = (float)(m[i]);
+        for (int i = 0; i < unroll_factor; i++) *(mask_f_data++) = (float)(m[i]);
 
         mask_h[0] = __float22half2_rn(mask_f[0]);
         mask_h[1] = __float22half2_rn(mask_f[1]);
 
-        float2 x_data = x_cast[j];
-        __half2* x_data_h = reinterpret_cast<__half2*>(&x_data);
-
-        float2 result_f;
-        __half2* result_h = reinterpret_cast<__half2*>(&result_f);
-
         result_h[0] = x_data_h[0] * h_scale * mask_h[0];
         result_h[1] = x_data_h[1] * h_scale * mask_h[1];
 
-        x_cast[j] = result_f;
-    }
-
 #else
 
-    CUDA_1D_KERNEL_LOOP(j, N / 2)
-    {
-        int i = j * 2;
-        Xdata[i] = (__half)((float)Xdata[i] * scale * mask[i]);
-        Xdata[i + 1] = (__half)((float)Xdata[i + 1] * scale * mask[i + 1]);
-    }
+        __half* x_data_h = reinterpret_cast<__half*>(&x_data);
+        float2 result[2];
+
+        result[0].x = (float)x_data_h[0] * scale * m[0];
+        result[0].y = (float)x_data_h[1] * scale * m[1];
+        result[1].x = (float)x_data_h[2] * scale * m[2];
+        result[1].y = (float)x_data_h[3] * scale * m[3];
+
+        result_h[0] = __float22half2_rn(result[0]);
+        result_h[1] = __float22half2_rn(result[1]);
 
 #endif
+        x_cast[j] = result_f;
+    }
 }
 
 template <typename T>
 void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, cudaStream_t stream)
 {
     const float scale = 1. / (1. - ratio);
-    dropout_grad_kernel<<<DS_GET_BLOCKS(total_count / 2), DS_CUDA_NUM_THREADS, 0, stream>>>(
-        total_count, scale, vals, mask);
+    dropout_grad_kernel<<<DS_GET_BLOCKS(total_count / unroll_factor),
+                          DS_CUDA_NUM_THREADS,
+                          0,
+                          stream>>>(total_count, scale, vals, mask);
 }
 
 template void launch_dropout_grad(float* vals,
@@ -341,11 +351,31 @@ __global__ void dropout_grad_kernel(const int N,
                                     __half* out,
                                     uint8_t* mask)
 {
-    CUDA_1D_KERNEL_LOOP(j, N / 2)
+    const float2* x_cast = reinterpret_cast<const float2*>(Xdata);
+    float2* out_cast = reinterpret_cast<float2*>(out);
+    const uint32_t* mask_cast = reinterpret_cast<const uint32_t*>(mask);
+
+    float2 result_f;
+    __half2* result_h = reinterpret_cast<__half2*>(&result_f);
+
+    CUDA_1D_KERNEL_LOOP(j, N / unroll_factor)
     {
-        int i = j * 2;
-        out[i] = (__half)((float)Xdata[i] * scale * mask[i]);
-        out[i + 1] = (__half)((float)Xdata[i + 1] * scale * mask[i + 1]);
+        float2 x_data = x_cast[j];
+        uint32_t m_32 = mask_cast[j];
+        uint8_t* m = (uint8_t*)&m_32;
+
+        __half* x_data_h = reinterpret_cast<__half*>(&x_data);
+        float2 result[2];
+
+        result[0].x = (float)x_data_h[0] * scale * m[0];
+        result[0].y = (float)x_data_h[1] * scale * m[1];
+        result[1].x = (float)x_data_h[2] * scale * m[2];
+        result[1].y = (float)x_data_h[3] * scale * m[3];
+
+        result_h[0] = __float22half2_rn(result[0]);
+        result_h[1] = __float22half2_rn(result[1]);
+
+        out_cast[j] = result_f;
     }
 }
 
@@ -358,8 +388,10 @@ void launch_dropout_grad(T* vals_out,
                          cudaStream_t stream)
 {
     const float scale = 1. / (1. - ratio);
-    dropout_grad_kernel<<<DS_GET_BLOCKS(total_count / 2), DS_CUDA_NUM_THREADS, 0, stream>>>(
-        total_count, scale, vals, vals_out, mask);
+    dropout_grad_kernel<<<DS_GET_BLOCKS(total_count / unroll_factor),
+                          DS_CUDA_NUM_THREADS,
+                          0,
+                          stream>>>(total_count, scale, vals, vals_out, mask);
 }
 template void launch_dropout_grad(float*,
                                   const float* vals,
@@ -498,7 +530,7 @@ void launch_dropout(T* out,
                     float ratio,
                     cudaStream_t stream)
 {
-    int total_count = batch * dim / 4;
+    int total_count = batch * dim / unroll_factor;
 
     dim3 grid_dim = DS_GET_BLOCKS(total_count);
     dim3 block_dim = DS_CUDA_NUM_THREADS;
@@ -507,7 +539,7 @@ void launch_dropout(T* out,
     std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
 
     dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        total_count, dim / 4, ratio, bias, out, mask, seed);
+        total_count, dim / unroll_factor, ratio, bias, out, mask, seed);
 }
 
 template void launch_dropout(float*,
@@ -688,7 +720,7 @@ void launch_dropout(T* out,
                     float ratio,
                     cudaStream_t stream)
 {
-    int total_count = batch * dim / 4;
+    int total_count = batch * dim / unroll_factor;
     dim3 grid_dim = DS_GET_BLOCKS(total_count);
     dim3 block_dim = DS_CUDA_NUM_THREADS;
 
@@ -696,7 +728,7 @@ void launch_dropout(T* out,
     std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc);
 
     dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        total_count, dim / 4, ratio, input, residual, bias, out, mask, seed);
+        total_count, dim / unroll_factor, ratio, input, residual, bias, out, mask, seed);
 }
 
 template void launch_dropout(float*,
