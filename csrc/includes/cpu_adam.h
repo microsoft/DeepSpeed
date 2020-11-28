@@ -102,10 +102,10 @@ public:
                 _betta2_t *= _betta2;
             }
         } else if (_step != step) {
-            throw std::runtime_error(
-                "Optimizer lost track of the step count (current_step: %d, new_step: %d)!\n",
-                _step,
-                step);
+            printf("Optimizer lost track of the step count (current_step: %d, new_step: %d)!\n",
+                   _step,
+                   step);
+            throw std::runtime_error("Optimizer lost track of the step count!\n");
         }
     }
     inline void update_lr(float lr) { _alpha = lr; }
