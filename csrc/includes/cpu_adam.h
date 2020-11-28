@@ -91,10 +91,21 @@ public:
                 __half* dev_params = nullptr);
     inline void IncrementStep(size_t step)
     {
-        while (_step < step) {
-            _step++;
-            _betta1_t *= _betta1;
-            _betta2_t *= _betta2;
+        _step++;
+        _betta1_t *= _betta1;
+        _betta2_t *= _betta2;
+        if (_step < step) {
+            printf("Warning: updating optimizer's state to match the step count at %d\n", step);
+            while (_step < step) {
+                _step++;
+                _betta1_t *= _betta1;
+                _betta2_t *= _betta2;
+            }
+        } else if (_step != step) {
+            throw std::runtime_error(
+                "Optimizer lost track of the step count (current_step: %d, new_step: %d)!\n",
+                _step,
+                step);
         }
     }
     inline void update_lr(float lr) { _alpha = lr; }
