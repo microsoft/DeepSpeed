@@ -91,11 +91,8 @@ public:
                 __half* dev_params = nullptr);
     inline void IncrementStep(size_t step)
     {
-        if (_step < step) {
+        while (_step < step) {
             _step++;
-            if (_step != step) {
-                throw std::runtime_error("Optimizer lost track of step count!\n");
-            }
             _betta1_t *= _betta1;
             _betta2_t *= _betta2;
         }
