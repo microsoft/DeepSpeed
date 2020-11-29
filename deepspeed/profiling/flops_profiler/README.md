@@ -70,15 +70,44 @@ In DeepSpeed config file, specify:
 The flops-profiler can be used as a standalone package outside of the deepspeed runtime.
 #### Use the high level-API and run the model inference for profiling purpose
 
+Examples of this usage are given below.
+
 ```python
-import torchvision.models as models
+import argparse
+import sys
 import torch
+import torchvision.models as models
 from deepspeed.profiling.flops_profiler import get_model_profile
 
-with torch.cuda.device(0):
-    mod = models.alexnet()
+pt_models = {
+    'resnet18': models.resnet18,
+    'resnet50': models.resnet50,
+    'alexnet': models.alexnet,
+    'vgg16': models.vgg16,
+    'squeezenet': models.squeezenet1_0,
+    'densenet': models.densenet161,
+    'inception': models.inception_v3
+}
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='flops-profiler example script')
+    parser.add_argument('--device',
+                        type=int,
+                        default=0,
+                        help='Device to store the model.')
+    parser.add_argument('--model',
+                        choices=list(pt_models.keys()),
+                        type=str,
+                        default='resnet18')
+    args = parser.parse_args()
+
+    model = pt_models[args.model]()
+
+    if torch.cuda.is_available():
+        model.cuda(device=args.device)
+
     batch_size = 256
-    macs, params, steps = get_model_profile(mod, # model
+    macs, params, steps = get_model_profile(model, # model
                                      (batch_size, 3, 224, 224), # input shape or input to the input_constructor
                                      input_constructor=None, # if specified, a constructor taking the the parameter before is used as input to the model
                                      print_profile=True, # print model graph with the profile annotated
@@ -88,14 +117,64 @@ with torch.cuda.device(0):
                                      warm_up=10, # the number of warm-ups before measuring the time of each module
                                      as_strings=True, # print raw numbers (e.g. 1000) or strings (e.g. 1k)
                                      ignore_modules=None) # the list of modules to ignore in the profiling
+
     print("{:<30}  {:<8}".format("Batch size: ", batch_size))
-    print('{:<30}  {:<8}'.format('Number of multiply-adds: ', macs))
+    print('{:<30}  {:<8}'.format('Number of MACs: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
-    print("{:<30}  {:<8}".format("Number of steps profiled: ", steps))
+    print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
+
+# Output:
+# Number of multiply-adds:        21.74 GMACs
+# Number of parameters:           109.48 M
+
 ```
 
-Examples of this usage is given in [examples](examples).
+```python
+from functools import partial
 
+import torch
+from transformers import BertForSequenceClassification, BertTokenizer
+
+from deepspeed.profiling.flops_profiler import get_model_profile
+
+
+def bert_input_constructor(input_shape, tokenizer):
+    inp_seq = ""
+    for _ in range(input_shape[1] - 2):  # there are two special tokens [CLS] and [SEP]
+        inp_seq += tokenizer.pad_token  # let's use pad token to form a fake
+    # sequence for subsequent flops calculation
+
+    inputs = tokenizer([inp_seq] * input_shape[0],
+                       padding=True,
+                       truncation=True,
+                       return_tensors="pt")
+    labels = torch.tensor([1] * input_shape[0])
+    # Batch size input_shape[0], sequence length input_shape[128]
+    inputs = dict(inputs)
+    inputs.update({"labels": labels})
+    return inputs
+
+
+if __name__ == '__main__':
+    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
+    macs, params, steps = get_model_profile(
+        model,
+        (2, 128),
+        input_constructor=partial(bert_input_constructor,
+                                  tokenizer=bert_tokenizer),
+        print_profile=True,
+        print_aggregated_profile=True,
+    )
+    print("{:<30}  {:<8}".format("Number of multiply-adds: ", macs))
+    print("{:<30}  {:<8}".format("Number of parameters: ", params))
+    print("{:<30}  {:<8}".format("Number of steps profiled: ", steps))
+
+# Output:
+# Number of multiply-adds:        21.74 GMACs
+# Number of parameters:           109.48 M
+
+```
 #### Use the low-level APIs to profile the forward pass in the existing model training workflow
 
 ```add_profile_methods```: adds the following methods to the model object:
