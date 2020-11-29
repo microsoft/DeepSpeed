@@ -40,7 +40,7 @@ from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 
-from deepspeed.profiling.flops_profiler.profiler import add_profile_methods, print_model_profile, print_model_aggregated_profile, flops_to_string, params_to_string
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -857,22 +857,22 @@ class DeepSpeedEngine(Module):
         """
         if self.flops_profiler() and self.global_steps == self.profile_start_step(
         ) and self.global_rank == 0:
-            self.module = add_profile_methods(self.module)
-            self.module.start_profile(ignore_list=None)
+            self.profiler = FlopsProfiler(self.module)
+            self.profiler.start_profile(ignore_list=None)
 
         if self.flops_profiler() and self.global_steps == self.profile_end_step(
         ) and self.global_rank == 0:
-            flops = self.module.get_total_flops()
-            params = self.module.get_total_params()
-            steps = self.module.get_total_steps()
             print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
-                                         flops_to_string(flops)))
+                                         self.profiler.get_total_flops(in_str=False)))
             print('{:<30}  {:<8}'.format('Number of parameters: ',
-                                         params_to_string(params)))
-            print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
-            self.module.print_model_profile()
-            self.module.print_model_aggregated_profile(depth=-1, top_num=3)
-            self.module.end_profile()
+                                         self.profiler.get_total_params(in_str=False)))
+            print('{:<30}  {:<8}'.format('Number of steps profiled: ',
+                                         self.profiler.get_total_steps()))
+            self.profiler.print_model_profile()
+            self.profiler.print_model_aggregated_profile(depth=-1, top_num=3)
+            self.profiler.flops = self.profiler.get_total_flops()
+            self.profiler.params = self.profiler.get_total_params()
+            self.profiler.end_profile()
 
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
