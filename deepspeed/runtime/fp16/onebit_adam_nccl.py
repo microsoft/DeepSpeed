@@ -101,6 +101,16 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
         cupy.cuda.get_current_stream().synchronize()
         return sign_list_packed
 
+    def my_igather(self, rank, size, sendbuf, recvbuf, root):
+        if rank == root:
+            for idx in range(size):
+                if idx != rank:
+                    dist.recv(recvbuf[idx], src=idx, group=self.world_group, tag=987)
+                else:
+                    recvbuf[rank] = sendbuf
+        else:
+            dist.send(sendbuf, group=self.world_group, dst=root, tag=987)
+        
     def Compressed_Allreduce(self,
                              buffer_m: torch.tensor,
                              worker_error,
@@ -153,28 +163,26 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
         worker_scale = self.cupy2torch(cupy_worker_scale)
         recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
 
+
         print("sendbuf = ", worker_scale)
         print("recvbuf = ", recvbuf_scale)
 
         # communication phase 1
         gather_start = time.time()
-        #for idx in range(self.size):
-            #dist.gather(tensor=sign_list_packed[idx], gather_list=recvbuf_sign, dst=idx)
-        if dist.get_rank() == 0:
-            dist.gather(worker_scale, gather_list=recvbuf_scale)
-        else:
-            dist.gather(worker_scale, gather_list=[])
-
+        for idx in range(self.size):
+            self.my_igather(self.rank, self.size, sign_list_packed[idx], recvbuf_sign, root=idx)
+            self.my_igather(self.rank, self.size, worker_scale, recvbuf_scale, root=idx)
         gather_end = time.time()
 
         #TODO: dist.sync and try async_op=True method
+        print("sendbuf = ", worker_scale)
+        print("recvbuf = ", recvbuf_scale)
+
 
         cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
         cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
 
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
-            world_size,
-            1)
+        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(self.size,-1)
         cupy_recvbuf_sign = None
 
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
