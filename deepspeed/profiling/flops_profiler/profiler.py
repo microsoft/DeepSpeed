@@ -3,8 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
+import importlib
 
 module_flop_count = []
+old_functions = {}
 
 
 class FlopsProfiler(object):
@@ -17,6 +19,7 @@ class FlopsProfiler(object):
     def start_profile(self, ignore_list=None):
 
         self.reset_profile()
+        _patch_functionals()
 
         def register_module_hooks(module, ignore_list):
             if ignore_list and type(module) in ignore_list:
@@ -91,6 +94,7 @@ class FlopsProfiler(object):
                 del module.__end_time_hook_handle__
 
         self.model.apply(remove_profile_attrs)
+        _reload_functionals()
 
     def reset_profile(self):
         def add_or_reset_attrs(module):
@@ -413,62 +417,97 @@ def _dropout_flops_compute(input, p=0.5, training=True, inplace=False):
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
+    name = func.__name__
+    old_functions[func.__name__] = oldFunc
 
     def newFunc(*args, **kwds):
         flops = funcFlopCompute(*args, **kwds)
-        name = "nn.functional." + func.__name__
         module_flop_count.append((name, flops))
         return oldFunc(*args, **kwds)
 
     return newFunc
 
 
-# FC
-F.linear = wrapFunc(F.linear, _linear_flops_compute)
+def _patch_functionals():
+    # FC
+    F.linear = wrapFunc(F.linear, _linear_flops_compute)
 
-# convolutions
-F.conv1d = wrapFunc(F.conv1d, _conv_flops_compute)
-F.conv2d = wrapFunc(F.conv2d, _conv_flops_compute)
-F.conv3d = wrapFunc(F.conv3d, _conv_flops_compute)
+    # convolutions
+    F.conv1d = wrapFunc(F.conv1d, _conv_flops_compute)
+    F.conv2d = wrapFunc(F.conv2d, _conv_flops_compute)
+    F.conv3d = wrapFunc(F.conv3d, _conv_flops_compute)
 
-# conv transposed
-F.conv_transpose1d = wrapFunc(F.conv_transpose1d, _conv_trans_flops_compute)
-F.conv_transpose2d = wrapFunc(F.conv_transpose2d, _conv_trans_flops_compute)
-F.conv_transpose3d = wrapFunc(F.conv_transpose3d, _conv_trans_flops_compute)
+    # conv transposed
+    F.conv_transpose1d = wrapFunc(F.conv_transpose1d, _conv_trans_flops_compute)
+    F.conv_transpose2d = wrapFunc(F.conv_transpose2d, _conv_trans_flops_compute)
+    F.conv_transpose3d = wrapFunc(F.conv_transpose3d, _conv_trans_flops_compute)
 
-# activations
-F.relu = wrapFunc(F.relu, _relu_flops_compute)
-F.prelu = wrapFunc(F.prelu, _relu_flops_compute)
-F.elu = wrapFunc(F.elu, _relu_flops_compute)
-F.leaky_relu = wrapFunc(F.leaky_relu, _relu_flops_compute)
-F.relu6 = wrapFunc(F.relu6, _relu_flops_compute)
+    # activations
+    F.relu = wrapFunc(F.relu, _relu_flops_compute)
+    F.prelu = wrapFunc(F.prelu, _relu_flops_compute)
+    F.elu = wrapFunc(F.elu, _relu_flops_compute)
+    F.leaky_relu = wrapFunc(F.leaky_relu, _relu_flops_compute)
+    F.relu6 = wrapFunc(F.relu6, _relu_flops_compute)
 
-# BatchNorms
-F.batch_norm = wrapFunc(F.batch_norm, _batch_norm_flops_compute)
+    # BatchNorms
+    F.batch_norm = wrapFunc(F.batch_norm, _batch_norm_flops_compute)
 
-# poolings
-F.avg_pool1d = wrapFunc(F.avg_pool1d, _pool_flops_compute)
-F.avg_pool2d = wrapFunc(F.avg_pool2d, _pool_flops_compute)
-F.avg_pool3d = wrapFunc(F.avg_pool3d, _pool_flops_compute)
-F.max_pool1d = wrapFunc(F.max_pool1d, _pool_flops_compute)
-F.max_pool2d = wrapFunc(F.max_pool2d, _pool_flops_compute)
-F.max_pool3d = wrapFunc(F.max_pool3d, _pool_flops_compute)
-F.adaptive_avg_pool1d = wrapFunc(F.adaptive_avg_pool1d, _pool_flops_compute)
-F.adaptive_avg_pool2d = wrapFunc(F.adaptive_avg_pool2d, _pool_flops_compute)
-F.adaptive_avg_pool3d = wrapFunc(F.adaptive_avg_pool3d, _pool_flops_compute)
-F.adaptive_max_pool1d = wrapFunc(F.adaptive_max_pool1d, _pool_flops_compute)
-F.adaptive_max_pool2d = wrapFunc(F.adaptive_max_pool2d, _pool_flops_compute)
-F.adaptive_max_pool3d = wrapFunc(F.adaptive_max_pool3d, _pool_flops_compute)
+    # poolings
+    F.avg_pool1d = wrapFunc(F.avg_pool1d, _pool_flops_compute)
+    F.avg_pool2d = wrapFunc(F.avg_pool2d, _pool_flops_compute)
+    F.avg_pool3d = wrapFunc(F.avg_pool3d, _pool_flops_compute)
+    F.max_pool1d = wrapFunc(F.max_pool1d, _pool_flops_compute)
+    F.max_pool2d = wrapFunc(F.max_pool2d, _pool_flops_compute)
+    F.max_pool3d = wrapFunc(F.max_pool3d, _pool_flops_compute)
+    F.adaptive_avg_pool1d = wrapFunc(F.adaptive_avg_pool1d, _pool_flops_compute)
+    F.adaptive_avg_pool2d = wrapFunc(F.adaptive_avg_pool2d, _pool_flops_compute)
+    F.adaptive_avg_pool3d = wrapFunc(F.adaptive_avg_pool3d, _pool_flops_compute)
+    F.adaptive_max_pool1d = wrapFunc(F.adaptive_max_pool1d, _pool_flops_compute)
+    F.adaptive_max_pool2d = wrapFunc(F.adaptive_max_pool2d, _pool_flops_compute)
+    F.adaptive_max_pool3d = wrapFunc(F.adaptive_max_pool3d, _pool_flops_compute)
 
-# upsample
-F.upsample = wrapFunc(F.upsample, _upsample_flops_compute)
-F.interpolate = wrapFunc(F.interpolate, _upsample_flops_compute)
+    # upsample
+    F.upsample = wrapFunc(F.upsample, _upsample_flops_compute)
+    F.interpolate = wrapFunc(F.interpolate, _upsample_flops_compute)
 
-# softmax
-F.softmax = wrapFunc(F.softmax, _softmax_flops_compute)
+    # softmax
+    F.softmax = wrapFunc(F.softmax, _softmax_flops_compute)
 
-# embedding
-F.embedding = wrapFunc(F.embedding, _embedding_flops_compute)
+    # embedding
+    F.embedding = wrapFunc(F.embedding, _embedding_flops_compute)
+
+
+def _reload_functionals():
+    # torch.nn.functional does not support importlib.reload()
+    F.linear = old_functions["linear"]
+    F.conv1d = old_functions["conv1d"]
+    F.conv2d = old_functions["conv2d"]
+    F.conv3d = old_functions["conv3d"]
+    F.conv_transpose1d = old_functions["conv_transpose1d"]
+    F.conv_transpose2d = old_functions["conv_transpose2d"]
+    F.conv_transpose3d = old_functions["conv_transpose3d"]
+    F.relu = old_functions["relu"]
+    F.prelu = old_functions["prelu"]
+    F.elu = old_functions["elu"]
+    F.leaky_relu = old_functions["leaky_relu"]
+    F.relu6 = old_functions["relu6"]
+    F.batch_norm = old_functions["batch_norm"]
+    F.avg_pool1d = old_functions["avg_pool1d"]
+    F.avg_pool2d = old_functions["avg_pool2d"]
+    F.avg_pool3d = old_functions["avg_pool3d"]
+    F.max_pool1d = old_functions["max_pool1d"]
+    F.max_pool2d = old_functions["max_pool2d"]
+    F.max_pool3d = old_functions["max_pool3d"]
+    F.adaptive_avg_pool1d = old_functions["adaptive_avg_pool1d"]
+    F.adaptive_avg_pool2d = old_functions["adaptive_avg_pool2d"]
+    F.adaptive_avg_pool3d = old_functions["adaptive_avg_pool3d"]
+    F.adaptive_max_pool1d = old_functions["adaptive_max_pool1d"]
+    F.adaptive_max_pool2d = old_functions["adaptive_max_pool2d"]
+    F.adaptive_max_pool3d = old_functions["adaptive_max_pool3d"]
+    F.upsample = old_functions["upsample"]
+    F.interpolate = old_functions["interpolate"]
+    F.softmax = old_functions["softmax"]
+    F.embedding = old_functions["embedding"]
 
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
@@ -730,7 +769,7 @@ if __name__ == "__main__":
         depth=-1,
         top_num=3,
         warm_up=5,
-        num_steps=10,
+        num_steps=1,
         as_strings=True,
         ignore_modules=None,
     )

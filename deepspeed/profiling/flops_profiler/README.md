@@ -4,11 +4,12 @@
 
 The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input. If multiple forward passes are specified by the user to caputre (in the case where the model have different paths or for more accurate timing), the average profile of the multiple batches is taken.
 
-The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that flops-profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops, thus allowing customized modules in the model (e.g. ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). The flops-profiler also supports flops computation at module level (for RNNs).
+The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that flops-profiler captures `torch.nn.functional` invoked in a module to estimate the flops, thus allowing customized modules in the model (e.g. `ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)). The flops-profiler also supports flops computation at module level (for RNNs).
 
-For models running on multi-node or multi-gpu, only the model parallelism affects the number of flops and parameters (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size * flops = total_flops, model_parallel_size * parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
+For models running on multi-node or multi-gpu, only the model parallelism affects the number of flops and parameters (e.g. `--model-parallel-size` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)), i.e., model_parallel_size _ flops = total_flops, model_parallel_size _ parameters = total_parameters. The number of gpus or nodes does not affect the output profile.
 
 Below is an example output for LeNet5 with batch size 1024 on a V100 GPU:
+
 <!-- ![](header.png) -->
 
 ```
@@ -35,7 +36,7 @@ LeNet5(
 Top 3 modules in flops at depth 2 are {'Conv2d': '421.91 MMACs', 'Linear': '11.18 MMACs', 'AvgPool2d': '6.46 MMACs'}
 Top 3 modules in params at depth 2 are {'Conv2d': '50.69 k', 'Linear': '11.01 k', 'Tanh': '0'}
 Top 3 modules in time at depth 2 are {'Conv2d': '12.25 ms', 'Linear': '6.88 ms', 'AvgPool2d': '3.23 ms'}
-Batch size:                     1024  
+Batch size:                     1024
 Number of multiply-adds:        439.55 MMACs
 Number of parameters:           61.71 k
 Number of steps profiled:       10
@@ -58,16 +59,17 @@ Refer to the [installaiton of DeepSpeed](https://www.deepspeed.ai/getting-starte
 If using DeepSpeed for model training, no explict API calls are needed to use the flops-profiler.
 
 In DeepSpeed config file, specify:
-* ```"flops_profiler": true``` to enable the flops-profiler.
-* ```"profile_start_step": 5``` to start the profiler at step 5. Note that warm-up is necessary for getting accurate timing information.
-* ```"profile_end_step": 6``` to end the profiler at step 6. Note that ```profile_end_step > profile_start_step```.
-* ```"profile_depth": -1``` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
-* ```"profile_top_num": 3```to set the number of top modules to print aggregated profile
 
+- `"flops_profiler": true` to enable the flops-profiler.
+- `"profile_start_step": 5` to start the profiler at step 5. Note that warm-up is necessary for getting accurate timing information.
+- `"profile_end_step": 6` to end the profiler at step 6. Note that `profile_end_step > profile_start_step`.
+- `"profile_depth": -1` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
+- `"profile_top_num": 3`to set the number of top modules to print aggregated profile
 
-###  Without the DeepSpeed runtime
+### Without the DeepSpeed runtime
 
 The flops-profiler can be used as a standalone package outside of the deepspeed runtime.
+
 #### Use the high level-API and run the model inference for profiling purpose
 
 Examples of this usage are given below.
@@ -124,8 +126,8 @@ if __name__ == '__main__':
     print('{:<30}  {:<8}'.format('Number of steps profiled: ', steps))
 
 # Output:
-# Number of multiply-adds:        21.74 GMACs
-# Number of parameters:           109.48 M
+# Number of MACs:                 466.48 GMACs
+# Number of parameters:           11.69 M
 
 ```
 
@@ -175,27 +177,27 @@ if __name__ == '__main__':
 # Number of parameters:           109.48 M
 
 ```
+
 #### Use the low-level APIs to profile the forward pass in the existing model training workflow
 
-```add_profile_methods```: adds the following methods to the model object:
-  * ```start_profile``` - starts profiling
-  * ```compute_total_flops``` - returns the total number of flops
-  * ```compute_total_duration``` - returns the total duration
-  * ```compute_total_params``` - returns the total number of params
-  * ```compute_total_steps``` - returns the total number of steps (or input batches) profiled.
-  * ```print_model_profile``` - prints the profile annotated
-  * ```print_model_aggregated_profile``` - prints the aggregated profile for the top modules
-  * ```end_profile``` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
+- `start_profile` - starts profiling
+- `get_total_flops` - returns the total number of flops
+- `get_total_params` - returns the total number of params
+- `get_total_duration` - returns the total duration of forward pass
+- `get_total_steps` - returns the total number of steps (or input batches) profiled.
+- `print_model_profile` - prints the profile annotated
+- `print_model_aggregated_profile` - prints the aggregated profile for the top modules
+- `end_profile` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
 
-```flops_to_string```,  ```params_to_string```, ```duration_to_string``` are utility functions to convert the metric number to string.
+`flops_to_string`, `params_to_string`, `duration_to_string` are utility functions to convert the metric number to string.
 
 Below is an example of this usage in a typical training workflow.
 
 ```python
-import deepspeed.profiling.flops_profiler as prof
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 
 model = Model()
-model = prof.add_profile_methods(model)
+profiler = FlopsProfiler(model)
 
 profile_start_setp = 5
 profile_end_step = 10
@@ -206,17 +208,20 @@ pring_aggregated_profile = True
 for step, batch in enumerate(data_loader):
   # start profiling at training step "profile_step"
   if step == profile_start_step:
-    model.start_profile()
+    profiler.start_profile()
 
   # end profiling and print output at training step "profile_step"
   if model == profile_end_step: # if using multi nodes, check global_rank == 0 as well
-    flops = model.get_total_flops()
-    params = model.get_total_params()
+    flops = profiler.get_total_flops()
+    params = profiler.get_total_flops()
+    duration = profiler.get_total_duration()
+    steps = profiler.get_total_steps()
     if print_profile:
-        model.print_model_profile()
+        profiler.print_model_profile()
     if print_aggregated_profile:
-        model.print_model_aggregated_profile(depth=-1, top_num=3)
-    model.end_profile()
+        profiler.print_model_aggregated_profile(depth=-1, top_num=3)
+    profiler.end_profile()
+    print(flops, params, duration, step)
 
   # forward() method
   loss = model(batch)
@@ -226,5 +231,4 @@ for step, batch in enumerate(data_loader):
 
   # weight update
   optimizer.step()
-
 ```
