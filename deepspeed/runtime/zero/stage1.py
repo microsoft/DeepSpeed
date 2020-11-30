@@ -720,8 +720,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 #     ) or is_model_parallel_parameter(p):
                 #     param_norm = p.grad.data.float().norm(norm_type)
                 #     total_norm += param_norm.item()**norm_type
-                raise NotImplementedError(
-                    "support grad norm of model parallel parameters")
+                # raise NotImplementedError(
+                #     "support grad norm of model parallel parameters")
+                pass
             else:
                 param_norm = partition.data.float().norm(norm_type)
                 total_norm += param_norm.item()**norm_type

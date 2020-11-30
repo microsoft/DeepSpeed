@@ -883,10 +883,10 @@ class DeepSpeedEngine(Module):
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
 
-        if not allreduce_gradients:
-            logger.warning(
-                f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
-            )
+        #if not allreduce_gradients:
+        #    logger.warning(
+        #        f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
+        #    )
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
