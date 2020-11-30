@@ -60,19 +60,89 @@ If using DeepSpeed for model training, no explict API calls are needed to use th
 
 In DeepSpeed config file, specify:
 
-- `"flops_profiler": true` to enable the flops-profiler.
-- `"profile_start_step": 5` to start the profiler at step 5. Note that warm-up is necessary for getting accurate timing information.
-- `"profile_end_step": 6` to end the profiler at step 6. Note that `profile_end_step > profile_start_step`.
-- `"profile_depth": -1` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
-- `"profile_top_num": 3`to set the number of top modules to print aggregated profile
+```python
+  ds_config = {
+    ...# other deepspeed configs
+    "flops_profiler": {
+        "enabled": True,
+        "start_step": 2,
+        "end_step": 3,
+        "module_depth": -1,
+        "top_modules": 3,
+    },
+  }
+```
+- `"enabled": true` to enable the flops-profiler.
+- `"start_step": 5` to start the profiler at step 5. Note that warm-up is necessary for getting accurate timing information.
+- `"end_step": 6` to end the profiler at step 6. Note that `end_step > start_step`.
+- `"module_depth": -1` to print aggregated module information at the maximum depth (innermost modules). Can be set to any positive number, caped by the maximum depth of the model.
+- `"top_modules": 3`to set the number of top modules to print aggregated profile
 
+An example is given in [test_flops_profiler](tests/unit/test_flops_profiler.py).
 ### Without the DeepSpeed runtime
 
 The flops-profiler can be used as a standalone package outside of the deepspeed runtime.
 
+#### Use the low-level APIs to profile the forward pass in the existing model training workflow
+
+- `start_profile` - starts profiling
+- `get_total_flops` - returns the total number of flops
+- `get_total_params` - returns the total number of params
+- `get_total_duration` - returns the total duration of forward pass
+- `get_total_steps` - returns the total number of steps (or input batches) profiled.
+- `print_model_profile` - prints the profile annotated
+- `print_model_aggregated_profile` - prints the aggregated profile for the top modules
+- `end_profile` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
+
+`flops_to_string`, `params_to_string`, `duration_to_string` are utility functions to convert the metric number to string.
+
+Below is an example of this usage in a typical training workflow.
+
+```python
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+
+model = Model()
+profiler = FlopsProfiler(model)
+
+start_step = 5
+end_step = 10
+assert (end_step > start_step), "should end profiling after start profiling"
+print_profile = True
+pring_aggregated_profile = True
+
+for step, batch in enumerate(data_loader):
+  # start profiling at training step "profile_step"
+  if step == start_step:
+    profiler.start_profile()
+
+  # end profiling and print output at training step "profile_step"
+  if model == end_step: # if using multi nodes, check global_rank == 0 as well
+    flops = profiler.get_total_flops()
+    params = profiler.get_total_flops()
+    duration = profiler.get_total_duration()
+    steps = profiler.get_total_steps()
+    if print_profile:
+        profiler.print_model_profile()
+    if print_aggregated_profile:
+        profiler.print_model_aggregated_profile(module_depth=-1, top_modules=3)
+    profiler.end_profile()
+    print(flops, params, duration, step)
+
+  # forward() method
+  loss = model(batch)
+
+  # runs backpropagation
+  loss.backward()
+
+  # weight update
+  optimizer.step()
+```
+
 #### Use the high level-API and run the model inference for profiling purpose
 
 Examples of this usage are given below.
+
+##### Classification model example:
 
 ```python
 import argparse
@@ -114,8 +184,8 @@ if __name__ == '__main__':
                                      input_constructor=None, # if specified, a constructor taking the the parameter before is used as input to the model
                                      print_profile=True, # print model graph with the profile annotated
                                      print_aggregated_profile=True, # print aggregated profile for top modules
-                                     depth=-1, # depth into the nested modules with -1 being the inner most modules
-                                     top_num=3, # the number of top modules to print aggregated profile
+                                     module_depth=-1, # depth into the nested modules with -1 being the inner most modules
+                                     top_modules=3, # the number of top modules to print aggregated profile
                                      warm_up=10, # the number of warm-ups before measuring the time of each module
                                      as_strings=True, # print raw numbers (e.g. 1000) or strings (e.g. 1k)
                                      ignore_modules=None) # the list of modules to ignore in the profiling
@@ -130,6 +200,8 @@ if __name__ == '__main__':
 # Number of parameters:           11.69 M
 
 ```
+
+##### Bert model example:
 
 ```python
 from functools import partial
@@ -176,59 +248,4 @@ if __name__ == '__main__':
 # Number of multiply-adds:        21.74 GMACs
 # Number of parameters:           109.48 M
 
-```
-
-#### Use the low-level APIs to profile the forward pass in the existing model training workflow
-
-- `start_profile` - starts profiling
-- `get_total_flops` - returns the total number of flops
-- `get_total_params` - returns the total number of params
-- `get_total_duration` - returns the total duration of forward pass
-- `get_total_steps` - returns the total number of steps (or input batches) profiled.
-- `print_model_profile` - prints the profile annotated
-- `print_model_aggregated_profile` - prints the aggregated profile for the top modules
-- `end_profile` - ends profiling and cleans up, invoked at the end of the profiling and before any printing method.
-
-`flops_to_string`, `params_to_string`, `duration_to_string` are utility functions to convert the metric number to string.
-
-Below is an example of this usage in a typical training workflow.
-
-```python
-from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
-
-model = Model()
-profiler = FlopsProfiler(model)
-
-profile_start_setp = 5
-profile_end_step = 10
-assert (profile_end_step > profile_start_step), "should end profiling after start profiling"
-print_profile = True
-pring_aggregated_profile = True
-
-for step, batch in enumerate(data_loader):
-  # start profiling at training step "profile_step"
-  if step == profile_start_step:
-    profiler.start_profile()
-
-  # end profiling and print output at training step "profile_step"
-  if model == profile_end_step: # if using multi nodes, check global_rank == 0 as well
-    flops = profiler.get_total_flops()
-    params = profiler.get_total_flops()
-    duration = profiler.get_total_duration()
-    steps = profiler.get_total_steps()
-    if print_profile:
-        profiler.print_model_profile()
-    if print_aggregated_profile:
-        profiler.print_model_aggregated_profile(depth=-1, top_num=3)
-    profiler.end_profile()
-    print(flops, params, duration, step)
-
-  # forward() method
-  loss = model(batch)
-
-  # runs backpropagation
-  loss.backward()
-
-  # weight update
-  optimizer.step()
 ```

@@ -22,11 +22,13 @@ def test_flops_profiler_in_ds_trainning(tmpdir):
         "fp16": {
             "enabled": True,
         },
-        "flops_profiler": True,
-        "profile_start_step": 2,
-        "profile_end_step": 3,
-        "profile_depth": -1,
-        "profile_top_num": 3,
+        "flops_profiler": {
+            "enabled": True,
+            "start_step": 2,
+            "end_step": 3,
+            "module_depth": -1,
+            "top_modules": 3,
+        },
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -48,8 +50,8 @@ def test_flops_profiler_in_ds_trainning(tmpdir):
             model.backward(loss)
             model.step()
             if n == 3: break
-        assert model.profiler.flops == 100
-        assert model.profiler.params == 110
+        assert model.flops_profiler.flops == 100
+        assert model.flops_profiler.params == 110
 
     _test_flops_profiler_in_ds_trainning(args, model, hidden_dim)
 
@@ -103,8 +105,8 @@ def test_flops_profiler_in_inference():
         tuple(input.shape),
         print_profile=True,
         print_aggregated_profile=True,
-        depth=-1,
-        top_num=3,
+        module_depth=-1,
+        top_modules=3,
         warm_up=5,
         num_steps=10,
         as_strings=True,

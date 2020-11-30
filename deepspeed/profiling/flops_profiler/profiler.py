@@ -195,7 +195,7 @@ class FlopsProfiler(object):
         print(self.model)
         self.model.apply(del_extra_repr)
 
-    def print_model_aggregated_profile(self, depth=-1, top_num=3):
+    def print_model_aggregated_profile(self, module_depth=-1, top_modules=3):
         info = {}
         total_steps = self.get_total_steps()
         if total_steps == 0:
@@ -225,11 +225,11 @@ class FlopsProfiler(object):
 
         walk_module(self.model, 0, info)
 
-        max_depth = len(info)
-        if depth == -1:
-            depth = max_depth - 1
+        depth = module_depth
+        if module_depth == -1:
+            depth = len(info) - 1
 
-        num_items = min(top_num, len(info[depth]))
+        num_items = min(top_modules, len(info[depth]))
 
         sort_flops = {
             k: flops_to_string(v[0] / total_steps)
@@ -659,8 +659,8 @@ def get_model_profile(
     input_constructor=None,
     print_profile=True,
     print_aggregated_profile=True,
-    depth=-1,
-    top_num=3,
+    module_depth=-1,
+    top_modules=3,
     warm_up=5,
     num_steps=10,
     as_strings=True,
@@ -709,71 +709,10 @@ def get_model_profile(
     if print_profile:
         prof.print_model_profile()
     if print_aggregated_profile:
-        prof.print_model_aggregated_profile(depth=depth, top_num=top_num)
+        prof.print_model_aggregated_profile(module_depth=module_depth,
+                                            top_modules=top_modules)
     prof.end_profile()
     if as_strings:
         return flops_to_string(flops), params_to_string(params), steps
 
     return flops, params, steps
-
-
-class LeNet5(nn.Module):
-    def __init__(self, n_classes):
-        super(LeNet5, self).__init__()
-
-        self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels=1,
-                      out_channels=6,
-                      kernel_size=5,
-                      stride=1),
-            nn.Tanh(),
-            nn.AvgPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=6,
-                      out_channels=16,
-                      kernel_size=5,
-                      stride=1),
-            nn.Tanh(),
-            nn.AvgPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=16,
-                      out_channels=120,
-                      kernel_size=5,
-                      stride=1),
-            nn.Tanh(),
-        )
-
-        self.classifier = nn.Sequential(
-            nn.Linear(in_features=120,
-                      out_features=84),
-            nn.Tanh(),
-            nn.Linear(in_features=84,
-                      out_features=n_classes),
-        )
-
-    def forward(self, x):
-        x = self.feature_extractor(x)
-        x = torch.flatten(x, 1)
-        logits = self.classifier(x)
-        probs = F.softmax(logits, dim=1)
-        return logits, probs
-
-
-if __name__ == "__main__":
-    mod = LeNet5(10)
-    batch_size = 1024
-    input = torch.randn(batch_size, 1, 32, 32)
-    macs, params, steps = get_model_profile(
-        mod,
-        tuple(input.shape),
-        print_profile=True,
-        print_aggregated_profile=True,
-        depth=-1,
-        top_num=3,
-        warm_up=5,
-        num_steps=1,
-        as_strings=True,
-        ignore_modules=None,
-    )
-    print("{:<30}  {:<8}".format("Batch size: ", batch_size))
-    print("{:<30}  {:<8}".format("Number of multiply-adds: ", macs))
-    print("{:<30}  {:<8}".format("Number of parameters: ", params))
-    print("{:<30}  {:<8}".format("Number of steps profiled: ", steps))

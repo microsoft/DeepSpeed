@@ -13,6 +13,7 @@ from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 from deepspeed.runtime.zero.constants import *
 from deepspeed.runtime.activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from deepspeed.utils import logger
+from deepspeed.profiling.config import DeepSpeedFlopsProfilerConfig
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -430,26 +431,6 @@ def get_wall_clock_breakdown(param_dict):
                             WALL_CLOCK_BREAKDOWN_DEFAULT)
 
 
-def get_flops_profiler(param_dict):
-    return get_scalar_param(param_dict, FLOPS_PROFILER, FLOPS_PROFILER_DEFAULT)
-
-
-def get_profile_start_step(param_dict):
-    return get_scalar_param(param_dict, PROFILE_START_STEP, PROFILE_START_STEP_DEFAULT)
-
-
-def get_profile_end_step(param_dict):
-    return get_scalar_param(param_dict, PROFILE_END_STEP, PROFILE_END_STEP_DEFAULT)
-
-
-def get_profile_depth(param_dict):
-    return get_scalar_param(param_dict, PROFILE_DEPTH, PROFILE_DEPTH_DEFAULT)
-
-
-def get_profile_top_num(param_dict):
-    return get_scalar_param(param_dict, PROFILE_TOP_NUM, PROFILE_TOP_NUM_DEFAULT)
-
-
 def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
@@ -572,13 +553,7 @@ class DeepSpeedConfig(object):
         self.scheduler_params = get_scheduler_params(param_dict)
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
-        self.flops_profiler = get_flops_profiler(param_dict)
-        self.profile_start_step = get_profile_start_step(param_dict)
-        self.profile_end_step = get_profile_end_step(param_dict)
-        if self.profile_end_step < self.profile_start_step:
-            self.profile_end_step = self.profile_start_step
-        self.profile_depth = get_profile_depth(param_dict)
-        self.profile_top_num = get_profile_top_num(param_dict)
+        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)

@@ -3,8 +3,6 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import os
-from pickle import FALSE
-import sys
 import torch
 import warnings
 import torch.distributed as dist
@@ -339,20 +337,20 @@ class DeepSpeedEngine(Module):
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
 
-    def flops_profiler(self):
-        return self._config.flops_profiler
+    def flops_profiler_enabled(self):
+        return self._config.flops_profiler_config.enabled
 
-    def profile_start_step(self):
-        return self._config.profile_start_step
+    def flops_profiler_start_step(self):
+        return self._config.flops_profiler_config.start_step
 
-    def profile_end_step(self):
-        return self._config.profile_end_step
+    def flops_profiler_end_step(self):
+        return self._config.flops_profiler_config.end_step
 
-    def profile_depth(self):
-        return self._config.profile_depth
+    def flops_profiler_module_depth(self):
+        return self._config.flops_profiler_config.module_depth
 
-    def profile_top_num(self):
-        return self._config.profile_top_num
+    def flops_profiler_top_modules(self):
+        return self._config.flops_profiler_config.top_modules
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -855,24 +853,30 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
-        if self.flops_profiler() and self.global_steps == self.profile_start_step(
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_start_step(
         ) and self.global_rank == 0:
-            self.profiler = FlopsProfiler(self.module)
-            self.profiler.start_profile(ignore_list=None)
+            self.flops_profiler = FlopsProfiler(self.module)
+            self.flops_profiler.start_profile(ignore_list=None)
 
-        if self.flops_profiler() and self.global_steps == self.profile_end_step(
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_end_step(
         ) and self.global_rank == 0:
-            print('{:<30}  {:<8}'.format('Number of multiply-adds: ',
-                                         self.profiler.get_total_flops(in_str=False)))
-            print('{:<30}  {:<8}'.format('Number of parameters: ',
-                                         self.profiler.get_total_params(in_str=False)))
+            print('{:<30}  {:<8}'.format(
+                'Number of multiply-adds: ',
+                self.flops_profiler.get_total_flops(in_str=False)))
+            print('{:<30}  {:<8}'.format(
+                'Number of parameters: ',
+                self.flops_profiler.get_total_params(in_str=False)))
             print('{:<30}  {:<8}'.format('Number of steps profiled: ',
-                                         self.profiler.get_total_steps()))
-            self.profiler.print_model_profile()
-            self.profiler.print_model_aggregated_profile(depth=-1, top_num=3)
-            self.profiler.flops = self.profiler.get_total_flops()
-            self.profiler.params = self.profiler.get_total_params()
-            self.profiler.end_profile()
+                                         self.flops_profiler.get_total_steps()))
+            self.flops_profiler.print_model_profile()
+            self.flops_profiler.print_model_aggregated_profile(
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules())
+            self.flops_profiler.flops = self.flops_profiler.get_total_flops()
+            self.flops_profiler.params = self.flops_profiler.get_total_params()
+            self.flops_profiler.end_profile()
 
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
@@ -883,7 +887,6 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
-
         loss = self.module(*inputs, **kwargs)
 
         if self.wall_clock_breakdown():
@@ -915,6 +918,7 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
+
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
             loss = self._scale_loss(loss.float())
