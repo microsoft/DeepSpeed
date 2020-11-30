@@ -3,21 +3,30 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
-import importlib
 
 module_flop_count = []
 old_functions = {}
 
 
 class FlopsProfiler(object):
+    """Measures the time, number of estimated flops and parameters of each module in a PyTorch model.
+
+    The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input. If multiple forward passes are specified by the user to caputre (in the case where the model have different paths or for more accurate timing), the average profile of the multiple batches is taken.
+
+    Args:
+        object (torch.nn.Module): The PyTorch model to profile.
+    """
     def __init__(self, model):
-        """
-        docstring
-        """
         self.model = model
 
     def start_profile(self, ignore_list=None):
+        """Starts profiling.
 
+        Extra attributes are added recursively to all the modules and the profiled torch.nn.functionals are monkey patched.
+
+        Args:
+            ignore_list (list, optional): the list of modules to ignore while profiling. Defaults to None.
+        """
         self.reset_profile()
         _patch_functionals()
 
@@ -25,13 +34,13 @@ class FlopsProfiler(object):
             if ignore_list and type(module) in ignore_list:
                 return
 
-            # if compute the flops of a module directly
+            # if computing the flops of a module directly
             if type(module) in MODULE_HOOK_MAPPING:
                 module.__flops_handle__ = module.register_forward_hook(
                     MODULE_HOOK_MAPPING[type(module)])
                 return
 
-            # if compute the flops of the functionals in a module
+            # if computing the flops of the functionals in a module
             def pre_hook(module, input):
                 module_flop_count.clear()
                 if len(input) > 0:
@@ -63,8 +72,9 @@ class FlopsProfiler(object):
         self.model.apply(partial(register_module_hooks, ignore_list=ignore_list))
 
     def end_profile(self):
-        """
-        docstring
+        """Ends profiling.
+
+        Added attributes and handles are removed recursively on all the modules and the torch.nn.functionals are restored.
         """
         def remove_profile_attrs(module):
             if hasattr(module, "__steps__"):
@@ -97,6 +107,10 @@ class FlopsProfiler(object):
         _reload_functionals()
 
     def reset_profile(self):
+        """Resets the profiling.
+
+        Adds or resets the extra attributes.
+        """
         def add_or_reset_attrs(module):
             module.__flops__ = 0
             module.__params__ = sum(p.numel() for p in module.parameters()
@@ -108,6 +122,11 @@ class FlopsProfiler(object):
         self.model.apply(add_or_reset_attrs)
 
     def get_total_flops(self, in_str=False):
+        """Returns the total flops of the model.
+
+        Args:
+            in_str (bool, optional): whether to output the flops in string. Defaults to False.
+        """
         if self.get_total_steps() == 0:
             return 0
         sum = 0
@@ -117,16 +136,28 @@ class FlopsProfiler(object):
         return flops_to_string(total_flops) if in_str else total_flops
 
     def get_total_duration(self, in_str=False):
+        """Returns the total duration of the model forward pass.
+
+        Args:
+            in_str (bool, optional): whether to output the duration in string. Defaults to False.
+        """
         if self.get_total_steps() == 0:
             return 0
         total_duration = self.model.__duration__ / self.get_total_steps()
         return duration_to_string(total_duration) if in_str else total_duration
 
     def get_total_params(self, in_str=False):
+        """Returns the total parameters of the model.
+
+        Args:
+            in_str (bool, optional): whether to output the parameters in string. Defaults to False.
+        """
         return params_to_string(
             self.model.__params__) if in_str else self.model.__params__
 
     def get_total_steps(self):
+        """Returns the total number of steps (or input batches) profiled.
+        """
         def get_steps(module):
             if module.__steps__ == 0:
                 sum = 0
@@ -141,6 +172,8 @@ class FlopsProfiler(object):
         return total_steps
 
     def print_model_profile(self):
+        """Prints the model graph with the measured profile attached to each module.
+        """
         total_flops = self.get_total_flops()
         total_duration = self.get_total_duration()
         total_params = self.get_total_params()
@@ -196,6 +229,12 @@ class FlopsProfiler(object):
         self.model.apply(del_extra_repr)
 
     def print_model_aggregated_profile(self, module_depth=-1, top_modules=3):
+        """Prints the names of the top top_modules modules in terms of aggregated time, flops, and parameters at depth module_depth.
+
+        Args:
+            module_depth (int, optional): the depth of the modules to show. Defaults to -1 (the innermost modules).
+            top_modules (int, optional): the number of top modules to show. Defaults to 3.
+        """
         info = {}
         total_steps = self.get_total_steps()
         if total_steps == 0:
@@ -536,11 +575,6 @@ def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
 
 
 def _rnn_forward_hook(rnn_module, input, output):
-    """
-    Takes into account batch goes at first position, contrary
-    to pytorch common rule (but actually it doesn't matter).
-    IF sigmoid and tanh are made hard, only a comparison FLOPS should be accurate
-    """
     flops = 0
     # input is a tuple containing a sequence to process and (optionally) hidden state
     inp = input[0]
@@ -666,6 +700,21 @@ def get_model_profile(
     as_strings=True,
     ignore_modules=None,
 ):
+    """Returns the total flops, parameters, and profiled steps of a model.
+
+    Args:
+        model ([torch.nn.Module]): the PyTorch model to be profiled.
+        input_res (list): input shape or input to the input_constructor
+        input_constructor (func, optional): input constructor. If specified, the constructor is applied to input_res and the constructor output is used as the input to the model. Defaults to None.
+        print_profile (bool, optional): whether to print the model graph with the profile annotated. Defaults to True.
+        print_aggregated_profile (bool, optional): whether to print the aggregated profile for top modules. Defaults to True.
+        module_depth (int, optional): the depth into the nested modules. Defaults to -1 (the inner most modules).
+        top_modules (int, optional): the number of top modules to print in the aggregated profile. Defaults to 3.
+        warm_up (int, optional): the number of warm-up steps before measuring the time of each module. Defaults to 5.
+        num_steps (int, optional): the number of steps to profile. Defaults to 10.
+        as_strings (bool, optional): whether to print the output as strings. Defaults to True.
+        ignore_modules ([type], optional): the list of modules to ignore during profiling. Defaults to None.
+    """
     assert type(input_res) is tuple
     assert len(input_res) >= 1
     assert isinstance(model, nn.Module)

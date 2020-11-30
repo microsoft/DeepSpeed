@@ -10,8 +10,6 @@ For models running on multi-node or multi-gpu, only the model parallelism affect
 
 Below is an example output for LeNet5 with batch size 1024 on a V100 GPU:
 
-<!-- ![](header.png) -->
-
 ```
 LeNet5(
   61.71 k, 100.00% Params, 439.55 MMACs, 100.00% MACs, 25.62 ms, 100.00% time, 0.034 TFLOPS,
@@ -88,7 +86,7 @@ The flops-profiler can be used as a standalone package outside of the deepspeed 
 - `start_profile` - starts profiling
 - `get_total_flops` - returns the total number of flops
 - `get_total_params` - returns the total number of params
-- `get_total_duration` - returns the total duration of forward pass
+- `get_total_duration` - returns the total duration of the model forward pass
 - `get_total_steps` - returns the total number of steps (or input batches) profiled.
 - `print_model_profile` - prints the profile annotated
 - `print_model_aggregated_profile` - prints the aggregated profile for the top modules
@@ -179,16 +177,17 @@ if __name__ == '__main__':
         model.cuda(device=args.device)
 
     batch_size = 256
-    macs, params, steps = get_model_profile(model, # model
-                                     (batch_size, 3, 224, 224), # input shape or input to the input_constructor
-                                     input_constructor=None, # if specified, a constructor taking the the parameter before is used as input to the model
-                                     print_profile=True, # print model graph with the profile annotated
-                                     print_aggregated_profile=True, # print aggregated profile for top modules
-                                     module_depth=-1, # depth into the nested modules with -1 being the inner most modules
+    macs, params, steps = get_model_profile(model, # the PyTorch model to be profiled
+                                     input_res=(batch_size, 3, 224, 224), # input shape or input to the input_constructor
+                                     input_constructor=None, # If specified, the constructor is applied to input_res and the constructor output is used as the input to the model
+                                     print_profile=True, # whether to print the model graph with the profile annotated. Defaults to True
+                                     print_aggregated_profile=True, # whether to print the aggregated profile for top modules. Defaults to True
+                                     module_depth=-1, # the depth into the nested modules. Defaults to -1 (the inner most modules)
                                      top_modules=3, # the number of top modules to print aggregated profile
-                                     warm_up=10, # the number of warm-ups before measuring the time of each module
-                                     as_strings=True, # print raw numbers (e.g. 1000) or strings (e.g. 1k)
-                                     ignore_modules=None) # the list of modules to ignore in the profiling
+                                     warm_up=10, # the number of warm-up steps before measuring the time of each module. Defaults to 5
+                                     num_steps=10, # the number of steps to profile. Defaults to 10
+                                     as_strings=True, # whether to print the output as strings (e.g. 1k). Defaults to True
+                                     ignore_modules=None) # the list of modules to ignore during profiling. Defaults to None
 
     print("{:<30}  {:<8}".format("Batch size: ", batch_size))
     print('{:<30}  {:<8}'.format('Number of MACs: ', macs))
