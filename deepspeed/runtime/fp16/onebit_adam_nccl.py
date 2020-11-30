@@ -156,28 +156,19 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         for idx in range(self.size):
             sign_list_packed[idx] = self.cupy2torch(cupy_sign_list_packed[idx])
-            print(sign_list_packed[idx].shape)
 
         recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
         
         worker_scale = self.cupy2torch(cupy_worker_scale)
         recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
 
-
-        print("sendbuf = ", worker_scale)
-        print("recvbuf = ", recvbuf_scale)
-
         # communication phase 1
+        #TODO: dist.sync and try async_op=True method
         gather_start = time.time()
         for idx in range(self.size):
             self.my_igather(self.rank, self.size, sign_list_packed[idx], recvbuf_sign, root=idx)
             self.my_igather(self.rank, self.size, worker_scale, recvbuf_scale, root=idx)
         gather_end = time.time()
-
-        #TODO: dist.sync and try async_op=True method
-        print("sendbuf = ", worker_scale)
-        print("recvbuf = ", recvbuf_scale)
-
 
         cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
         cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
@@ -211,22 +202,30 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
 
-        cupy_recvbuf_sign_server = cupy.zeros(
-            [world_size,
-             cupy_server_sign_packed[0].size],
-            dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale_server = cupy.zeros([world_size,
-                                                1],
-                                               dtype=cupy_worker_scale.dtype)
+        cupy_recvbuf_sign_server = cupy.zeros([world_size, cupy_server_sign_packed[0].size], dtype=cupy_sign_list_packed[0].dtype)
 
-        server_sign_packed = self.cupy2torch(cupy_server_sign_packed)
-        recvbuf_sign_server = self.cupy2torch(cupy_recvbuf_sign_server)
+        server_sign_packed = [None] * 1
+        recvbuf_sign_server = [None] * self.size
+
+        for idx in range(self.size):
+            recvbuf_sign_server[idx] = self.cupy2torch(cupy_recvbuf_sign_server[idx])
+        
+        server_sign_packed[0] = self.cupy2torch(cupy_server_sign_packed[0])
+
         server_scale = self.cupy2torch(cupy_server_scale)
-        recvbuf_scale_server = self.cupy2torch(cupy_recvbuf_scale_server)
+        cupy_recvbuf_scale_server = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
 
+        recvbuf_scale_server = [None] * self.size
+        for idx in range(self.size):
+            recvbuf_scale_server[idx] = self.cupy2torch(cupy_recvbuf_scale_server[idx])
+        
         # Communication Phase 2
-        dist.all_gather(server_sign_packed[0], recvbuf_sign_server)
-        dist.all_gather(server_scale, recvbuf_scale_server)
+        dist.all_gather(recvbuf_sign_server, server_sign_packed[0])
+        dist.all_gather(recvbuf_scale_server, server_scale)
+
+        # need to convert from a tensor list to a single tensor
+        # dist.all_gather only provides a tensor list as the recv/output buffer
+        recvbuf_sign_server = torch.stack(recvbuf_sign_server)
 
         cupy_recvbuf_sign_server = self.torch2cupy(recvbuf_sign_server)
 
