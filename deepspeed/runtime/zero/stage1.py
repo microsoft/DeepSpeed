@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from deepspeed.runtime.zero.utils import _initialize_parameter_parallel_groups
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
+from deepspeed.runtime.utils import get_grad_norm, CheckOverflow, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
 
@@ -642,7 +642,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         partition_id = dist.get_rank(group=self.dp_process_group)
         for i, group in enumerate(self.fp16_groups):
             #TODO RS: update get grad norm to support sub partitions
-            norm_groups.append(get_grad_norm(group, mpu=self.mpu))
+            # norm_groups.append(get_grad_norm(group, mpu=self.mpu))
 
             #RS: update free grads w.r.t. sub partitions
             #free gradients for all the parameters that are not updated by this process
@@ -666,6 +666,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             #release all the gradient since we have already created a necessary copy in dp_grad_partition
             self.free_grad_in_param_list(
                 self.params_in_rank_sub_partitions[i][partition_id])
+
+            # calculate grad norm w.r.t. local sub partitions
+            norm_groups.append(
+                self.get_grad_norm_sub_partitions(local_grad_sub_partitions,
+                                                  mpu=self.mpu))
 
             local_sub_partitions_grad_groups.append(local_grad_sub_partitions)
 
@@ -705,6 +710,40 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 p.data = q.data
 
         return self.overflow
+
+    def get_grad_norm_sub_partitions(self, sub_partitions, mpu):
+        norm_type = 2.0
+        total_norm = 0.
+        for partition in sub_partitions:
+            if mpu is not None:
+                # if (mpu.get_model_parallel_rank() == 0
+                #     ) or is_model_parallel_parameter(p):
+                #     param_norm = p.grad.data.float().norm(norm_type)
+                #     total_norm += param_norm.item()**norm_type
+                raise NotImplementedError(
+                    "support grad norm of model parallel parameters")
+            else:
+                param_norm = partition.data.float().norm(norm_type)
+                total_norm += param_norm.item()**norm_type
+
+        # Sum across all DP ranks who each have different grad sub-partitions
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        torch.distributed.all_reduce(total_norm_cuda,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=self.dp_process_group)
+
+        if mpu is not None:
+            # Sum across all model parallel GPUs.
+            torch.distributed.all_reduce(total_norm_cuda,
+                                         op=torch.distributed.ReduceOp.SUM,
+                                         group=mpu.get_model_parallel_group())
+
+        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+        if total_norm == float(
+                'inf') or total_norm == -float('inf') or total_norm != total_norm:
+            total_norm = -1
+
+        return total_norm
 
     def unscale_and_clip_grads(self, grad_groups_flat, norm_groups):
         total_norm = 0.0
