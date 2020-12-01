@@ -95,20 +95,44 @@ public:
         _betta1_t *= _betta1;
         _betta2_t *= _betta2;
         if (_step < step) {
-            printf("Warning: updating optimizer's state to match the step count at %d\n", step);
-            while (_step < step) {
-                _step++;
-                _betta1_t *= _betta1;
-                _betta2_t *= _betta2;
-            }
+            printf("Warning: updating optimizer's state to match the step count at %lu\n", step);
+            _betta1_t = std::pow(_betta1, step);
+            _betta2_t = std::pow(_betta2, step);
+            _step = step;
         } else if (_step != step) {
-            printf("Optimizer lost track of the step count (current_step: %d, new_step: %d)!\n",
+            printf("Optimizer lost track of the step count (current_step: %lu, new_step: %lu)!\n",
                    _step,
                    step);
             throw std::runtime_error("Optimizer lost track of the step count!\n");
         }
     }
-    inline void update_lr(float lr) { _alpha = lr; }
+    inline void update_state(float lr,
+                             float beta1,
+                             float beta2,
+                             float epsilon,
+                             float weight_decay,
+                             bool bias_correction)
+    {
+        _alpha = lr;
+        _eps = epsilon;
+        _weight_decay = weight_decay;
+
+        if (beta1 != _betta1) {
+            _betta1 = beta1;
+            _betta1_t = std::pow(_betta1, _step);
+        }
+        if (beta2 != _betta2) {
+            _betta2 = beta2;
+            _betta2_t = std::pow(_betta2, _step);
+        }
+
+        _bias_correction1 = 1.0f;
+        _bias_correction2 = 1.0f;
+        if (bias_correction == 1) {
+            _bias_correction1 = 1 - _betta1_t;
+            _bias_correction2 = 1 / sqrt(1 - _betta2_t);
+        }
+    }
 
 private:
 #if defined(__AVX512__) or defined(__AVX256__)
@@ -131,6 +155,9 @@ private:
     float _betta1_t;
     float _betta2_t;
     size_t _step;
+
+    float _bias_correction1;
+    float _bias_correction2;
 
     float* _doubled_buffer[2];
     bool _buf_index;
