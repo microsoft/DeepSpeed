@@ -621,7 +621,8 @@ class PipelineEngine(DeepSpeedEngine):
                 loaded = batch[0].clone().to(self.device).detach()
                 loaded.requires_grad = loaded.is_floating_point()
             else:
-                assert isinstance(batch[0], tuple)
+                # XXX: torch 1.6.0 DataLoader will auto convert tuple to list
+                assert isinstance(batch[0], (tuple, list))
                 # Assume list or tuple
                 loaded = []
                 for x in batch[0]:
@@ -637,7 +638,8 @@ class PipelineEngine(DeepSpeedEngine):
             loaded = batch[1]
             if torch.is_tensor(batch[1]):
                 loaded = batch[1].to(self.device)
-            elif isinstance(batch[1], tuple):
+            # XXX: torch 1.6.0 DataLoader will auto convert tuple to list
+            elif isinstance(batch[1], (tuple, list)):
                 loaded = []
                 for x in batch[1]:
                     assert torch.is_tensor(x)
