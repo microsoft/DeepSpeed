@@ -90,7 +90,7 @@ public:
                 size_t _param_size,
                 __half* dev_params = nullptr);
 
-    inline void IncrementStep(size_t step, float beta1, float beta2, )
+    inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         if (beta1 != _betta1 || beta2 != _betta2) {
             _step = step;
