@@ -22,7 +22,7 @@
 #define MAX_THREAD_ITERATIONS 8  // Maximum 8K
 #define MAX_WARP_NUM 32
 
-#define MAX_REGISTERS 64
+#define MAX_REGISTERS 256
 
 // Fused bias add with gelu activation
 template <typename T>

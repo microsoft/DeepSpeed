@@ -11,6 +11,8 @@ __half2 instructions, and avoid the conversion overhead (1/8 of __hal2 arithmeti
 For specific launch constraints, see the launch functions.
 */
 
+#define NORM_REG (MAX_REGISTERS / 4)
+
 __global__ void fused_bias_residual_layer_norm(float* vals,
                                                const float* residual,
                                                const float* gamma,
@@ -32,20 +34,21 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     int id = threadIdx.x;
     int gid = id / WARP_SIZE;
 
-    float vals_arr[MAX_REGISTERS];
+    float vals_arr[NORM_REG];
     __shared__ float shr[MAX_WARP_NUM];
 
     residual += (row * row_stride);
     vals += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] = residual[i * iteration_stride + id];
         sum += vals_arr[i];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        vals_arr[iterations] = residual[iterations * iteration_stride + id];
+    if (high_index < row_stride) {
+        vals_arr[iterations] = residual[high_index];
         sum += vals_arr[iterations];
         iterations++;
     }
@@ -100,11 +103,10 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
             vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
         vals[i * iteration_stride + id] = vals_arr[i];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr[iterations] = vals_arr[iterations] * rsqrtf(variance);
-        vals_arr[iterations] = vals_arr[iterations] * gamma[iterations * iteration_stride + id] +
-                               beta[iterations * iteration_stride + id];
-        vals[iterations * iteration_stride + id] = vals_arr[iterations];
+        vals_arr[iterations] = vals_arr[iterations] * gamma[high_index] + beta[high_index];
+        vals[high_index] = vals_arr[iterations];
     }
 }
 
@@ -130,7 +132,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     int id = threadIdx.x;
     int gid = id >> 5;
 
-    float2 vals_f[MAX_REGISTERS];
+    float2 vals_f[NORM_REG];
     __shared__ float shr[MAX_WARP_NUM];
 
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
@@ -140,14 +142,15 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     vals_cast += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        vals_f[iterations] = __half22float2(residual_cast[iterations * iteration_stride + id]);
+    if ((high_index) < row_stride) {
+        vals_f[iterations] = __half22float2(residual_cast[high_index]);
         sum += vals_f[iterations].x;
         sum += vals_f[iterations].y;
         iterations++;
@@ -210,12 +213,11 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
             vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
         vals_cast[i * iteration_stride + id] = vals_arr;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
         vals_arr = vals_arr * h2rsqrt(variance_h);
-        vals_arr = vals_arr * gamma_cast[iterations * iteration_stride + id] +
-                   beta_cast[iterations * iteration_stride + id];
-        vals_cast[iterations * iteration_stride + id] = vals_arr;
+        vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
+        vals_cast[high_index] = vals_arr;
     }
 #endif
 }
@@ -318,20 +320,21 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     int id = threadIdx.x;
     int gid = id / 32;
 
-    float vals_arr[MAX_REGISTERS];
+    float vals_arr[NORM_REG];
     __shared__ float shr[MAX_WARP_NUM];
 
     residual += (row * row_stride);
     vals += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] = residual[i * iteration_stride + id];
         sum += vals_arr[i];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        vals_arr[iterations] = residual[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        vals_arr[iterations] = residual[high_index];
         sum += vals_arr[iterations];
         iterations++;
     }
@@ -384,11 +387,10 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
             vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
         vals[i * iteration_stride + id] = vals_arr[i];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr[iterations] = vals_arr[iterations] * rsqrtf(variance);
-        vals_arr[iterations] = vals_arr[iterations] * gamma[iterations * iteration_stride + id] +
-                               beta[iterations * iteration_stride + id];
-        vals[iterations * iteration_stride + id] = vals_arr[iterations];
+        vals_arr[iterations] = vals_arr[iterations] * gamma[high_index] + beta[high_index];
+        vals[high_index] = vals_arr[iterations];
     }
 }
 
@@ -414,7 +416,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     int id = threadIdx.x;
     int gid = id >> 5;
 
-    float2 vals_f[MAX_REGISTERS];
+    float2 vals_f[NORM_REG];
     __shared__ float shr[MAX_WARP_NUM];
 
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
@@ -424,14 +426,15 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     vals_cast += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        vals_f[iterations] = __half22float2(residual_cast[iterations * iteration_stride + id]);
+    if ((high_index) < row_stride) {
+        vals_f[iterations] = __half22float2(residual_cast[high_index]);
         sum += vals_f[iterations].x;
         sum += vals_f[iterations].y;
         iterations++;
@@ -492,12 +495,11 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
             vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
         vals_cast[i * iteration_stride + id] = vals_arr;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
         vals_arr = vals_arr * h2rsqrt(variance_h);
-        vals_arr = vals_arr * gamma_cast[iterations * iteration_stride + id] +
-                   beta_cast[iterations * iteration_stride + id];
-        vals_cast[iterations * iteration_stride + id] = vals_arr;
+        vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
+        vals_cast[high_index] = vals_arr;
     }
 #endif
 }
@@ -760,9 +762,9 @@ __global__ void LayerNormBackward2(const float* out_grad,
     vals_hat += (row * row_stride);
     inp_grad += (row * row_stride);
 
-    float vals_arr[MAX_REGISTERS];
-    float vals_hat_arr[MAX_REGISTERS];
-
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
@@ -773,14 +775,13 @@ __global__ void LayerNormBackward2(const float* out_grad,
                               gamma_reg
                         : vals_hat[i * iteration_stride + id]);
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        float gamma_reg = gamma[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad[high_index];
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (vals_hat[iterations * iteration_stride + id] -
-                                                  betta[iterations * iteration_stride + id]) /
-                                                     gamma_reg
-                                               : vals_hat[iterations * iteration_stride + id]);
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat[high_index] - betta[high_index]) / gamma_reg
+                        : vals_hat[high_index]);
         iterations++;
     }
 
@@ -833,8 +834,7 @@ __global__ void LayerNormBackward2(const float* out_grad,
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) inp_grad[i * iteration_stride + id] = (vals_arr[i] - sum);
-    if ((iterations * iteration_stride + id) < row_stride)
-        inp_grad[iterations * iteration_stride + id] = (vals_arr[iterations] - sum);
+    if ((high_index) < row_stride) inp_grad[high_index] = (vals_arr[iterations] - sum);
 }
 
 __global__ void LayerNormBackward2(const __half* out_grad,
@@ -858,9 +858,9 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[MAX_REGISTERS];
-    float2 vals_arr_f[MAX_REGISTERS];
-    __half2 vals_hat_arr[MAX_REGISTERS];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h = reinterpret_cast<const __half2*>(out_grad);
@@ -872,7 +872,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
     const __half2* betta_h = (invertible ? reinterpret_cast<const __half2*>(betta) : nullptr);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
@@ -884,14 +884,13 @@ __global__ void LayerNormBackward2(const __half* out_grad,
                        gamma_reg
                  : vals_hat_h[i * iteration_stride + id]);
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        __half2 gamma_reg = gamma_h[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad_h[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h[high_index];
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (vals_hat_h[iterations * iteration_stride + id] -
-                                                  betta_h[iterations * iteration_stride + id]) /
-                                                     gamma_reg
-                                               : vals_hat_h[iterations * iteration_stride + id]);
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
+                        : vals_hat_h[high_index]);
         iterations++;
     }
     __half var_h = vars[row];
@@ -963,12 +962,12 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
         inp_grad_h[i * iteration_stride + id] = temp;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr_f[iterations].x -= sum;
         vals_arr_f[iterations].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
 
-        inp_grad_h[iterations * iteration_stride + id] = temp;
+        inp_grad_h[high_index] = temp;
     }
 }
 
@@ -1078,17 +1077,17 @@ __global__ void LayerNormBackward2(const float* out_grad,
     X_vals += (row * row_stride);
     inp_grad += (row * row_stride);
 
-    float vals_arr[MAX_REGISTERS];
-
+    float vals_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
         vals_arr[i] = out_grad[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        float gamma_reg = gamma[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad[high_index];
         vals_arr[iterations] *= gamma_reg;
         iterations++;
     }
@@ -1097,7 +1096,7 @@ __global__ void LayerNormBackward2(const float* out_grad,
     float mean_reg = means[row];
 
     float sum = 0;
-    float xu[MAX_REGISTERS];
+    float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
         xu[i] = (X_vals[i * iteration_stride + id] - mean_reg);
         sum += vals_arr[i] * xu[i];
@@ -1146,8 +1145,7 @@ __global__ void LayerNormBackward2(const float* out_grad,
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) inp_grad[i * iteration_stride + id] = (vals_arr[i] - sum);
-    if ((iterations * iteration_stride + id) < row_stride)
-        inp_grad[iterations * iteration_stride + id] = (vals_arr[iterations] - sum);
+    if ((high_index) < row_stride) inp_grad[high_index] = (vals_arr[iterations] - sum);
 }
 
 __global__ void LayerNormBackward2(const __half* out_grad,
@@ -1171,8 +1169,8 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[MAX_REGISTERS];
-    float2 vals_arr_f[MAX_REGISTERS];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h = reinterpret_cast<const __half2*>(out_grad);
@@ -1183,16 +1181,16 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     vals_hat_h += (row * row_stride);
 
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
         vals_arr[i] = out_grad_h[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        __half2 gamma_reg = gamma_h[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad_h[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h[high_index];
         vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
         iterations++;
     }
@@ -1200,7 +1198,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
     __half2 mean_reg = __halves2half2(mean_h, mean_h);
-    __half2 xu[MAX_REGISTERS];
+    __half2 xu[NORM_REG];
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -1268,11 +1266,11 @@ __global__ void LayerNormBackward2(const __half* out_grad,
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
         inp_grad_h[i * iteration_stride + id] = temp;
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr_f[iterations].x -= sum;
         vals_arr_f[iterations].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
-        inp_grad_h[iterations * iteration_stride + id] = temp;
+        inp_grad_h[high_index] = temp;
     }
 }
 
@@ -1498,9 +1496,9 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     vals_hat += (row * row_stride);
     inp_grad += (row * row_stride);
 
-    float vals_arr[MAX_REGISTERS];
-    float vals_hat_arr[MAX_REGISTERS];
-
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
@@ -1511,14 +1509,13 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
                               gamma_reg
                         : vals_hat[i * iteration_stride + id]);
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        float gamma_reg = gamma[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad1[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad1[high_index];
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (vals_hat[iterations * iteration_stride + id] -
-                                                  betta[iterations * iteration_stride + id]) /
-                                                     gamma_reg
-                                               : vals_hat[iterations * iteration_stride + id]);
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat[high_index] - betta[high_index]) / gamma_reg
+                        : vals_hat[high_index]);
         iterations++;
     }
 
@@ -1572,9 +1569,8 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     for (int i = 0; i < iterations; i++)
         inp_grad[i * iteration_stride + id] =
             (vals_arr[i] - sum) + out_grad2[i * iteration_stride + id];
-    if ((iterations * iteration_stride + id) < row_stride)
-        inp_grad[iterations * iteration_stride + id] =
-            (vals_arr[iterations] - sum) + out_grad2[iterations * iteration_stride + id];
+    if ((high_index) < row_stride)
+        inp_grad[high_index] = (vals_arr[iterations] - sum) + out_grad2[high_index];
 }
 
 __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
@@ -1599,9 +1595,9 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[MAX_REGISTERS];
-    float2 vals_arr_f[MAX_REGISTERS];
-    __half2 vals_hat_arr[MAX_REGISTERS];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     // float2 result[iterations];
 
@@ -1617,7 +1613,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
     const __half2* betta_h = (invertible ? reinterpret_cast<const __half2*>(betta) : nullptr);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
@@ -1629,14 +1625,13 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                        gamma_reg
                  : vals_hat_h[i * iteration_stride + id]);
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        __half2 gamma_reg = gamma_h[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad_h1[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h1[high_index];
         vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[iterations] = (invertible ? (vals_hat_h[iterations * iteration_stride + id] -
-                                                  betta_h[iterations * iteration_stride + id]) /
-                                                     gamma_reg
-                                               : vals_hat_h[iterations * iteration_stride + id]);
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
+                        : vals_hat_h[high_index]);
         iterations++;
     }
     __half var_h = vars[row];
@@ -1707,13 +1702,12 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
         inp_grad_h[i * iteration_stride + id] = temp + out_grad_h2[i * iteration_stride + id];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr_f[iterations].x -= sum;
         vals_arr_f[iterations].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
 
-        inp_grad_h[iterations * iteration_stride + id] =
-            temp + out_grad_h2[iterations * iteration_stride + id];
+        inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
 }
 
@@ -1819,14 +1813,14 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    float vals_arr[MAX_REGISTERS];
-    float vals_hat_arr[MAX_REGISTERS];
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
 
     out_grad1 += (row * row_stride);
     out_grad2 += (row * row_stride);
     X_vals += (row * row_stride);
     inp_grad += (row * row_stride);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
@@ -1834,11 +1828,11 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
         vals_arr[i] *= gamma_reg;
         vals_hat_arr[i] = X_vals[i * iteration_stride + id];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        float gamma_reg = gamma[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad1[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad1[high_index];
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = X_vals[iterations * iteration_stride + id];
+        vals_hat_arr[iterations] = X_vals[high_index];
         iterations++;
     }
 
@@ -1846,7 +1840,7 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     float mean_reg = means[row];
 
     float sum = 0;
-    float xu[MAX_REGISTERS];
+    float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
         xu[i] = (vals_hat_arr[i] - mean_reg);
         sum += vals_arr[i] * xu[i];
@@ -1897,9 +1891,8 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     for (int i = 0; i < iterations; i++)
         inp_grad[i * iteration_stride + id] =
             (vals_arr[i] - sum) + out_grad2[i * iteration_stride + id];
-    if ((iterations * iteration_stride + id) < row_stride)
-        inp_grad[iterations * iteration_stride + id] =
-            (vals_arr[iterations] - sum) + out_grad2[iterations * iteration_stride + id];
+    if ((high_index) < row_stride)
+        inp_grad[high_index] = (vals_arr[iterations] - sum) + out_grad2[high_index];
 }
 
 __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
@@ -1924,9 +1917,9 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
     __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[MAX_REGISTERS];
-    float2 vals_arr_f[MAX_REGISTERS];
-    __half2 vals_hat_arr[MAX_REGISTERS];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h1 = reinterpret_cast<const __half2*>(out_grad1);
@@ -1939,7 +1932,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     vals_hat_h += (row * row_stride);
 
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
@@ -1947,11 +1940,11 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
         vals_hat_arr[i] = vals_hat_h[i * iteration_stride + id];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
-        __half2 gamma_reg = gamma_h[iterations * iteration_stride + id];
-        vals_arr[iterations] = out_grad_h1[iterations * iteration_stride + id];
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h1[high_index];
         vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[iterations] = vals_hat_h[iterations * iteration_stride + id];
+        vals_hat_arr[iterations] = vals_hat_h[high_index];
         iterations++;
     }
 
@@ -1959,7 +1952,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
     __half2 mean_reg = __halves2half2(mean_h, mean_h);
-    __half2 xu[MAX_REGISTERS];
+    __half2 xu[NORM_REG];
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -2027,12 +2020,11 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
         inp_grad_h[i * iteration_stride + id] = temp + out_grad_h2[i * iteration_stride + id];
     }
-    if ((iterations * iteration_stride + id) < row_stride) {
+    if ((high_index) < row_stride) {
         vals_arr_f[iterations].x -= sum;
         vals_arr_f[iterations].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
-        inp_grad_h[iterations * iteration_stride + id] =
-            temp + out_grad_h2[iterations * iteration_stride + id];
+        inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
 }
 
