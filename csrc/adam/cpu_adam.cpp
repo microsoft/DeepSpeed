@@ -624,8 +624,8 @@ int ds_adam_step(int optimizer_id,
 
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-    opt->IncrementStep(step);
-    opt->update_state(lr, beta1, beta2, epsilon, weight_decay, bias_correction);
+    opt->IncrementStep(step, beta1, beta2);
+    opt->update_state(lr, epsilon, weight_decay, bias_correction);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
     return 0;
@@ -659,8 +659,8 @@ int ds_adam_step_plus_copy(int optimizer_id,
 
     std::shared_ptr<Adam_Optimizer> opt =
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-    opt->IncrementStep(step);
-    opt->update_state(lr, beta1, beta2, epsilon, weight_decay, bias_correction);
+    opt->IncrementStep(step, beta1, beta2);
+    opt->update_state(lr, epsilon, weight_decay, bias_correction);
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 

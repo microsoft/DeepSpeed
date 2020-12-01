@@ -89,42 +89,32 @@ public:
                 float* _exp_avg_sq,
                 size_t _param_size,
                 __half* dev_params = nullptr);
-    inline void IncrementStep(size_t step)
+
+    inline void IncrementStep(size_t step, float beta1, float beta2, )
     {
-        _step++;
-        _betta1_t *= _betta1;
-        _betta2_t *= _betta2;
-        if (_step < step) {
-            printf("Warning: updating optimizer's state to match the step count at %lu\n", step);
+        if (beta1 != _betta1 || beta2 != _betta2) {
+            _step = step;
+            _betta1 = beta1;
+            _betta2 = beta2;
             _betta1_t = std::pow(_betta1, step);
             _betta2_t = std::pow(_betta2, step);
-            _step = step;
-        } else if (_step != step) {
-            printf("Optimizer lost track of the step count (current_step: %lu, new_step: %lu)!\n",
-                   _step,
-                   step);
-            throw std::runtime_error("Optimizer lost track of the step count!\n");
+        } else {
+            _step++;
+            if (_step != step) {
+                _betta1_t = std::pow(_betta1, step);
+                _betta2_t = std::pow(_betta2, step);
+                _step = step;
+            } else {
+                _betta1_t *= _betta1;
+                _betta2_t *= _betta2;
+            }
         }
     }
-    inline void update_state(float lr,
-                             float beta1,
-                             float beta2,
-                             float epsilon,
-                             float weight_decay,
-                             bool bias_correction)
+    inline void update_state(float lr, float epsilon, float weight_decay, bool bias_correction)
     {
         _alpha = lr;
         _eps = epsilon;
         _weight_decay = weight_decay;
-
-        if (beta1 != _betta1) {
-            _betta1 = beta1;
-            _betta1_t = std::pow(_betta1, _step);
-        }
-        if (beta2 != _betta2) {
-            _betta2 = beta2;
-            _betta2_t = std::pow(_betta2, _step);
-        }
 
         _bias_correction1 = 1.0f;
         _bias_correction2 = 1.0f;
