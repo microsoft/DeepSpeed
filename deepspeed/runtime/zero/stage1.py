@@ -569,6 +569,82 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             else:
                 p.grad = None
 
+    def allreduce_bucket(self,
+                         bucket,
+                         gradient_average,
+                         gradient_predivide_factor,
+                         postscale_gradients,
+                         allreduce_always_fp32):
+        tensor = _flatten_dense_tensors(bucket)
+
+        world_size = dist.get_world_size(group=self.dp_process_group)
+
+        tensor_to_allreduce = tensor
+
+        if allreduce_always_fp32:
+            tensor_to_allreduce = tensor.float()
+
+        if postscale_gradients:
+            if gradient_predivide_factor != 1.0:
+                tensor_to_allreduce.mul_(1. / gradient_predivide_factor)
+
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
+
+            if gradient_average:
+                if gradient_predivide_factor != world_size:
+                    tensor_to_allreduce.mul_(gradient_predivide_factor / world_size)
+        else:
+            tensor_to_allreduce.div_(world_size)
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
+
+        if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
+            tensor.copy_(tensor_to_allreduce)
+
+        return tensor
+
+    def allreduce_and_copy(self, small_bucket, args):
+        allreduced = self.allreduce_bucket(small_bucket, **args)
+        for buf, synced in zip(small_bucket, _unflatten_dense_tensors(allreduced, small_bucket)):
+            buf.copy_(synced)
+
+    def allreduce_no_retain(self, bucket, args, numel_per_bucket=500000000):
+        small_bucket = []
+        numel = 0
+        for tensor in bucket:
+            small_bucket.append(tensor)
+            numel = numel + tensor.numel()
+            if numel > numel_per_bucket:
+                self.allreduce_and_copy(small_bucket, args)
+                small_bucket = []
+                numel = 0
+        if len(small_bucket) > 0:
+            self.allreduce_and_copy(small_bucket, args)
+
+    def allreduce_gradients(self,
+                            postscale_gradients,
+                            gradient_predivide_factor,
+                            gradient_average,
+                            allreduce_always_fp32):
+        args = {
+            "gradient_average": gradient_average,
+            "gradient_predivide_factor": gradient_predivide_factor,
+            "postscale_gradients": postscale_gradients,
+            "allreduce_always_fp32": allreduce_always_fp32
+        }
+        world_size = dist.get_world_size(group=self.dp_process_group)
+
+        bucket = []
+        for i, group in enumerate(self.fp16_groups):
+            for param in group:
+                if param.grad is None:
+                    param.grad = torch.zeros(param.size(),
+                                             dtype=param.dtype,
+                                             device=param.device)
+                bucket.append(param.grad.data)
+        self.allreduce_no_retain(bucket,
+                                 args,
+                                 numel_per_bucket=self.max_elems_per_comm[i])
+
     def reduce_scatter_gradients(self,
                                  postscale_gradients,
                                  gradient_predivide_factor,

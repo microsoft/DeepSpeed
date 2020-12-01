@@ -867,11 +867,18 @@ class DeepSpeedEngine(Module):
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                assert self.zero_reduce_scatter()
-                self.optimizer.reduce_scatter_gradients(
-                    postscale_gradients=self.postscale_gradients(),
-                    gradient_predivide_factor=self.gradient_predivide_factor(),
-                    gradient_average=self.gradient_average)
+                # assert self.zero_reduce_scatter()
+                if self.zero_reduce_scatter():
+                    self.optimizer.reduce_scatter_gradients(
+                        postscale_gradients=self.postscale_gradients(),
+                        gradient_predivide_factor=self.gradient_predivide_factor(),
+                        gradient_average=self.gradient_average)
+                else:
+                    self.optimizer.allreduce_gradients(
+                        postscale_gradients=self.postscale_gradients(),
+                        gradient_predivide_factor=self.gradient_predivide_factor(),
+                        gradient_average=self.gradient_average,
+                        allreduce_always_fp32=self.allreduce_always_fp32())
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
