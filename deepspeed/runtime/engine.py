@@ -715,7 +715,7 @@ class DeepSpeedEngine(Module):
         logger.info('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage))
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
+            # assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
