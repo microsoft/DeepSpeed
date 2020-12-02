@@ -723,7 +723,7 @@ def test_checkpoint_latest(tmpdir):
     models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
 
     @distributed_test(world_size=[1])
-    def helper(args, models):
+    def _helper(args, models):
         checkpoint_correctness_verification(args,
                                             models=models,
                                             hidden_dim=hidden_dim,
@@ -733,7 +733,7 @@ def test_checkpoint_latest(tmpdir):
                                             fp16=False,
                                             empty_tag=True)
 
-    helper(args, models)
+    _helper(args, models)
 
 
 def test_checkpoint_missing_latest(tmpdir):
