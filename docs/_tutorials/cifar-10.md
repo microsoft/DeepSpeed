@@ -132,7 +132,7 @@ Here we we initialize DeepSpeed with CIFAR-10 model (`net`), `args`, `parameters
  # 1) Distributed model
  # 2) Distributed data loader
  # 3) DeepSpeed optimizer
- model_engine, optimizer, trainloader, __ = deepspeed.initialize(args=args, model=net, model_parameters=parameters, training_data=trainset)
+ model_engine, optimizer, trainloader, _ = deepspeed.initialize(args=args, model=net, model_parameters=parameters, training_data=trainset)
 
 ```
 
