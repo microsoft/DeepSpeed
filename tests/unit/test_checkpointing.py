@@ -128,7 +128,8 @@ def checkpoint_correctness_verification(args,
                                         fp16=True,
                                         train_batch=False,
                                         base_optimizers=[None,
-                                                         None]):
+                                                         None],
+                                        empty_tag=False):
     dtype = torch.half if fp16 else torch.float32
     ds_model = create_deepspeed_model(args=args,
                                       model=models[0],
@@ -153,16 +154,16 @@ def checkpoint_correctness_verification(args,
     trained_model = ds_model
 
     save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-    save_tag = '1'
+    save_tag = None if empty_tag else '1'
 
-    trained_model.save_checkpoint(save_folder, save_tag)
+    trained_model.save_checkpoint(save_folder, tag=save_tag)
 
     loaded_model = create_deepspeed_model(args=args,
                                           model=models[1],
                                           base_optimizer=base_optimizers[1])
 
     loaded_model.load_checkpoint(save_folder,
-                                 save_tag,
+                                 tag=save_tag,
                                  load_optimizer_states=load_optimizer_states,
                                  load_lr_scheduler_states=load_lr_scheduler_states)
 
@@ -704,3 +705,31 @@ def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
                                                  models=models,
                                                  optimizers=optimizers,
                                                  hidden_dim=hidden_dim)
+
+
+def test_checkpoint_latest(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    hidden_dim = 10
+    args = args_from_dict(tmpdir, config_dict)
+    models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
+
+    @distributed_test(world_size=[1])
+    def helper(args, models):
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=True,
+                                            empty_tag=True)
+
+    helper(args, models)
