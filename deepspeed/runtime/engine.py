@@ -1473,7 +1473,9 @@ class DeepSpeedEngine(Module):
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
+        save_latest = False
         if tag is None:
+            save_latest = True
             tag = f"global_step{self.global_steps}"
 
         if self.save_non_zero_checkpoint:
@@ -1485,8 +1487,9 @@ class DeepSpeedEngine(Module):
             self._save_zero_checkpoint(save_dir, tag)
 
         # Save latest checkpoint tag
-        with open(os.path.join(save_dir, 'latest'), 'w') as fd:
-            fd.write(tag)
+        if save_latest:
+            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                fd.write(tag)
 
         return True
 

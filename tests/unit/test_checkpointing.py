@@ -729,7 +729,8 @@ def test_checkpoint_latest(tmpdir):
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
                                             load_optimizer_states=True,
-                                            load_lr_scheduler_states=True,
+                                            load_lr_scheduler_states=False,
+                                            fp16=False,
                                             empty_tag=True)
 
     helper(args, models)
