@@ -12,7 +12,6 @@ from deepspeed.runtime.config_utils import get_scalar_param
 #activations for the backpropagation.
 ACTIVATION_CHKPT_FORMAT = '''
 Activation Checkpointing should be configured as:
-"session_params": {
   "activation_checkpointing": {
     "partitioned_activations": [true|false],
     "number_checkpoints": 100,
@@ -21,7 +20,6 @@ Activation Checkpointing should be configured as:
     "profile": [true|false],
     "synchronize_checkpoint_boundary": [true|false],
     }
-}
 '''
 
 ACT_CHKPT_PARTITION_ACTIVATIONS = 'partition_activations'

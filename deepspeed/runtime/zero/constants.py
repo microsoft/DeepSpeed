@@ -10,7 +10,6 @@ Licensed under the MIT license.
 # Users have to configure the desired optimization (0 means disabled) in params.json as below example:
 ZERO_FORMAT = '''
 ZeRO optimization should be enabled as:
-"session_params": {
   "zero_optimization": {
     "stage": [0|1|2],
     "allgather_partitions": [true|false],
@@ -22,7 +21,6 @@ ZeRO optimization should be enabled as:
     "load_from_fp32_weights": [true|false]
     "cpu_offload": [true|false]
     }
-}
 '''
 
 ZERO_OPTIMIZATION = 'zero_optimization'
