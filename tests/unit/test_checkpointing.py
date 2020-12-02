@@ -735,6 +735,7 @@ def test_checkpoint_latest(tmpdir):
 
     helper(args, models)
 
+
 def test_checkpoint_missing_latest(tmpdir):
     config_dict = {
         "train_batch_size": 2,
