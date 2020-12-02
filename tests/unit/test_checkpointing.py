@@ -734,3 +734,29 @@ def test_checkpoint_latest(tmpdir):
                                             empty_tag=True)
 
     helper(args, models)
+
+def test_checkpoint_missing_latest(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    hidden_dim = 10
+    args = args_from_dict(tmpdir, config_dict)
+
+    model = SimpleModel(hidden_dim, rank=args.local_rank)
+
+    @distributed_test(world_size=[1])
+    def _helper(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        with pytest.raises(AssertionError):
+            model.load_checkpoint(tmpdir)
+
+    _helper(args=args, model=model, hidden_dim=hidden_dim)

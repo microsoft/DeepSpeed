@@ -1319,8 +1319,8 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')
-            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
-                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+            #assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
+            #    "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
             with open(latest_path, 'r') as fd:
                 tag = fd.read().strip()
 
@@ -1461,21 +1461,23 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
-    def save_checkpoint(self, save_dir, tag=None, client_state={}):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
             client_state: Optional. State dictionary used for saving required training states in the client code.
+            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
 
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
-        save_latest = False
+        # Ensure save_dir directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
         if tag is None:
-            save_latest = True
             tag = f"global_step{self.global_steps}"
 
         if self.save_non_zero_checkpoint:
