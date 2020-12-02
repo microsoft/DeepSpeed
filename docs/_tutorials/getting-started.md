@@ -7,9 +7,9 @@ date: 2020-05-15
 
 ## Installation
 
+* Installing is as simple as `pip install deepspeed`, [see more details](/tutorials/advanced-install/).
 * Please see our [Azure tutorial](/tutorials/azure/) to get started with DeepSpeed on Azure!
 * If you're not on Azure, we recommend using our docker image via `docker pull deepspeed/deepspeed:latest` which contains a pre-installed version of DeepSpeed and all the necessary dependencies.
-* If you want to install DeepSpeed manually, we provide an install script `install.sh` to help install on a local machine or across an entire cluster.
 
 ## Writing DeepSpeed Models
 DeepSpeed model training is accomplished using the DeepSpeed engine. The engine
@@ -28,14 +28,14 @@ model_engine, optimizer, _, _ = deepspeed.initialize(args=cmd_args,
 distributed data parallel or mixed precision training are done
 appropriately under the hood.  In addition to wrapping the model, DeepSpeed can
 construct and manage the training optimizer, data loader, and the learning rate
-scheduler based on the parameters passed to `deepspeed.initialze` and the
+scheduler based on the parameters passed to `deepspeed.initialize` and the
 DeepSpeed [configuration file](#deepspeed-configuration).
 
 
 ### Training
 
 Once the DeepSpeed engine has been initialized, it can be used to train the
-model using three simple APIs for forward propagation (`()`), backward
+model using three simple APIs for forward propagation (callable object), backward
 propagation (`backward`), and weight updates (`step`).
 
 ```python

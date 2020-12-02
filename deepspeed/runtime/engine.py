@@ -7,8 +7,6 @@ import torch
 import warnings
 import torch.distributed as dist
 
-import apex
-from apex import amp
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
 from tensorboardX import SummaryWriter
@@ -19,37 +17,34 @@ from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
-from deepspeed.runtime.config import DeepSpeedConfig, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, DEEPSPEED_ADAM, DEEPSPEED_OPTIMIZERS
+from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
+    ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
+    TORCH_ADAM_PARAM, ADAM_W_MODE_PARAM
+
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT
+    TORCH_DISTRIBUTED_DEFAULT_PORT, PLD_THETA, PLD_GAMMA
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
 from .utils import ensure_directory_exists
+from ..ops.op_builder import UtilsBuilder
+from ..ops.adam import DeepSpeedCPUAdam
+from ..ops.adam import FusedAdam
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
-SUMMARY_WRITER_DIR_NAME = "JobId"
 
 try:
-    from apex_C import flatten
-    from apex_C import unflatten
+    from apex import amp
 except ImportError:
-    try:
-        _ = warned_flatten
-    except NameError:
-        logger.warning(
-            "Warning:  apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
-        warned_flatten = True
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
+    # Fail silently so we don't spam logs unnecessarily if user isn't using amp
+    pass
 
 
 def split_half_float_double_csr(tensors):
@@ -125,22 +120,32 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
+        self.progressive_layer_drop = None
+        self.dist_backend = "nccl"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
-        self._mpi_check(args, dist_init_required)
+        if dist_init_required is False:
+            assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
-        self.dist_backend = "nccl"
-        if dist_init_required:
-            if not dist.is_initialized():
-                logger.info("Initializing torch distributed with backend: {}".format(
-                    self.dist_backend))
-                dist.init_process_group(backend=self.dist_backend)
+        # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
+        if dist_init_required and not dist.is_initialized():
+            # discover using mpi4py if user specifies the flag
+            if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
+                # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
+                if self._in_aml():
+                    logger.warning(
+                        "Please remove the --deepspeed_mpi flag if running on AzureML.")
+                self._mpi_check(args, dist_init_required)
             else:
-                logger.warning(
-                    "Was given dist_init_required=True but detected that torch"
-                    "distributed was already initialized, cannot initialize twice.")
+                # detect if we are in Azure ML environment
+                if self._in_aml():
+                    self._set_environment_variables_for_nccl_backend(args)
+
+            logger.info("Initializing torch distributed with backend: {}".format(
+                self.dist_backend))
+            dist.init_process_group(backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -190,49 +195,111 @@ class DeepSpeedEngine(Module):
         self.save_zero_checkpoint = False
         self._configure_checkpointing(dist_init_required)
 
+        if self.pld_enabled():
+            self.progressive_layer_drop = self._configure_progressive_layer_drop()
+
         if self.global_rank == 0:
-            self._config.print('DeepSpeedLight configuration')
+            self._config.print('DeepSpeedEngine configuration')
             if self.dump_state():
-                print_configuration(self, 'DeepSpeedLight')
+                print_configuration(self, 'DeepSpeedEngine')
 
-    def _mpi_check(self, args, dist_init_required):
-        if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
-            from mpi4py import MPI
-            import subprocess
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            world_size = comm.Get_size()
+        # Load pre-installed or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
 
-            master_addr = None
-            if rank == 0:
-                hostname_cmd = ["hostname -I"]
-                result = subprocess.check_output(hostname_cmd, shell=True)
-                master_addr = result.decode('utf-8').split()[0]
-            master_addr = comm.bcast(master_addr, root=0)
+    def _in_aml(self):
+        # read AzureML environment variable to detect if we are using an Azure ML environment
+        if 'AZUREML_EXPERIMENT_ID' in os.environ:
+            return True
+        else:
+            return False
 
-            # Determine local rank by assuming hostnames are unique
-            proc_name = MPI.Get_processor_name()
-            all_procs = comm.allgather(proc_name)
-            local_rank = sum([i == proc_name for i in all_procs[:rank]])
+    def _set_environment_variables_for_nccl_backend(self,
+                                                    args,
+                                                    master_port=6105,
+                                                    verbose=True):
+        """Helper routine to get and set environment variables.
+        This is adapted from Azure ML's documentation available from:
+        https://azure.github.io/azureml-web/docs/cheatsheet/distributed-training/#environment-variables-from-openmpi
+        """
+        os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
+        os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
+        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
+            os.environ["WORLD_SIZE"])
+        if not single_node:
+            master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
+            os.environ["MASTER_ADDR"] = master_node_params[0]
+            # Do not overwrite master port with that defined in AZ_BATCH_MASTER_NODE
+            if "MASTER_PORT" not in os.environ:
+                os.environ["MASTER_PORT"] = str(master_port)
+        else:
+            os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
+            os.environ["MASTER_PORT"] = "54965"
+        print("NCCL_SOCKET_IFNAME original value = {}".format(
+            os.environ["NCCL_SOCKET_IFNAME"]))
 
-            os.environ['RANK'] = str(rank)
-            os.environ['WORLD_SIZE'] = str(world_size)
-            args.local_rank = local_rank
-            os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
+        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
 
+        if verbose:
             logger.info(
-                "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+                "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
                 .format(os.environ['RANK'],
                         args.local_rank,
                         os.environ['WORLD_SIZE'],
                         os.environ['MASTER_ADDR'],
                         os.environ['MASTER_PORT']))
 
-            if not dist_init_required and dist.is_initialized():
-                assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-                assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
-                    world_size, dist.get_world_size())
+    def _mpi_check(self, args, dist_init_required):
+        from mpi4py import MPI
+        import subprocess
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        world_size = comm.Get_size()
+
+        master_addr = None
+        if rank == 0:
+            hostname_cmd = ["hostname -I"]
+            result = subprocess.check_output(hostname_cmd, shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+        master_addr = comm.bcast(master_addr, root=0)
+
+        # Determine local rank by assuming hostnames are unique
+        proc_name = MPI.Get_processor_name()
+        all_procs = comm.allgather(proc_name)
+        local_rank = sum([i == proc_name for i in all_procs[:rank]])
+
+        os.environ['RANK'] = str(rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        args.local_rank = local_rank
+        os.environ['MASTER_ADDR'] = master_addr
+        os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
+
+        logger.info(
+            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+            .format(os.environ['RANK'],
+                    args.local_rank,
+                    os.environ['WORLD_SIZE'],
+                    os.environ['MASTER_ADDR'],
+                    os.environ['MASTER_PORT']))
+
+        if not dist_init_required and dist.is_initialized():
+            assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
+            assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
+                world_size, dist.get_world_size())
+
+    def pld_enabled(self):
+        return self._config.pld_enabled
+
+    def pld_params(self):
+        return self._config.pld_params
+
+    def pld_theta(self):
+        return self.pld_params()[PLD_THETA]
+
+    def pld_gamma(self):
+        return self.pld_params()[PLD_GAMMA]
 
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
@@ -248,13 +315,23 @@ class DeepSpeedEngine(Module):
                            base=os.path.join(os.environ["HOME"],
                                              "tensorboard")):
         if self.tensorboard_output_path():
-            log_dir = self.tensorboard_output_path()
+            base_dir = self.tensorboard_output_path()
+            job_name = self.tensorboard_job_name()
+            log_dir = os.path.join(base_dir, job_name)
         else:
             if self.tensorboard_job_name():
                 name = self.tensorboard_job_name()
+
+            # Infrastructure-specific job-id
             if 'DLWS_JOB_ID' in os.environ:
-                SUMMARY_WRITER_DIR_NAME = os.path.join(os.environ['DLWS_JOB_ID'], "logs")
-            log_dir = os.path.join(base, SUMMARY_WRITER_DIR_NAME, name)
+                infra_job_id = os.environ['DLWS_JOB_ID']
+            elif 'DLTS_JOB_ID' in os.environ:
+                infra_job_id = os.environ['DLTS_JOB_ID']
+            else:
+                infra_job_id = 'unknown-job-id'
+
+            summary_writer_dir_name = os.path.join(infra_job_id, "logs")
+            log_dir = os.path.join(base, summary_writer_dir_name, name)
 
         os.makedirs(log_dir, exist_ok=True)
 
@@ -322,6 +399,9 @@ class DeepSpeedEngine(Module):
 
     def zero_load_from_fp32_weights(self):
         return self._config.zero_config.load_from_fp32_weights
+
+    def zero_elastic_checkpoint(self):
+        return self._config.zero_config.elastic_checkpoint
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -532,6 +612,12 @@ class DeepSpeedEngine(Module):
             amp_params = self.amp_params()
             if self.global_rank == 0:
                 logger.info(f"Initializing AMP with these params: {amp_params}")
+            try:
+                logger.info("Initializing Apex amp from: {}".format(amp.__path__))
+            except NameError:
+                # If apex/amp is available it will be imported above
+                raise RuntimeError(
+                    "Unable to import apex/amp, please make sure it is installed")
             self.module, self.optimizer = amp.initialize(self.module, basic_optimizer, **amp_params)
             self._broadcast_model()
         elif self.fp16_enabled():
@@ -548,15 +634,31 @@ class DeepSpeedEngine(Module):
             raise ValueError(
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
+
         if self.optimizer_name() == ADAM_OPTIMIZER:
-            if self.zero_cpu_offload():
-                optimizer = torch.optim.Adam(model_parameters, **optimizer_parameters)
+            torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
+            adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE_PARAM, True)
+
+            # zero-offload  torch-adam  adam_w_mode optimizer
+            # T|F           T           T           torch.optim.AdamW
+            # T|F           T           F           torch.optim.Adam
+            # T             F           T|F         DeepSpeedCPUAdam(adam_w_mode)
+            # F             F           T|F         FusedAdam(adam_w_mode)
+            if torch_adam:
+                if adam_w_mode:
+                    optimizer = torch.optim.AdamW(model_parameters,
+                                                  **optimizer_parameters)
+                else:
+                    optimizer = torch.optim.Adam(model_parameters,
+                                                 **optimizer_parameters)
+            elif self.zero_cpu_offload():
+                optimizer = DeepSpeedCPUAdam(model_parameters,
+                                             **optimizer_parameters,
+                                             adamw_mode=adam_w_mode)
             else:
-                from apex.optimizers.fused_adam import FusedAdam
+                optimizer_parameters[ADAM_W_MODE_PARAM] = adam_w_mode
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
-        elif self.optimizer_name() == DEEPSPEED_ADAM:
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
-            optimizer = DeepSpeedCPUAdam(model_parameters, **optimizer_parameters)
+
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
@@ -573,8 +675,7 @@ class DeepSpeedEngine(Module):
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
         if isinstance(optimizer,
-                      apex.optimizers.FusedAdam) or self.optimizer_name(
-                      ) == ONEBIT_ADAM_OPTIMIZER:
+                      FusedAdam) or self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
                 logger.info('Creating fp16 optimizer with dynamic loss scale')
                 timers = self.timers if self.wall_clock_breakdown() else None
@@ -600,6 +701,7 @@ class DeepSpeedEngine(Module):
             logger.info('Creating fp16 unfused optimizer with dynamic loss scale')
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
                 mpu=self.mpu,
@@ -611,7 +713,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         logger.info('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage))
-
+        assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
@@ -624,6 +726,7 @@ class DeepSpeedEngine(Module):
                 allgather_size=self.zero_allgather_bucket_size(),
                 max_elements_per_comm=self.zero_reduce_bucket_size(),
                 dp_process_group=self.data_parallel_group,
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
@@ -648,6 +751,11 @@ class DeepSpeedEngine(Module):
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
 
         return optimizer
+
+    def _configure_progressive_layer_drop(self):
+        pld = ProgressiveLayerDrop(theta=self.pld_theta(), gamma=self.pld_gamma())
+
+        return pld
 
     def deepspeed_io(self,
                      dataset,
@@ -734,6 +842,9 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
 
+        if self.module.training and self.progressive_layer_drop:
+            kwargs.update(self.progressive_layer_drop.get_state())
+
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
             self.timers('forward').start()
@@ -771,6 +882,11 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
+
+        if not allreduce_gradients:
+            logger.warning(
+                f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
+            )
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
@@ -825,7 +941,7 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce_microstep').start()
             self.timers('backward_allreduce').start()
 
-        if allreduce_gradients and self.enable_backward_allreduce:
+        if self.enable_backward_allreduce:
             self.allreduce_gradients()
 
         if self.wall_clock_breakdown():
@@ -914,6 +1030,9 @@ class DeepSpeedEngine(Module):
 
         # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():
+            if self.progressive_layer_drop:
+                self.progressive_layer_drop.update_state(self.global_steps)
+
             self._take_model_step()
 
         self.tput_timer.stop(report_progress)
@@ -1007,6 +1126,12 @@ class DeepSpeedEngine(Module):
         else:
             return self._get_optimizer_param('betas')
 
+    def get_pld_theta(self):
+        if self.progressive_layer_drop:
+            return self.progressive_layer_drop.get_theta()
+        else:
+            return None
+
     def _report_progress(self, step):
         lr = self.get_lr()
         mom = self.get_mom()
@@ -1014,7 +1139,7 @@ class DeepSpeedEngine(Module):
                  ranks=[0])
 
     def allreduce_bucket(self, bucket):
-        tensor = flatten(bucket)
+        tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
@@ -1042,7 +1167,7 @@ class DeepSpeedEngine(Module):
 
     def allreduce_and_copy(self, small_bucket):
         allreduced = self.allreduce_bucket(small_bucket)
-        for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
+        for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
             buf.copy_(synced)
 
     def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):
