@@ -122,7 +122,7 @@ def initialize(args,
                collate_fn=None):
 ```
 
-Here we we initialize DeepSpeed with CIFAR-10 model (`net`), `args`, `parameters` and `trainset`:
+Here we initialize DeepSpeed with CIFAR-10 model (`net`), `args`, `parameters` and `trainset`:
 
 ```python
  parameters = filter(lambda p: p.requires_grad, net.parameters())
