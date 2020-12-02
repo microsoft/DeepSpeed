@@ -1304,7 +1304,7 @@ class DeepSpeedEngine(Module):
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True):
-        r"""Load training checkpoint
+        """Load training checkpoint
 
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
@@ -1319,8 +1319,8 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')
-            #assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
-            #    "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
             with open(latest_path, 'r') as fd:
                 tag = fd.read().strip()
 
