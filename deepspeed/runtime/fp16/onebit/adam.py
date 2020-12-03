@@ -6,19 +6,16 @@ import torch
 import importlib
 import numpy as np
 import time
-import cupy
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.utils.logging import logger
 
-from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
-
 import torch.distributed as dist
 
 
-class OnebitAdamNCCL(torch.optim.Optimizer):
+class Adam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
-    For usage example please see, TODO DeepSpeed Tutorial
+    For usage example please see, https://www.deepspeed.ai/tutorials/onebit-adam/
     It has been proposed in APMSqueeze (https://arxiv.org/abs/2008.11343)
 
     Arguments:
@@ -43,6 +40,9 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
             second moment estimate as in the original paper. (default: False)
         cuda_aware (boolean, required): Set True if the underlying MPI implementation
             supports CUDA-Aware communication. (default: False)
+        communication_backend (string, optional): Set to 'mpi' if needed. (default: 'nccl')
+        compression_backend (string, optional): Set to 'cupy' to test out compression kernels
+            from cupy. (default: 'deepspeed')
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
@@ -61,10 +61,13 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                  weight_decay=0.,
                  max_grad_norm=0.,
                  amsgrad=False,
-                 cuda_aware=False):
+                 cuda_aware=False,
+                 communication_backend='nccl',
+                 compression_backend='deepspeed'):
 
         if amsgrad:
             raise RuntimeError('1-bit Adam does not support the AMSGrad variant.')
+
         defaults = dict(lr=lr,
                         bias_correction=bias_correction,
                         betas=betas,
@@ -72,12 +75,10 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                         weight_decay=weight_decay,
                         max_grad_norm=max_grad_norm)
 
-        super(OnebitAdamNCCL, self).__init__(params, defaults)
+        super(Adam, self).__init__(params, defaults)
         self.eps_mode = 0 if eps_inside_sqrt else 1
         assert (dist.is_initialized())
-        self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
-        self.rank = dist.get_rank(group=self.world_group)
-        self.size = dist.get_world_size(group=self.world_group)
+
         self.comm_time = 0.0
         self.step_time = 0.0
         self.ave_step = 1
@@ -88,6 +89,23 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
         self.initialize = False
         self.freeze_step = freeze_step
         self.cuda_aware = cuda_aware
+
+        self.communication_backend = communication_backend
+        self.compression_backend = compression_backend
+
+        if self.communication_backend == 'nccl':
+            assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
+            self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
+            self.rank = dist.get_rank(group=self.world_group)
+            self.size = dist.get_world_size(group=self.world_group)
+            from deepspeed.runtime.custom_collectives import my_igather_nccl
+
+        elif self.communication_backend == 'mpi':
+            from mpi4py import MPI
+            self.comm = MPI.COMM_WORLD
+            self.rank = self.comm.Get_rank()
+            self.size = self.comm.Get_size()
+            from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
 
     def torch2cupy(self, tensor):
         return cupy.fromDlpack(to_dlpack(tensor))
@@ -101,23 +119,154 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
         cupy.cuda.get_current_stream().synchronize()
         return sign_list_packed
 
-    def my_igather(self, rank, size, sendbuf, recvbuf, root):
-        if rank == root:
-            for idx in range(size):
-                if idx != rank:
-                    dist.recv(recvbuf[idx], src=idx, group=self.world_group, tag=987)
-                else:
-                    recvbuf[rank] = sendbuf
-        else:
-            dist.send(sendbuf, group=self.world_group, dst=root, tag=987)
-        
-    def Compressed_Allreduce(self,
-                             buffer_m: torch.tensor,
-                             worker_error,
-                             server_error,
-                             rank,
-                             world_size,
-                             local_rank):
+    def compressed_nccl_allreduce(self,
+                                  buffer_m: torch.tensor,
+                                  worker_error,
+                                  server_error,
+                                  local_rank):
+
+        all_start_time = time.time()
+        original_size = buffer_m.numel()
+        cupy.cuda.Device(local_rank).use()
+
+        if torch.numel(buffer_m) != torch.numel(worker_error):
+            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m),
+                                       device=buffer_m.device)
+            buffer_m = torch.cat([buffer_m, empty_tensor])
+
+        buffer_m.add_(worker_error)
+        worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
+        sign_buffer_m = buffer_m.sign().add_(1).bool()
+        sign_buffer_m = sign_buffer_m.float()
+        sign_buffer_m.add_(-0.5).mul_(2.0)
+        worker_error.set_((buffer_m - worker_scale * sign_buffer_m))
+        sign_buffer_m = None
+
+        compensated_buffer_m = buffer_m
+        compensated_buffer_m.sign_()
+        compensated_buffer_m = compensated_buffer_m.add_(1).bool()
+
+        cupy_worker_scale = self.torch2cupy(worker_scale)
+        cupy_compensated_buffer_m = self.torch2cupy(compensated_buffer_m)
+        compensated_buffer_m = None
+
+        cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
+                                                       self.size)
+        cupy_compensated_buffer_m = None
+
+        cupy_recvbuf_sign = cupy.zeros(
+            [self.size,
+             cupy_sign_list_packed[self.rank].size],
+            dtype=cupy_sign_list_packed[0].dtype)
+        cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
+
+        sign_list_packed = [None] * self.size
+
+        for idx in range(self.size):
+            sign_list_packed[idx] = self.cupy2torch(cupy_sign_list_packed[idx])
+
+        recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
+
+        worker_scale = self.cupy2torch(cupy_worker_scale)
+        recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
+
+        # communication phase 1
+        #TODO: dist.sync and try async_op=True method
+        gather_start = time.time()
+        for idx in range(self.size):
+            self.my_igather(self.rank,
+                            self.size,
+                            sign_list_packed[idx],
+                            recvbuf_sign,
+                            root=idx)
+            self.my_igather(self.rank, self.size, worker_scale, recvbuf_scale, root=idx)
+        gather_end = time.time()
+
+        cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
+        cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
+
+        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
+            self.size,
+            -1)
+        cupy_recvbuf_sign = None
+
+        unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
+        cupy_unpacked_sign = None
+
+        unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
+        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / self.size)
+
+        compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
+        unpacked_sign = None
+
+        compensated_server_m.add_(server_error)
+        server_scale = torch.norm(compensated_server_m) / np.sqrt(
+            compensated_server_m.numel())
+        sign_server_m = compensated_server_m.sign().add_(1).bool()
+        sign_server_m = sign_server_m.float()
+        sign_server_m.add_(-0.5).mul_(2.0)
+        server_error.set_(compensated_server_m - server_scale * sign_server_m)
+        sign_server_m = None
+
+        compensated_server_m.sign_()
+        compensated_server_m = compensated_server_m.add_(1).bool()
+        cupy_server_scale = self.torch2cupy(server_scale)
+        cupy_compensated_server_m = self.torch2cupy(compensated_server_m)
+        compensated_server_m = None
+
+        cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
+
+        cupy_recvbuf_sign_server = cupy.zeros(
+            [self.size,
+             cupy_server_sign_packed[0].size],
+            dtype=cupy_sign_list_packed[0].dtype)
+
+        server_sign_packed = [None] * 1
+        recvbuf_sign_server = [None] * self.size
+
+        for idx in range(self.size):
+            recvbuf_sign_server[idx] = self.cupy2torch(cupy_recvbuf_sign_server[idx])
+
+        server_sign_packed[0] = self.cupy2torch(cupy_server_sign_packed[0])
+
+        server_scale = self.cupy2torch(cupy_server_scale)
+        cupy_recvbuf_scale_server = cupy.zeros([self.size,
+                                                1],
+                                               dtype=cupy_worker_scale.dtype)
+
+        recvbuf_scale_server = [None] * self.size
+        for idx in range(self.size):
+            recvbuf_scale_server[idx] = self.cupy2torch(cupy_recvbuf_scale_server[idx])
+
+        # Communication Phase 2
+        dist.all_gather(recvbuf_sign_server, server_sign_packed[0])
+        dist.all_gather(recvbuf_scale_server, server_scale)
+
+        # need to convert from a tensor list to a single tensor
+        # dist.all_gather only provides a tensor list as the recv/output buffer
+        recvbuf_sign_server = torch.stack(recvbuf_sign_server)
+
+        cupy_recvbuf_sign_server = self.torch2cupy(recvbuf_sign_server)
+
+        cupy_server_unpacked_sign = (cupy.unpackbits(
+            cupy_recvbuf_sign_server.flatten())).reshape(self.size,
+                                                         -1)
+        cupy_recvbuf_sign_server = None
+
+        server_unpacked_sign = self.cupy2torch(cupy_server_unpacked_sign)
+        cupy_server_unpacked_sign = None
+
+        server_unpacked_sign = server_unpacked_sign.float().add_(-0.5).mul_(2.0)
+        server_scale = self.cupy2torch(cupy_recvbuf_scale_server)
+        buffer_m = server_unpacked_sign.mul_(server_scale).flatten()[0:original_size]
+
+        return buffer_m
+
+    def compressed_mpi_allreduce(self,
+                                 buffer_m: torch.tensor,
+                                 worker_error,
+                                 server_error,
+                                 local_rank):
 
         all_start_time = time.time()
         original_size = buffer_m.numel()
@@ -144,44 +293,43 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
         compensated_buffer_m = None
 
         cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
-                                                       world_size)
+                                                       self.size)
         cupy_compensated_buffer_m = None
 
-        cupy_recvbuf_sign = cupy.zeros([world_size,
-                                        cupy_sign_list_packed[rank].size],
-                                       dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
-        
-        sign_list_packed = [None] * self.size
+        cupy_recvbuf_sign = cupy.zeros(
+            [self.size,
+             cupy_sign_list_packed[self.rank].size],
+            dtype=cupy_sign_list_packed[0].dtype)
+        cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
 
-        for idx in range(self.size):
-            sign_list_packed[idx] = self.cupy2torch(cupy_sign_list_packed[idx])
-
-        recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
-        
-        worker_scale = self.cupy2torch(cupy_worker_scale)
-        recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
-
-        # communication phase 1
-        #TODO: dist.sync and try async_op=True method
+        # Communication Phase 1
         gather_start = time.time()
-        for idx in range(self.size):
-            self.my_igather(self.rank, self.size, sign_list_packed[idx], recvbuf_sign, root=idx)
-            self.my_igather(self.rank, self.size, worker_scale, recvbuf_scale, root=idx)
+        if self.cuda_aware:
+            gather_cuda(self.rank,
+                        self.size,
+                        self.comm,
+                        cupy_sign_list_packed,
+                        cupy_recvbuf_sign,
+                        cupy_worker_scale,
+                        cupy_recvbuf_scale)
+        else:
+            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(self.rank,
+               self.size,
+               self.comm,
+               cupy_sign_list_packed,
+               cupy_recvbuf_sign,
+               cupy_worker_scale,
+               cupy_recvbuf_scale)
         gather_end = time.time()
 
-        cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
-        cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
-
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(self.size,-1)
+        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
+            self.size,
+            -1)
         cupy_recvbuf_sign = None
-
         unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
         cupy_unpacked_sign = None
-
         unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
-        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / world_size)
-
+        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / self.size)
         compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
         unpacked_sign = None
 
@@ -202,35 +350,30 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
 
         cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
 
-        cupy_recvbuf_sign_server = cupy.zeros([world_size, cupy_server_sign_packed[0].size], dtype=cupy_sign_list_packed[0].dtype)
+        cupy_recvbuf_sign_server = cupy.zeros(
+            [self.size,
+             cupy_server_sign_packed[0].size],
+            dtype=cupy_sign_list_packed[0].dtype)
+        cupy_recvbuf_scale_server = cupy.zeros([self.size,
+                                                1],
+                                               dtype=cupy_worker_scale.dtype)
 
-        server_sign_packed = [None] * 1
-        recvbuf_sign_server = [None] * self.size
-
-        for idx in range(self.size):
-            recvbuf_sign_server[idx] = self.cupy2torch(cupy_recvbuf_sign_server[idx])
-        
-        server_sign_packed[0] = self.cupy2torch(cupy_server_sign_packed[0])
-
-        server_scale = self.cupy2torch(cupy_server_scale)
-        cupy_recvbuf_scale_server = cupy.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
-
-        recvbuf_scale_server = [None] * self.size
-        for idx in range(self.size):
-            recvbuf_scale_server[idx] = self.cupy2torch(cupy_recvbuf_scale_server[idx])
-        
         # Communication Phase 2
-        dist.all_gather(recvbuf_sign_server, server_sign_packed[0])
-        dist.all_gather(recvbuf_scale_server, server_scale)
-
-        # need to convert from a tensor list to a single tensor
-        # dist.all_gather only provides a tensor list as the recv/output buffer
-        recvbuf_sign_server = torch.stack(recvbuf_sign_server)
-
-        cupy_recvbuf_sign_server = self.torch2cupy(recvbuf_sign_server)
+        if self.cuda_aware:
+            allgather_cuda(self.comm,
+                           cupy_server_sign_packed[0],
+                           cupy_recvbuf_sign_server,
+                           cupy_server_scale,
+                           cupy_recvbuf_scale_server)
+        else:
+            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather_host(self.comm,
+                  cupy_server_sign_packed[0],
+                  cupy_recvbuf_sign_server,
+                  cupy_server_scale,
+                  cupy_recvbuf_scale_server)
 
         cupy_server_unpacked_sign = (cupy.unpackbits(
-            cupy_recvbuf_sign_server.flatten())).reshape(world_size,
+            cupy_recvbuf_sign_server.flatten())).reshape(self.size,
                                                          -1)
         cupy_recvbuf_sign_server = None
 
@@ -342,7 +485,7 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                 else:
                     if 'non_freeze' in group.keys() and group['non_freeze'] is True:
                         dist.all_reduce(grad)
-                        grad.mul_(1 / dist.get_world_size())
+                        grad.mul_(1 / dist.get_self.size())
                         exp_avg.mul_(beta1).add(1 - beta1, grad)
                         exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                         grad = None
@@ -352,13 +495,20 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
                         grad = None
 
                         if self.size > 1:
-                            exp_avg.set_(
-                                self.Compressed_Allreduce(exp_avg,
-                                                          state['worker_error'],
-                                                          state['server_error'],
-                                                          self.rank,
-                                                          self.size,
-                                                          self.deepspeed.local_rank))
+                            if self.communication_backend == 'nccl':
+                                exp_avg.set_(
+                                    self.compressed_nccl_allreduce(
+                                        exp_avg,
+                                        state['worker_error'],
+                                        state['server_error'],
+                                        self.deepspeed.local_rank))
+                            elif self.communication_backend == 'mpi':
+                                exp_avg.set_(
+                                    self.compressed_mpi_allreduce(
+                                        exp_avg,
+                                        state['worker_error'],
+                                        state['server_error'],
+                                        self.deepspeed.local_rank))
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
 
@@ -377,7 +527,7 @@ class OnebitAdamNCCL(torch.optim.Optimizer):
             self.adam_freeze_key = False
             self.initialize = True
             print(
-                f"Finished the initialization step at rant {torch.distributed.get_rank()}"
+                f"Finished the initialization step at rank {torch.distributed.get_rank()}"
             )
             return loss
 

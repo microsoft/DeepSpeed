@@ -1,10 +1,18 @@
 '''
-Copyright 2019 The Microsoft DeepSpeed Team
+Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
-from mpi4py import MPI
-import numpy as np
-import cupy
+
+def my_igather_nccl(self, rank, size, sendbuf, recvbuf, root):
+    import torch.distributed as dist
+    if rank == root:
+        for idx in range(size):
+            if idx != rank:
+                dist.recv(recvbuf[idx], src=idx, group=self.world_group, tag=987)
+            else:
+                recvbuf[rank] = sendbuf
+    else:
+        dist.send(sendbuf, group=self.world_group, dst=root, tag=987)
 
 
 def my_igather(rank, size, comm, sendbuf, recbuf, root):
@@ -47,6 +55,7 @@ def gather_cuda(rank,
                                root=idx)
         requests += req_scale
 
+    from mpi4py import MPI
     MPI.Request.Waitall(requests)
 
 
@@ -57,6 +66,10 @@ def gather_host(rank,
                 cupy_recvbuf_sign,
                 cupy_worker_scale,
                 cupy_recvbuf_scale):
+    import cupy
+    import numpy as np
+    from mpi4py import MPI
+
     # In-place operations are not possible for newly created cupy arrays
     # so we need to return the new buffers
     numpy_recvbuf_sign = np.zeros([world_size,
@@ -124,6 +137,8 @@ def allgather_host(comm,
                    cupy_recvbuf_sign_server,
                    cupy_server_scale,
                    cupy_recvbuf_scale_server):
+    import cupy
+    import numpy as np
 
     # 1. Convert cupy to numpy
     numpy_recvbuf_sign_server = np.zeros([comm.Get_size(),
