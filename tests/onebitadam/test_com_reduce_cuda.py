@@ -20,8 +20,8 @@ dummy_model = [torch.nn.Parameter(torch.ones(10))]
 
 # Set cuda_aware to True to use CUDA buffers for communication
 dummy_optim = Adam(dummy_model,
-                   cuda_aware=True,
-                   communication_backend='nccl',
+                   cuda_aware=False,
+                   communication_backend='mpi',
                    compression_backend='cupy')
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
@@ -63,7 +63,7 @@ server_error = torch.zeros(right_server_size, device=device)
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
 torch.cuda.empty_cache()
 local_rank = rank % torch.cuda.device_count()
-a_after = dummy_optim.compressed_nccl_allreduce(a,
+a_after = dummy_optim.compressed_allreduce(a,
                                            worker_error,
                                            server_error,
                                            local_rank)

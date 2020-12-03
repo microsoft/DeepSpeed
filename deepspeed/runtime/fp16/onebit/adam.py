@@ -14,6 +14,10 @@ from deepspeed.utils.logging import logger
 # Delayed/lazy imports
 my_igather_nccl = None
 cupy = None
+gather_cuda = None
+gather_host = None
+allgather_cuda = None
+allgather_host = None
 
 class Adam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
@@ -97,6 +101,7 @@ class Adam(torch.optim.Optimizer):
 
         global my_igather_nccl
         global cupy
+        global gather_cuda, gather_host, allgather_cuda, allgather_host
 
         if self.compression_backend == 'cupy':
             import cupy
@@ -128,6 +133,7 @@ class Adam(torch.optim.Optimizer):
         sign_list_packed = cupy.split(packed_sign, num_chunks)
         cupy.cuda.get_current_stream().synchronize()
         return sign_list_packed
+
 
     def compressed_nccl_allreduce(self,
                                   buffer_m: torch.tensor,
@@ -397,6 +403,17 @@ class Adam(torch.optim.Optimizer):
 
         return buffer_m
 
+    def compressed_allreduce(self,
+                             buffer_m: torch.tensor,
+                             worker_error,
+                             server_error,
+                             local_rank):
+        
+        if self.communication_backend == 'nccl':
+            return self.compressed_nccl_allreduce(buffer_m, worker_error, server_error, local_rank)
+        elif self.communication_backend == 'mpi':
+            return self.compressed_mpi_allreduce(buffer_m, worker_error, server_error, local_rank)
+
     def step(self, closure=None, grads=None):
         """Performs a single optimization step.
         Arguments:
@@ -506,20 +523,12 @@ class Adam(torch.optim.Optimizer):
                         grad = None
 
                         if self.size > 1:
-                            if self.communication_backend == 'nccl':
-                                exp_avg.set_(
-                                    self.compressed_nccl_allreduce(
-                                        exp_avg,
-                                        state['worker_error'],
-                                        state['server_error'],
-                                        self.deepspeed.local_rank))
-                            elif self.communication_backend == 'mpi':
-                                exp_avg.set_(
-                                    self.compressed_mpi_allreduce(
-                                        exp_avg,
-                                        state['worker_error'],
-                                        state['server_error'],
-                                        self.deepspeed.local_rank))
+                            exp_avg.set_(self.compressed_allreduce(
+                                            exp_avg,
+                                            state['worker_error'],
+                                            state['server_error'],
+                                            self.deepspeed.local_rank))
+
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
 
