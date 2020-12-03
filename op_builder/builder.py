@@ -43,8 +43,8 @@ def assert_no_cuda_mismatch():
     sys_cuda_version = f'{cuda_major}.{cuda_minor}'
     torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
     # This is a show-stopping error, should probably not proceed past this
-    if installed_cuda_version != torch_cuda_version:
-        if installed_cuda_version == "11.1" and torch_cuda_version == "11.0":
+    if sys_cuda_version != torch_cuda_version:
+        if sys_cuda_version == "11.1" and torch_cuda_version == "11.0":
             # it works to build against installed cuda-11.1 while torch was built with cuda-11.0
             return
         raise Exception(
