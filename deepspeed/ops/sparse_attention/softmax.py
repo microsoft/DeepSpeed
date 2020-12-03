@@ -224,8 +224,8 @@ class Softmax:
 
     For more details about sparsity config, please see `Generative Modeling with Sparse Transformers`: https://arxiv.org/abs/1904.10509
     """
-
-    sparse_softmax = _sparse_softmax.apply
+    def sparse_softmax():
+        return _sparse_softmax.apply
 
     def make_lut(self, device):
         """Generates the sparsity layout used in block-sparse softmax
