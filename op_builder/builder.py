@@ -34,7 +34,7 @@ def installed_cuda_version():
 def get_default_compute_capatabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
     if installed_cuda_version()[0] >= 11:
-        compute_caps += ";80"
+        compute_caps += ";8.0"
     return compute_caps
 
 
@@ -227,6 +227,7 @@ class CUDAOpBuilder(OpBuilder):
         else:
             # Cross-compile mode, compile for various architectures
             for compute_capability in cross_compile_archs.split(';'):
+                compute_capability = compute_capability.replace('.', '')
                 args.append('-gencode')
                 args.append(
                     f'arch=compute_{compute_capability},code=compute_{compute_capability}'
