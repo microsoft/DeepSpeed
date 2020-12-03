@@ -31,9 +31,11 @@ def installed_cuda_version():
     return int(cuda_major), int(cuda_minor)
 
 
-if installed_cuda_version()[0] >= 11:
-    DEFAULT_COMPUTE_CAPABILITIES += ";80"
-    print(DEFAULT_COMPUTE_CAPABILITIES)
+def get_default_compute_capatabilities():
+    compute_caps = DEFAULT_COMPUTE_CAPABILITIES
+    if installed_cuda_version()[0] >= 11:
+        compute_caps += ";80"
+    return compute_caps
 
 
 def assert_no_cuda_mismatch():
@@ -210,7 +212,10 @@ class OpBuilder(ABC):
 
 
 class CUDAOpBuilder(OpBuilder):
-    def compute_capability_args(self, cross_compile_archs=DEFAULT_COMPUTE_CAPABILITIES):
+    def compute_capability_args(self, cross_compile_archs=None):
+        if cross_compile_archs is None:
+            cross_compile_archs = get_default_compute_capatabilities()
+
         args = []
         if self.jit_mode:
             # Compile for underlying architecture since we know it at runtime

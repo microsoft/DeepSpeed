@@ -21,7 +21,7 @@ except ImportError:
     raise ImportError('Unable to import torch, please visit https://pytorch.org/ '
                       'to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, DEFAULT_COMPUTE_CAPABILITIES
+from op_builder import ALL_OPS, get_default_compute_capatabilities
 
 
 def fetch_requirements(path):
@@ -64,7 +64,7 @@ if not torch.cuda.is_available():
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = DEFAULT_COMPUTE_CAPABILITIES
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
 
 ext_modules = []
 
