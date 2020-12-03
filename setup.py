@@ -21,7 +21,7 @@ except ImportError:
     raise ImportError('Unable to import torch, please visit https://pytorch.org/ '
                       'to see how to properly install torch on your system.')
 
-import op_builder
+from op_builder import ALL_OPS, get_default_compute_capatabilities
 
 
 def fetch_requirements(path):
@@ -64,11 +64,9 @@ if not torch.cuda.is_available():
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;6.1;6.2;7.0;7.5"
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
 
 ext_modules = []
-
-from op_builder import ALL_OPS
 
 # Default to pre-install kernels to false so we rely on JIT
 BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
@@ -163,9 +161,16 @@ print(f'install_requires={install_requires}')
 print(f'compatible_ops={compatible_ops}')
 print(f'ext_modules={ext_modules}')
 
+# Parse README.md to make long_description for PyPI page.
+thisdir = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
+    readme_text = fin.read()
+
 setup(name='deepspeed',
       version=version_str,
       description='DeepSpeed library',
+      long_description=readme_text,
+      long_description_content_type='text/markdown',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',

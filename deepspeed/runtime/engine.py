@@ -121,25 +121,31 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
+        self.dist_backend = "nccl"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
-        if self._in_aml():
-            self._set_environment_variables_for_nccl_backend(args)
-        else:
-            self._mpi_check(args, dist_init_required)
+        if dist_init_required is False:
+            assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
-        self.dist_backend = "nccl"
-        if dist_init_required:
-            if not dist.is_initialized():
-                logger.info("Initializing torch distributed with backend: {}".format(
-                    self.dist_backend))
-                dist.init_process_group(backend=self.dist_backend)
+        # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
+        if dist_init_required and not dist.is_initialized():
+            # discover using mpi4py if user specifies the flag
+            if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
+                # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
+                if self._in_aml():
+                    logger.warning(
+                        "Please remove the --deepspeed_mpi flag if running on AzureML.")
+                self._mpi_check(args, dist_init_required)
             else:
-                logger.warning(
-                    "Was given dist_init_required=True but detected that torch"
-                    "distributed was already initialized, cannot initialize twice.")
+                # detect if we are in Azure ML environment
+                if self._in_aml():
+                    self._set_environment_variables_for_nccl_backend(args)
+
+            logger.info("Initializing torch distributed with backend: {}".format(
+                self.dist_backend))
+            dist.init_process_group(backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -203,7 +209,7 @@ class DeepSpeedEngine(Module):
         self.unflatten = util_ops.unflatten
 
     def _in_aml(self):
-        # read and environment variable to detect if we are using an Azure ML environment
+        # read AzureML environment variable to detect if we are using an Azure ML environment
         if 'AZUREML_EXPERIMENT_ID' in os.environ:
             return True
         else:
@@ -246,43 +252,42 @@ class DeepSpeedEngine(Module):
                         os.environ['MASTER_PORT']))
 
     def _mpi_check(self, args, dist_init_required):
-        if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
-            from mpi4py import MPI
-            import subprocess
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            world_size = comm.Get_size()
+        from mpi4py import MPI
+        import subprocess
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        world_size = comm.Get_size()
 
-            master_addr = None
-            if rank == 0:
-                hostname_cmd = ["hostname -I"]
-                result = subprocess.check_output(hostname_cmd, shell=True)
-                master_addr = result.decode('utf-8').split()[0]
-            master_addr = comm.bcast(master_addr, root=0)
+        master_addr = None
+        if rank == 0:
+            hostname_cmd = ["hostname -I"]
+            result = subprocess.check_output(hostname_cmd, shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+        master_addr = comm.bcast(master_addr, root=0)
 
-            # Determine local rank by assuming hostnames are unique
-            proc_name = MPI.Get_processor_name()
-            all_procs = comm.allgather(proc_name)
-            local_rank = sum([i == proc_name for i in all_procs[:rank]])
+        # Determine local rank by assuming hostnames are unique
+        proc_name = MPI.Get_processor_name()
+        all_procs = comm.allgather(proc_name)
+        local_rank = sum([i == proc_name for i in all_procs[:rank]])
 
-            os.environ['RANK'] = str(rank)
-            os.environ['WORLD_SIZE'] = str(world_size)
-            args.local_rank = local_rank
-            os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
+        os.environ['RANK'] = str(rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        args.local_rank = local_rank
+        os.environ['MASTER_ADDR'] = master_addr
+        os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
 
-            logger.info(
-                "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-                .format(os.environ['RANK'],
-                        args.local_rank,
-                        os.environ['WORLD_SIZE'],
-                        os.environ['MASTER_ADDR'],
-                        os.environ['MASTER_PORT']))
+        logger.info(
+            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+            .format(os.environ['RANK'],
+                    args.local_rank,
+                    os.environ['WORLD_SIZE'],
+                    os.environ['MASTER_ADDR'],
+                    os.environ['MASTER_PORT']))
 
-            if not dist_init_required and dist.is_initialized():
-                assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-                assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
-                    world_size, dist.get_world_size())
+        if not dist_init_required and dist.is_initialized():
+            assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
+            assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
+                world_size, dist.get_world_size())
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -795,12 +800,12 @@ class DeepSpeedEngine(Module):
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank)
 
-    def train(self):
+    def train(self, mode=True):
         r"""
         """
 
         self.warn_unscaled_loss = True
-        self.module.train()
+        self.module.train(mode)
 
     def eval(self):
         r"""
@@ -1295,15 +1300,15 @@ class DeepSpeedEngine(Module):
 
     def load_checkpoint(self,
                         load_dir,
-                        tag,
+                        tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True):
-        r"""Load training checkpoint
+        """Load training checkpoint
 
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
@@ -1311,6 +1316,13 @@ class DeepSpeedEngine(Module):
             load_path: Path of the loaded checkpoint. None if loading the checkpoint failed
             client_state: State dictionary used for loading required training states in the client code.
         """
+
+        if tag is None:
+            latest_path = os.path.join(load_dir, 'latest')
+            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+            with open(latest_path, 'r') as fd:
+                tag = fd.read().strip()
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
@@ -1449,17 +1461,24 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
-    def save_checkpoint(self, save_dir, tag, client_state={}):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
             client_state: Optional. State dictionary used for saving required training states in the client code.
+            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
 
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
+
+        # Ensure save_dir directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
+        if tag is None:
+            tag = f"global_step{self.global_steps}"
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
@@ -1468,6 +1487,11 @@ class DeepSpeedEngine(Module):
         if self.save_zero_checkpoint:
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
+
+        # Save latest checkpoint tag
+        if save_latest:
+            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                fd.write(tag)
 
         return True
 
