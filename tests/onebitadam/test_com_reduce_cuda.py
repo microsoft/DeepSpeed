@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import deepspeed
-from deepspeed.runtime.fp16.onebit_adam_nccl import OnebitAdamNCCL
+from deepspeed.runtime.fp16.onebit.adam import Adam
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -19,7 +19,10 @@ torch.distributed.init_process_group(backend='nccl',
 dummy_model = [torch.nn.Parameter(torch.ones(10))]
 
 # Set cuda_aware to True to use CUDA buffers for communication
-dummy_optim = OnebitAdamNCCL(dummy_model, cuda_aware=True)
+dummy_optim = Adam(dummy_model,
+                   cuda_aware=True,
+                   communication_backend='nccl',
+                   compression_backend='cupy')
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
