@@ -121,22 +121,31 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
+        self.dist_backend = "nccl"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
 
-        self._mpi_check(args, dist_init_required)
+        if dist_init_required is False:
+            assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
-        self.dist_backend = "nccl"
-        if dist_init_required:
-            if not dist.is_initialized():
-                logger.info("Initializing torch distributed with backend: {}".format(
-                    self.dist_backend))
-                dist.init_process_group(backend=self.dist_backend)
+        # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
+        if dist_init_required and not dist.is_initialized():
+            # discover using mpi4py if user specifies the flag
+            if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
+                # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
+                if self._in_aml():
+                    logger.warning(
+                        "Please remove the --deepspeed_mpi flag if running on AzureML.")
+                self._mpi_check(args, dist_init_required)
             else:
-                logger.warning(
-                    "Was given dist_init_required=True but detected that torch"
-                    "distributed was already initialized, cannot initialize twice.")
+                # detect if we are in Azure ML environment
+                if self._in_aml():
+                    self._set_environment_variables_for_nccl_backend(args)
+
+            logger.info("Initializing torch distributed with backend: {}".format(
+                self.dist_backend))
+            dist.init_process_group(backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -199,44 +208,86 @@ class DeepSpeedEngine(Module):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
-    def _mpi_check(self, args, dist_init_required):
-        if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
-            from mpi4py import MPI
-            import subprocess
-            comm = MPI.COMM_WORLD
-            rank = comm.Get_rank()
-            world_size = comm.Get_size()
+    def _in_aml(self):
+        # read AzureML environment variable to detect if we are using an Azure ML environment
+        if 'AZUREML_EXPERIMENT_ID' in os.environ:
+            return True
+        else:
+            return False
 
-            master_addr = None
-            if rank == 0:
-                hostname_cmd = ["hostname -I"]
-                result = subprocess.check_output(hostname_cmd, shell=True)
-                master_addr = result.decode('utf-8').split()[0]
-            master_addr = comm.bcast(master_addr, root=0)
+    def _set_environment_variables_for_nccl_backend(self,
+                                                    args,
+                                                    master_port=6105,
+                                                    verbose=True):
+        """Helper routine to get and set environment variables.
+        This is adapted from Azure ML's documentation available from:
+        https://azure.github.io/azureml-web/docs/cheatsheet/distributed-training/#environment-variables-from-openmpi
+        """
+        os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
+        os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
+        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
+            os.environ["WORLD_SIZE"])
+        if not single_node:
+            master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
+            os.environ["MASTER_ADDR"] = master_node_params[0]
+            # Do not overwrite master port with that defined in AZ_BATCH_MASTER_NODE
+            if "MASTER_PORT" not in os.environ:
+                os.environ["MASTER_PORT"] = str(master_port)
+        else:
+            os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
+            os.environ["MASTER_PORT"] = "54965"
+        print("NCCL_SOCKET_IFNAME original value = {}".format(
+            os.environ["NCCL_SOCKET_IFNAME"]))
 
-            # Determine local rank by assuming hostnames are unique
-            proc_name = MPI.Get_processor_name()
-            all_procs = comm.allgather(proc_name)
-            local_rank = sum([i == proc_name for i in all_procs[:rank]])
+        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
 
-            os.environ['RANK'] = str(rank)
-            os.environ['WORLD_SIZE'] = str(world_size)
-            args.local_rank = local_rank
-            os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
-
+        if verbose:
             logger.info(
-                "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+                "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
                 .format(os.environ['RANK'],
                         args.local_rank,
                         os.environ['WORLD_SIZE'],
                         os.environ['MASTER_ADDR'],
                         os.environ['MASTER_PORT']))
 
-            if not dist_init_required and dist.is_initialized():
-                assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-                assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
-                    world_size, dist.get_world_size())
+    def _mpi_check(self, args, dist_init_required):
+        from mpi4py import MPI
+        import subprocess
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        world_size = comm.Get_size()
+
+        master_addr = None
+        if rank == 0:
+            hostname_cmd = ["hostname -I"]
+            result = subprocess.check_output(hostname_cmd, shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+        master_addr = comm.bcast(master_addr, root=0)
+
+        # Determine local rank by assuming hostnames are unique
+        proc_name = MPI.Get_processor_name()
+        all_procs = comm.allgather(proc_name)
+        local_rank = sum([i == proc_name for i in all_procs[:rank]])
+
+        os.environ['RANK'] = str(rank)
+        os.environ['WORLD_SIZE'] = str(world_size)
+        args.local_rank = local_rank
+        os.environ['MASTER_ADDR'] = master_addr
+        os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
+
+        logger.info(
+            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+            .format(os.environ['RANK'],
+                    args.local_rank,
+                    os.environ['WORLD_SIZE'],
+                    os.environ['MASTER_ADDR'],
+                    os.environ['MASTER_PORT']))
+
+        if not dist_init_required and dist.is_initialized():
+            assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
+            assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
+                world_size, dist.get_world_size())
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -264,7 +315,9 @@ class DeepSpeedEngine(Module):
                            base=os.path.join(os.environ["HOME"],
                                              "tensorboard")):
         if self.tensorboard_output_path():
-            log_dir = self.tensorboard_output_path()
+            base_dir = self.tensorboard_output_path()
+            job_name = self.tensorboard_job_name()
+            log_dir = os.path.join(base_dir, job_name)
         else:
             if self.tensorboard_job_name():
                 name = self.tensorboard_job_name()
@@ -346,6 +399,9 @@ class DeepSpeedEngine(Module):
 
     def zero_load_from_fp32_weights(self):
         return self._config.zero_config.load_from_fp32_weights
+
+    def zero_elastic_checkpoint(self):
+        return self._config.zero_config.elastic_checkpoint
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -644,6 +700,7 @@ class DeepSpeedEngine(Module):
             logger.info('Creating fp16 unfused optimizer with dynamic loss scale')
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
                 mpu=self.mpu,
@@ -655,7 +712,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         logger.info('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage))
-
+        assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
@@ -668,6 +725,7 @@ class DeepSpeedEngine(Module):
                 allgather_size=self.zero_allgather_bucket_size(),
                 max_elements_per_comm=self.zero_reduce_bucket_size(),
                 dp_process_group=self.data_parallel_group,
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
@@ -741,12 +799,12 @@ class DeepSpeedEngine(Module):
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank)
 
-    def train(self):
+    def train(self, mode=True):
         r"""
         """
 
         self.warn_unscaled_loss = True
-        self.module.train()
+        self.module.train(mode)
 
     def eval(self):
         r"""
@@ -824,6 +882,11 @@ class DeepSpeedEngine(Module):
             allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
         """
 
+        if not allreduce_gradients:
+            logger.warning(
+                f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
+            )
+
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
             loss = self._scale_loss(loss.float())
@@ -877,7 +940,7 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce_microstep').start()
             self.timers('backward_allreduce').start()
 
-        if allreduce_gradients and self.enable_backward_allreduce:
+        if self.enable_backward_allreduce:
             self.allreduce_gradients()
 
         if self.wall_clock_breakdown():
@@ -1236,15 +1299,15 @@ class DeepSpeedEngine(Module):
 
     def load_checkpoint(self,
                         load_dir,
-                        tag,
+                        tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True):
-        r"""Load training checkpoint
+        """Load training checkpoint
 
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
@@ -1252,6 +1315,13 @@ class DeepSpeedEngine(Module):
             load_path: Path of the loaded checkpoint. None if loading the checkpoint failed
             client_state: State dictionary used for loading required training states in the client code.
         """
+
+        if tag is None:
+            latest_path = os.path.join(load_dir, 'latest')
+            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+            with open(latest_path, 'r') as fd:
+                tag = fd.read().strip()
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
@@ -1390,17 +1460,24 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
-    def save_checkpoint(self, save_dir, tag, client_state={}):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
             client_state: Optional. State dictionary used for saving required training states in the client code.
+            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
 
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
+
+        # Ensure save_dir directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
+        if tag is None:
+            tag = f"global_step{self.global_steps}"
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
@@ -1409,6 +1486,11 @@ class DeepSpeedEngine(Module):
         if self.save_zero_checkpoint:
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
+
+        # Save latest checkpoint tag
+        if save_latest:
+            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                fd.write(tag)
 
         return True
 

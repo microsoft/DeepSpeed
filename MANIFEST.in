@@ -1,1 +1,4 @@
-global-include *.cpp *.h *.cu *.tr *.cuh *.cc *.txt
+include *.txt README.md
+recursive-include requirements *.txt
+recursive-include deepspeed *.cpp *.h *.cu *.tr *.cuh *.cc
+recursive-include csrc *.cpp *.h *.cu *.tr *.cuh *.cc

@@ -36,6 +36,7 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
     compare_deepspeed_states(saved_model, loaded_model)
 
     for p0, p1 in zip(saved_model.module.parameters(), loaded_model.module.parameters()):
+        assert id(p0) != id(p1), f'Comparing fp16 model state tensor against itself : {id(p0)} <====> {id(p1)}'
         assert torch.allclose(p0, p1, atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
 
     if not compare_optimizer:
@@ -43,20 +44,24 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
 
     if isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer):
         for p0, p1 in zip(saved_model.optimizer.single_partition_of_fp32_groups, loaded_model.optimizer.single_partition_of_fp32_groups):
+            assert id(p0) != id(p1), f'Comparing fp32 model state tensor against itself: {id(p0)} <====> {id(p1)}'
             assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_DeepSpeedZeroOptimizer_Stage1):
         for partition0, partition1 in zip(saved_model.optimizer.local_sub_partitions_of_fp32_groups, loaded_model.optimizer.local_sub_partitions_of_fp32_groups):
             for p0, p1 in zip(partition0, partition1):
+                assert id(p0) != id(p1), f'Comparing fp32 model state tensor against itself: {id(p0)} <====> {id(p1)}'
                 assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_Optimizer):
         for p0, p1 in zip(saved_model.optimizer.fp32_groups_flat, loaded_model.optimizer.fp32_groups_flat):
+            assert id(p0) != id(p1), f'Comparing fp32 model state tensor against itself: {id(p0)} <====> {id(p1)}'
             assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
 
     elif isinstance(saved_model.optimizer, FP16_UnfusedOptimizer):
         for params0, params1 in zip(saved_model.optimizer.fp32_groups, loaded_model.optimizer.fp32_groups):
             for p0, p1 in zip(params0, params1):
+                assert id(p0) != id(p1), f'Comparing fp32 model state tensor against itself: {id(p0)} <====> {id(p1)}'
                 assert torch.allclose(p0, p1, atol=1e-07), f"FP32 model states {p0} is not equal to {p1}"
     elif isinstance(saved_model.optimizer, torch.optim.Optimizer):
         pass
@@ -72,6 +77,7 @@ def compare_optimizer_states(saved_model, loaded_model, hidden_dim, fp16=True):
                               loaded_optimizer.state.values()):
         for s0, s1 in zip(state0.values(), state1.values()):
             if isinstance(s0, torch.Tensor) and isinstance(s1, torch.Tensor):
+                assert id(s0) != id(s1), f'Comparing optimizer state tensor against itself: {id(s0)} <====> {id(s1)}'
                 assert torch.equal(s0, s1)
             else:
                 assert s0 == s1
@@ -100,18 +106,35 @@ def compare_lr_scheduler_states(saved_model, loaded_model):
             assert state0 == state1
 
 
+def create_deepspeed_model(args, model, base_optimizer):
+    if base_optimizer is None:
+        ds_model, _, _, _ = deepspeed.initialize(args=args,
+                                                 model=model,
+                                                 model_parameters=model.parameters())
+    else:
+        ds_model, _, _, _ = deepspeed.initialize(args=args,
+                                                model=model,
+                                                optimizer=base_optimizer)
+
+    return ds_model
+
+
 def checkpoint_correctness_verification(args,
-                                        model,
+                                        models,
                                         hidden_dim,
                                         tmpdir,
                                         load_optimizer_states=False,
                                         load_lr_scheduler_states=False,
                                         fp16=True,
-                                        train_batch=False):
+                                        train_batch=False,
+                                        base_optimizers=[None,
+                                                         None],
+                                        empty_tag=False):
     dtype = torch.half if fp16 else torch.float32
-    ds_model, _, _, _ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+    ds_model = create_deepspeed_model(args=args,
+                                      model=models[0],
+                                      base_optimizer=base_optimizers[0])
+
     data_loader = random_dataloader(model=ds_model,
                                     total_samples=50,
                                     hidden_dim=hidden_dim,
@@ -125,23 +148,22 @@ def checkpoint_correctness_verification(args,
     else:
         for n, batch in enumerate(data_loader):
             loss = ds_model(batch[0], batch[1])
-            print(loss)
             ds_model.backward(loss)
             ds_model.step()
 
     trained_model = ds_model
 
     save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-    save_tag = '1'
+    save_tag = None if empty_tag else '1'
 
-    trained_model.save_checkpoint(save_folder, save_tag)
+    trained_model.save_checkpoint(save_folder, tag=save_tag)
 
-    loaded_model, _, _, _ = deepspeed.initialize(args=args,
-                                                 model=model,
-                                                 model_parameters=model.parameters())
+    loaded_model = create_deepspeed_model(args=args,
+                                          model=models[1],
+                                          base_optimizer=base_optimizers[1])
 
     loaded_model.load_checkpoint(save_folder,
-                                 save_tag,
+                                 tag=save_tag,
                                  load_optimizer_states=load_optimizer_states,
                                  load_lr_scheduler_states=load_lr_scheduler_states)
 
@@ -191,25 +213,26 @@ def test_checkpoint_unfused_optimizer(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_unfused_optimizer(args,
-                                           model,
+                                           models,
                                            hidden_dim,
                                            load_optimizer_states):
         checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_unfused_optimizer(args=args,
-                                       model=model,
+                                       models=models,
                                        hidden_dim=hidden_dim,
                                        load_optimizer_states=True)
+
     _test_checkpoint_unfused_optimizer(args=args,
-                                       model=model,
+                                       models=models,
                                        hidden_dim=hidden_dim,
                                        load_optimizer_states=False)
 
@@ -236,39 +259,40 @@ def test_checkpoint_fused_optimizer(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
-    def _test_checkpoint_fused_optimizer(args, model, hidden_dim, load_optimizer_states):
+    def _test_checkpoint_fused_optimizer(args,
+                                         models,
+                                         hidden_dim,
+                                         load_optimizer_states):
         checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_fused_optimizer(args=args,
-                                     model=model,
+                                     models=models,
                                      hidden_dim=hidden_dim,
                                      load_optimizer_states=True)
+
     _test_checkpoint_fused_optimizer(args=args,
-                                     model=model,
+                                     models=models,
                                      hidden_dim=hidden_dim,
                                      load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'Adam'),
+                              True),
                          ])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
@@ -276,7 +300,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -296,38 +320,32 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
-    def _test_checkpoint_zero_optimizer(args, model, hidden_dim, load_optimizer_states):
+    def _test_checkpoint_zero_optimizer(args, models, hidden_dim, load_optimizer_states):
         checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_zero_optimizer(args=args,
-                                    model=model,
+                                    models=models,
                                     hidden_dim=hidden_dim,
                                     load_optimizer_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (1,
-                              False,
-                              "Adam"),
+                              False),
                              (2,
-                              False,
-                              "Adam"),
+                              False),
                              (2,
-                              True,
-                              'Adam'),
+                              True),
                          ])
-def test_checkpoint_zero_no_optimizer(tmpdir,
-                                      zero_stage,
-                                      use_cpu_offload,
-                                      adam_optimizer):
+def test_checkpoint_zero_no_optimizer(tmpdir, zero_stage, use_cpu_offload):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
@@ -335,7 +353,7 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -355,41 +373,37 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_zero_no_optimizer(args,
-                                           model,
+                                           models,
                                            hidden_dim,
                                            load_optimizer_states):
         checkpoint_correctness_verification(args,
-                                            model,
-                                            hidden_dim,
-                                            tmpdir,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
                                             load_optimizer_states=load_optimizer_states)
 
     _test_checkpoint_zero_no_optimizer(args=args,
-                                       model=model,
+                                       models=models,
                                        hidden_dim=hidden_dim,
                                        load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              'Adam'),
+                              False),
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'Adam'),
+                              True),
                          ])
-def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
@@ -397,7 +411,7 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 0.00015,
                 "betas": [0.8,
@@ -425,45 +439,41 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_lr_scheduler(args,
-                                      model,
+                                      models,
                                       hidden_dim,
                                       load_optimizer_states,
                                       load_lr_scheduler_states):
         checkpoint_correctness_verification(
             args,
-            model,
-            hidden_dim,
-            tmpdir,
+            models=models,
+            hidden_dim=hidden_dim,
+            tmpdir=tmpdir,
             load_optimizer_states=load_optimizer_states,
             load_lr_scheduler_states=load_lr_scheduler_states)
 
     _test_checkpoint_lr_scheduler(args=args,
-                                  model=model,
+                                  models=models,
                                   hidden_dim=hidden_dim,
                                   load_optimizer_states=False,
                                   load_lr_scheduler_states=True)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [
                              (0,
-                              False,
-                              'Adam'),
+                              False),
                              (1,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              False,
-                              'Adam'),
+                              False),
                              (2,
-                              True,
-                              'Adam'),
+                              True),
                          ])
-def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
@@ -471,7 +481,7 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
         "train_batch_size": 2,
         "steps_per_print": 1,
         "optimizer": {
-            "type": adam_optimizer,
+            "type": 'Adam',
             "params": {
                 "lr": 1e-5
             }
@@ -495,24 +505,24 @@ def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_op
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
     def _test_checkpoint_no_lr_scheduler(args,
-                                         model,
+                                         models,
                                          hidden_dim,
                                          load_optimizer_states,
                                          load_lr_scheduler_states):
         checkpoint_correctness_verification(
             args,
-            model,
-            hidden_dim,
-            tmpdir,
+            models=models,
+            hidden_dim=hidden_dim,
+            tmpdir=tmpdir,
             load_optimizer_states=load_optimizer_states,
             load_lr_scheduler_states=load_lr_scheduler_states)
 
     _test_checkpoint_no_lr_scheduler(args=args,
-                                     model=model,
+                                     models=models,
                                      hidden_dim=hidden_dim,
                                      load_optimizer_states=False,
                                      load_lr_scheduler_states=False)
@@ -540,13 +550,17 @@ def test_checkpoint_fp32_optimizer(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
     @distributed_test(world_size=[2])
-    def _test_checkpoint_fp32_optimizer(args, model, hidden_dim):
-        checkpoint_correctness_verification(args, model, hidden_dim, tmpdir, fp16=False)
+    def _test_checkpoint_fp32_optimizer(args, models, hidden_dim):
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            fp16=False)
 
-    _test_checkpoint_fp32_optimizer(args=args, model=model, hidden_dim=hidden_dim)
+    _test_checkpoint_fp32_optimizer(args=args, models=models, hidden_dim=hidden_dim)
 
 
 @pytest.mark.parametrize("zero_stage", [0, 1])
@@ -588,10 +602,10 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
     @distributed_test(world_size=4)
     def _test(save_folder, num_stages):
         args = args_from_dict(tmpdir, config_dict)
-        model = LinearStackPipe(num_stages=num_stages)
+        models = [LinearStackPipe(num_stages=num_stages) for _ in range(2)]
         checkpoint_correctness_verification(args=args,
-                                            model=model,
-                                            hidden_dim=model.hidden_dim,
+                                            models=models,
+                                            hidden_dim=models[0].hidden_dim,
                                             tmpdir=save_folder,
                                             fp16=config_dict['fp16']['enabled'],
                                             load_optimizer_states=True,
@@ -652,3 +666,98 @@ def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
                 assert torch.allclose(p0, p1, atol=1e-07), f"Model state {p0} is not equal to {p1}"
 
     _test(base_topo, test_topo, save_folder=tmpdir)
+
+
+@pytest.mark.parametrize('zero_stage', [1, 2])
+def test_checkpoint_zero_hybrid_optimizer_state(tmpdir, zero_stage):
+    config_dict = {
+        "train_micro_batch_size_per_gpu": 2,
+        "gradient_accumulation_steps": 2,
+        "steps_per_print": 1,
+        "zero_optimization": {
+            "stage": zero_stage
+        },
+        "zero_allow_untested_optimizer": True,
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        }
+    }
+
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+    models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
+    optimizers = [HybridStateOptimizer(model.parameters()) for model in models]
+
+    @distributed_test(world_size=[2])
+    def _test_checkpoint_zero_hybrid_optimizer_state(args,
+                                                     models,
+                                                     optimizers,
+                                                     hidden_dim):
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            base_optimizers=optimizers,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True)
+
+    _test_checkpoint_zero_hybrid_optimizer_state(args=args,
+                                                 models=models,
+                                                 optimizers=optimizers,
+                                                 hidden_dim=hidden_dim)
+
+
+def test_checkpoint_latest(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    hidden_dim = 10
+    args = args_from_dict(tmpdir, config_dict)
+    models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
+
+    @distributed_test(world_size=[1])
+    def _helper(args, models):
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=False,
+                                            fp16=False,
+                                            empty_tag=True)
+
+    _helper(args, models)
+
+
+def test_checkpoint_missing_latest(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    hidden_dim = 10
+    args = args_from_dict(tmpdir, config_dict)
+
+    model = SimpleModel(hidden_dim, rank=args.local_rank)
+
+    @distributed_test(world_size=[1])
+    def _helper(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        with pytest.raises(AssertionError):
+            model.load_checkpoint(tmpdir)
+
+    _helper(args=args, model=model, hidden_dim=hidden_dim)

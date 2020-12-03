@@ -21,7 +21,7 @@ except ImportError:
     raise ImportError('Unable to import torch, please visit https://pytorch.org/ '
                       'to see how to properly install torch on your system.')
 
-import op_builder
+from op_builder import ALL_OPS, get_default_compute_capatabilities
 
 
 def fetch_requirements(path):
@@ -58,17 +58,15 @@ TORCH_MAJOR = torch.__version__.split('.')[0]
 TORCH_MINOR = torch.__version__.split('.')[1]
 
 if not torch.cuda.is_available():
-    # Fix to allow docker buils, similar to https://github.com/NVIDIA/apex/issues/486
+    # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486
     print(
-        "[WARNING] Torch did not find cuda available, if cross-compling or running with cpu only "
+        "[WARNING] Torch did not find cuda available, if cross-compiling or running with cpu only "
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = "6.0;6.1;6.2;7.0;7.5"
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
 
 ext_modules = []
-
-from op_builder import ALL_OPS
 
 # Default to pre-install kernels to false so we rely on JIT
 BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
@@ -144,7 +142,10 @@ else:
     version_str += f'+{git_hash}'
 
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
-cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+# Set cuda_version to 0.0 if cpu-only
+cuda_version = "0.0"
+if torch.version.cuda is not None:
+    cuda_version = ".".join(torch.version.cuda.split('.')[:2])
 torch_info = {"version": torch_version, "cuda_version": cuda_version}
 
 print(f"version={version_str}, git_hash={git_hash}, git_branch={git_branch}")
@@ -160,9 +161,16 @@ print(f'install_requires={install_requires}')
 print(f'compatible_ops={compatible_ops}')
 print(f'ext_modules={ext_modules}')
 
+# Parse README.md to make long_description for PyPI page.
+thisdir = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
+    readme_text = fin.read()
+
 setup(name='deepspeed',
       version=version_str,
       description='DeepSpeed library',
+      long_description=readme_text,
+      long_description_content_type='text/markdown',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',
