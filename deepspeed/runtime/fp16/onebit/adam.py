@@ -6,12 +6,14 @@ import torch
 import importlib
 import numpy as np
 import time
+import torch.distributed as dist
 from torch.utils.dlpack import to_dlpack
 from torch.utils.dlpack import from_dlpack
 from deepspeed.utils.logging import logger
 
-import torch.distributed as dist
-
+# Delayed/lazy imports
+my_igather_nccl = None
+cupy = None
 
 class Adam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
@@ -83,7 +85,7 @@ class Adam(torch.optim.Optimizer):
         self.step_time = 0.0
         self.ave_step = 1
         self.bk_time = 0.0
-        self.divider = int(self.size * 8 / np.gcd(self.size, 8))
+
         self.deepspeed = deepspeed
         self.adam_freeze_key = False
         self.initialize = False
@@ -92,6 +94,12 @@ class Adam(torch.optim.Optimizer):
 
         self.communication_backend = communication_backend
         self.compression_backend = compression_backend
+
+        global my_igather_nccl
+        global cupy
+
+        if self.compression_backend == 'cupy':
+            import cupy
 
         if self.communication_backend == 'nccl':
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
@@ -106,6 +114,8 @@ class Adam(torch.optim.Optimizer):
             self.rank = self.comm.Get_rank()
             self.size = self.comm.Get_size()
             from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
+        
+        self.divider = int(self.size * 8 / np.gcd(self.size, 8))
 
     def torch2cupy(self, tensor):
         return cupy.fromDlpack(to_dlpack(tensor))
@@ -174,12 +184,13 @@ class Adam(torch.optim.Optimizer):
         #TODO: dist.sync and try async_op=True method
         gather_start = time.time()
         for idx in range(self.size):
-            self.my_igather(self.rank,
+            my_igather_nccl(self.rank,
                             self.size,
+                            self.world_group,
                             sign_list_packed[idx],
                             recvbuf_sign,
                             root=idx)
-            self.my_igather(self.rank, self.size, worker_scale, recvbuf_scale, root=idx)
+            my_igather_nccl(self.rank, self.size, self.world_group, worker_scale, recvbuf_scale, root=idx)
         gather_end = time.time()
 
         cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)

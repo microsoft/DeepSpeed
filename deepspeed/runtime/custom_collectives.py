@@ -3,16 +3,16 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
 
-def my_igather_nccl(self, rank, size, sendbuf, recvbuf, root):
+def my_igather_nccl(rank, size, group, sendbuf, recvbuf, root):
     import torch.distributed as dist
     if rank == root:
         for idx in range(size):
             if idx != rank:
-                dist.recv(recvbuf[idx], src=idx, group=self.world_group, tag=987)
+                dist.recv(recvbuf[idx], src=idx, group=group, tag=987)
             else:
                 recvbuf[rank] = sendbuf
     else:
-        dist.send(sendbuf, group=self.world_group, dst=root, tag=987)
+        dist.send(sendbuf, group=group, dst=root, tag=987)
 
 
 def my_igather(rank, size, comm, sendbuf, recbuf, root):

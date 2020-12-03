@@ -63,11 +63,9 @@ server_error = torch.zeros(right_server_size, device=device)
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
 torch.cuda.empty_cache()
 local_rank = rank % torch.cuda.device_count()
-a_after = dummy_optim.Compressed_Allreduce(a,
+a_after = dummy_optim.compressed_nccl_allreduce(a,
                                            worker_error,
                                            server_error,
-                                           rank,
-                                           size,
                                            local_rank)
 threshold = 1e-6
 magnitude_threshold = 1e-6
