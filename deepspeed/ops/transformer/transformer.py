@@ -91,7 +91,6 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
             huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
-
     """
     def __init__(self,
                  batch_size=-1,
@@ -429,10 +428,10 @@ class DeepSpeedTransformerFunction(Function):
 class DeepSpeedTransformerLayer(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
 
-        Static variable:
-            layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
-            e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
         Arguments:
+            layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
+                layer_id will be 0,1,2...23 when each layer object is instantiated
+
             config: An object of DeepSpeedTransformerConfig
 
             initial_weights: Optional: Only used for unit test
@@ -445,6 +444,7 @@ class DeepSpeedTransformerLayer(nn.Module):
         super(DeepSpeedTransformerLayer, self).__init__()
 
         self.config = config
+        self.config.layer_id = DeepSpeedTransformerLayer.layer_id
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
         DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
@@ -543,20 +543,16 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.norm_w.data.fill_(1.0)
         self.norm_b.data.zero_()
 
-    #def forward(self, input, input_mask, grads=None):
-    def forward(
-        self,
-        hidden_states,
-        attention_mask=None,
-        head_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        output_attentions=False,
-    ):
+    def forward(self,
+                hidden_states,
+                attention_mask=None,
+                head_mask=None,
+                encoder_hidden_states=None,
+                encoder_attention_mask=None,
+                output_attentions=False,
+                grads=None):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
-        # disable grad testing for now
-        grads = None
         return DeepSpeedTransformerFunction.apply(hidden_states,
                                                   attention_mask,
                                                   self,
