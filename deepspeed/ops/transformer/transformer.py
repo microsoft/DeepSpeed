@@ -449,7 +449,6 @@ class DeepSpeedTransformerLayer(nn.Module):
 
         self.config = config
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
-        self.config.layer_id = DeepSpeedTransformerLayer.layer_id
         DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
         print("DeepSpeed Transformer config is ", self.config.__dict__)

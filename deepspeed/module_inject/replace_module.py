@@ -11,7 +11,8 @@ def replace_transformer_layer(orig_layer_impl,
                               max_seq_length,
                               preln=False,
                               fp16=True,
-                              huggingface=False):
+                              huggingface=False,
+                              local_rank=-1):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -41,7 +42,8 @@ def replace_transformer_layer(orig_layer_impl,
             seed=seed,
             fp16=fp16,
             pre_layer_norm=preln,
-            huggingface=huggingface)
+            huggingface=huggingface,
+            local_rank=local_rank)
         new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
 
         # copy relevant state from child -> new module
