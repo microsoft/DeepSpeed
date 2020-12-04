@@ -449,10 +449,7 @@ class DeepSpeedTransformerLayer(nn.Module):
 
         self.config = config
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
-<<<<<<< HEAD:deepspeed/ops/transformer/transformer.py
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
-=======
->>>>>>> 798e6d334db49f4eb03d10e7c0808865b7ddb230:deepspeed/pt/deepspeed_cuda.py
         DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
         print("DeepSpeed Transformer config is ", self.config.__dict__)
