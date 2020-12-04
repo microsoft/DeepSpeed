@@ -91,6 +91,10 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
             huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+<<<<<<< HEAD:deepspeed/ops/transformer/transformer.py
+=======
+
+>>>>>>> 798e6d334db49f4eb03d10e7c0808865b7ddb230:deepspeed/pt/deepspeed_cuda.py
     """
     def __init__(self,
                  batch_size=-1,
@@ -428,10 +432,10 @@ class DeepSpeedTransformerFunction(Function):
 class DeepSpeedTransformerLayer(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
 
+        Static variable:
+            layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
+            e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
         Arguments:
-            layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
-                layer_id will be 0,1,2...23 when each layer object is instantiated
-
             config: An object of DeepSpeedTransformerConfig
 
             initial_weights: Optional: Only used for unit test
@@ -445,7 +449,10 @@ class DeepSpeedTransformerLayer(nn.Module):
 
         self.config = config
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
+<<<<<<< HEAD:deepspeed/ops/transformer/transformer.py
         self.config.layer_id = DeepSpeedTransformerLayer.layer_id
+=======
+>>>>>>> 798e6d334db49f4eb03d10e7c0808865b7ddb230:deepspeed/pt/deepspeed_cuda.py
         DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
         print("DeepSpeed Transformer config is ", self.config.__dict__)
