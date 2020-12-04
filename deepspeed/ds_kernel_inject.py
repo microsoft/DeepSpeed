@@ -3,6 +3,7 @@ import torch
 import deepspeed
 import deepspeed.ops.transformer as ds_transformer
 
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               micro_batch_size,
@@ -54,11 +55,12 @@ def replace_transformer_layer(orig_layer_impl,
         qkvw = torch.cat((qw, kw, vw), 0)
         qkvb = torch.cat((qb, kb, vb), 0)
 
-        qw,kw,vw = torch.chunk(qkvw, 3, axis=0)
-        qb,kb,vb = torch.chunk(qkvb, 3, axis=0)
+        #qw.data,kw.data,vw.data = torch.chunk(qkvw, 3, axis=0)
+        #qb.data,kb.data,vb.data = torch.chunk(qkvb, 3, axis=0)
 
         new_module.attn_qkvw.data = qkvw
         new_module.attn_qkvb.data = qkvb
+
         new_module.attn_ow.data = child.attention.output.dense.weight
         new_module.attn_ob.data = child.attention.output.dense.bias
         if preln:
@@ -113,48 +115,51 @@ def revert_transformer_layer(orig_layer_impl,
         qw, kw, vw = torch.chunk(qkvw, 3, axis=0)
         qb, kb, vb = torch.chunk(qkvb, 3, axis=0)
 
-        orig_module.attention.self.query.weight = qw
-        orig_module.attention.self.query.bias = qb
-        orig_module.attention.self.key.weight = kw
-        orig_module.attention.self.key.bias = kb
-        orig_module.attention.self.value.weight = vw
-        orig_module.attention.self.value.bias = vb
+        orig_module.attention.self.query.weight.data = qw
+        orig_module.attention.self.query.bias.data = qb
+        orig_module.attention.self.key.weight.data = kw
+        orig_module.attention.self.key.bias.data = kb
+        orig_module.attention.self.value.weight.data = vw
+        orig_module.attention.self.value.bias.data = vb
 
-        orig_module.attention.output.dense.weight = child.attn_ow.data
-        orig_module.attention.output.dense.bias = child.attn_ob.data
+        orig_module.attention.output.dense.weight.data = child.attn_ow.data
+        orig_module.attention.output.dense.bias.data = child.attn_ob.data
 
         attn_ln_w = child.attn_nw.data
         attn_ln_b = child.attn_nb.data
         if preln:
-            orig_module.PostAttentionLayerNorm.weight = attn_ln_w
-            orig_module.PostAttentionLayerNorm.bias = attn_ln_b
+            orig_module.PostAttentionLayerNorm.weight.data = attn_ln_w
+            orig_module.PostAttentionLayerNorm.bias.data = attn_ln_b
         else:
-            orig_module.attention.output.LayerNorm.weight = attn_ln_w
-            orig_module.attention.output.LayerNorm.bias = attn_ln_b
+            orig_module.attention.output.LayerNorm.weight.data = attn_ln_w
+            orig_module.attention.output.LayerNorm.bias.data = attn_ln_b
 
         inter_ff_w = child.inter_w.data
         inter_ff_b = child.inter_b.data
         if preln:
-            orig_module.intermediate.dense_act.weight = inter_ff_w
-            orig_module.intermediate.dense_act.bias = inter_ff_b
+            orig_module.intermediate.dense_act.weight.data = inter_ff_w
+            orig_module.intermediate.dense_act.bias.data = inter_ff_b
         else:
-            orig_module.intermediate.dense.weight = inter_ff_w
-            orig_module.intermediate.dense.bias = inter_ff_b
+            orig_module.intermediate.dense.weight.data = inter_ff_w
+            orig_module.intermediate.dense.bias.data = inter_ff_b
 
-        orig_module.output.dense.weight = child.output_w.data
-        orig_module.output.dense.bias = child.output_b.data
+        orig_module.output.dense.weight.data = child.output_w.data
+        orig_module.output.dense.bias.data = child.output_b.data
 
         transformer_ln_w = child.norm_w.data
         transformer_ln_b = child.norm_b.data
         if preln:
-            orig_module.PreAttentionLayerNorm.weight = transformer_ln_w
-            orig_module.PreAttentionLayerNorm.bias = transformer_ln_b
+            orig_module.PreAttentionLayerNorm.weight.data = transformer_ln_w
+            orig_module.PreAttentionLayerNorm.bias.data = transformer_ln_b
         else:
-            orig_module.output.LayerNorm.weight = transformer_ln_w
-            orig_module.output.LayerNorm.bias = transformer_ln_b
+            orig_module.output.LayerNorm.weight.data = transformer_ln_w
+            orig_module.output.LayerNorm.bias.data = transformer_ln_b
         return orig_module
 
-    return replace_module(model=model, orig_class=ds_transformer.DeepSpeedTransformerLayer, replace_fn=replace_fn)
+    return replace_module(model=model,
+                          orig_class=ds_transformer.DeepSpeedTransformerLayer,
+                          replace_fn=replace_fn)
+
 
 def replace_module(model, orig_class, replace_fn):
     """ Scan the model for instances of ``orig_clas:`` to replace using ``replace_fn``.
