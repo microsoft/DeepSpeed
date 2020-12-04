@@ -6,6 +6,11 @@ import numpy as np
 import deepspeed
 from deepspeed.runtime.fp16.onebit.adam import Adam
 
+# Configure wall clock timer
+from deepspeed.utils.timer import SynchronizedWallClockTimer
+
+timers = SynchronizedWallClockTimer()
+
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
@@ -58,15 +63,38 @@ right_server_size = right_tensor_size // size
 # Adding bias to the initialization of the gradient we are communicating
 # In order to get rid of the case where some elements in the gradient are too small
 a = (torch.rand(tensor_size, device=device) - 0.5) + 0.01 * rank
+print("size of the momentum buffer =", a.shape)
+
 worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
+
+iters = 100
+
+# Warmup
+for i in range (iters):
+    torch_sim(a)
+
+timers('simulated').start()
+for i in range (iters):
+    torch_sim(a)
+timers('simulated').stop()
+
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
+
 torch.cuda.empty_cache()
 local_rank = rank % torch.cuda.device_count()
-a_after = dummy_optim.compressed_allreduce(a,
-                                           worker_error,
-                                           server_error,
-                                           local_rank)
+
+# Warmup
+for i in range (iters):
+    dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+
+timers('compressed').start()
+for i in range(iters):
+    dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+timers('compressed').stop()
+
+a_after = dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+
 threshold = 1e-6
 magnitude_threshold = 1e-6
 diff_mask = (a_after - a_torch) > threshold
@@ -74,13 +102,18 @@ diff_server_mask = torch.chunk(diff_mask, size)[rank]
 mpi_server = torch.chunk(a_after, size)[rank] + server_error
 torch_server = torch.chunk(a_torch, size)[rank] + server_error_torch
 
+test_correctness = False
 # If the number in the compensated_server_m is too small (e.g 1e-8), then calling sign() might be problematic
 # The test would skip those numbers that are too small in compensated_server_m
-if torch.sum(diff_server_mask) == 0:
-    print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
-else:
-    check_mag_mask = mpi_server[diff_mask] > magnitude_threshold
-    if torch.sum(check_mag_mask) == 0:
+if test_correctness:
+    if torch.sum(diff_server_mask) == 0:
         print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
     else:
-        print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))
+        check_mag_mask = mpi_server[diff_mask] > magnitude_threshold
+        if torch.sum(check_mag_mask) == 0:
+            print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
+        else:
+            print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))
+
+timer_names = ['simulated', 'compressed']
+timers.log(names=timer_names, normalizer=iters, memory_breakdown=None)
