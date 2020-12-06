@@ -261,7 +261,7 @@ class CUDAOpBuilder(OpBuilder):
         args = []
         for cc in ccs:
             cc = cc.replace('.', '')
-            args.append(f'-gencode arch=compute_{cc},code=compute_{cc}')
+            args.append(f'-gencode=arch=compute_{cc},code=compute_{cc}')
 
         return args
 
