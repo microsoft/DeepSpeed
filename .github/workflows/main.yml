@@ -3,7 +3,7 @@
 name: Build
 
 # Controls when the action will run.
-on: 
+on:
   push:
     paths-ignore:
     - 'docs/**'
