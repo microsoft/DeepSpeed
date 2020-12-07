@@ -52,6 +52,9 @@ class PipelineEngine(DeepSpeedEngine):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
+        # We schedule the all-reduces, so disable it in super().backward()
+        self.enable_backward_allreduce = False
+
         # pipeline step for logging
         self.log_batch_step_id = -1
 
@@ -546,7 +549,7 @@ class PipelineEngine(DeepSpeedEngine):
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
         if self.is_last_stage():
-            super().backward(self.loss, allreduce_gradients=False)
+            super().backward(self.loss)
             self.mem_status('AFTER BWD')
             return
 
