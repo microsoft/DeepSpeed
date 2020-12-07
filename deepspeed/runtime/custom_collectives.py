@@ -2,8 +2,20 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
-
 def my_igather_nccl(rank, size, group, sendbuf, recvbuf, root):
+    req = []
+    import torch.distributed as dist
+    if rank == root:
+        for idx in range(size):
+            if idx != rank:
+                req.append(dist.irecv(recvbuf[idx], src=idx, group=group))
+            else:
+                recvbuf[rank] = sendbuf
+    else:
+        req.append(dist.isend(sendbuf, group=group, dst=root))
+    return req
+
+def my_gather_nccl(rank, size, group, sendbuf, recvbuf, root):
     import torch.distributed as dist
     if rank == root:
         for idx in range(size):
@@ -13,7 +25,6 @@ def my_igather_nccl(rank, size, group, sendbuf, recvbuf, root):
                 recvbuf[rank] = sendbuf
     else:
         dist.send(sendbuf, group=group, dst=root, tag=987)
-
 
 def my_igather(rank, size, comm, sendbuf, recbuf, root):
     req = []

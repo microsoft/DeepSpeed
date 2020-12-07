@@ -187,16 +187,20 @@ class Adam(torch.optim.Optimizer):
         recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
 
         # communication phase 1
-        #TODO: dist.sync and try async_op=True method
         gather_start = time.time()
+        requests = []
         for idx in range(self.size):
-            my_igather_nccl(self.rank,
+            requests += my_igather_nccl(self.rank,
                             self.size,
                             self.world_group,
                             sign_list_packed[idx],
                             recvbuf_sign,
                             root=idx)
-            my_igather_nccl(self.rank, self.size, self.world_group, worker_scale, recvbuf_scale, root=idx)
+            requests += my_igather_nccl(self.rank, self.size, self.world_group, worker_scale, recvbuf_scale, root=idx)
+
+        for i in range(len(requests)):
+            requests[i].wait()
+
         gather_end = time.time()
 
         cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
@@ -408,7 +412,6 @@ class Adam(torch.optim.Optimizer):
                              worker_error,
                              server_error,
                              local_rank):
-        
         if self.communication_backend == 'nccl':
             return self.compressed_nccl_allreduce(buffer_m, worker_error, server_error, local_rank)
         elif self.communication_backend == 'mpi':
