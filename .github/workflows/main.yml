@@ -3,12 +3,12 @@
 name: Build
 
 # Controls when the action will run.
-on:
+on: [push, pull_request]
   # Triggers the workflow on push or pull request events but only for the master branch
-  push:
-    branches: [ * ]
-  pull_request:
-    branches: [ * ]
+  #push:
+  #  branches: [ * ]
+  #pull_request:
+  #  branches: [ * ]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
