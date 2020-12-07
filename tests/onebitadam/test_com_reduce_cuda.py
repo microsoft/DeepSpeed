@@ -26,12 +26,12 @@ dummy_model = [torch.nn.Parameter(torch.ones(10))]
 # Set cuda_aware to True to use CUDA buffers for communication
 dummy_optim = Adam(dummy_model,
                    cuda_aware=False,
-                   communication_backend='mpi',
+                   communication_backend='nccl',
                    compression_backend='cupy')
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
-
+# A simulated compression function using torch.distributed
 def torch_sim(a):
     a_sign = a.sign().add_(1).bool().float().add_(-0.5).mul_(2.0)
     scale = a.norm() / np.sqrt(a.numel())
@@ -52,7 +52,6 @@ def torch_sim(a):
     torch.distributed.barrier()
     return a_server_compressed, worker_error, server_error
 
-
 tensor_size = 100 * 2**20
 server_size = int(tensor_size / size)
 if tensor_size % (8 * size) != 0:
@@ -62,36 +61,36 @@ else:
 right_server_size = right_tensor_size // size
 # Adding bias to the initialization of the gradient we are communicating
 # In order to get rid of the case where some elements in the gradient are too small
-a = (torch.rand(tensor_size, device=device) - 0.5) + 0.01 * rank
-print("size of the momentum buffer =", a.shape)
-
 worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
+test_performance = False
+
 iters = 100
 
-# Warmup
-for i in range (iters):
-    torch_sim(a)
+if test_performance:
+    # Warmup
+    for i in range (iters):
+        torch_sim(a)
 
-timers('simulated').start()
-for i in range (iters):
-    torch_sim(a)
-timers('simulated').stop()
+    timers('simulated').start()
+    for i in range (iters):
+        torch_sim(a)
+    timers('simulated').stop()
 
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
-
 torch.cuda.empty_cache()
 local_rank = rank % torch.cuda.device_count()
 
-# Warmup
-for i in range (iters):
-    dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+if test_performance:
+    # Warmup
+    for i in range (iters):
+        dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
 
-timers('compressed').start()
-for i in range(iters):
-    dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
-timers('compressed').stop()
+    timers('compressed').start()
+    for i in range(iters):
+        dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+    timers('compressed').stop()
 
 a_after = dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
 
@@ -102,7 +101,8 @@ diff_server_mask = torch.chunk(diff_mask, size)[rank]
 mpi_server = torch.chunk(a_after, size)[rank] + server_error
 torch_server = torch.chunk(a_torch, size)[rank] + server_error_torch
 
-test_correctness = False
+test_correctness = True
+
 # If the number in the compensated_server_m is too small (e.g 1e-8), then calling sign() might be problematic
 # The test would skip those numbers that are too small in compensated_server_m
 if test_correctness:
@@ -115,5 +115,6 @@ if test_correctness:
         else:
             print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))
 
-timer_names = ['simulated', 'compressed']
-timers.log(names=timer_names, normalizer=iters, memory_breakdown=None)
+if test_performance:
+    timer_names = ['simulated', 'compressed']
+    timers.log(names=timer_names, normalizer=iters, memory_breakdown=None)
