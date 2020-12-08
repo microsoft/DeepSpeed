@@ -138,7 +138,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
 
     @classmethod
     def from_json_file(cls, json_file):
-        with open(json_file, "r", encoding='utf-8') as reader:
+        with open(json_file, "r", encoding='utf-16') as reader:
             text = reader.read()
         return cls.from_dict(json.loads(text))
 
@@ -174,14 +174,14 @@ class DeepSpeedTransformerFunction(Function):
         forward_func = cuda_module.forward_fp16 if config.fp16 else cuda_module.forward_fp32
 
         inp_size = input.size()
-        if inp_size[1] % 8 != 0:
+        if inp_size[1] % 16 != 0:
             input = torch.cat((input,
                                torch.randn(inp_size[0],
-                                           (8 - (inp_size[1] % 8)),
+                                           (16 - (inp_size[1] % 16)),
                                            inp_size[2]).to(input.device).type_as(input)),
                               1)
             input_mask = torch.cat((input_mask, torch.ones(inp_size[0], input_mask.shape[1], input_mask.shape[2], \
-                                            (8 - (inp_size[1] % 8))).to(input_mask.device).type_as(input_mask) * -10000), 3)
+                                            (16 - (inp_size[1] % 16))).to(input_mask.device).type_as(input_mask) * -10000), 3)
 
         (output,
          inp_norm,
@@ -309,7 +309,7 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_layer_norm_var = attn_layer_norm_var
             ctx.layer_norm_var = layer_norm_var
 
-        if inp_size[1] % 8 != 0:
+        if inp_size[1] % 16 != 0:
             output = torch.narrow(output, 1, 0, inp_size[1])
         return output
 
@@ -317,8 +317,8 @@ class DeepSpeedTransformerFunction(Function):
     def backward(ctx, grad_output):
         bsz = grad_output.shape[0]
         grad_output_shape = grad_output.size()
-        if grad_output_shape[1] % 8 != 0:
-            grad_output = torch.cat((grad_output, torch.zeros(bsz, (8 - (grad_output_shape[1] % 8)), \
+        if grad_output_shape[1] % 16 != 0:
+            grad_output = torch.cat((grad_output, torch.zeros(bsz, (16 - (grad_output_shape[1] % 16)), \
                                         grad_output_shape[2]).to(grad_output.device).type_as(grad_output)), 1)
 
         if bsz > ctx.config.batch_size:
@@ -410,7 +410,7 @@ class DeepSpeedTransformerFunction(Function):
              norm_w,
              norm_b)
 
-        if grad_output_shape[1] % 8 != 0:
+        if grad_output_shape[1] % 16 != 0:
             grad_input = torch.narrow(grad_input, 1, 0, grad_output_shape[1])
 
         return (grad_input,
