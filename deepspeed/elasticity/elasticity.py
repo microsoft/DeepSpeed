@@ -1,39 +1,13 @@
+"""
+Copyright 2020 The Microsoft DeepSpeed Team
+"""
 import numpy as np
 
-
-class DeepSpeedElasticityConfig(object):
-    def __init__(self, param_dict, world_size):
-        super(DeepSpeedElasticityConfig, self).__init__()
-
-        self.world_size = world_size
-
-        self.micro_batches = []
-        self.max_acceptable_batch_size = None
-        self.min_gpus = None
-        self.max_gpus = None
-        self.prefer_larger_batch_size = True
-
-        #batch size computed based on elasticity config
-        self.computed_batch_size = None
-
-        #micro batch size for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_micro_batch = None
-
-        #gradient accumulation steps for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_gradient_accumulation_step = None
-
-        self._initialize(param_dict)
-
-    def _initialize(self, param_dict):
-        pass
-
-
+from .config import ElasticityConfig, ElasticityError
+from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT
 '''Thirty eight smallest highly composite numbers.
 The list should be enough to support up to 720K batch
 size'''
-
 hcn_list = [
     1,
     2,
@@ -142,13 +116,11 @@ def get_best_candidates(candidate_batch_sizes,
     return final_batch_size, valid_gpus
 
 
-def get_compatible_gpus(micro_batches,
-                        max_acceptable_batch_size,
-                        min_gpus=None,
-                        max_gpus=None,
-                        prefer_larger=True,
-                        model_parallel=1,
-                        pipeline_parallel=1):
+def _get_compatible_gpus_v01(micro_batches,
+                             max_acceptable_batch_size,
+                             min_gpus=None,
+                             max_gpus=None,
+                             prefer_larger=True):
     '''We use two heuristics to compute the batch size
         1. We use the Lowest Common Multiple of the micro-batches
     as the base batch size and scale it by a HCN such that the result is
@@ -167,13 +139,6 @@ def get_compatible_gpus(micro_batches,
         final_batch_size
         valid_gpus
     '''
-    assert model_parallel == 1, f"Does not currently support model parallel \
-                                not equal to 1, but was provided \
-                                {model_parallel}"
-
-    assert pipeline_parallel == 1, f"Does not currently support model parallel \
-                                not equal to 1, but was provided \
-                                {pipeline_parallel}"
 
     if min_gpus is None:
         min_gpus = int(1)
@@ -194,13 +159,40 @@ def get_compatible_gpus(micro_batches,
     candidate_batch_sizes = get_candidate_batch_sizes(base_list,
                                                       max_acceptable_batch_size)
 
-    final_batch_size, valid_gpus = get_best_candidates(candidate_batch_sizes, micro_batches,
-                                                        min_gpus, max_gpus, prefer_larger)
+    final_batch_size, valid_gpus = get_best_candidates(
+        candidate_batch_sizes,
+        micro_batches,
+        min_gpus,
+        max_gpus,
+        prefer_larger)
 
     return final_batch_size, valid_gpus
 
 
-#def get_compatible_gpus(ds_config_file):
+def get_compatible_gpus(ds_config_file: dict):
+    if ELASTICITY not in ds_config_file:
+        raise ElasticityError(f"'{ELASTICITY} is missing from config json," \
+            " please add it if running an elastic training job.")
+
+    elastic_config_dict = ds_config_file[ELASTICITY]
+    if not elastic_config_dict.get(ENABLED, ENABLED_DEFAULT):
+        raise ElasticityError("Elasticity is disabled, please enable it " \
+            "('enabled':true) if running an elastic training job.")
+
+    elastic_config = ElasticityConfig(elastic_config_dict)
+
+    # TODO: ensure runtime version matches json version
+
+    # TODO: ensure mp and pp are not used
+
+    final_batch_size, valid_gpus = _get_compatible_gpus_v01(
+        micro_batches=elastic_config.micro_batches,
+        max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
+        min_gpus=elastic_config.min_gpus,
+        max_gpus=elastic_config.max_gpus,
+        prefer_larger=elastic_config.prefer_larger_batch_size)
+
+    return final_batch_size, valid_gpus
 
 
 def small_test():
