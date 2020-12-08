@@ -5,14 +5,7 @@ import torch.distributed as dist
 import numpy as np
 import deepspeed
 
-from deepspeed.runtime.fp16.onebit.adam import Adam
-from deepspeed.runtime.comm.nccl import NcclBackend
-
-
-# Configure wall clock timer
-from deepspeed.utils.timer import SynchronizedWallClockTimer
-
-timers = SynchronizedWallClockTimer()
+from deepspeed.runtime.comm.mpi import MpiBackend
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -24,15 +17,8 @@ torch.distributed.init_process_group(backend='nccl',
                                      world_size=size,
                                      rank=rank)
 
-dummy_model = [torch.nn.Parameter(torch.ones(10))]
-
-# Set cuda_aware to True to use CUDA buffers for communication
-
-#dummy_optim = Adam(dummy_model,
-#                   cuda_aware=False,
-#                   comm_backend_name='nccl')
-
-dummy_optim = NcclBackend()
+# Change cuda_aware to True to test out CUDA-Aware MPI communication
+backend = MpiBackend(cuda_aware=False)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
@@ -74,35 +60,11 @@ a = (torch.rand(tensor_size, device=device) - 0.5) + 0.01 * rank
 worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
-test_performance = False
-
-iters = 100
-
-if test_performance:
-    # Warmup
-    for i in range(iters):
-        torch_sim(a)
-
-    timers('simulated').start()
-    for i in range(iters):
-        torch_sim(a)
-    timers('simulated').stop()
-
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
 torch.cuda.empty_cache()
 local_rank = rank % torch.cuda.device_count()
 
-if test_performance:
-    # Warmup
-    for i in range(iters):
-        dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
-
-    timers('compressed').start()
-    for i in range(iters):
-        dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
-    timers('compressed').stop()
-
-a_after = dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
+a_after = backend.compressed_allreduce(a, worker_error, server_error, local_rank)
 
 threshold = 1e-6
 magnitude_threshold = 1e-6
@@ -117,14 +79,10 @@ test_correctness = True
 # The test would skip those numbers that are too small in compensated_server_m
 if test_correctness:
     if torch.sum(diff_server_mask) == 0:
-        print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
+        print('Successfully passed the test for MPI Backend at Rank {}'.format(rank))
     else:
         check_mag_mask = mpi_server[diff_mask] > magnitude_threshold
         if torch.sum(check_mag_mask) == 0:
-            print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
+            print('Successfully passed the test for MPI Backend at Rank {}'.format(rank))
         else:
             print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))
-
-if test_performance:
-    timer_names = ['simulated', 'compressed']
-    timers.log(names=timer_names, normalizer=iters, memory_breakdown=None)
