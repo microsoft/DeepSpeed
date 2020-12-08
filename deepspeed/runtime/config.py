@@ -14,9 +14,9 @@ from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 
-from .. import __version__
+from ..git_version_info import version as __version__
 from ..utils import logger
-from ..elasticity import elasticity_enabled, get_compatible_gpus, assert_world_size
+from ..elasticity import elasticity_enabled, get_compatible_gpus
 
 TENSOR_CORE_ALIGN_SIZE = 8
 

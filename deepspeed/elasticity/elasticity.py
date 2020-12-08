@@ -7,7 +7,7 @@ from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
     ElasticityIncompatibleWorldSize
 from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
     MINIMUM_DEEPSPEED_VERSION
-from .. import __version__
+from ..git_version_info import version as __version__
 '''Thirty eight smallest highly composite numbers.
 The list should be enough to support up to 720K batch
 size'''
