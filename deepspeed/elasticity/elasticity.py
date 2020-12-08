@@ -3,8 +3,11 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import numpy as np
 
-from .config import ElasticityConfig, ElasticityError
-from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT
+from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
+    ElasticityIncompatibleWorldSize
+from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
+    MINIMUM_DEEPSPEED_VERSION
+from .. import __version__
 '''Thirty eight smallest highly composite numbers.
 The list should be enough to support up to 720K batch
 size'''
@@ -134,7 +137,6 @@ def _get_compatible_gpus_v01(micro_batches,
     compatible GPU counts in the min-max GPU range if provided, other wise
     we return the batch size with the most number of total compatible GPU counts.
 
-
     Returns:
         final_batch_size
         valid_gpus
@@ -169,30 +171,109 @@ def _get_compatible_gpus_v01(micro_batches,
     return final_batch_size, valid_gpus
 
 
-def get_compatible_gpus(ds_config_file: dict):
-    if ELASTICITY not in ds_config_file:
-        raise ElasticityError(f"'{ELASTICITY} is missing from config json," \
+def _compatible_ds_version_check(target_deepspeed_version: str):
+    min_major, min_minor, min_patch = MINIMUM_DEEPSPEED_VERSION.split(".")
+    target_version_list = list(map(int, target_deepspeed_version.split(".")))
+    assert len(target_version_list) >= 2, "Unable to parse version number, expecting" \
+        f"major.minor[.patch] format but received {target_deepspeed_version}"
+
+    if len(target_deepspeed_version) == 2:
+        trg_major, trg_minor = target_version_list
+        trg_patch = 0
+    else:
+        trg_major, trg_minor, trg_patch = target_version_list
+
+    err_str = f"Target deepspeed version of {target_deepspeed_version} is not compatible " \
+        f"with minimum version {MINIMUM_DEEPSPEED_VERSION} supporting elasticity."
+    if trg_major < min_major:
+        raise ElasticityError(err_str)
+    if trg_minor < min_minor:
+        raise ElasticityError(err_str)
+    if trg_patch < min_patch:
+        raise ElasticityError(err_str)
+
+
+def elasticity_enabled(ds_config: dict):
+    if ELASTICITY not in ds_config:
+        return False
+    return ds_config[ELASTICITY].get(ENABLED, ENABLED_DEFAULT)
+
+
+def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_size=0):
+    """[summary]
+
+    Args:
+        ds_config (dict): DeepSpeed config dictionary/json
+        target_deepspeed_version (str): When called from scheduling
+            infrastructure we want to ensure that the target deepspeed version is
+            compatible with the elasticity version used in the backend.
+        world_size (int, optional): Intended/current world size, will do some sanity
+            checks to ensure world size is actually valid with the config.
+
+    Raises:
+        ElasticityConfigError: Missing required elasticity config or elasticity disabled
+        ElasticityError: If target deepspeed version is not compatible with current version
+
+    Returns:
+        final_batch_size (int): total batch size used for training
+        valid_gpus (list(int)): list of valid GPU counts with this config
+    """
+    if ELASTICITY not in ds_config:
+        raise ElasticityConfigError(f"'{ELASTICITY}' is missing from config json," \
             " please add it if running an elastic training job.")
 
-    elastic_config_dict = ds_config_file[ELASTICITY]
+    elastic_config_dict = ds_config[ELASTICITY]
     if not elastic_config_dict.get(ENABLED, ENABLED_DEFAULT):
-        raise ElasticityError("Elasticity is disabled, please enable it " \
+        raise ElasticityConfigError("Elasticity is disabled, please enable it " \
             "('enabled':true) if running an elastic training job.")
 
     elastic_config = ElasticityConfig(elastic_config_dict)
 
-    # TODO: ensure runtime version matches json version
+    if elastic_config.version > LATEST_ELASTICITY_VERSION:
+        raise ElasticityConfigError("Attempting to run elasticity version " \
+            f"{elastic_config.version} but runtime only supports up " \
+            f"to {LATEST_ELASTICITY_VERSION}")
 
-    # TODO: ensure mp and pp are not used
+    # Ensure target deepspeed version works with intended elasticity version
+    if not _compatible_ds_version_check(target_deepspeed_version):
+        raise ElasticityError("Unable to run elasticity on target deepspeed version of" \
+            f" {target_deepspeed_version}, currently {__version__}")
 
-    final_batch_size, valid_gpus = _get_compatible_gpus_v01(
-        micro_batches=elastic_config.micro_batches,
-        max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
-        min_gpus=elastic_config.min_gpus,
-        max_gpus=elastic_config.max_gpus,
-        prefer_larger=elastic_config.prefer_larger_batch_size)
+    if elastic_config.version == 0.1:
+        final_batch_size, valid_gpus = _get_compatible_gpus_v01(
+            micro_batches=elastic_config.micro_batches,
+            max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
+            min_gpus=elastic_config.min_gpus,
+            max_gpus=elastic_config.max_gpus,
+            prefer_larger=elastic_config.prefer_larger_batch_size)
+    else:
+        raise NotImplementedError(
+            f"Unable to find elastic logic for version: {elastic_config.version}")
+
+    if world_size > 0:
+        if world_size not in valid_gpus:
+            raise ElasticityIncompatibleWorldSize("World size is not valid " \
+        f"with the current list of valid GPU counts: {valid_gpus}")
 
     return final_batch_size, valid_gpus
+
+
+def small_test_config():
+    ds_config = {
+        "elasticity": {
+            "enabled": True,
+            "max_train_batch_size": 2000,
+            "micro_batch_sizes": [2,
+                                  4,
+                                  6],
+            "min_gpus": 1,
+            "max_gpus": 10000,
+            "min_time": 20,
+            "version": 0.1
+        }
+    }
+
+    final_batch_size, valid_gpus = get_compatible_gpus(ds_config)
 
 
 def small_test():
@@ -204,7 +285,7 @@ def small_test():
     micro_batches = sorted(list(set(micro_batches)), reverse=True)
 
 
-    final_batch, compatible_gpu_counts = get_compatible_gpus(micro_batches,
+    final_batch, compatible_gpu_counts = _get_compatible_gpus_v01(micro_batches,
                                 max_acceptable_batch_size,
                                 min_gpus = min_gpus,
                                 max_gpus = max_gpus)
@@ -227,4 +308,5 @@ def small_test():
         assert found_valid_mb, "No valid mb found"
 
 
-#small_test()
+if __name__ == "__main__":
+    small_test()

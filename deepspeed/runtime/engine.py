@@ -152,6 +152,10 @@ class DeepSpeedEngine(Module):
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
 
+        if mpu is not None:
+            assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+                " with model parallelism."
+
         self._init_distributed(dist_init_required)
 
         if self.tensorboard_enabled() and self.global_rank == 0:
@@ -289,6 +293,9 @@ class DeepSpeedEngine(Module):
             assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
             assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
                 world_size, dist.get_world_size())
+
+    def elasticity_enabled(self):
+        return self._config.elasticity_enabled
 
     def pld_enabled(self):
         return self._config.pld_enabled

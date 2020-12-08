@@ -8,6 +8,14 @@ class ElasticityError(Exception):
     pass
 
 
+class ElasticityConfigError(ElasticityError):
+    pass
+
+
+class ElasticityIncompatibleWorldSize(ElasticityError):
+    pass
+
+
 class ElasticityConfig:
     """
     "elasticity": {

@@ -1,6 +1,5 @@
 """
-Copyright (c) Microsoft Corporation
-Licensed under the MIT license.
+Copyright 2020 The Microsoft DeepSpeed Team
 """
 
 #########################################
@@ -24,6 +23,9 @@ Elasticity should be enabled as:
 '''
 
 ELASTICITY = 'elasticity'
+
+# Current elasticity version
+LATEST_ELASTICITY_VERSION = 0.1
 
 ENABLED = 'enabled'
 ENABLED_DEFAULT = False
@@ -51,4 +53,7 @@ PREFER_LARGER_BATCH_DEFAULT = True
 
 # Version of elastic logic to use
 VERSION = "version"
-VERSION_DEFAULT = 0.1
+VERSION_DEFAULT = LATEST_ELASTICITY_VERSION
+
+# Minimum deepspeed version to use elasticity
+MINIMUM_DEEPSPEED_VERSION = "0.3.8"

@@ -6,13 +6,17 @@ Licensed under the MIT license.
 import torch
 import json
 import copy
-from deepspeed.runtime.constants import *
-from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
-from deepspeed.runtime.config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
-from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.runtime.zero.constants import *
-from deepspeed.runtime.activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
-from deepspeed.utils import logger
+
+from .constants import *
+from .fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
+from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
+from .zero.config import DeepSpeedZeroConfig
+from .zero.constants import *
+from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+
+from .. import __version__
+from ..utils import logger
+from ..elasticity import elasticity_enabled, get_compatible_gpus, assert_world_size
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -503,6 +507,23 @@ class DeepSpeedConfig(object):
         except:
             self.global_rank = 0
             self.world_size = 1
+
+        # If elastic-mode enabled, update compute + update _param_dict
+        self.elasticity_enabled = elasticity_enabled(self._param_dict)
+        if self.elasticity_enabled:
+            logger.info("DeepSpeed elasticity support enabled")
+            final_batch_size, valid_gpus = get_compatible_gpus(
+                ds_config=self._param_dict,
+                target_deepspeed_version=__version__,
+                world_size=self.world_size)
+
+            # Update param_dict to use new final batch size
+            orig_batch_size = self._param_dict.get(TRAIN_BATCH_SIZE,
+                                                   TRAIN_BATCH_SIZE_DEFAULT)
+            logger.info("[Elasticity] updating training_batch_size: " \
+                f"{orig_batch_size} -> {final_batch_size}")
+            logger.info(f"[Elasticity] valid GPU counts: {valid_gpus}")
+            self._param_dict[TRAIN_BATCH_SIZE] = final_batch_size
 
         self._initialize_params(self._param_dict)
         self._configure_train_batch_size()
