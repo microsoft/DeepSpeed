@@ -7,17 +7,9 @@ import importlib
 import numpy as np
 import time
 import torch.distributed as dist
-from torch.utils.dlpack import to_dlpack
-from torch.utils.dlpack import from_dlpack
+
 from deepspeed.utils.logging import logger
 
-# Delayed/lazy imports
-my_igather_nccl = None
-cupy = None
-gather_cuda = None
-gather_host = None
-allgather_cuda = None
-allgather_host = None
 
 class Adam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
@@ -68,8 +60,7 @@ class Adam(torch.optim.Optimizer):
                  max_grad_norm=0.,
                  amsgrad=False,
                  cuda_aware=False,
-                 communication_backend='nccl',
-                 compression_backend='deepspeed'):
+                 comm_backend_name='nccl'):
 
         if amsgrad:
             raise RuntimeError('1-bit Adam does not support the AMSGrad variant.')
@@ -96,326 +87,21 @@ class Adam(torch.optim.Optimizer):
         self.freeze_step = freeze_step
         self.cuda_aware = cuda_aware
 
-        self.communication_backend = communication_backend
-        self.compression_backend = compression_backend
+        self.comm_backend_name = comm_backend_name
 
-        global my_igather_nccl
-        global cupy
-        global gather_cuda, gather_host, allgather_cuda, allgather_host
+        # Empty initializer. Set handle based on the comm backend as follows.
+        self.comm_backend_handle = None
 
-        if self.compression_backend == 'cupy':
-            import cupy
-
-        if self.communication_backend == 'nccl':
+        if self.comm_backend_name == 'nccl':
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
-            self.world_group = dist.new_group(ranks=range(dist.get_world_size()))
-            self.rank = dist.get_rank(group=self.world_group)
-            self.size = dist.get_world_size(group=self.world_group)
-            from deepspeed.runtime.custom_collectives import my_igather_nccl
+            from deepspeed.runtime.comm.nccl import NcclBackend
+            self.comm_backend_handle = NcclBackend()
 
-        elif self.communication_backend == 'mpi':
-            from mpi4py import MPI
-            self.comm = MPI.COMM_WORLD
-            self.rank = self.comm.Get_rank()
-            self.size = self.comm.Get_size()
-            from deepspeed.runtime.custom_collectives import gather_cuda, gather_host, allgather_cuda, allgather_host
-        
+        elif self.comm_backend_name == 'mpi':
+            from deepspeed.runtime.comm.mpi import MpiBackend
+            self.comm_backend_handle = MpiBackend(cuda_aware)
+
         self.divider = int(self.size * 8 / np.gcd(self.size, 8))
-
-    def torch2cupy(self, tensor):
-        return cupy.fromDlpack(to_dlpack(tensor))
-
-    def cupy2torch(self, cupy_tensor):
-        return from_dlpack(cupy_tensor.toDlpack())
-
-    def compress_by_chunk(self, cupy_bool_tensor, num_chunks):
-        packed_sign = cupy.packbits(cupy_bool_tensor)
-        sign_list_packed = cupy.split(packed_sign, num_chunks)
-        cupy.cuda.get_current_stream().synchronize()
-        return sign_list_packed
-
-
-    def compressed_nccl_allreduce(self,
-                                  buffer_m: torch.tensor,
-                                  worker_error,
-                                  server_error,
-                                  local_rank):
-
-        all_start_time = time.time()
-        original_size = buffer_m.numel()
-        cupy.cuda.Device(local_rank).use()
-
-        if torch.numel(buffer_m) != torch.numel(worker_error):
-            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m),
-                                       device=buffer_m.device)
-            buffer_m = torch.cat([buffer_m, empty_tensor])
-
-        buffer_m.add_(worker_error)
-        worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
-        sign_buffer_m = buffer_m.sign().add_(1).bool()
-        sign_buffer_m = sign_buffer_m.float()
-        sign_buffer_m.add_(-0.5).mul_(2.0)
-        worker_error.set_((buffer_m - worker_scale * sign_buffer_m))
-        sign_buffer_m = None
-
-        compensated_buffer_m = buffer_m
-        compensated_buffer_m.sign_()
-        compensated_buffer_m = compensated_buffer_m.add_(1).bool()
-
-        cupy_worker_scale = self.torch2cupy(worker_scale)
-        cupy_compensated_buffer_m = self.torch2cupy(compensated_buffer_m)
-        compensated_buffer_m = None
-
-        cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
-                                                       self.size)
-        cupy_compensated_buffer_m = None
-
-        cupy_recvbuf_sign = cupy.zeros(
-            [self.size,
-             cupy_sign_list_packed[self.rank].size],
-            dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
-
-        sign_list_packed = [None] * self.size
-
-        for idx in range(self.size):
-            sign_list_packed[idx] = self.cupy2torch(cupy_sign_list_packed[idx])
-
-        recvbuf_sign = self.cupy2torch(cupy_recvbuf_sign)
-
-        worker_scale = self.cupy2torch(cupy_worker_scale)
-        recvbuf_scale = self.cupy2torch(cupy_recvbuf_scale)
-
-        # communication phase 1
-        gather_start = time.time()
-        requests = []
-        for idx in range(self.size):
-            requests += my_igather_nccl(self.rank,
-                            self.size,
-                            self.world_group,
-                            sign_list_packed[idx],
-                            recvbuf_sign,
-                            root=idx)
-            requests += my_igather_nccl(self.rank, self.size, self.world_group, worker_scale, recvbuf_scale, root=idx)
-
-        for i in range(len(requests)):
-            requests[i].wait()
-
-        gather_end = time.time()
-
-        cupy_recvbuf_sign = self.torch2cupy(recvbuf_sign)
-        cupy_recvbuf_scale = self.torch2cupy(recvbuf_scale)
-
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
-            self.size,
-            -1)
-        cupy_recvbuf_sign = None
-
-        unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
-        cupy_unpacked_sign = None
-
-        unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
-        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / self.size)
-
-        compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
-        unpacked_sign = None
-
-        compensated_server_m.add_(server_error)
-        server_scale = torch.norm(compensated_server_m) / np.sqrt(
-            compensated_server_m.numel())
-        sign_server_m = compensated_server_m.sign().add_(1).bool()
-        sign_server_m = sign_server_m.float()
-        sign_server_m.add_(-0.5).mul_(2.0)
-        server_error.set_(compensated_server_m - server_scale * sign_server_m)
-        sign_server_m = None
-
-        compensated_server_m.sign_()
-        compensated_server_m = compensated_server_m.add_(1).bool()
-        cupy_server_scale = self.torch2cupy(server_scale)
-        cupy_compensated_server_m = self.torch2cupy(compensated_server_m)
-        compensated_server_m = None
-
-        cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
-
-        cupy_recvbuf_sign_server = cupy.zeros(
-            [self.size,
-             cupy_server_sign_packed[0].size],
-            dtype=cupy_sign_list_packed[0].dtype)
-
-        server_sign_packed = [None] * 1
-        recvbuf_sign_server = [None] * self.size
-
-        for idx in range(self.size):
-            recvbuf_sign_server[idx] = self.cupy2torch(cupy_recvbuf_sign_server[idx])
-
-        server_sign_packed[0] = self.cupy2torch(cupy_server_sign_packed[0])
-
-        server_scale = self.cupy2torch(cupy_server_scale)
-        cupy_recvbuf_scale_server = cupy.zeros([self.size,
-                                                1],
-                                               dtype=cupy_worker_scale.dtype)
-
-        recvbuf_scale_server = [None] * self.size
-        for idx in range(self.size):
-            recvbuf_scale_server[idx] = self.cupy2torch(cupy_recvbuf_scale_server[idx])
-
-        # Communication Phase 2
-        dist.all_gather(recvbuf_sign_server, server_sign_packed[0])
-        dist.all_gather(recvbuf_scale_server, server_scale)
-
-        # need to convert from a tensor list to a single tensor
-        # dist.all_gather only provides a tensor list as the recv/output buffer
-        recvbuf_sign_server = torch.stack(recvbuf_sign_server)
-
-        cupy_recvbuf_sign_server = self.torch2cupy(recvbuf_sign_server)
-
-        cupy_server_unpacked_sign = (cupy.unpackbits(
-            cupy_recvbuf_sign_server.flatten())).reshape(self.size,
-                                                         -1)
-        cupy_recvbuf_sign_server = None
-
-        server_unpacked_sign = self.cupy2torch(cupy_server_unpacked_sign)
-        cupy_server_unpacked_sign = None
-
-        server_unpacked_sign = server_unpacked_sign.float().add_(-0.5).mul_(2.0)
-        server_scale = self.cupy2torch(cupy_recvbuf_scale_server)
-        buffer_m = server_unpacked_sign.mul_(server_scale).flatten()[0:original_size]
-
-        return buffer_m
-
-    def compressed_mpi_allreduce(self,
-                                 buffer_m: torch.tensor,
-                                 worker_error,
-                                 server_error,
-                                 local_rank):
-
-        all_start_time = time.time()
-        original_size = buffer_m.numel()
-        cupy.cuda.Device(local_rank).use()
-
-        if torch.numel(buffer_m) != torch.numel(worker_error):
-            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m),
-                                       device=buffer_m.device)
-            buffer_m = torch.cat([buffer_m, empty_tensor])
-
-        buffer_m.add_(worker_error)
-        worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
-        sign_buffer_m = buffer_m.sign().add_(1).bool()
-        sign_buffer_m = sign_buffer_m.float()
-        sign_buffer_m.add_(-0.5).mul_(2.0)
-        worker_error.set_((buffer_m - worker_scale * sign_buffer_m))
-        sign_buffer_m = None
-
-        compensated_buffer_m = buffer_m
-        compensated_buffer_m.sign_()
-        compensated_buffer_m = compensated_buffer_m.add_(1).bool()
-        cupy_worker_scale = self.torch2cupy(worker_scale)
-        cupy_compensated_buffer_m = self.torch2cupy(compensated_buffer_m)
-        compensated_buffer_m = None
-
-        cupy_sign_list_packed = self.compress_by_chunk(cupy_compensated_buffer_m,
-                                                       self.size)
-        cupy_compensated_buffer_m = None
-
-        cupy_recvbuf_sign = cupy.zeros(
-            [self.size,
-             cupy_sign_list_packed[self.rank].size],
-            dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
-
-        # Communication Phase 1
-        gather_start = time.time()
-        if self.cuda_aware:
-            gather_cuda(self.rank,
-                        self.size,
-                        self.comm,
-                        cupy_sign_list_packed,
-                        cupy_recvbuf_sign,
-                        cupy_worker_scale,
-                        cupy_recvbuf_scale)
-        else:
-            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(self.rank,
-               self.size,
-               self.comm,
-               cupy_sign_list_packed,
-               cupy_recvbuf_sign,
-               cupy_worker_scale,
-               cupy_recvbuf_scale)
-        gather_end = time.time()
-
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
-            self.size,
-            -1)
-        cupy_recvbuf_sign = None
-        unpacked_sign = self.cupy2torch(cupy_unpacked_sign).float()
-        cupy_unpacked_sign = None
-        unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
-        worker_scale = self.cupy2torch(cupy_recvbuf_scale).mul_(1 / self.size)
-        compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
-        unpacked_sign = None
-
-        compensated_server_m.add_(server_error)
-        server_scale = torch.norm(compensated_server_m) / np.sqrt(
-            compensated_server_m.numel())
-        sign_server_m = compensated_server_m.sign().add_(1).bool()
-        sign_server_m = sign_server_m.float()
-        sign_server_m.add_(-0.5).mul_(2.0)
-        server_error.set_(compensated_server_m - server_scale * sign_server_m)
-        sign_server_m = None
-
-        compensated_server_m.sign_()
-        compensated_server_m = compensated_server_m.add_(1).bool()
-        cupy_server_scale = self.torch2cupy(server_scale)
-        cupy_compensated_server_m = self.torch2cupy(compensated_server_m)
-        compensated_server_m = None
-
-        cupy_server_sign_packed = self.compress_by_chunk(cupy_compensated_server_m, 1)
-
-        cupy_recvbuf_sign_server = cupy.zeros(
-            [self.size,
-             cupy_server_sign_packed[0].size],
-            dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale_server = cupy.zeros([self.size,
-                                                1],
-                                               dtype=cupy_worker_scale.dtype)
-
-        # Communication Phase 2
-        if self.cuda_aware:
-            allgather_cuda(self.comm,
-                           cupy_server_sign_packed[0],
-                           cupy_recvbuf_sign_server,
-                           cupy_server_scale,
-                           cupy_recvbuf_scale_server)
-        else:
-            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather_host(self.comm,
-                  cupy_server_sign_packed[0],
-                  cupy_recvbuf_sign_server,
-                  cupy_server_scale,
-                  cupy_recvbuf_scale_server)
-
-        cupy_server_unpacked_sign = (cupy.unpackbits(
-            cupy_recvbuf_sign_server.flatten())).reshape(self.size,
-                                                         -1)
-        cupy_recvbuf_sign_server = None
-
-        server_unpacked_sign = self.cupy2torch(cupy_server_unpacked_sign)
-        cupy_server_unpacked_sign = None
-
-        server_unpacked_sign = server_unpacked_sign.float().add_(-0.5).mul_(2.0)
-        server_scale = self.cupy2torch(cupy_recvbuf_scale_server)
-        buffer_m = server_unpacked_sign.mul_(server_scale).flatten()[0:original_size]
-
-        return buffer_m
-
-    def compressed_allreduce(self,
-                             buffer_m: torch.tensor,
-                             worker_error,
-                             server_error,
-                             local_rank):
-        if self.communication_backend == 'nccl':
-            return self.compressed_nccl_allreduce(buffer_m, worker_error, server_error, local_rank)
-        elif self.communication_backend == 'mpi':
-            return self.compressed_mpi_allreduce(buffer_m, worker_error, server_error, local_rank)
 
     def step(self, closure=None, grads=None):
         """Performs a single optimization step.
@@ -526,11 +212,12 @@ class Adam(torch.optim.Optimizer):
                         grad = None
 
                         if self.size > 1:
-                            exp_avg.set_(self.compressed_allreduce(
-                                            exp_avg,
-                                            state['worker_error'],
-                                            state['server_error'],
-                                            self.deepspeed.local_rank))
+                            exp_avg.set_(
+                                self.comm_backend_handle.compressed_allreduce(
+                                    exp_avg,
+                                    state['worker_error'],
+                                    state['server_error'],
+                                    self.deepspeed.local_rank))
 
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
