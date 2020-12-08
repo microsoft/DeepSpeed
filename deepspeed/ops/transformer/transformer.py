@@ -29,7 +29,6 @@ class TransformerConfig():
         self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
-        self.max_seq_length = max_seq_length
         self.heads = heads
         self.attn_dropout_ratio = attn_dropout_ratio
         self.hidden_dropout_ratio = hidden_dropout_ratio
