@@ -31,6 +31,7 @@ dummy_optim = Adam(dummy_model,
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
+
 # A simulated compression function using torch.distributed
 def torch_sim(a):
     a_sign = a.sign().add_(1).bool().float().add_(-0.5).mul_(2.0)
@@ -52,6 +53,7 @@ def torch_sim(a):
     torch.distributed.barrier()
     return a_server_compressed, worker_error, server_error
 
+
 tensor_size = 100 * 2**20
 server_size = int(tensor_size / size)
 if tensor_size % (8 * size) != 0:
@@ -59,8 +61,11 @@ if tensor_size % (8 * size) != 0:
 else:
     right_tensor_size = tensor_size
 right_server_size = right_tensor_size // size
+
 # Adding bias to the initialization of the gradient we are communicating
 # In order to get rid of the case where some elements in the gradient are too small
+a = (torch.rand(tensor_size, device=device) - 0.5) + 0.01 * rank
+
 worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
@@ -70,11 +75,11 @@ iters = 100
 
 if test_performance:
     # Warmup
-    for i in range (iters):
+    for i in range(iters):
         torch_sim(a)
 
     timers('simulated').start()
-    for i in range (iters):
+    for i in range(iters):
         torch_sim(a)
     timers('simulated').stop()
 
@@ -84,7 +89,7 @@ local_rank = rank % torch.cuda.device_count()
 
 if test_performance:
     # Warmup
-    for i in range (iters):
+    for i in range(iters):
         dummy_optim.compressed_allreduce(a, worker_error, server_error, local_rank)
 
     timers('compressed').start()
