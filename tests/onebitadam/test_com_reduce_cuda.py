@@ -4,7 +4,10 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import deepspeed
+
 from deepspeed.runtime.fp16.onebit.adam import Adam
+from deepspeed.runtime.comm.nccl import NcclBackend
+
 
 # Configure wall clock timer
 from deepspeed.utils.timer import SynchronizedWallClockTimer
@@ -24,10 +27,12 @@ torch.distributed.init_process_group(backend='nccl',
 dummy_model = [torch.nn.Parameter(torch.ones(10))]
 
 # Set cuda_aware to True to use CUDA buffers for communication
-dummy_optim = Adam(dummy_model,
-                   cuda_aware=False,
-                   communication_backend='nccl',
-                   compression_backend='cupy')
+
+#dummy_optim = Adam(dummy_model,
+#                   cuda_aware=False,
+#                   comm_backend_name='nccl')
+
+dummy_optim = NcclBackend()
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 

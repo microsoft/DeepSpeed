@@ -2,10 +2,10 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
+import torch
 import cupy
 import numpy as np
 from mpi4py import MPI
-
 
 class MpiBackend(object):
     def __init__(self, cuda_aware):

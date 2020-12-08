@@ -101,6 +101,8 @@ class Adam(torch.optim.Optimizer):
             from deepspeed.runtime.comm.mpi import MpiBackend
             self.comm_backend_handle = MpiBackend(cuda_aware)
 
+        self.size = self.comm_backend_handle.size
+
         self.divider = int(self.size * 8 / np.gcd(self.size, 8))
 
     def step(self, closure=None, grads=None):
