@@ -1103,31 +1103,31 @@ class PipelineEngine(DeepSpeedEngine):
         is ``save_state_dict()``.
 
         Returns:
-            str: The directory path where the checkpoint was saved.
+            None
         """
         assert isinstance(self.module, PipelineModule)
-        assert self._curr_save_path is not None, \
+        assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_save_path)
-        return self._curr_save_path
+        self.module.save_state_dict(self._curr_ckpt_path)
+        return None
 
     def load_module_state_dict(self, state_dict, strict=True):
         """Override hack to instead use a directory path.
 
         This is important because pipeline models checkpoint by layer instead of rank.
 
-        If ``state_dict`` is not a ``str``, we revert to ``super()`` expecting a ``dict``.
+        If ``state_dict`` is not ``None`` or a ``str``, we revert to ``super()`` expecting a ``dict``.
 
         Args:
-            state_dict (str): Path to the directory for checkpoint.
+            state_dict (str, None): unused
             strict (bool, optional): Strict state loading. Defaults to True.
         """
-        if not isinstance(state_dict, str):
+        if (state_dict is not None) and (not isinstance(state_dict, str)):
             super().load_module_state_dict(state_dict, strict)
             return
 
-        self.module.load_state_dir(state_dict, strict=strict)
+        self.module.load_state_dir(load_dir=self._curr_ckpt_path, strict=strict)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the
     # kwargs provided to the PipeInstruction from the scheduler.
