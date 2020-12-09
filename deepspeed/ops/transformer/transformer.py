@@ -91,10 +91,6 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
             huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
-<<<<<<< HEAD:deepspeed/ops/transformer/transformer.py
-=======
-
->>>>>>> 798e6d334db49f4eb03d10e7c0808865b7ddb230:deepspeed/pt/deepspeed_cuda.py
     """
     def __init__(self,
                  batch_size=-1,
