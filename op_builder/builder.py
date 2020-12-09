@@ -261,10 +261,10 @@ class CUDAOpBuilder(OpBuilder):
 
         args = []
         for cc in ccs:
-            cc = cc.replace('.', '')
-            args.append(f'-gencode=arch=compute_{cc},code=sm_{cc}')
+            num = cc[0] + cc[2]
+            args.append(f'-gencode=arch=compute_{num},code=sm_{num}')
             if cc.endswith('+PTX'):
-                args.append(f'-gencode=arch=compute_{cc},code=compute_{cc}')
+                args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
         return args
 
