@@ -42,7 +42,7 @@ class MpiBackend(object):
         # We do in-place operations on cupy buffers so we do not return any buffers
         requests = []
         for idx in range(world_size):
-            req_sign = my_igather(rank,
+            req_sign = self.my_igather(rank,
                                   world_size,
                                   comm,
                                   cupy_sign_list_packed[idx],
@@ -51,7 +51,7 @@ class MpiBackend(object):
             requests += req_sign
 
         for idx in range(world_size):
-            req_scale = my_igather(rank,
+            req_scale = self.my_igather(rank,
                                    world_size,
                                    comm,
                                    cupy_worker_scale,
@@ -92,7 +92,7 @@ class MpiBackend(object):
         requests = []
 
         for idx in range(world_size):
-            req_sign = my_igather(rank,
+            req_sign = self.my_igather(rank,
                                   world_size,
                                   comm,
                                   numpy_sign_list_packed[idx],
@@ -101,7 +101,7 @@ class MpiBackend(object):
             requests += req_sign
 
         for idx in range(world_size):
-            req_scale = my_igather(rank,
+            req_scale = self.my_igather(rank,
                                    world_size,
                                    comm,
                                    numpy_worker_scale,
@@ -212,7 +212,7 @@ class MpiBackend(object):
         # Communication Phase 1
         gather_start = time.time()
         if self.cuda_aware:
-            gather_cuda(self.rank,
+            self.gather_cuda(self.rank,
                         self.size,
                         self.comm,
                         cupy_sign_list_packed,
@@ -220,7 +220,7 @@ class MpiBackend(object):
                         cupy_worker_scale,
                         cupy_recvbuf_scale)
         else:
-            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = gather_host(self.rank,
+            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = self.gather_host(self.rank,
                self.size,
                self.comm,
                cupy_sign_list_packed,
@@ -271,13 +271,13 @@ class MpiBackend(object):
 
         # Communication Phase 2
         if self.cuda_aware:
-            allgather_cuda(self.comm,
+            self.allgather_cuda(self.comm,
                            cupy_server_sign_packed[0],
                            cupy_recvbuf_sign_server,
                            cupy_server_scale,
                            cupy_recvbuf_scale_server)
         else:
-            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = allgather_host(self.comm,
+            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = self.allgather_host(self.comm,
                   cupy_server_sign_packed[0],
                   cupy_recvbuf_sign_server,
                   cupy_server_scale,
