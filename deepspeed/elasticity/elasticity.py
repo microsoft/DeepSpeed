@@ -170,7 +170,8 @@ def _get_compatible_gpus_v01(micro_batches,
 
 
 def _compatible_ds_version_check(target_deepspeed_version: str):
-    min_major, min_minor, min_patch = MINIMUM_DEEPSPEED_VERSION.split(".")
+    target_deepspeed_version = str(target_deepspeed_version).split('+')[0]
+    min_major, min_minor, min_patch = list(map(int, MINIMUM_DEEPSPEED_VERSION.split(".")))
     target_version_list = list(map(int, target_deepspeed_version.split(".")))
     assert len(target_version_list) >= 2, "Unable to parse version number, expecting" \
         f"major.minor[.patch] format but received {target_deepspeed_version}"
@@ -189,6 +190,7 @@ def _compatible_ds_version_check(target_deepspeed_version: str):
         raise ElasticityError(err_str)
     if trg_patch < min_patch:
         raise ElasticityError(err_str)
+    return True
 
 
 def elasticity_enabled(ds_config: dict):
@@ -273,18 +275,21 @@ def small_test_config():
     ds_config = {
         "elasticity": {
             "enabled": True,
-            "max_train_batch_size": 2000,
-            "micro_batch_sizes": [2,
-                                  4,
-                                  6],
-            "min_gpus": 1,
-            "max_gpus": 10000,
+            "max_train_batch_size": 10000,
+            "micro_batch_sizes": [8,
+                                  12,
+                                  16,
+                                  17],
+            "min_gpus": 32,
+            "max_gpus": 1500,
             "min_time": 20,
             "version": 0.1
         }
     }
 
-    final_batch_size, valid_gpus = get_compatible_gpus(ds_config)
+    final_batch_size, valid_gpus = get_compatible_gpus(ds_config, target_deepspeed_version="0.3.8")
+    print(ds_config)
+    print(final_batch_size, valid_gpus)
 
 
 def small_test():
