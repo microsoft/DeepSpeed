@@ -11,7 +11,7 @@ from ..git_version_info import version as __version__
 '''Thirty eight smallest highly composite numbers.
 The list should be enough to support up to 720K batch
 size'''
-hcn_list = [
+HCN_LIST = [
     1,
     2,
     4,
@@ -54,14 +54,12 @@ hcn_list = [
 
 
 def get_candidate_batch_sizes(base_list, max_acceptable_batch_size):
-    global hcn_list
-
     candidate_batch_size = []
 
     #brute force is fine here. We are working with very small lists
     for base in base_list:
         batch_size = base
-        for hcn in hcn_list:
+        for hcn in HCN_LIST:
             new_batch_size = base * hcn
             if new_batch_size > max_acceptable_batch_size:
                 break
@@ -217,6 +215,8 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
     Returns:
         final_batch_size (int): total batch size used for training
         valid_gpus (list(int)): list of valid GPU counts with this config
+        micro_batch_size (int, optional): if world_size is provided will return
+            specific micro batch size
     """
     if ELASTICITY not in ds_config:
         raise ElasticityConfigError(f"'{ELASTICITY}' is missing from config json," \
@@ -254,6 +254,17 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
         if world_size not in valid_gpus:
             raise ElasticityIncompatibleWorldSize("World size is not valid " \
         f"with the current list of valid GPU counts: {valid_gpus}")
+
+        # pick largest valid micro batch size
+        micro_batch_size = None
+        for mbsz in reversed(elastic_config.micro_batches):
+            if final_batch_size % world_size % mbsz == 0:
+                micro_batch_size = mbsz
+                break
+        assert micro_batch_size is not None, "Unable to find divisible micro batch size" \
+            f" world_size={world_size}, final_batch_size={final_batch_size}, and " \
+            f" micro_batches={elastic_config.micro_batches}."
+        return final_batch_size, valid_gpus, micro_batch_size
 
     return final_batch_size, valid_gpus
 

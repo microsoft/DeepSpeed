@@ -512,7 +512,7 @@ class DeepSpeedConfig(object):
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
         if self.elasticity_enabled:
             logger.info("DeepSpeed elasticity support enabled")
-            final_batch_size, valid_gpus = get_compatible_gpus(
+            final_batch_size, valid_gpus, micro_batch_size = get_compatible_gpus(
                 ds_config=self._param_dict,
                 target_deepspeed_version=__version__,
                 world_size=self.world_size)
@@ -520,10 +520,18 @@ class DeepSpeedConfig(object):
             # Update param_dict to use new final batch size
             orig_batch_size = self._param_dict.get(TRAIN_BATCH_SIZE,
                                                    TRAIN_BATCH_SIZE_DEFAULT)
+            orig_micro_batch_size = self._param_dict.get(
+                TRAIN_MICRO_BATCH_SIZE_PER_GPU,
+                TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT)
+
             logger.info("[Elasticity] updating training_batch_size: " \
                 f"{orig_batch_size} -> {final_batch_size}")
+            logger.info("[Elasticity] updating train_micro_batch_size_per_gpu: " \
+                f"{orig_micro_batch_size} -> {micro_batch_size}")
             logger.info(f"[Elasticity] valid GPU counts: {valid_gpus}")
+
             self._param_dict[TRAIN_BATCH_SIZE] = final_batch_size
+            self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = micro_batch_size
 
         self._initialize_params(self._param_dict)
         self._configure_train_batch_size()
