@@ -50,6 +50,7 @@ information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)
 | [Further Reading](#further-reading)     |  Documentation, tutorials, etc.             |
 | [Contributing](#contributing)           |  Instructions for contributing              |
 | [Publications](#publications)           |  Publications related to DeepSpeed          |
+| [Videos](#videos)                       |  Videos related to DeepSpeed                |
 
 # Why DeepSpeed?
 Training advanced deep learning models is challenging. Beyond model design,
