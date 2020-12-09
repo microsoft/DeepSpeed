@@ -874,6 +874,12 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
 
+    int seq_len = layer->GetSeqLength();
+    if (g_output.size(1) != seq_len) {
+        seq_len = g_output.size(1);
+        layer->SetSeqLength(seq_len, bsz);
+    }
+
     auto grad_input = torch::empty_like(input);
     auto grad_attn_qkvw = torch::empty_like(attn_qkvw);
     auto grad_attn_qkvb = torch::empty_like(attn_qkvb);
