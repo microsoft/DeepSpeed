@@ -38,8 +38,7 @@ class Adam(torch.optim.Optimizer):
             second moment estimate as in the original paper. (default: False)
         cuda_aware (boolean, required): Set True if the underlying MPI implementation
             supports CUDA-Aware communication. (default: False)
-        communication_backend (string, optional): Set to 'mpi' if needed. (default: 'nccl')
-        compression_backend (string, optional): Set to 'cupy' to test out compression kernels
+        comm_backend_name (string, optional): Set to 'mpi' if needed. (default: 'nccl')
             from cupy. (default: 'deepspeed')
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
@@ -93,6 +92,7 @@ class Adam(torch.optim.Optimizer):
         self.comm_backend_handle = None
 
         if self.comm_backend_name == 'nccl':
+            assert torch.__version__.startswith("1.8."), "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
             self.comm_backend_handle = NcclBackend()
