@@ -176,7 +176,7 @@ def _compatible_ds_version_check(target_deepspeed_version: str):
     assert len(target_version_list) >= 2, "Unable to parse version number, expecting" \
         f"major.minor[.patch] format but received {target_deepspeed_version}"
 
-    if len(target_deepspeed_version) == 2:
+    if len(target_version_list) == 2:
         trg_major, trg_minor = target_version_list
         trg_patch = 0
     else:
@@ -231,7 +231,7 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
 
     elastic_config = ElasticityConfig(elastic_config_dict)
 
-    if elastic_config.version > LATEST_ELASTICITY_VERSION:
+    if float(elastic_config.version) > LATEST_ELASTICITY_VERSION:
         raise ElasticityConfigError("Attempting to run elasticity version " \
             f"{elastic_config.version} but runtime only supports up " \
             f"to {LATEST_ELASTICITY_VERSION}")
@@ -241,7 +241,7 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
         raise ElasticityError("Unable to run elasticity on target deepspeed version of" \
             f" {target_deepspeed_version}, currently {__version__}")
 
-    if elastic_config.version == 0.1:
+    if float(elastic_config.version) == 0.1:
         final_batch_size, valid_gpus = _get_compatible_gpus_v01(
             micro_batches=elastic_config.micro_batches,
             max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
@@ -259,7 +259,7 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
 
         # pick largest valid micro batch size
         micro_batch_size = None
-        for mbsz in reversed(elastic_config.micro_batches):
+        for mbsz in sorted(list(set(elastic_config.micro_batches)), reverse=True):
             if final_batch_size % world_size % mbsz == 0:
                 micro_batch_size = mbsz
                 break
@@ -269,60 +269,3 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
         return final_batch_size, valid_gpus, micro_batch_size
 
     return final_batch_size, valid_gpus
-
-
-def small_test_config():
-    ds_config = {
-        "elasticity": {
-            "enabled": True,
-            "max_train_batch_size": 10000,
-            "micro_batch_sizes": [8,
-                                  12,
-                                  16,
-                                  17],
-            "min_gpus": 32,
-            "max_gpus": 1500,
-            "min_time": 20,
-            "version": 0.1
-        }
-    }
-
-    final_batch_size, valid_gpus = get_compatible_gpus(ds_config, target_deepspeed_version="0.3.8")
-    print(ds_config)
-    print(final_batch_size, valid_gpus)
-
-
-def small_test():
-    micro_batches = [8, 12, 16, 17]
-    max_acceptable_batch_size = 10000
-    min_gpus = 32
-    max_gpus = 1500
-
-    micro_batches = sorted(list(set(micro_batches)), reverse=True)
-
-
-    final_batch, compatible_gpu_counts = _get_compatible_gpus_v01(micro_batches,
-                                max_acceptable_batch_size,
-                                min_gpus = min_gpus,
-                                max_gpus = max_gpus)
-
-    print(
-        f"Final Batch: {final_batch}, Micro batches {micro_batches}, compatible gpus {compatible_gpu_counts} total gpus {len(compatible_gpu_counts)}"
-    )
-
-    for gpu_num in compatible_gpu_counts:
-        assert final_batch % gpu_num == 0, f"Batch {final_batch} is not divisible by GPU count {gpu_num}"
-        batch_per_gpu = final_batch // gpu_num
-        found_valid_mb = False
-
-        for mb in micro_batches:
-            if batch_per_gpu % mb == 0:
-                found_valid_mb = True
-                print(
-                    f"GPU count : {gpu_num} Micro_batch: {mb} GAS = {batch_per_gpu/mb}")
-                break
-        assert found_valid_mb, "No valid mb found"
-
-
-if __name__ == "__main__":
-    small_test()
