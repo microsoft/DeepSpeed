@@ -33,6 +33,7 @@ from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
+from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
@@ -800,12 +801,12 @@ class DeepSpeedEngine(Module):
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank)
 
-    def train(self):
+    def train(self, mode=True):
         r"""
         """
 
         self.warn_unscaled_loss = True
-        self.module.train()
+        self.module.train(mode)
 
     def eval(self):
         r"""
@@ -978,7 +979,7 @@ class DeepSpeedEngine(Module):
         torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
                                        max_norm=self.gradient_clipping())
 
-    def _take_model_step(self):
+    def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
             if not self.fp16_enabled() and not self.amp_enabled():
                 self.clip_fp32_gradients()
@@ -1009,14 +1010,14 @@ class DeepSpeedEngine(Module):
             self.skipped_steps += 1
         else:
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+                self.lr_scheduler.step(**(lr_kwargs or {}))
             if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
                 self._report_progress(self.global_steps + 1)
 
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
-    def step(self):
+    def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
@@ -1033,7 +1034,7 @@ class DeepSpeedEngine(Module):
             if self.progressive_layer_drop:
                 self.progressive_layer_drop.update_state(self.global_steps)
 
-            self._take_model_step()
+            self._take_model_step(lr_kwargs)
 
         self.tput_timer.stop(report_progress)
 
@@ -1300,15 +1301,15 @@ class DeepSpeedEngine(Module):
 
     def load_checkpoint(self,
                         load_dir,
-                        tag,
+                        tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True):
-        r"""Load training checkpoint
+        """Load training checkpoint
 
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
@@ -1316,6 +1317,13 @@ class DeepSpeedEngine(Module):
             load_path: Path of the loaded checkpoint. None if loading the checkpoint failed
             client_state: State dictionary used for loading required training states in the client code.
         """
+
+        if tag is None:
+            latest_path = os.path.join(load_dir, 'latest')
+            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+            with open(latest_path, 'r') as fd:
+                tag = fd.read().strip()
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
@@ -1347,6 +1355,10 @@ class DeepSpeedEngine(Module):
 
         logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
         checkpoint = torch.load(load_path, map_location=lambda storage, loc: storage)
+
+        if isinstance(self.module, PipelineModule):
+            # Pipeline parallelism uses this to load its own checkpoint files.
+            self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
@@ -1454,17 +1466,24 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
-    def save_checkpoint(self, save_dir, tag, client_state={}):
+    def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Required. Checkpoint tag used as a unique identifier for the checkpoint. Ex. Global Step.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
             client_state: Optional. State dictionary used for saving required training states in the client code.
+            save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
 
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
+
+        # Ensure save_dir directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
+        if tag is None:
+            tag = f"global_step{self.global_steps}"
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
@@ -1473,6 +1492,11 @@ class DeepSpeedEngine(Module):
         if self.save_zero_checkpoint:
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
+
+        # Save latest checkpoint tag
+        if save_latest:
+            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                fd.write(tag)
 
         return True
 
@@ -1503,8 +1527,8 @@ class DeepSpeedEngine(Module):
         save_path = self._get_ckpt_name(save_dir, tag)
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
-        # then instead just returns self._curr_save_path.
-        self._curr_save_path = os.path.dirname(save_path)
+        # then instead just returns None.
+        self._curr_ckpt_path = os.path.join(save_dir, tag)
 
         state = {
             'module':
