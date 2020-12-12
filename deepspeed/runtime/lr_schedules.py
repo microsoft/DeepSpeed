@@ -384,7 +384,7 @@ class LRRangeTest(object):
     def get_last_lr(self):
         """ Return last computed learning rate by current scheduler.
         """
-        assert getattr(self, '_last_lr', False), "need to call step() first"
+        assert getattr(self, '_last_lr', None) is not None, "need to call step() first"
         return self._last_lr
 
     def _update_optimizer(self, group_lrs):
@@ -638,7 +638,7 @@ class OneCycle(object):
     def get_last_lr(self):
         """ Return last computed learning rate by current scheduler.
         """
-        assert getattr(self, '_last_lr', False), "need to call step() first"
+        assert getattr(self, '_last_lr', None) is not None, "need to call step() first"
         return self._last_lr
 
     def step(self, batch_iteration=None):
@@ -707,7 +707,7 @@ class WarmupLR(object):
     def get_last_lr(self):
         """ Return last computed learning rate by current scheduler.
         """
-        assert getattr(self, '_last_lr', False), "need to call step() first"
+        assert getattr(self, '_last_lr', None) is not None, "need to call step() first"
         return self._last_lr
 
     def step(self, last_batch_iteration=None):
