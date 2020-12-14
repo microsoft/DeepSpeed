@@ -535,12 +535,6 @@ def see_memory_usage(message):
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB ")
 
-    import psutil
-    vm_stats = psutil.virtual_memory()
-    used_GB = round((vm_stats.used / (1024**3)), 2)
-    logger.info(
-        f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
-
 
 def call_to_str(base, *args, **kwargs):
     """Construct a string representation of a call.
