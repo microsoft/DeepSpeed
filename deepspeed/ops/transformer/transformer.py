@@ -91,6 +91,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
             huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+
+            training: Enable for training rather than inference.
     """
     def __init__(self,
                  batch_size=-1,
@@ -111,7 +113,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False,
-                 huggingface=False):
+                 huggingface=False,
+                 training=True):
         super(DeepSpeedTransformerConfig,
               self).__init__(
                   batch_size,
@@ -131,7 +134,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.gelu_checkpoint = gelu_checkpoint  # True: if higher batch size is required
         self.adjust_init_range = adjust_init_range
         self.test_gemm = False
-        self.training = True
+        self.training = training
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
@@ -248,7 +251,7 @@ class DeepSpeedTransformerFunction(Function):
             norm_w.register_hook(lambda x, self=self: grads.append([x, "norm_W"]))
             norm_b.register_hook(lambda x, self=self: grads.append([x, "norm_B"]))
 
-        if config.is_grad_enabled:
+        if config.is_grad_enabled and config.training:
             if (config.pre_layer_norm and config.normalize_invertible):
                 ctx.save_for_backward(input_mask,
                                       attn_qkvw,
@@ -404,6 +407,25 @@ class DeepSpeedTransformerFunction(Function):
              output_b,
              norm_w,
              norm_b)
+
+        # This appears to be an effective way to release context memory
+        ctx.qkv_tf = None
+        ctx.soft_inp = None
+        ctx.ctx_bufB = None
+        ctx.gelu_inp = None
+        ctx.ff2_inp = None
+        ctx.attn_o_inp = None
+        ctx.ff1_inp = None
+        ctx.add_res = None
+        ctx.inp_norm = None
+        ctx.config = None
+        ctx.attn_layer_norm_mean = None
+        ctx.layer_norm_mean = None
+        ctx.attn_prob_dropout_mask = None
+        ctx.attn_output_dropout_mask = None
+        ctx.layer_output_dropout_mask = None
+        ctx.attn_layer_norm_var = None
+        ctx.layer_norm_var = None
 
         return (grad_input,
                 None,

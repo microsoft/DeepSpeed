@@ -3,6 +3,63 @@ import torch
 import deepspeed
 
 
+def replace_transformer_layer_with_config(orig_layer_impl, model, transformer_config):
+    """ Replace bert-style transformer layers with DeepSpeed's transformer layer
+    Arguments:
+        orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
+            e.g., transformers.modeling_bert.BertLayer.
+        model (torch.nn.Module): user's nn.module representing their model
+        transformer_config (dict): deepspeed transformer config containing hidden size, attention heads, etc.
+
+    Returns:
+        Updated nn.module with replaced transformer layers
+    """
+    def replace_fn(child):
+        new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
+
+        # copy relevant state from child -> new module
+        qw = child.attention.self.query.weight
+        qb = child.attention.self.query.bias
+        kw = child.attention.self.key.weight
+        kb = child.attention.self.key.bias
+        vw = child.attention.self.value.weight
+        vb = child.attention.self.value.bias
+
+        qkvw = torch.cat((qw, kw, vw), 0)
+        qkvb = torch.cat((qb, kb, vb), 0)
+
+        #qw.data,kw.data,vw.data = torch.chunk(qkvw, 3, axis=0)
+        #qb.data,kb.data,vb.data = torch.chunk(qkvb, 3, axis=0)
+
+        new_module.attn_qkvw.data = qkvw
+        new_module.attn_qkvb.data = qkvb
+        new_module.attn_ow.data = child.attention.output.dense.weight
+        new_module.attn_ob.data = child.attention.output.dense.bias
+        if transformer_config.pre_layer_norm:
+            attention_layernorm = child.PostAttentionLayerNorm
+        else:
+            attention_layernorm = child.attention.output.LayerNorm
+        new_module.attn_nw.data = attention_layernorm.weight
+        new_module.attn_nb.data = attention_layernorm.bias
+        if transformer_config.pre_layer_norm:
+            intermediate_ff = child.intermediate.dense_act
+        else:
+            intermediate_ff = child.intermediate.dense
+        new_module.inter_w.data = intermediate_ff.weight
+        new_module.inter_b.data = intermediate_ff.bias
+        new_module.output_w.data = child.output.dense.weight
+        new_module.output_b.data = child.output.dense.bias
+        if transformer_config.pre_layer_norm:
+            transformer_layernorm = child.PreAttentionLayerNorm
+        else:
+            transformer_layernorm = child.output.LayerNorm
+        new_module.norm_w.data = transformer_layernorm.weight
+        new_module.norm_b.data = transformer_layernorm.bias
+        return new_module
+
+    return replace_module(model=model, orig_class=orig_layer_impl, replace_fn=replace_fn)
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               micro_batch_size,
@@ -186,7 +243,6 @@ def _replace_module(model, policies):
             orig = repr(child)
             setattr(model, name, policies[child.__class__](child))
             new = getattr(model, name)
-            print(f'{orig} -> {new}')
         else:
             _replace_module(child, policies)
 
