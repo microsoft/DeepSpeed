@@ -2,6 +2,7 @@ import copy
 import torch
 import deepspeed
 
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               micro_batch_size,
