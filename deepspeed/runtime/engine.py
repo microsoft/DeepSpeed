@@ -33,6 +33,7 @@ from deepspeed.utils import logger, log_dist
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
+from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
@@ -800,12 +801,12 @@ class DeepSpeedEngine(Module):
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank)
 
-    def train(self):
+    def train(self, mode=True):
         r"""
         """
 
         self.warn_unscaled_loss = True
-        self.module.train()
+        self.module.train(mode)
 
     def eval(self):
         r"""
@@ -978,7 +979,7 @@ class DeepSpeedEngine(Module):
         torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
                                        max_norm=self.gradient_clipping())
 
-    def _take_model_step(self):
+    def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
             if not self.fp16_enabled() and not self.amp_enabled():
                 self.clip_fp32_gradients()
@@ -1009,14 +1010,14 @@ class DeepSpeedEngine(Module):
             self.skipped_steps += 1
         else:
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+                self.lr_scheduler.step(**(lr_kwargs or {}))
             if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
                 self._report_progress(self.global_steps + 1)
 
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
-    def step(self):
+    def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
@@ -1033,7 +1034,7 @@ class DeepSpeedEngine(Module):
             if self.progressive_layer_drop:
                 self.progressive_layer_drop.update_state(self.global_steps)
 
-            self._take_model_step()
+            self._take_model_step(lr_kwargs)
 
         self.tput_timer.stop(report_progress)
 
@@ -1355,6 +1356,10 @@ class DeepSpeedEngine(Module):
         logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
         checkpoint = torch.load(load_path, map_location=lambda storage, loc: storage)
 
+        if isinstance(self.module, PipelineModule):
+            # Pipeline parallelism uses this to load its own checkpoint files.
+            self._curr_ckpt_path = os.path.join(load_dir, tag)
+
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
         if not self.zero_optimization():
@@ -1522,8 +1527,8 @@ class DeepSpeedEngine(Module):
         save_path = self._get_ckpt_name(save_dir, tag)
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
-        # then instead just returns self._curr_save_path.
-        self._curr_save_path = os.path.dirname(save_path)
+        # then instead just returns None.
+        self._curr_ckpt_path = os.path.join(save_dir, tag)
 
         state = {
             'module':
