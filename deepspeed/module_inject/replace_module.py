@@ -186,7 +186,6 @@ def _replace_module(model, policies):
             orig = repr(child)
             setattr(model, name, policies[child.__class__](child))
             new = getattr(model, name)
-            print(f'{orig} -> {new}')
         else:
             _replace_module(child, policies)
 
