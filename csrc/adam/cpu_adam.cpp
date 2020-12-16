@@ -1,8 +1,4 @@
-#ifdef __HIP_PLATFORM_HCC__
-#include "hip/cpu_adam.h"
-#else
 #include "cpu_adam.h"
-#endif
 #include <cuda_runtime_api.h>
 #include <math.h>
 #include <omp.h>
@@ -14,11 +10,7 @@
 #include "cublas_v2.h"
 #include "cuda.h"
 #include "curand.h"
-#ifdef __HIP_PLATFORM_HCC__
-#include "hip/custom_hip_layers.h"
-#else
 #include "custom_cuda_layers.h"
-#endif
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
