@@ -16,7 +16,6 @@ import warnings
 import cpufeature
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension, CppExtension
-from torch.utils.hipify import hipify_python
 
 VERSION = "0.3.0"
 
@@ -127,26 +126,20 @@ elif cpu_info['AVX2']:
     SIMD_WIDTH = '-D__AVX256__'
 print("SIMD_WIDTH = ", SIMD_WIDTH)
 
-if is_rocm_pytorch:
-    import shutil
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    hipify_python.hipify(project_directory=this_dir, output_directory=this_dir, includes="csrc/*",
-                                show_detailed=True, is_pytorch_extension=True)
-
 ext_modules = []
 
 ## Lamb ##
 if BUILD_MASK & DS_BUILD_LAMB:
     nvcc_flags=['-O3'] + version_dependent_macros
-    if is_rocm_pytorch:
-        sources = ['csrc/lamb/hip/fused_lamb_hip.cpp', 'csrc/lamb/hip/fused_lamb_hip_kernel.hip']
-    else:
-        sources = ['csrc/lamb/fused_lamb_cuda.cpp', 'csrc/lamb/fused_lamb_cuda_kernel.cu']
+    if not is_rocm_pytorch:
         nvcc_flags.extend(['--use_fast_math'])
 
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.lamb.fused_lamb_cuda',
-                      sources=sources,
+                      sources=[
+                          'csrc/lamb/fused_lamb_cuda.cpp',
+                          'csrc/lamb/fused_lamb_cuda_kernel.cu'
+                      ],
                       include_dirs=['csrc/includes'],
                       extra_compile_args={
                           'cxx': [
@@ -160,14 +153,12 @@ if BUILD_MASK & DS_BUILD_CPU_ADAM:
     nvcc_flags= ['-O3'] + version_dependent_macros
     include_dirs=['csrc/includes']
     if is_rocm_pytorch:
-        sources = ['csrc/adam/hip/cpu_adam.cpp', 'csrc/adam/hip/custom_hip_kernel.hip']
         include_dirs.extend(['/opt/rocm/include/rocrand', '/opt/rocm/include/hiprand'])
         nvcc_flags.extend(['-U__HIP_NO_HALF_OPERATORS__',
                            '-U__HIP_NO_HALF_CONVERSIONS__',
                            '-U__HIP_NO_HALF2_OPERATORS__'
         ])
     else:
-        sources=['csrc/adam/cpu_adam.cpp','csrc/adam/custom_cuda_kernel.cu']
         include_dirs.extend(['/usr/local/cuda/include'])
         nvcc_flags.extend(['--use_fast_math',
                            '-gencode',
@@ -182,7 +173,10 @@ if BUILD_MASK & DS_BUILD_CPU_ADAM:
 
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.adam.cpu_adam_op',
-                      sources=sources,
+                      sources=[
+                          'csrc/adam/cpu_adam.cpp',
+                          'csrc/adam/custom_cuda_kernel.cu',
+                      ],
                       include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': [
@@ -205,32 +199,12 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
     nvcc_flags= ['-O3', '-std=c++14'] + version_dependent_macros
     include_dirs=['csrc/includes']
     if is_rocm_pytorch:
-        sources = [
-            'csrc/transformer/hip/ds_transformer_hip.cpp',
-            'csrc/transformer/hip/cublas_wrappers.hip',
-            'csrc/transformer/hip/transform_kernels.hip',
-            'csrc/transformer/hip/gelu_kernels.hip',
-            'csrc/transformer/hip/dropout_kernels.hip',
-#            'csrc/transformer/hip/normalize_kernels.hip',
-            'csrc/transformer/hip/softmax_kernels.hip',
-            'csrc/transformer/hip/general_kernels.hip'
-        ]
         include_dirs.extend(['/opt/rocm/include/rocrand', '/opt/rocm/include/hiprand'])
         nvcc_flags.extend(['-U__HIP_NO_HALF_OPERATORS__',
                            '-U__HIP_NO_HALF_CONVERSIONS__',
                            '-U__HIP_NO_HALF2_OPERATORS__'
         ])
     else:
-        sources=[
-            'csrc/transformer/ds_transformer_cuda.cpp',
-            'csrc/transformer/cublas_wrappers.cu',
-            'csrc/transformer/transform_kernels.cu',
-            'csrc/transformer/gelu_kernels.cu',
-            'csrc/transformer/dropout_kernels.cu',
-            'csrc/transformer/normalize_kernels.cu',
-            'csrc/transformer/softmax_kernels.cu',
-            'csrc/transformer/general_kernels.cu'
-        ]
         nvcc_flags.extend(['--use_fast_math',
                            '-gencode',
                            'arch=compute_61,code=compute_61',
@@ -242,7 +216,16 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
         ])
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.transformer.transformer_cuda',
-                      sources=sources,
+                      sources=[
+                          'csrc/transformer/ds_transformer_cuda.cpp',
+                          'csrc/transformer/cublas_wrappers.cu',
+                          'csrc/transformer/transform_kernels.cu',
+                          'csrc/transformer/gelu_kernels.cu',
+                          'csrc/transformer/dropout_kernels.cu',
+                          'csrc/transformer/normalize_kernels.cu',
+                          'csrc/transformer/softmax_kernels.cu',
+                          'csrc/transformer/general_kernels.cu'
+                      ],
                       include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': ['-O3',
@@ -253,7 +236,16 @@ if BUILD_MASK & DS_BUILD_TRANSFORMER:
                       }))
     ext_modules.append(
         CUDAExtension(name='deepspeed.ops.transformer.stochastic_transformer_cuda',
-                      sources=sources,
+                      sources=[
+                          'csrc/transformer/ds_transformer_cuda.cpp',
+                          'csrc/transformer/cublas_wrappers.cu',
+                          'csrc/transformer/transform_kernels.cu',
+                          'csrc/transformer/gelu_kernels.cu',
+                          'csrc/transformer/dropout_kernels.cu',
+                          'csrc/transformer/normalize_kernels.cu',
+                          'csrc/transformer/softmax_kernels.cu',
+                          'csrc/transformer/general_kernels.cu'
+                      ],
                       include_dirs=include_dirs,
                       extra_compile_args={
                           'cxx': ['-O3',
