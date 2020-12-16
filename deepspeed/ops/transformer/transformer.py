@@ -176,12 +176,14 @@ class DeepSpeedTransformerFunction(Function):
         inp_size = input.size()
         if inp_size[1] % 16 != 0:
             input = torch.cat((input,
-                               torch.randn(inp_size[0],
-                                           (16 - (inp_size[1] % 16)),
-                                           inp_size[2]).to(input.device).type_as(input)),
+                               torch.randn((inp_size[0],
+                                            (16 - (inp_size[1] % 16)),
+                                            inp_size[2]),
+                                           device=input.device,
+                                           dtype=input.dtype)),
                               1)
-            input_mask = torch.cat((input_mask, torch.ones(inp_size[0], input_mask.shape[1], input_mask.shape[2], \
-                                            (16 - (inp_size[1] % 16))).to(input_mask.device).type_as(input_mask) * -10000), 3)
+            input_mask = torch.cat((input_mask, torch.ones((inp_size[0], input_mask.shape[1], input_mask.shape[2], \
+                                            (16 - (inp_size[1] % 16))), device=input_mask.device, dtype=input_mask.dtype) * -10000), 3)
 
         (output,
          inp_norm,
@@ -318,8 +320,8 @@ class DeepSpeedTransformerFunction(Function):
         bsz = grad_output.shape[0]
         grad_output_shape = grad_output.size()
         if grad_output_shape[1] % 16 != 0:
-            grad_output = torch.cat((grad_output, torch.zeros(bsz, (16 - (grad_output_shape[1] % 16)), \
-                                        grad_output_shape[2]).to(grad_output.device).type_as(grad_output)), 1)
+            grad_output = torch.cat((grad_output, torch.zeros((bsz, (16 - (grad_output_shape[1] % 16)), \
+                                        grad_output_shape[2]), device=grad_output.device, dtype=grad_output.dtype)), 1)
 
         if bsz > ctx.config.batch_size:
             raise ValueError('grad_output batch size exceeds the limit.')
