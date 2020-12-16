@@ -200,7 +200,8 @@ class OpBuilder(ABC):
 
         start_build = time.time()
         op_module = load(
-            name=self.name,
+            name=self.absolute_name().replace('.',
+                                              '_'),
             sources=[self.deepspeed_src_path(path) for path in self.sources()],
             extra_include_paths=[
                 self.deepspeed_src_path(path) for path in self.include_paths()
