@@ -221,13 +221,13 @@ As described above, DeepSpeed provides its own parallel launcher to help launch
 multi-node/multi-gpu training jobs. If you prefer to launch your training job
 using MPI (e.g., mpirun), we provide support for this. It should be noted that
 DeepSpeed will still use the torch distributed NCCL backend and *not* the MPI
-backend. 
+backend.
 
 To launch your training job with mpirun + DeepSpeed or with AzureML (which uses
 mpirun as a launcher backend) you simply need to install the
 [mpi4py](https://pypi.org/project/mpi4py/) python package.  DeepSpeed will use
 this to discover the MPI environment and pass the necessary state (e.g., world
-size, rank) to the torch distributed backend. 
+size, rank) to the torch distributed backend.
 
 If you are using model parallelism, pipeline parallelism, or otherwise require
 torch.distributed calls before calling `deepspeed.initialize(..)` we provide
