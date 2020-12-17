@@ -33,6 +33,11 @@ def distributed_test(world_size=2, backend='nccl'):
             """Initialize torch.distributed and execute the user function. """
             os.environ['MASTER_ADDR'] = '127.0.0.1'
             os.environ['MASTER_PORT'] = '29503'
+            os.environ['LOCAL_RANK'] = str(local_rank)
+            # NOTE: unit tests don't support multi-node so local_rank == global rank
+            os.environ['RANK'] = str(local_rank)
+            os.environ['WORLD_SIZE'] = str(num_procs)
+
             dist.init_process_group(backend=backend,
                                     init_method='env://',
                                     rank=local_rank,

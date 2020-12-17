@@ -24,7 +24,7 @@ def init_distributed(dist_backend="nccl",
         logger.info(
             "Not using the DeepSpeed or torch.distributed launchers, attempting to detect MPI environment..."
         )
-        if in_aml():
+        if in_aml() and not in_dlts():
             patch_aml_env_for_torch_nccl_backend()
         else:
             mpi_discovery(distributed_port)
@@ -80,6 +80,11 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT):
 def in_aml():
     # Are we running inside an Azure Machine Learning (AML) environment?
     return 'AZUREML_EXPERIMENT_ID' in os.environ
+
+
+def in_dlts():
+    # Are we running on a DLTS cluster?
+    return 'DLTS_JOB_ID' in os.environ
 
 
 def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
