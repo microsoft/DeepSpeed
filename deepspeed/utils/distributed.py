@@ -4,7 +4,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import torch
 
-from utils import logger
+from .logging import logger
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 
 
