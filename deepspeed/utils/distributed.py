@@ -30,9 +30,9 @@ def init_distributed(dist_backend="nccl",
             mpi_discovery(distributed_port)
 
     if not torch.distributed.is_initialized():
-        logger.info("Initializing torch distributed with backend: {}".format(
-            self.dist_backend))
-        torch.distributed.init_process_group(backend=self.dist_backend)
+        logger.info(
+            "Initializing torch distributed with backend: {}".format(dist_backend))
+        torch.distributed.init_process_group(backend=dist_backend)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT):
