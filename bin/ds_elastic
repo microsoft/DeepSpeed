@@ -37,4 +37,3 @@ if __name__ == '__main__':
         print('------------------------------------------')
         print(f'final_batch_size .... {final_batch_size}')
         print(f'valid_gpus .......... {valid_gpus}')
- 
