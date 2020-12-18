@@ -5,6 +5,8 @@ import torch
 import torch.distributed as dist
 from torch.multiprocessing import Process
 
+import deepspeed
+
 import pytest
 
 # Worker timeout *after* the first worker has completed.
@@ -38,10 +40,7 @@ def distributed_test(world_size=2, backend='nccl'):
             os.environ['RANK'] = str(local_rank)
             os.environ['WORLD_SIZE'] = str(num_procs)
 
-            dist.init_process_group(backend=backend,
-                                    init_method='env://',
-                                    rank=local_rank,
-                                    world_size=num_procs)
+            deepspeed.init_distributed(dist_backend=backend)
 
             if torch.cuda.is_available():
                 torch.cuda.set_device(local_rank)
