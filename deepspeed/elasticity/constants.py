@@ -17,7 +17,9 @@ Elasticity should be enabled as:
   "micro_batch_sizes": [2,4,6],
   "min_gpus": 1,
   "max_gpus" : 10000
-  "min_time": 20
+  "min_time": 20,
+  "prefer_larger_batch": true,
+  "ignore_non_elastic_batch_info": false,
   "version": 0.1
 }
 '''
@@ -48,8 +50,18 @@ MAX_GPUS_DEFAULT = 10000
 MIN_TIME = "min_time"
 MIN_TIME_DEFAULT = "20"
 
+# When finding a suitable batch size, attempt to find one that is closest
+# to the max train batch size given.
 PREFER_LARGER_BATCH = 'prefer_larger_batch'
 PREFER_LARGER_BATCH_DEFAULT = True
+
+# In order to reduce confusion, if elastic mode is enabled we
+# require (via assert) that no batch info is set outside of the
+# elastic config. You can turn off this assert via this config
+# but keep in mind that all batch info defined outside the
+# elastic mode *will be ignored*.
+IGNORE_NON_ELASTIC_BATCH_INFO = 'ignore_non_elastic_batch_info'
+IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT = False
 
 # Version of elastic logic to use
 VERSION = "version"

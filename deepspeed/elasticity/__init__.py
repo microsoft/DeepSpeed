@@ -1,1 +1,1 @@
-from .elasticity import get_compatible_gpus, elasticity_enabled
+from .elasticity import compute_elastic_config, elasticity_enabled

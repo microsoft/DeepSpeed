@@ -198,6 +198,19 @@ class DeepSpeedEngine(Module):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
+    def get_batch_info(self):
+        """ Get all training batch related settings.
+
+        Returns:
+            train_batch_size (int): The effective training batch size. This is the amount of data
+                samples that leads to one step of model update.
+            train_micro_batch_size_per_gpu (int): Batch size to be processed by one GPU in one
+                step (without gradient accumulation).
+            gradient_accumulation_steps (int): Number of training steps to accumulate gradients
+                before averaging and applying them.
+        """
+        return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
+
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
 

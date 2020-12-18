@@ -7,11 +7,12 @@ import numpy as np
 from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
     ElasticityIncompatibleWorldSize
 from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
-    MINIMUM_DEEPSPEED_VERSION
+    MINIMUM_DEEPSPEED_VERSION, IGNORE_NON_ELASTIC_BATCH_INFO, \
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
 from ..git_version_info import version as __version__
-'''Thirty eight smallest highly composite numbers.
-The list should be enough to support up to 720K batch
-size'''
+
+# Thirty eight smallest highly composite numbers. The list should
+# be enough to support up to 720K batch size.
 HCN_LIST = [
     1,
     2,
@@ -84,9 +85,6 @@ def get_valid_gpus(batch_size, micro_batches, min_valid_gpus, max_valid_gpus):
                         valid_gpus.append(i)
     valid_gpus = set(valid_gpus)
     valid_gpus = sorted(list(valid_gpus))
-
-    #print(f"Get valid gpus batch size: {batch_size}, micro_batches: {micro_batches} valid_gpus: {valid_gpus}")
-
     return valid_gpus
 
 
@@ -203,7 +201,7 @@ def elasticity_enabled(ds_config: dict):
     return ds_config[ELASTICITY].get(ENABLED, ENABLED_DEFAULT)
 
 
-def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_size=0):
+def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world_size=0):
     """Core deepspeed elasticity API. Given an elastic config (similar to the example below)
     DeepSpeed will compute a total train batch size corresponding valid GPU count list that
     provides a high level of elasticity. Elasticity in this case means we are safe to scale

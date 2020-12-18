@@ -16,7 +16,11 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 
 from ..git_version_info import version as __version__
 from ..utils import logger
-from ..elasticity import elasticity_enabled, get_compatible_gpus
+
+from ..elasticity import elasticity_enabled, compute_elastic_config
+from ..elasticity.config import ElasticityConfigError
+from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
@@ -512,10 +516,29 @@ class DeepSpeedConfig(object):
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
         if self.elasticity_enabled:
             logger.info("DeepSpeed elasticity support enabled")
-            final_batch_size, valid_gpus, micro_batch_size = get_compatible_gpus(
+            final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
                 ds_config=self._param_dict,
                 target_deepspeed_version=__version__,
                 world_size=self.world_size)
+
+            elastic_dict = self._param_dict[ELASTICITY]
+            ignore_non_elastic_batch_info = elastic_dict.get(
+                IGNORE_NON_ELASTIC_BATCH_INFO,
+                IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
+
+            if not ignore_non_elastic_batch_info:
+                batch_params = [
+                    TRAIN_BATCH_SIZE,
+                    TRAIN_MICRO_BATCH_SIZE_PER_GPU,
+                    GRADIENT_ACCUMULATION_STEPS
+                ]
+                if any(map(lambda t: t in self._param_dict, batch_params)):
+                    raise ElasticityConfigError("One or more batch related parameters were found in your " \
+                        f"ds_config ({TRAIN_BATCH_SIZE}, {TRAIN_MICRO_BATCH_SIZE_PER_GPU}, and/or " \
+                        f"{GRADIENT_ACCUMULATION_STEPS}). These parameters *will not be used* since " \
+                        "elastic training is enabled, which takes control of these parameters. " \
+                        "If you want to supress this error (the parameters will be silently ignored) " \
+                        f"please set {IGNORE_NON_ELASTIC_BATCH_INFO}':true in your elasticity config.")
 
             # Update param_dict to use new final batch size
             orig_batch_size = self._param_dict.get(TRAIN_BATCH_SIZE,
