@@ -86,11 +86,10 @@ def test_future_elastic_version():
 def test_proper_mbsz():
     ds_config = base_ds_config.copy()
     ds_config["elasticity"]["max_train_batch_size"] = 32
-    ds_config["elasticity"]["micro_batch_sizes"] = [1,2,3,7]
+    ds_config["elasticity"]["micro_batch_sizes"] = [1, 2, 3, 7]
     ds_config["elasticity"]["min_gpus"] = 1
     final_batch_size, valid_gpus, mbsize = deepspeed.elasticity.get_compatible_gpus(
         ds_config=ds_config,
-        target_deepspeed_version=ds_version, 
+        target_deepspeed_version=ds_version,
         world_size=7)
     assert mbsize == 3
-
