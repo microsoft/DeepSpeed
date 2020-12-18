@@ -1231,10 +1231,13 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')
-            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
-                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
-            with open(latest_path, 'r') as fd:
-                tag = fd.read().strip()
+            if os.path.isfile(latest_path):
+                with open(latest_path, 'r') as fd:
+                    tag = fd.read().strip()
+            else:
+                logger.warning(f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint.")
+                return None, None
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
