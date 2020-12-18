@@ -23,9 +23,10 @@ def init_distributed(dist_backend="nccl",
 
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
     if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
-        logger.info(
-            "Not using the DeepSpeed or torch.distributed launchers, attempting to detect MPI environment..."
-        )
+        if verbose:
+            logger.info(
+                "Not using the DeepSpeed or torch.distributed launchers, attempting to detect MPI environment..."
+            )
         if in_aml() and not in_dlts():
             patch_aml_env_for_torch_nccl_backend(verbose=verbose)
         else:
@@ -110,8 +111,10 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
     else:
         os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
         os.environ["MASTER_PORT"] = "54965"
-    logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
-        os.environ["NCCL_SOCKET_IFNAME"]))
+
+    if verbose:
+        logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
+            os.environ["NCCL_SOCKET_IFNAME"]))
 
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ['LOCAL_RANK'] = os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]
