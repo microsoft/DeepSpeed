@@ -10,13 +10,15 @@ from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 
 def init_distributed(dist_backend="nccl",
                      auto_mpi_discovery=True,
-                     distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT):
+                     distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
+                     verbose=True):
     """
     Initialize torch.distributed backend, potentially performing MPI discovery if needed
     Arguments:
         dist_backend (str): torch distributed backend, e.g., nccl, mpi, gloo
         auto_mpi_discovery (bool): if distributed environment variables are not set, attempt to discover them from MPI
         distributed_port (int, optional): torch distributed backend port
+        verbose (bool, optional): verbose logging
     """
 
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
@@ -25,17 +27,18 @@ def init_distributed(dist_backend="nccl",
             "Not using the DeepSpeed or torch.distributed launchers, attempting to detect MPI environment..."
         )
         if in_aml() and not in_dlts():
-            patch_aml_env_for_torch_nccl_backend()
+            patch_aml_env_for_torch_nccl_backend(verbose=verbose)
         else:
-            mpi_discovery(distributed_port)
+            mpi_discovery(distributed_port=distributed_port, verbose=verbose)
 
     if not torch.distributed.is_initialized():
-        logger.info(
-            "Initializing torch distributed with backend: {}".format(dist_backend))
+        if verbose:
+            logger.info(
+                "Initializing torch distributed with backend: {}".format(dist_backend))
         torch.distributed.init_process_group(backend=dist_backend)
 
 
-def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT):
+def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
     """
     Discovery MPI environment via mpi4py and map to relevant torch.distributed state
     """
@@ -63,13 +66,14 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT):
     os.environ['MASTER_ADDR'] = master_addr
     os.environ['MASTER_PORT'] = str(distributed_port)
 
-    logger.info(
-        "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-        .format(os.environ['RANK'],
-                os.environ['LOCAL_RANK'],
-                os.environ['WORLD_SIZE'],
-                os.environ['MASTER_ADDR'],
-                os.environ['MASTER_PORT']))
+    if verbose:
+        logger.info(
+            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+            .format(os.environ['RANK'],
+                    os.environ['LOCAL_RANK'],
+                    os.environ['WORLD_SIZE'],
+                    os.environ['MASTER_ADDR'],
+                    os.environ['MASTER_PORT']))
 
     if torch.distributed.is_initialized():
         assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
