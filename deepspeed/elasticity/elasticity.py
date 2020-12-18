@@ -221,7 +221,8 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
             specific micro batch size
     """
     if not isinstance(ds_config, dict):
-        raise ValueError(f"Expected ds_config to be a dictionary but received a {type(ds_config)}, containing: {ds_config}")
+        raise ValueError("Expected ds_config to be a dictionary but received " \
+            f"a {type(ds_config)}, containing: {ds_config}")
 
     if ELASTICITY not in ds_config:
         raise ElasticityConfigError(f"'{ELASTICITY}' is missing from config json," \
@@ -260,7 +261,7 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
             raise ElasticityIncompatibleWorldSize("World size is not valid " \
         f"with the current list of valid GPU counts: {valid_gpus}")
 
-        # pick largest valid micro batch size
+        # Pick largest valid micro batch size
         micro_batch_size = None
         for mbsz in sorted(list(set(elastic_config.micro_batches)), reverse=True):
             if final_batch_size % world_size % mbsz == 0:

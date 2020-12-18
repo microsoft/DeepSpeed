@@ -5,20 +5,32 @@ from .constants import *
 
 
 class ElasticityError(Exception):
+    """
+    Base exception for all elasticity related errors
+    """
     pass
 
 
 class ElasticityConfigError(ElasticityError):
+    """
+    Elasticity configuration error
+    """
     pass
 
 
 class ElasticityIncompatibleWorldSize(ElasticityError):
+    """
+    Attempting to run a world size that is incompatible with a given elastic config
+    """
     pass
 
 
 class ElasticityConfig:
     """
-    "elasticity": {
+    Elastic config object, constructed from a param dictionary that only contains elastic
+    config parameters, example below:
+
+    {
         "enabled": true,
         "max_train_batch_size": 2000,
         "micro_batch_sizes": [2,4,6],
@@ -39,28 +51,3 @@ class ElasticityConfig:
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,
                                                        PREFER_LARGER_BATCH_DEFAULT)
-
-        #batch size computed based on elasticity config
-        self.computed_batch_size = None
-
-        #micro batch size for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_micro_batch = None
-
-        #gradient accumulation steps for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_gradient_accumulation_step = None
-
-        self._initialize()
-
-    def _initialize(self):
-        #batch size computed based on elasticity config
-        self.computed_batch_size = None
-
-        #micro batch size for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_micro_batch = None
-
-        #gradient accumulation steps for this run computed based on
-        #elasticity configs, and the world size
-        self.computed_gradient_accumulation_step = None
