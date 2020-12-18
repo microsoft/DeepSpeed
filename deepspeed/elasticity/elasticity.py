@@ -1,6 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
+import re
 import numpy as np
 
 from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
@@ -169,18 +170,21 @@ def _get_compatible_gpus_v01(micro_batches,
     return final_batch_size, valid_gpus
 
 
-def _compatible_ds_version_check(target_deepspeed_version: str):
-    target_deepspeed_version = str(target_deepspeed_version).split('+')[0]
-    min_major, min_minor, min_patch = list(map(int, MINIMUM_DEEPSPEED_VERSION.split(".")))
-    target_version_list = list(map(int, target_deepspeed_version.split(".")))
-    assert len(target_version_list) >= 2, "Unable to parse version number, expecting" \
-        f"major.minor[.patch] format but received {target_deepspeed_version}"
-
-    if len(target_version_list) == 2:
-        trg_major, trg_minor = target_version_list
-        trg_patch = 0
+def _parse_version(version_str):
+    '''Parse a version string and extract the major and minor versions (and possibly patch version).'''
+    matched = re.search('^(\d+)\.(\d+)\.(\d+)', version_str)
+    if matched:
+        return int(matched.group(1)), int(matched.group(2)), int(matched.group(3))
     else:
-        trg_major, trg_minor, trg_patch = target_version_list
+        matched = re.search('^(\d+)\.(\d+)', version_str)
+        assert matched != None, "Unable to parse version number, expecting" \
+            f"major.minor[.patch] format but received {version_str}"
+        return int(matched.group(1)), int(matched.group(2)), 0
+
+
+def _compatible_ds_version_check(target_deepspeed_version: str):
+    min_major, min_minor, min_patch = _parse_version(MINIMUM_DEEPSPEED_VERSION)
+    trg_major, trg_minor, trg_patch = _parse_version(target_deepspeed_version)
 
     err_str = f"Target deepspeed version of {target_deepspeed_version} is not compatible " \
         f"with minimum version {MINIMUM_DEEPSPEED_VERSION} supporting elasticity."
@@ -277,13 +281,13 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
 
     if world_size > 0:
         if world_size not in valid_gpus:
-            raise ElasticityIncompatibleWorldSize("World size is not valid " \
+            raise ElasticityIncompatibleWorldSize(f"World size ({world_size}) is not valid " \
         f"with the current list of valid GPU counts: {valid_gpus}")
 
         # Pick largest valid micro batch size
         micro_batch_size = None
         for mbsz in sorted(list(set(elastic_config.micro_batches)), reverse=True):
-            if final_batch_size % world_size % mbsz == 0:
+            if final_batch_size // world_size % mbsz == 0:
                 micro_batch_size = mbsz
                 break
         assert micro_batch_size is not None, "Unable to find divisible micro batch size" \
