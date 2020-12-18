@@ -220,6 +220,9 @@ def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_si
         micro_batch_size (int, optional): if world_size is provided will return
             specific micro batch size
     """
+    if not isinstance(ds_config, dict):
+        raise ValueError(f"Expected ds_config to be a dictionary but received a {type(ds_config)}, containing: {ds_config}")
+
     if ELASTICITY not in ds_config:
         raise ElasticityConfigError(f"'{ELASTICITY}' is missing from config json," \
             " please add it if running an elastic training job.")
