@@ -200,7 +200,26 @@ def elasticity_enabled(ds_config: dict):
 
 
 def get_compatible_gpus(ds_config: dict, target_deepspeed_version: str, world_size=0):
-    """[summary]
+    """Core deepspeed elasticity API. Given an elastic config (similar to the example below)
+    DeepSpeed will compute a total train batch size corresponding valid GPU count list that
+    provides a high level of elasticity. Elasticity in this case means we are safe to scale
+    the training job up/down across the GPU count list *without* any negative impacts on
+    training convergence. This is achievable primarily due to DeepSpeed's gradient accumulation
+    feature which allows us to decompose a global training batch size into:
+    micro-batch-size * gradient-accumulation-steps * world-size.
+
+    "elasticity": {
+        "enabled": true,
+        "max_train_batch_size": 2000,
+        "micro_batch_sizes": [2,4,6],
+        "min_gpus": 1,
+        "max_gpus" : 10000
+        "min_time": 20
+        "version": 0.1
+    }
+
+    Intended to be called both by scheduling infrastructure and deepspeed runtime.
+    For the same `ds_config` we should return deterministic results.
 
     Args:
         ds_config (dict): DeepSpeed config dictionary/json
