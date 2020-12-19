@@ -273,6 +273,8 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             min_gpus=elastic_config.min_gpus,
             max_gpus=elastic_config.max_gpus,
             prefer_larger=elastic_config.prefer_larger_batch_size)
+        # ensure batch size is int dtype
+        final_batch_size = int(final_batch_size)
     else:
         raise NotImplementedError(
             f"Unable to find elastic logic for version: {elastic_config.version}")
