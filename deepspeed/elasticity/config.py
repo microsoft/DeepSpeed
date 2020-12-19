@@ -1,6 +1,8 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
+
+import json
 from .constants import *
 
 
@@ -37,6 +39,7 @@ class ElasticityConfig:
         "min_gpus": 1,
         "max_gpus" : 10000
         "min_time": 20
+        "ignore_non_elastic_batch_info": false
         "version": 0.1
     }
     """
@@ -51,3 +54,12 @@ class ElasticityConfig:
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,
                                                        PREFER_LARGER_BATCH_DEFAULT)
+        self.ignore_non_elastic_batch_info = param_dict.get(
+            IGNORE_NON_ELASTIC_BATCH_INFO,
+            IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
+
+    def repr(self):
+        return self.__dict__
+
+    def __repr__(self):
+        return json.dumps(self.__dict__, sort_keys=True, indent=4)

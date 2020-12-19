@@ -522,6 +522,10 @@ class DeepSpeedConfig(object):
                 world_size=self.world_size)
 
             elastic_dict = self._param_dict[ELASTICITY]
+
+            # Ensure the resource scheduler saw the same elastic config we are using at runtime
+            ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
+
             ignore_non_elastic_batch_info = elastic_dict.get(
                 IGNORE_NON_ELASTIC_BATCH_INFO,
                 IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
@@ -540,21 +544,26 @@ class DeepSpeedConfig(object):
                         "If you want to supress this error (the parameters will be silently ignored) " \
                         f"please set {IGNORE_NON_ELASTIC_BATCH_INFO}':true in your elasticity config.")
 
-            # Update param_dict to use new final batch size
-            orig_batch_size = self._param_dict.get(TRAIN_BATCH_SIZE,
-                                                   TRAIN_BATCH_SIZE_DEFAULT)
-            orig_micro_batch_size = self._param_dict.get(
-                TRAIN_MICRO_BATCH_SIZE_PER_GPU,
-                TRAIN_MICRO_BATCH_SIZE_PER_GPU_DEFAULT)
+            # micro_bsz * world_size * gas = total_batch_size
+            # gas = total_batch_size // (micro_bsz * world_size)
+            gradient_accu_steps = final_batch_size // (micro_batch_size *
+                                                       self.world_size)
 
-            logger.info("[Elasticity] updating training_batch_size: " \
-                f"{orig_batch_size} -> {final_batch_size}")
-            logger.info("[Elasticity] updating train_micro_batch_size_per_gpu: " \
-                f"{orig_micro_batch_size} -> {micro_batch_size}")
+            if TRAIN_BATCH_SIZE in self._param_dict:
+                logger.warning("[Elasticity] overriding training_batch_size: " \
+                    f"{self._param_dict[TRAIN_BATCH_SIZE]} -> {final_batch_size}")
+            if TRAIN_MICRO_BATCH_SIZE_PER_GPU in self._param_dict:
+                logger.warning("[Elasticity] overriding train_micro_batch_size_per_gpu: " \
+                    f"{self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU]} -> {micro_batch_size}")
+            if GRADIENT_ACCUMULATION_STEPS in self._param_dict:
+                logger.warning("[Elasticity] overriding gradient_accumulation_steps: "\
+                    f"{self._param_dict[GRADIENT_ACCUMULATION_STEPS]} -> {gradient_accu_steps}")
+
             logger.info(f"[Elasticity] valid GPU counts: {valid_gpus}")
 
             self._param_dict[TRAIN_BATCH_SIZE] = final_batch_size
             self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = micro_batch_size
+            self._param_dict[GRADIENT_ACCUMULATION_STEPS] = gradient_accu_steps
 
         self._initialize_params(self._param_dict)
         self._configure_train_batch_size()

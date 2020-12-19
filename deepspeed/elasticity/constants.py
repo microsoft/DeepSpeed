@@ -69,3 +69,6 @@ VERSION_DEFAULT = LATEST_ELASTICITY_VERSION
 
 # Minimum deepspeed version to use elasticity
 MINIMUM_DEEPSPEED_VERSION = "0.3.8"
+
+# Environment variable storing elastic config from resource scheduler
+DEEPSPEED_ELASTICITY_CONFIG = "DEEPSPEED_ELASTICITY_CONFIG"

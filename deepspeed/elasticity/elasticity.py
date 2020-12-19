@@ -1,6 +1,7 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
+import os
 import re
 import numpy as np
 
@@ -8,7 +9,7 @@ from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
     ElasticityIncompatibleWorldSize
 from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
     MINIMUM_DEEPSPEED_VERSION, IGNORE_NON_ELASTIC_BATCH_INFO, \
-    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG
 from ..git_version_info import version as __version__
 
 # Thirty eight smallest highly composite numbers. The list should
@@ -199,6 +200,39 @@ def elasticity_enabled(ds_config: dict):
     if ELASTICITY not in ds_config:
         return False
     return ds_config[ELASTICITY].get(ENABLED, ENABLED_DEFAULT)
+
+
+def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
+    """
+    Ensure the resource scheduler saw the same elastic config we are using at runtime
+    """
+    if DEEPSPEED_ELASTICITY_CONFIG in os.environ:
+        scheduler_elastic_config_dict = json.loads(
+            os.environ[DEEPSPEED_ELASTICITY_CONFIG])
+        scheduler_elastic_config = ElasticityConfig(scheduler_elastic_config_dict)
+        runtime_elastic_config = ElasticityConfig(runtime_elastic_config_dict)
+        err_str = "Elastic config '{}={}' seen by resource scheduler does not match config passed to runtime {}={}"
+        if runtime_elastic_config.max_acceptable_batch_size != scheduler_elastic_config.max_acceptable_batch_size:
+            raise ElasticityConfigError(
+                err_str.format('max_acceptable_batch_size',
+                               scheduler_elastic_config.max_acceptable_batch_size,
+                               'max_acceptable_batch_size',
+                               runtime_elastic_config.max_acceptable_batch_size))
+        if runtime_elastic_config.micro_batches != scheduler_elastic_config.micro_batches:
+            raise ElasticityConfigError(
+                err_str.format('micro_batches',
+                               scheduler_elastic_config.micro_batches,
+                               'micro_batches',
+                               runtime_elastic_config.micro_batches))
+        if runtime_elastic_config.version != scheduler_elastic_config.version:
+            raise ElasticityConfigError(
+                err_str.format('version',
+                               scheduler_elastic_config.version,
+                               'version',
+                               runtime_elastic_config.version))
+    else:
+        logger.warning("Unable to find DEEPSPEED_ELASTICITY_CONFIG environment variable, cannot " \
+            "guarantee resource scheduler will scale this job using compatible GPU counts.")
 
 
 def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world_size=0):
