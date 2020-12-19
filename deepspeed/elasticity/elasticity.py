@@ -3,6 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
 import re
+import json
 import numpy as np
 
 from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
@@ -11,6 +12,7 @@ from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_V
     MINIMUM_DEEPSPEED_VERSION, IGNORE_NON_ELASTIC_BATCH_INFO, \
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG
 from ..git_version_info import version as __version__
+from ..utils import logger
 
 # Thirty eight smallest highly composite numbers. The list should
 # be enough to support up to 720K batch size.

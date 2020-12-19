@@ -17,7 +17,7 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..git_version_info import version as __version__
 from ..utils import logger
 
-from ..elasticity import elasticity_enabled, compute_elastic_config
+from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config
 from ..elasticity.config import ElasticityConfigError
 from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT

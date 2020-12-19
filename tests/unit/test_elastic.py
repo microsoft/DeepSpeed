@@ -173,3 +173,47 @@ def test_non_elastic_batch_params_w_override(tmpdir):
                                              model_parameters=model.parameters())
 
     _test_elastic(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_elastic_config_changed(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Lamb",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "gradient_clipping": 1.0,
+        "elasticity": {
+            "enabled": True,
+            "max_train_batch_size": 4,
+            "micro_batch_sizes": [1,
+                                  2,
+                                  3,
+                                  4],
+            "min_gpus": 1,
+            "max_gpus": 4,
+            "min_time": 20,
+            "version": 0.1,
+            "ignore_non_elastic_batch_info": True
+        }
+    }
+    import json, os
+    scheduler_elastic_config = config_dict.copy()
+    scheduler_elastic_config["elasticity"]["max_train_batch_size"] = 27
+    os.environ['DEEPSPEED_ELASTICITY_CONFIG'] = json.dumps(scheduler_elastic_config)
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim, empty_grad=False)
+
+    @distributed_test(world_size=[1, 2])
+    def _test_elastic(args, model, hidden_dim):
+        with pytest.raises(deepspeed.elasticity.config.ElasticityError):
+            model, _, _,_ = deepspeed.initialize(args=args,
+                                                 model=model,
+                                                 model_parameters=model.parameters())
+
+    _test_elastic(args=args, model=model, hidden_dim=hidden_dim)
