@@ -101,7 +101,7 @@ def test_missing_micro_batch():
 
 
 def test_empty_config():
-    base_ds_config = {"elasticity": {"enabled": True}}
+    ds_config = {"elasticity": {"enabled": True}}
     with pytest.raises(deepspeed.elasticity.config.ElasticityError):
         deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
                                                     target_deepspeed_version=ds_version)
