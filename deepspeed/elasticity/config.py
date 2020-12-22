@@ -32,6 +32,9 @@ class ElasticityConfig:
     Elastic config object, constructed from a param dictionary that only contains elastic
     config parameters, example below:
 
+    If elasticity is enabled, user must specify (at least) max_train_batch_size
+    and micro_batch_sizes.
+
     {
         "enabled": true,
         "max_train_batch_size": 2000,
@@ -44,10 +47,22 @@ class ElasticityConfig:
     }
     """
     def __init__(self, param_dict):
-        self.max_acceptable_batch_size = param_dict.get(
-            MAX_ACCEPTABLE_BATCH_SIZE,
-            MAX_ACCEPTABLE_BATCH_SIZE_DEFAULT)
-        self.micro_batches = param_dict.get(MICRO_BATCHES, MICRO_BATCHES_DEFAULT)
+        self.enabled = param_dict.get(ENABLED, ENABLED_DEFAULT)
+        if self.enabled:
+            if MAX_ACCEPTABLE_BATCH_SIZE in param_dict:
+                self.max_acceptable_batch_size = param_dict[MAX_ACCEPTABLE_BATCH_SIZE]
+            else:
+                raise ElasticityConfigError(
+                    f"Elasticity config missing {MAX_ACCEPTABLE_BATCH_SIZE}")
+            if MICRO_BATCHES in param_dict:
+                self.micro_batches = param_dict[MICRO_BATCHES]
+            else:
+                raise ElasticityConfigError(f"Elasticity config missing {MICRO_BATCHES}")
+        else:
+            self.max_acceptable_batch_size = param_dict.get(
+                MAX_ACCEPTABLE_BATCH_SIZE,
+                MAX_ACCEPTABLE_BATCH_SIZE_DEFAULT)
+            self.micro_batches = param_dict.get(MICRO_BATCHES, MICRO_BATCHES_DEFAULT)
         self.min_gpus = param_dict.get(MIN_GPUS, MIN_GPUS_DEFAULT)
         self.max_gpus = param_dict.get(MAX_GPUS, MAX_GPUS_DEFAULT)
         self.min_time = param_dict.get(MIN_TIME, MIN_TIME_DEFAULT)

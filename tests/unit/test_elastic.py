@@ -80,9 +80,31 @@ def test_future_elastic_version():
     ds_config = base_ds_config.copy()
     ds_config['elasticity']['version'] = '0.2'
     with pytest.raises(deepspeed.elasticity.config.ElasticityError):
-        final_batch_size, valid_gpus, mbsize = deepspeed.elasticity.compute_elastic_config(
-            ds_config=ds_config,
-            target_deepspeed_version=ds_version)
+        deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
+                                                    target_deepspeed_version=ds_version)
+
+
+def test_missing_max_batch():
+    ds_config = base_ds_config.copy()
+    del ds_config['elasticity']['max_train_batch_size']
+    with pytest.raises(deepspeed.elasticity.config.ElasticityError):
+        deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
+                                                    target_deepspeed_version=ds_version)
+
+
+def test_missing_micro_batch():
+    ds_config = base_ds_config.copy()
+    del ds_config['elasticity']['micro_batch_sizes']
+    with pytest.raises(deepspeed.elasticity.config.ElasticityError):
+        deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
+                                                    target_deepspeed_version=ds_version)
+
+
+def test_empty_config():
+    base_ds_config = {"elasticity": {"enabled": True}}
+    with pytest.raises(deepspeed.elasticity.config.ElasticityError):
+        deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
+                                                    target_deepspeed_version=ds_version)
 
 
 def test_proper_mbsz():
