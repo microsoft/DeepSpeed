@@ -80,8 +80,7 @@ __global__ void attn_softmax(float* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride)
-            iters = warp_num / (iteration_stride / max_threads_in_sequence);
+        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
 
         for (int i = 1; i < iters; i *= 2) {
             auto temp = g.shfl_xor(max_val, i);
@@ -114,8 +113,7 @@ __global__ void attn_softmax(float* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride)
-            iters = warp_num / (iteration_stride / max_threads_in_sequence);
+        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
 
         for (int i = 1; i < iters; i *= 2) { sum += g.shfl_xor(sum, i); }
 
@@ -218,8 +216,7 @@ __global__ void attn_softmax(__half* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride)
-            iters = warp_num / (iteration_stride / max_threads_in_sequence);
+        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
 
         for (int i = 1; i < iters; i *= 2) {
             auto temp = g.shfl_xor(max_val, i);
@@ -255,8 +252,7 @@ __global__ void attn_softmax(__half* vals,
 #endif
 
         int iters = warp_num;
-        if (seq_length < iteration_stride)
-            iters = warp_num / (iteration_stride / max_threads_in_sequence);
+        if (seq_length < iteration_stride) iters = warp_num / (iteration_stride / seq_length);
 
         for (int i = 1; i < iters; i *= 2) { sum += g.shfl_xor(sum, i); }
 
@@ -343,9 +339,7 @@ void launch_attn_softmax<float>(float* vals,
         dim3 block_dim(seq_length4 > threads ? ((sequence_length + subblock_max_workload - 1) /
                                                 subblock_max_workload * threads)
                                              : threads);
-        iterations =
-            (sequence_length < subblock_max_workload ? (seq_length4 + threads - 1) / threads
-                                                     : MAX_THREAD_ITERATIONS);
+
         if (sequence_length <= 512)
             attn_softmax<32, (threads / 128), 128><<<grid_dim, block_dim, 0, stream>>>(
                 vals, attn_mask, heads, seq_length4, iterations);
@@ -414,9 +408,7 @@ void launch_attn_softmax<__half>(__half* vals,
         dim3 block_dim(seq_length4 > threads ? ((sequence_length + subblock_max_workload - 1) /
                                                 subblock_max_workload * threads)
                                              : threads);
-        iterations =
-            (sequence_length < subblock_max_workload ? (seq_length4 + threads - 1) / threads
-                                                     : MAX_THREAD_ITERATIONS);
+
         if (sequence_length <= 512)
             attn_softmax<32, (threads / 128), 128><<<grid_dim, block_dim, 0, stream>>>(
                 vals, attn_mask, heads, seq_length4, iterations);
