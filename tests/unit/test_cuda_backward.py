@@ -16,8 +16,20 @@ import deepspeed
 
 import sys
 
+
 #if not deepspeed.ops.__installed_ops__['transformer']:
 #    pytest.skip("transformer kernels are not installed", allow_module_level=True)
+def check_equal1(first, second, atol=1e-2, verbose=False):
+    if verbose:
+        print()
+    for i, (x, y) in enumerate(zip(first, second)):
+        x = x[0].cpu().detach().numpy()
+        y = y[0].cpu().detach().numpy()
+        if verbose:
+            print("x = {}".format(x.flatten()))
+            print("y = {}".format(y.flatten()))
+            print('-' * 80)
+        np.testing.assert_allclose(x, y, err_msg="Index: {}".format(i), atol=atol)
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
@@ -238,6 +250,7 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
                             input_mask,
                             output_all_encoded_layers=False,
                             checkpoint_activations=False)
+    check_equal1(base_results, ds_results, atol=0.1, verbose=verbose)
 
     loss = (Y - ds_results[0]).pow(2).sum()
     loss.backward()
@@ -250,12 +263,27 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
 #test_backward[3-1024-120-16-24-True-True-0.05]
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
                          [
-                             (3,1024,119,16,24,True,False, 0.05),
-                             (3,1024,115,16,24,True,True, 0.05),
-                             (1024,128,10,2,2,False,False, 0.1),
-                             (3,1024,52,16,24,False,True, 0.2),
-                             (3,128,51,2,24,False,False, 0.1),
-                             (3,128,54,2,24,False,True, 0.2),
+                             (3,160,128,2,24,False,True, 0.2),
+                             (64,160,128,2,24,False,True, 0.2),
+                             (32,800,128,2,4,False,True, 0.2),
+                             (32,1600,128,25,4,False,True, 0.2),
+                             (32,1600,128,20,4,False,True, 0.2),
+
+                             (3,160,128,2,24,True,True, 0.2),
+                             (64,160,128,2,24,True,True, 0.2),
+                             (32,800,128,2,4,True,True, 0.2),
+                             (64,1600,128,25,4,True,True, 0.2),
+                             #(64,1600,128,20,4,True,True, 0.2),
+                             #(16,1600,128,2,24,False,True, 0.2),
+                             #(1,1600,128,20,1,True,True, 0.06),
+                             #(1,1600,128,2,1,True,True, 0.06),
+                             #(1,1600,128,1,1,True,True, 0.06),
+                             #(1,16,128,1,1,True,True, 0.05),
+                             #(1,1536,128,24,1,True,True, 0.05),
+                             #(1,2560,128,40,2,True,True, 0.1),
+                             #(3,1024,52,16,24,False,True, 0.2),
+                             #(3,128,51,2,24,False,False, 0.1),
+                             #(3,128,54,2,24,False,True, 0.2),
                          ]) # yapf: disable
 def test_backward(batch_size,
                   hidden_size,
