@@ -1,0 +1,24 @@
+{
+  "train_batch_size": 32768,
+  "train_micro_batch_size_per_gpu": 16,
+  "steps_per_print": 1000,
+  "prescale_gradients": false,
+  "optimizer": {
+    "type": "Lamb",
+    "params": {
+      "lr": 2e-3,
+      "weight_decay": 0.01,
+      "bias_correction": false,
+      "max_coeff": 0.3,
+      "min_coeff": 0.01
+    }
+  },
+  "gradient_clipping": 1.0,
+
+  "wall_clock_breakdown": false,
+
+  "fp16": {
+    "enabled": true,
+    "loss_scale": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "train_batch_size": 96,
+  "train_micro_batch_size_per_gpu": 3,
+  "steps_per_print": 100,
+  "optimizer": {
+    "type": "OnebitAdam",
+    "params": {
+      "lr": 3e-5,
+      "freeze_step": 400,
+      "weight_decay": 0.0,
+      "bias_correction": false,
+      "cuda_aware": true
+    }
+  },
+  "gradient_clipping": 1.0,
+  "fp16": {
+    "enabled": true
+  }
+}

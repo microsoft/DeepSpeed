@@ -1,0 +1,18 @@
+
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v1.2.3
+    hooks:
+    -   id: trailing-whitespace
+        exclude: "Megatron-LM/"
+    -   id: check-yaml
+        exclude: "Megatron-LM/"
+    -   id: end-of-file-fixer
+        exclude: "Megatron-LM/"
+
+
+-   repo: https://github.com/pre-commit/mirrors-yapf
+    rev: v0.29.0
+    hooks:
+    -   id: yapf
+        exclude: "Megatron-LM/"

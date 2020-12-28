@@ -1,0 +1,15 @@
+ {
+  "train_batch_size" : 64,
+   "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 0.0002,
+      "betas": [
+        0.5,
+        0.999
+      ],
+      "eps": 1e-8
+    }
+  },
+  "steps_per_print" : 10
+}

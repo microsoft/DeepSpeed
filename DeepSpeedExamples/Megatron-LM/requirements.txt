@@ -1,0 +1,7 @@
+nltk>=3.4
+numpy>=1.15.4
+pandas>=0.24.0
+sentencepiece>=0.1.8
+tensorflow>=1.12.0
+boto3==1.11.11
+regex==2020.1.8

@@ -1,0 +1,26 @@
+{
+  "train_batch_size": 4096,
+  "train_micro_batch_size_per_gpu": 16,
+  "steps_per_print": 1000,
+  "prescale_gradients": true,
+  "gradient_predivide_factor": 8,
+  "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 1e-3,
+      "weight_decay": 0.01,
+      "bias_correction": false
+    }
+  },
+  "gradient_clipping": 1.0,
+  "wall_clock_breakdown": false,
+  "fp16": {
+    "enabled": true,
+    "loss_scale": 0
+  },
+  "progressive_layer_drop": {
+    "enabled": true,
+    "theta": 0.5,
+    "gamma": 0.001
+  }
+}
