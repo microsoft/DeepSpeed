@@ -16,6 +16,7 @@ import torch.distributed as dist
 
 from deepspeed.utils.logging import logger
 from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
+from deepspeed.utils import event_manager
 
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
 from ..utils import PartitionedTensor, ensure_directory_exists
@@ -1155,6 +1156,7 @@ class PipelineEngine(DeepSpeedEngine):
                         f'{self.__class__.__name__} does not understand instruction {repr(cmd)}'
                     )
 
-                # Equivalent to: self._exec_forward_pass(buffer_id=0)
-                self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
-                self._exec_instr(**cmd.kwargs)
+                with event_manager.timespan(str(type(cmd)), data={"cmd": repr(cmd)}):
+                    # Equivalent to: self._exec_forward_pass(buffer_id=0)
+                    self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
+                    self._exec_instr(**cmd.kwargs)

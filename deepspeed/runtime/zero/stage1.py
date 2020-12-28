@@ -691,6 +691,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         #RS: all_gather/broadcast sub-partitions in separate comm calls
         #gather the updated weights from everyone
+        breakpoint() 
         for fp16_all_sub_partitions in self.parallel_comm_sub_partitioned_fp16_groups:
             for comm_id, sub_partitions in enumerate(fp16_all_sub_partitions):
                 dist.all_gather(sub_partitions,

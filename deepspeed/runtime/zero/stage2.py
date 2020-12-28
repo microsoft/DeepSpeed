@@ -17,7 +17,7 @@ from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_paramete
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
-from deepspeed.utils import logger
+from deepspeed.utils import logger, event_manager
 from ...ops.op_builder import UtilsBuilder
 
 #Toggle this to true to enable correctness test
@@ -945,7 +945,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         else:
             stream = torch.cuda.current_stream()
 
-        if self.contiguous_gradients:
+        if self.contiguous_gradients: 
             self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
             self.buffered_reduce_fallback(
@@ -1412,69 +1412,69 @@ class FP16_DeepSpeedZeroOptimizer(object):
         timers('optimizer_gradients').stop()
 
         #torch.set_num_threads(12)
-        timers('optimizer_step').start()
-        if self.deepspeed_adam_offload:
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
-            if type(self.optimizer) == DeepSpeedCPUAdam:
-                fp16_param_groups = [
-                    fp16_partitions[partition_id]
-                    for fp16_partitions in self.parallel_partitioned_fp16_groups
-                ]
-                self.optimizer.step(fp16_param_groups=fp16_param_groups)
+        with event_manager.timespan("optimizer_step"):
+            timers('optimizer_step').start()
+            if self.deepspeed_adam_offload:
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                if type(self.optimizer) == DeepSpeedCPUAdam:
+                    fp16_param_groups = [
+                        fp16_partitions[partition_id]
+                        for fp16_partitions in self.parallel_partitioned_fp16_groups
+                    ]
+                    self.optimizer.step(fp16_param_groups=fp16_param_groups)
+                else:
+                    self.optimizer.step()
+                    for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
+                        fp16_partitions[partition_id].data.copy_(fp32_partition.data)
             else:
                 self.optimizer.step()
+
+                #get rid of the fp32 gradients. Not needed anymore
+                if not self.cpu_offload:
+                    for group in self.single_partition_of_fp32_groups:
+                        group.grad = None
+
                 for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                     fp16_partitions[partition_id].data.copy_(fp32_partition.data)
-        else:
-            self.optimizer.step()
-
-            #get rid of the fp32 gradients. Not needed anymore
-            if not self.cpu_offload:
-                for group in self.single_partition_of_fp32_groups:
-                    group.grad = None
-
-            for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
-                fp16_partitions[partition_id].data.copy_(fp32_partition.data)
-
-        timers('optimizer_step').stop()
+            timers('optimizer_step').stop()
 
         if self.cpu_offload:
             self.reset_cpu_buffers()
+        with event_manager.timespan("optimizer_allgather"):
+            timers('optimizer_allgather').start()
+            #gather the updated weights from everyone
+            for group_id, partitioned_params in enumerate(self.parallel_partitioned_fp16_groups):
 
-        timers('optimizer_allgather').start()
-        #gather the updated weights from everyone
-        for group_id, partitioned_params in enumerate(self.parallel_partitioned_fp16_groups):
+                #Sequential AllGather Best of both worlds
+                dp_world_size = dist.get_world_size(group=self.dp_process_group)
+                num_shards = max(
+                    1,
+                    partitioned_params[partition_id].numel() * dp_world_size //
+                    self.allgather_bucket_size)
 
-            #Sequential AllGather Best of both worlds
-            dp_world_size = dist.get_world_size(group=self.dp_process_group)
-            num_shards = max(
-                1,
-                partitioned_params[partition_id].numel() * dp_world_size //
-                self.allgather_bucket_size)
+                shard_size = partitioned_params[partition_id].numel() // num_shards
+                num_elements = shard_size
 
-            shard_size = partitioned_params[partition_id].numel() // num_shards
-            num_elements = shard_size
+                assert shard_size * num_shards <= partitioned_params[partition_id].numel()
 
-            assert shard_size * num_shards <= partitioned_params[partition_id].numel()
+                for shard_id in range(num_shards):
 
-            for shard_id in range(num_shards):
+                    if shard_id == (num_shards - 1):
+                        num_elements = partitioned_params[partition_id].numel(
+                        ) - shard_id * shard_size
 
-                if shard_id == (num_shards - 1):
-                    num_elements = partitioned_params[partition_id].numel(
-                    ) - shard_id * shard_size
+                    shard_list = []
+                    for dp_id in range(dp_world_size):
+                        curr_shard = partitioned_params[dp_id].narrow(
+                            0,
+                            shard_id * shard_size,
+                            num_elements).detach()
+                        shard_list.append(curr_shard)
 
-                shard_list = []
-                for dp_id in range(dp_world_size):
-                    curr_shard = partitioned_params[dp_id].narrow(
-                        0,
-                        shard_id * shard_size,
-                        num_elements).detach()
-                    shard_list.append(curr_shard)
-
-                dist.all_gather(shard_list,
-                                shard_list[partition_id],
-                                group=self.dp_process_group)
-        timers('optimizer_allgather').stop()
+                    dist.all_gather(shard_list,
+                                    shard_list[partition_id],
+                                    group=self.dp_process_group)
+            timers('optimizer_allgather').stop()
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):

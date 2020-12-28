@@ -41,6 +41,8 @@ from ..ops.adam import FusedAdam
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
+from deepspeed.utils import event_manager
+
 try:
     from apex import amp
 except ImportError:
@@ -852,7 +854,10 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
-        loss = self.module(*inputs, **kwargs)
+
+        event_manager.init_current_thread("forward_thread")
+        with event_manager.timespan("forward"):
+            loss = self.module(*inputs, **kwargs)
 
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
@@ -917,22 +922,23 @@ class DeepSpeedEngine(Module):
             self.timers('backward_inner_microstep').start()
             self.timers('backward_inner').start()
 
-        if self.zero_optimization():
-            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
-            )
-            self.optimizer.backward(loss)
-        elif self.amp_enabled():
-            # AMP requires delaying unscale when inside gradient accumulation boundaries
-            # https://nvidia.github.io/apex/advanced.html#gradient-accumulation-across-iterations
-            delay_unscale = not self.is_gradient_accumulation_boundary()
-            with amp.scale_loss(loss,
-                                self.optimizer,
-                                delay_unscale=delay_unscale) as scaled_loss:
-                scaled_loss.backward()
-        elif self.fp16_enabled():
-            self.optimizer.backward(loss)
-        else:
-            loss.backward()
+        with event_manager.timespan("backward"):
+            if self.zero_optimization():
+                self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
+                )
+                self.optimizer.backward(loss)
+            elif self.amp_enabled():
+                # AMP requires delaying unscale when inside gradient accumulation boundaries
+                # https://nvidia.github.io/apex/advanced.html#gradient-accumulation-across-iterations
+                delay_unscale = not self.is_gradient_accumulation_boundary()
+                with amp.scale_loss(loss,
+                                    self.optimizer,
+                                    delay_unscale=delay_unscale) as scaled_loss:
+                    scaled_loss.backward()
+            elif self.fp16_enabled():
+                self.optimizer.backward(loss)
+            else:
+                loss.backward()
 
         if self.wall_clock_breakdown():
             self.timers('backward_inner').stop()
@@ -943,7 +949,8 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce').start()
 
         if self.enable_backward_allreduce:
-            self.allreduce_gradients()
+            with event_manager.timespan("allreduce_gradients"):
+                self.allreduce_gradients()
 
         if self.wall_clock_breakdown():
             self.timers('backward_allreduce').stop()
