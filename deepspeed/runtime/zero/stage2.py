@@ -1072,7 +1072,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             if rank is None:
                 #    "All Reducing"
-                with event_manager.timespan("call dist.all_reduce"):
+                with event_manager.timespan("call dist.all_reduce", data={"nelement": tensor_to_allreduce.nelement(), "dtype": str(tensor_to_allreduce.dtype), "size": tuple(tensor_to_allreduce.size())}):
                     dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
             else:
                 global_rank = _get_global_rank(self.dp_process_group, rank)

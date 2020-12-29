@@ -29,7 +29,7 @@ def _reduce(input_):
         return input_
 
     # All-reduce.
-    with event_manager.timespan("_reduce::all_reduce"):
+    with event_manager.timespan("_reduce::all_reduce", data={"nelement": input_.nelement(), "dtype": str(input_.dtype), "size": tuple(input_.size())}):
         torch.distributed.all_reduce(input_, group=group)
 
     return input_
