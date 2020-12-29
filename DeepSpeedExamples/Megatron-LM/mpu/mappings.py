@@ -29,7 +29,8 @@ def _reduce(input_):
         return input_
 
     # All-reduce.
-    torch.distributed.all_reduce(input_, group=group)
+    with event_manager.timespan("_reduce::all_reduce"):
+        torch.distributed.all_reduce(input_, group=group)
 
     return input_
 
@@ -45,7 +46,8 @@ def _split(input_):
 
     # Split along last dimension.
     world_size = torch.distributed.get_world_size(group=group)
-    input_list = split_tensor_along_last_dim(input_, world_size)
+    with event_manager.timespan("_split::split_tensor_along_last_dim"):
+        input_list = split_tensor_along_last_dim(input_, world_size)
 
     # Note: torch.split does not create contiguous tensors by default.
     rank = torch.distributed.get_rank(group=group)
@@ -69,7 +71,8 @@ def _gather(input_):
 
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     tensor_list[rank] = input_
-    torch.distributed.all_gather(tensor_list, input_, group=group)
+    with event_manager.timespan("_gather::all_gather"):
+        torch.distributed.all_gather(tensor_list, input_, group=group)
 
     # Note: torch.cat already creates a contiguous tensor.
     output = torch.cat(tensor_list, dim=last_dim).contiguous()

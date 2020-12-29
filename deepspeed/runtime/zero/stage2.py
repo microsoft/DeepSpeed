@@ -578,7 +578,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             current_index = current_index + param_size
 
     def overlapping_partition_gradients_reduce_epilogue(self):
-        self.independent_gradient_partition_epilogue()
+        with event_manager.timespan("independent_gradient_partition_epilogue"):
+            self.independent_gradient_partition_epilogue()
 
     def create_reduce_and_remove_grad_hooks(self):
         self.grad_accs = []
@@ -940,45 +941,48 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.grads_in_partition_offset += param.numel()
 
     def reduce_ipg_grads(self):
-        if self.overlap_comm:
-            stream = self.reduction_stream
-        else:
-            stream = torch.cuda.current_stream()
+        event_manager.init_current_thread("reduce_ipg_grads")
+        with event_manager.timespan("reduce_ipg_grads"):
+            if self.overlap_comm:
+                stream = self.reduction_stream
+            else:
+                stream = torch.cuda.current_stream()
 
-        if self.contiguous_gradients: 
-            self.average_tensor(self.ipg_buffer[self.ipg_index])
-        else:
-            self.buffered_reduce_fallback(
-                None,
-                self.grads_in_ipg_bucket,
-                elements_per_buffer=self.elements_in_ipg_bucket)
+            if self.contiguous_gradients: 
+                self.average_tensor(self.ipg_buffer[self.ipg_index])
+            else:
+                with event_manager.timespan("buffered_reduce_fallback"):
+                    self.buffered_reduce_fallback(
+                        None,
+                        self.grads_in_ipg_bucket,
+                        elements_per_buffer=self.elements_in_ipg_bucket)
 
-        with torch.cuda.stream(stream):
-            for _, param, param_id in self.params_in_ipg_bucket:
+            with torch.cuda.stream(stream):
+                for _, param, param_id in self.params_in_ipg_bucket:
 
-                assert self.params_already_reduced[param_id] == False, \
-                    f"The parameter {param_id} has already been reduced. \
-                    Gradient computed twice for this partition. \
-                    Multiple gradient reduction is currently not supported"
+                    assert self.params_already_reduced[param_id] == False, \
+                        f"The parameter {param_id} has already been reduced. \
+                        Gradient computed twice for this partition. \
+                        Multiple gradient reduction is currently not supported"
 
-                self.params_already_reduced[param_id] = True
+                    self.params_already_reduced[param_id] = True
 
-                if not self.is_param_in_current_partition[param_id]:
-                    if self.overlap_comm and self.contiguous_gradients is False:
-                        # Clear the previous grads during the next reduction
-                        # to avoid clearing them before the reduction is complete.
-                        if self.previous_reduced_grads is None:
-                            self.previous_reduced_grads = []
-                        self.previous_reduced_grads.append(param)
-                    else:
-                        param.grad = None
-                elif self.contiguous_gradients:
-                    self.copy_grads_in_partition(param)
+                    if not self.is_param_in_current_partition[param_id]:
+                        if self.overlap_comm and self.contiguous_gradients is False:
+                            # Clear the previous grads during the next reduction
+                            # to avoid clearing them before the reduction is complete.
+                            if self.previous_reduced_grads is None:
+                                self.previous_reduced_grads = []
+                            self.previous_reduced_grads.append(param)
+                        else:
+                            param.grad = None
+                    elif self.contiguous_gradients:
+                        self.copy_grads_in_partition(param)
 
-        self.grads_in_ipg_bucket = []
-        self.params_in_ipg_bucket = []
-        self.elements_in_ipg_bucket = 0
-        #####################################################################
+            self.grads_in_ipg_bucket = []
+            self.params_in_ipg_bucket = []
+            self.elements_in_ipg_bucket = 0
+            #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
@@ -1052,31 +1056,33 @@ class FP16_DeepSpeedZeroOptimizer(object):
     ######################Reduction Related Methods##############################
 
     def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
-        rank = None
-        tensor = self.flatten(bucket)
+        with event_manager.timespan("allreduce_bucket"):
+            rank = None
+            tensor = self.flatten(bucket)
 
-        tensor_to_allreduce = tensor
+            tensor_to_allreduce = tensor
 
-        if pg_correctness_test:
-            allreduce_always_fp32 = True
+            if pg_correctness_test:
+                allreduce_always_fp32 = True
 
-        if allreduce_always_fp32:
-            tensor_to_allreduce = tensor.float()
+            if allreduce_always_fp32:
+                tensor_to_allreduce = tensor.float()
 
-        tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
+            tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
 
-        if rank is None:
-            #    "All Reducing"
-            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
-        else:
-            global_rank = _get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
+            if rank is None:
+                #    "All Reducing"
+                with event_manager.timespan("call dist.all_reduce"):
+                    dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
+            else:
+                global_rank = _get_global_rank(self.dp_process_group, rank)
+                dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
-        if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
-            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                tensor.copy_(tensor_to_allreduce)
+            if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
+                if rank is None or rank == dist.get_rank(group=self.dp_process_group):
+                    tensor.copy_(tensor_to_allreduce)
 
-        return tensor
+            return tensor
 
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):

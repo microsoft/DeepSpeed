@@ -11,7 +11,9 @@
   },
   "zero_optimization": {
     "stage": 2,
-    "cpu_offload": false
+    "cpu_offload": false,
+    "contiguous_gradients": false,
+    "overlap_comm": false
   },
   "zero_allow_untested_optimizer": true,
   "gradient_clipping": 1.0,

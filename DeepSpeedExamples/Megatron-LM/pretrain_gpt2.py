@@ -651,7 +651,7 @@ def main():
     @event_manager.add_event_handler
     def event_handler(event):
         if event.is_done:
-            torch.cuda.synchronize()
+            torch.cuda.current_stream().synchronize()
 
     recorder = ChromeTraceRecorder(event_manager)
     recorder.enable()
