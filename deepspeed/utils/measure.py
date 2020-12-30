@@ -89,6 +89,8 @@ class EventManager:
 
     def __init__(self):
         self._callbacks = []
+        self._pre_handlers = []
+        self._post_handlers = []
         self._thread_local = local()
 
         self._uuid = str(uuid.uuid4())
@@ -114,8 +116,10 @@ class EventManager:
 
     @contextmanager
     def timespan(self, name, *, data=None):
-        start_perf = time.perf_counter()
         ev: TimespanEvent = self._build_event(TimespanEvent, name, data, 3)
+        self._invoke_pre(ev)
+        ev.start_time = time.time()
+        start_perf = time.perf_counter()
 
         ts = self.thread_state
         try:
@@ -140,6 +144,9 @@ class EventManager:
         finally:
             ts.stack.pop()
             ev.is_done = True
+
+            self._invoke_post(ev)
+
             end_time = time.time()
             end_perf = time.perf_counter()
             elapsed_time = end_perf - start_perf
@@ -149,8 +156,17 @@ class EventManager:
 
             self._invoke_callbacks(ev)
 
+    def add_pre_handler(self, callback: EventCallback):
+        self._pre_handlers.append(callback)
+        return callback
+
+    def add_post_handler(self, callback: EventCallback):
+        self._post_handlers.append(callback)
+        return callback
+
     def add_event_handler(self, callback: EventCallback):
         self._callbacks.append(callback)
+        return callback
 
     def remove_event_handler(self, callback: EventCallback):
         self._callbacks.remove(callback)
@@ -198,6 +214,20 @@ class EventManager:
 
     def _invoke_callbacks(self, ev: BaseEvent):
         for cb in self._callbacks:
+            try:
+                cb(ev)
+            except Exception:
+                logging.exception("Exception raised in the event callback loop")
+
+    def _invoke_pre(self, ev: BaseEvent):
+        for cb in self._pre_handlers:
+            try:
+                cb(ev)
+            except Exception:
+                logging.exception("Exception raised in the event callback loop")
+
+    def _invoke_post(self, ev: BaseEvent):
+        for cb in self._post_handlers:
             try:
                 cb(ev)
             except Exception:

@@ -648,7 +648,8 @@ def main():
         print('Pretrain GPT2 model')
         print_args(args)
     
-    @event_manager.add_event_handler
+    @event_manager.add_post_handler
+    @event_manager.add_pre_handler
     def event_handler(event):
         torch.cuda.current_stream().synchronize()
 
