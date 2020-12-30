@@ -43,20 +43,20 @@ class MpiBackend(object):
         requests = []
         for idx in range(world_size):
             req_sign = self.my_igather(rank,
-                                  world_size,
-                                  comm,
-                                  cupy_sign_list_packed[idx],
-                                  cupy_recvbuf_sign,
-                                  root=idx)
+                                       world_size,
+                                       comm,
+                                       cupy_sign_list_packed[idx],
+                                       cupy_recvbuf_sign,
+                                       root=idx)
             requests += req_sign
 
         for idx in range(world_size):
             req_scale = self.my_igather(rank,
-                                   world_size,
-                                   comm,
-                                   cupy_worker_scale,
-                                   cupy_recvbuf_scale,
-                                   root=idx)
+                                        world_size,
+                                        comm,
+                                        cupy_worker_scale,
+                                        cupy_recvbuf_scale,
+                                        root=idx)
             requests += req_scale
 
         MPI.Request.Waitall(requests)
@@ -93,20 +93,20 @@ class MpiBackend(object):
 
         for idx in range(world_size):
             req_sign = self.my_igather(rank,
-                                  world_size,
-                                  comm,
-                                  numpy_sign_list_packed[idx],
-                                  numpy_recvbuf_sign,
-                                  root=idx)
+                                       world_size,
+                                       comm,
+                                       numpy_sign_list_packed[idx],
+                                       numpy_recvbuf_sign,
+                                       root=idx)
             requests += req_sign
 
         for idx in range(world_size):
             req_scale = self.my_igather(rank,
-                                   world_size,
-                                   comm,
-                                   numpy_worker_scale,
-                                   numpy_recvbuf_scale,
-                                   root=idx)
+                                        world_size,
+                                        comm,
+                                        numpy_worker_scale,
+                                        numpy_recvbuf_scale,
+                                        root=idx)
             requests += req_scale
 
         MPI.Request.Waitall(requests)
@@ -175,33 +175,23 @@ class MpiBackend(object):
 
         all_start_time = time.time()
         original_size = buffer_m.numel()
+        worker_error_size = worker_error.numel()
         cupy.cuda.Device(local_rank).use()
 
-        if torch.numel(buffer_m) != torch.numel(worker_error):
-            empty_tensor = torch.zeros(torch.numel(worker_error) - torch.numel(buffer_m),
+        if original_size != worker_error_size:
+            empty_tensor = torch.zeros(worker_error_size - original_size,
                                        device=buffer_m.device)
             buffer_m = torch.cat([buffer_m, empty_tensor])
 
         buffer_m.add_(worker_error)
         worker_scale = torch.norm(buffer_m) / np.sqrt(torch.numel(buffer_m))
-        sign_buffer_m = buffer_m.sign().add_(1).bool()
-        sign_buffer_m = sign_buffer_m.float()
-        sign_buffer_m.add_(-0.5).mul_(2.0)
-        worker_error.set_((buffer_m - worker_scale * sign_buffer_m))
-        sign_buffer_m = None
-
-        compensated_buffer_m = buffer_m
-        compensated_buffer_m.sign_()
-        compensated_buffer_m = compensated_buffer_m.add_(1).bool()
-        cupy_worker_scale = self.compression_backend.torch2cupy(worker_scale)
-        cupy_compensated_buffer_m = self.compression_backend.torch2cupy(
-            compensated_buffer_m)
-        compensated_buffer_m = None
+        worker_error.set_(buffer_m - worker_scale *
+                          buffer_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
         cupy_sign_list_packed = self.compression_backend.compress_by_chunk(
-            cupy_compensated_buffer_m,
+            self.compression_backend.torch2cupy(buffer_m.sign_().add_(1).bool()),
             self.size)
-        cupy_compensated_buffer_m = None
+        cupy_worker_scale = self.compression_backend.torch2cupy(worker_scale)
 
         cupy_recvbuf_sign = cupy.zeros(
             [self.size,
@@ -213,14 +203,14 @@ class MpiBackend(object):
         gather_start = time.time()
         if self.cuda_aware:
             self.gather_cuda(self.rank,
-                        self.size,
-                        self.comm,
-                        cupy_sign_list_packed,
-                        cupy_recvbuf_sign,
-                        cupy_worker_scale,
-                        cupy_recvbuf_scale)
+                             self.size,
+                             self.comm,
+                             cupy_sign_list_packed,
+                             cupy_recvbuf_sign,
+                             cupy_worker_scale,
+                             cupy_recvbuf_scale)
         else:
-            cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale = self.gather_host(self.rank,
+            _, cupy_recvbuf_sign, _, cupy_recvbuf_scale = self.gather_host(self.rank,
                self.size,
                self.comm,
                cupy_sign_list_packed,
@@ -229,71 +219,67 @@ class MpiBackend(object):
                cupy_recvbuf_scale)
         gather_end = time.time()
 
-        cupy_unpacked_sign = (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
-            self.size,
-            -1)
-        cupy_recvbuf_sign = None
-        unpacked_sign = self.compression_backend.cupy2torch(cupy_unpacked_sign).float()
-        cupy_unpacked_sign = None
-        unpacked_sign = unpacked_sign.add_(-0.5).mul_(2.0)
-        worker_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale).mul_(
-            1 / self.size)
-        compensated_server_m = unpacked_sign.mul_(worker_scale).sum(0)
-        unpacked_sign = None
+        # cupy_sign_list_packed, cupy_worker_scale, worker_scale = None, None, None
+        cupy_sign_list_packed = None
 
+        compensated_server_m = self.compression_backend.cupy2torch(
+            (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
+                self.size,
+                -1)).float().add_(-0.5).mul_(2.0).mul_(
+                    self.compression_backend.cupy2torch(cupy_recvbuf_scale).mul_(
+                        1 / self.size)).sum(0)
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(
             compensated_server_m.numel())
-        sign_server_m = compensated_server_m.sign().add_(1).bool()
-        sign_server_m = sign_server_m.float()
-        sign_server_m.add_(-0.5).mul_(2.0)
-        server_error.set_(compensated_server_m - server_scale * sign_server_m)
-        sign_server_m = None
+        server_error.set_(
+            compensated_server_m - server_scale *
+            compensated_server_m.sign().add_(1).bool().float().add_(-0.5).mul_(2.0))
 
-        compensated_server_m.sign_()
-        compensated_server_m = compensated_server_m.add_(1).bool()
         cupy_server_scale = self.compression_backend.torch2cupy(server_scale)
-        cupy_compensated_server_m = self.compression_backend.torch2cupy(
-            compensated_server_m)
-        compensated_server_m = None
 
         cupy_server_sign_packed = self.compression_backend.compress_by_chunk(
-            cupy_compensated_server_m,
+            self.compression_backend.torch2cupy(
+                compensated_server_m.sign_().add_(1).bool()),
             1)
+        compensated_server_m = None
 
         cupy_recvbuf_sign_server = cupy.zeros(
             [self.size,
              cupy_server_sign_packed[0].size],
-            dtype=cupy_sign_list_packed[0].dtype)
+            dtype=cupy_recvbuf_sign.dtype)
         cupy_recvbuf_scale_server = cupy.zeros([self.size,
                                                 1],
-                                               dtype=cupy_worker_scale.dtype)
+                                               dtype=cupy_recvbuf_scale.dtype)
+        # cupy_recvbuf_sign, cupy_recvbuf_scale = None, None
+        cupy_recvbuf_sign = None
 
         # Communication Phase 2
         if self.cuda_aware:
             self.allgather_cuda(self.comm,
-                           cupy_server_sign_packed[0],
-                           cupy_recvbuf_sign_server,
-                           cupy_server_scale,
-                           cupy_recvbuf_scale_server)
+                                cupy_server_sign_packed[0],
+                                cupy_recvbuf_sign_server,
+                                cupy_server_scale,
+                                cupy_recvbuf_scale_server)
         else:
-            cupy_server_sign_packed[0], cupy_recvbuf_sign_server, cupy_server_scale, cupy_recvbuf_scale_server = self.allgather_host(self.comm,
+            _, cupy_recvbuf_sign_server, _, cupy_recvbuf_scale_server = self.allgather_host(self.comm,
                   cupy_server_sign_packed[0],
                   cupy_recvbuf_sign_server,
                   cupy_server_scale,
                   cupy_recvbuf_scale_server)
 
-        cupy_server_unpacked_sign = (cupy.unpackbits(
-            cupy_recvbuf_sign_server.flatten())).reshape(self.size,
-                                                         -1)
-        cupy_recvbuf_sign_server = None
+        # cupy_server_sign_packed, cupy_server_scale, server_scale = None, None, None
+        cupy_server_sign_packed = None
 
-        server_unpacked_sign = self.compression_backend.cupy2torch(
-            cupy_server_unpacked_sign)
-        cupy_server_unpacked_sign = None
+        buffer_m.data.copy_(
+            self.compression_backend.cupy2torch(
+                (cupy.unpackbits(cupy_recvbuf_sign_server.flatten())).reshape(
+                    self.size,
+                    -1)).float().add_(-0.5).mul_(2.0).mul_(
+                        self.compression_backend.cupy2torch(
+                            cupy_recvbuf_scale_server)).flatten().data)
+        if original_size != worker_error_size:
+            buffer_m = buffer_m[0:original_size]
 
-        server_unpacked_sign = server_unpacked_sign.float().add_(-0.5).mul_(2.0)
-        server_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale_server)
-        buffer_m = server_unpacked_sign.mul_(server_scale).flatten()[0:original_size]
+        # cupy_recvbuf_sign_server, cupy_recvbuf_scale_server = None, None
 
         return buffer_m
