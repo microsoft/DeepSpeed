@@ -5,7 +5,7 @@
 # DP = 4, VMP = 2
 # DP = 8, VMP = 1
 # Change for multinode config
-MP_SIZE=4
+MP_SIZE=${MP_SIZE:-8}
 
 NUM_WORKERS=1
 NUM_GPUS_PER_WORKER=8
