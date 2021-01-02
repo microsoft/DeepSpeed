@@ -16,6 +16,17 @@ static std::unordered_map<int, std::shared_ptr<void>> s_transformer_layers;
 
 const int init_seq_length = 128;
 
+void CheckCudaErrorAux(const char* file, unsigned line)
+{
+    cudaError_t err = cudaGetLastError();
+    if (err == cudaSuccess) return;
+    std::cerr << cudaGetErrorString(err) << "(" << err << ") at " << file << ":" << line
+              << std::endl;
+    throw std::runtime_error("CUDA ERROR!!!\n");
+}
+
+#define CUDA_CHECK_ERROR() CheckCudaErrorAux(__FILE__, __LINE__)
+
 // C++ interface
 
 template <typename T>
@@ -204,24 +215,24 @@ void BertTransformerLayer<T>::Forward(int bsz,
         _qkv_linear.Forward(bsz_seq, inp_norm_ptr, attn_qkvw_ptr, buf_0, _cublasHandle);
     else
         _qkv_linear.Forward(bsz_seq, input_ptr, attn_qkvw_ptr, buf_0, _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     launch_bias_add_transform_0213<T>(
         q_tf_ptr, buf_0, attn_qkvb_ptr, bsz, _seq_length, _hidden_size, _heads, _stream, 3);
-
+    CUDA_CHECK_ERROR();
     int bsz_heads = bsz * _heads;
 
     // attention scores
     _attn_scores.Forward(bsz_heads, soft_out_ptr, k_tf_ptr, q_tf_ptr, _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     // Softmax + Mask
     _softmax.Forward(bsz, soft_out_ptr, input_mask_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     // attn prob dropout.
     _attn_prob_dropout.Forward(bsz_heads * _seq_length, ctx_bufB_ptr, soft_out_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     // attention context
     _attn_context.Forward(bsz_heads, buf_1, v_tf_ptr, ctx_bufB_ptr, _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     launch_transform4d_0213<T>(
         attn_o_inp_ptr, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 1);
 
@@ -229,7 +240,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
         _attn_out_linear.Forward(bsz_seq, attn_o_inp_ptr, attn_ow_ptr, buf_1, _cublasHandle);
     else
         _attn_out_linear.Forward(bsz_seq, attn_o_inp_ptr, attn_ow_ptr, ff1_inp_ptr, _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     // attn output dropout.
     if (_pre_or_postLayerNorm)
         _attn_output_dropout.ForwardWithBias(
@@ -237,7 +248,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
     else
         _attn_output_dropout.ForwardWithBias(
             bsz_seq, add_res_ptr, ff1_inp_ptr, input_ptr, attn_ob_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     if (_pre_or_postLayerNorm) {
         if (_attn_layer_norm.UseMean())
             _attn_layer_norm.ForwardCheckpoint(
@@ -253,25 +264,25 @@ void BertTransformerLayer<T>::Forward(int bsz,
             _attn_layer_norm.Forward(
                 bsz_seq, ff1_inp_ptr, add_res_ptr, attn_nw_ptr, attn_nb_ptr, _stream, true);
     }
-
+    CUDA_CHECK_ERROR();
     _ff1.Forward(bsz_seq,
                  ff1_inp_ptr,
                  inter_w_ptr,
                  (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                  _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     _gelu.ForwardWithBiasAdd(bsz_seq,
                              (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                              inter_b_ptr,
                              (_gelu_checkpoint ? ctx_bufB_ptr : ff2_inp_ptr),
                              _stream);
-
+    CUDA_CHECK_ERROR();
     _ff2.Forward(bsz_seq,
                  (_gelu_checkpoint ? ctx_bufB_ptr : ff2_inp_ptr),
                  output_w_ptr,
                  out_ptr,
                  _cublasHandle);
-
+    CUDA_CHECK_ERROR();
     // layer output dropout.
     if (_pre_or_postLayerNorm)
         _layer_output_dropout.ForwardWithBias(
@@ -279,7 +290,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
     else
         _layer_output_dropout.ForwardWithBias(
             bsz_seq, inp_norm_ptr, out_ptr, ff1_inp_ptr, output_b_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     if (!_pre_or_postLayerNorm) {
         if (_layer_norm.UseMean())
             _layer_norm.ForwardCheckpoint(
@@ -382,7 +393,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
     const T* layer_dropout_buf = _layer_output_dropout.HasDropout()
                                      ? buf_0
                                      : (_pre_or_postLayerNorm ? grad_output_ptr : buf_1);
-
+    CUDA_CHECK_ERROR();
     if (_gelu_checkpoint)
         _gelu.ForwardWithBiasAdd(bsz_seq, ff2_inp_ptr, inter_b_ptr, buf_2, _stream);
     _ff2.Backward(bsz_seq,
@@ -394,10 +405,10 @@ void BertTransformerLayer<T>::Backward(int bsz,
                   _cublasHandle,
                   _stream,
                   ff2_buf);
-
+    CUDA_CHECK_ERROR();
     _gelu.Backward(
         bsz_seq, ff2_buf, (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr), inter_b_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     _ff1.Backward(bsz_seq,
                   ff2_buf,
                   ff1_inp_ptr,
@@ -407,7 +418,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                   _cublasHandle,
                   _stream,
                   buf_3);
-
+    CUDA_CHECK_ERROR();
     if (!_pre_or_postLayerNorm)
         launch_fused_add2<T>(buf_2, buf_3, buf_1, bsz, _seq_length, _hidden_size, _stream);
 
@@ -456,11 +467,11 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                       buf_0,
                                       ff1_inp_ptr);
     }
-
+    CUDA_CHECK_ERROR();
     _attn_output_dropout.Backward(bsz_seq, buf_2, buf_0, _stream);
 
     T* attn_output_dropout_buf = _attn_output_dropout.HasDropout() ? buf_2 : buf_0;
-
+    CUDA_CHECK_ERROR();
     _attn_out_linear.Backward(bsz_seq,
                               attn_output_dropout_buf,
                               attn_o_inp_ptr,
@@ -470,9 +481,9 @@ void BertTransformerLayer<T>::Backward(int bsz,
                               _cublasHandle,
                               _stream,
                               buf_1);
-
+    CUDA_CHECK_ERROR();
     launch_transform_0213<T>(buf_2, buf_1, bsz, _seq_length, _hidden_size, _heads, _stream);
-
+    CUDA_CHECK_ERROR();
     if (_attn_prob_dropout.HasDropout()) {
         if (_attn_dropout_checkpoint)
             _attn_prob_dropout.Forward(
@@ -488,15 +499,15 @@ void BertTransformerLayer<T>::Backward(int bsz,
     } else
         _attn_context.Backward(
             bsz_heads, buf_2, v_tf_ptr, soft_out_ptr, _cublasHandle, buf_3, ff2_buf);
-
+    CUDA_CHECK_ERROR();
     _attn_prob_dropout.Backward(bsz_heads * _seq_length, ff2_buf, _stream);
-
+    CUDA_CHECK_ERROR();
     _softmax.Backward(bsz, ff2_buf, soft_out_ptr, _stream);
-
+    CUDA_CHECK_ERROR();
     _attn_scores.Backward(bsz_heads, ff2_buf, k_tf_ptr, q_tf_ptr, _cublasHandle, buf_2, buf_1);
-
+    CUDA_CHECK_ERROR();
     launch_transform4d_0213(ff2_buf, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 3);
-
+    CUDA_CHECK_ERROR();
     if (_pre_or_postLayerNorm)
         _qkv_linear.Backward(bsz_seq,
                              ff2_buf,
@@ -543,6 +554,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                          inp_norm_ptr);
     } else
         launch_fused_add2<T>(grad_input_ptr, buf_2, buf_0, bsz, _seq_length, _hidden_size, _stream);
+    CUDA_CHECK_ERROR();
 }
 
 template <typename T>
