@@ -3,15 +3,17 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import os
 import torch
+from datetime import timedelta
 
 from .logging import logger
-from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 
 
 def init_distributed(dist_backend="nccl",
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
-                     verbose=True):
+                     verbose=True,
+                     timeout=default_pg_timeout):
     """
     Initialize torch.distributed backend, potentially performing MPI discovery if needed
     Arguments:
@@ -19,6 +21,7 @@ def init_distributed(dist_backend="nccl",
         auto_mpi_discovery (bool): if distributed environment variables are not set, attempt to discover them from MPI
         distributed_port (int, optional): torch distributed backend port
         verbose (bool, optional): verbose logging
+        timeout (timedelta, optional): Timeout for operations executed against the process group. Default value equals 30 minutes.
     """
 
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
@@ -36,7 +39,8 @@ def init_distributed(dist_backend="nccl",
         if verbose:
             logger.info(
                 "Initializing torch distributed with backend: {}".format(dist_backend))
-        torch.distributed.init_process_group(backend=dist_backend)
+        assert isinstance(timeout, timedelta)
+        torch.distributed.init_process_group(backend=dist_backend, timeout=timeout)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
