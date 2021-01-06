@@ -54,6 +54,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
+        assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+            " with pipeline parallelism."
 
         # pipeline step for logging
         self.log_batch_step_id = -1
@@ -940,14 +942,14 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
 
-    def _exec_optimizer_step(self):
+    def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
             self.timers('step').start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
         self._force_grad_boundary = True
-        self._take_model_step()
+        self._take_model_step(lr_kwargs)
         self._force_grad_boundary = False
 
         self.mem_status('AFTER STEP')
