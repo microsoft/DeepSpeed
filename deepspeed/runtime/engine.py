@@ -435,9 +435,9 @@ class DeepSpeedEngine(Module):
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
         self.local_rank = args.local_rank if hasattr(args, 'local_rank') else 0
-        self._config = DeepSpeedConfig(args.deepspeed_config,
-                                       mpu,
-                                       param_dict=self.config_params)
+        config_file = args.deepspeed_config if hasattr(args,
+                                                       'deepspeed_config') else None
+        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -466,10 +466,9 @@ class DeepSpeedEngine(Module):
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
         if not self.client_optimizer:
-            assert self._is_supported_optimizer(self.optimizer_name()), \
-                '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
-            assert self.client_model_parameters, \
-                'DeepSpeed {} optimizer requires parameters in initialize() call'.format(self.optimizer_name())
+            if self.optimizer_name() is not None:
+                assert self._is_supported_optimizer(self.optimizer_name()), \
+                    '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
         if self.optimizer_name() == LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
@@ -1237,9 +1236,12 @@ class DeepSpeedEngine(Module):
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
-        Return:
-            load_path: Path of the loaded checkpoint. None if loading the checkpoint failed
-            client_state: State dictionary used for loading required training states in the client code.
+        Returns:
+            A tuple of ``load_path`` and ``client_state``.
+
+            *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
+
+            *``client_state``: State dictionary used for loading required training states in the client code.
         """
 
         if tag is None:
@@ -1289,7 +1291,7 @@ class DeepSpeedEngine(Module):
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
-        if not self.zero_optimization():
+        if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
                     checkpoint['optimizer'],
