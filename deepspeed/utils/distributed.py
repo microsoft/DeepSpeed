@@ -12,12 +12,15 @@ def init_distributed(dist_backend="nccl",
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
                      verbose=True):
-    """
-    Initialize torch.distributed backend, potentially performing MPI discovery if needed
+    """Initialize torch.distributed backend, potentially performing MPI discovery if needed.
+    
     Arguments:
         dist_backend (str): torch distributed backend, e.g., nccl, mpi, gloo
+        
         auto_mpi_discovery (bool): if distributed environment variables are not set, attempt to discover them from MPI
+        
         distributed_port (int, optional): torch distributed backend port
+        
         verbose (bool, optional): verbose logging
     """
 
