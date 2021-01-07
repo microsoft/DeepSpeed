@@ -229,10 +229,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #not sure why apex was cloning the weights before flattening
             #removing cloning here
 
-            see_memory_usage(f"Before moving param group {i} to CPU")
+            see_memory_usage(f"Before moving param group {i} to CPU", force=True)
             #move all the parameters to cpu to free up GPU space for creating flat buffer
             move_to_cpu(self.fp16_groups[i])
-            see_memory_usage(f"After moving param group {i} to CPU")
+            see_memory_usage(f"After moving param group {i} to CPU", force=True)
 
             #create flat buffer in CPU and move to GPU
             self.fp16_groups_flat.append(
@@ -240,11 +240,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     self.fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
-            see_memory_usage(f"After flattening and moving param group {i} to GPU")
+            see_memory_usage(f"After flattening and moving param group {i} to GPU", force=True)
 
             if dist.get_rank(group=self.dp_process_group) == 0:
                 see_memory_usage(
-                    f"After Flattening and after emptying param group {i} cache")
+                    f"After Flattening and after emptying param group {i} cache", force=True)
 
             # set model fp16 weight to slices of flattened buffer
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
@@ -287,6 +287,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.callback_queued = False
 
         self.param_dict = {}
+        self.param_group_index_dict = {}
 
         #map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
@@ -299,6 +300,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.params_already_reduced = []
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
+        self.params_prepared_to_reduce = []
 
         #simplified param id
         self.param_id = {}
@@ -310,10 +312,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 unique_id = id(param)
                 self.param_id[unique_id] = count
                 self.param_dict[count] = param
+                self.param_group_index_dict[count] = i
                 self.params_already_reduced.append(False)
+                self.params_prepared_to_reduce.append(False)
                 if param.numel() > largest_param_numel:
                     largest_param_numel = param.numel()
                 count = count + 1
+
+        self.maximum_param_id = count
+        self.last_param_id_prepared_to_reduce = self.maximum_param_id
 
         for param_group in self.params_in_partition:
             for param in param_group:
@@ -391,9 +398,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.loss_scaler = LossScaler(scale=static_loss_scale)
             self.cur_iter = 0
 
-        see_memory_usage("Before initializing optimizer states")
+        see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states")
+        see_memory_usage("After initializing optimizer states", force=True)
 
         if dist.get_rank() == 0:
             logger.info(f"optimizer state initialized")
@@ -404,7 +411,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             logger.info(f'rank {dist.get_rank()} gradient parameters in group [{i}] = {len(params_with_grad)}')
 
         if dist.get_rank(group=self.dp_process_group) == 0:
-            see_memory_usage(f"After initializing ZeRO optimizer")
+            see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -472,14 +479,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
 
     def flush_unreduced_gradients(self):
-        for i, group in enumerate(self.fp16_groups):
-            for param in group:
-                param_id = self.get_param_id(param)
-                if not self.params_already_reduced[param_id]:
-                    if param.grad is None:
-                        param.grad = torch.zeros_like(param)
-                    self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
-
+        if not self.params_already_reduced[0]:
+            param = self.param_dict[0]
+            group_index = self.param_group_index_dict[0]
+            if param.grad is None:
+                param.grad = torch.zeros_like(param)
+            self.reduce_ready_partitions_and_remove_grads(param, group_index)
 
     def dump_param_reduction_stats(self, message):
         num_reduced = sum(1 for r in self.params_already_reduced if r)
@@ -498,12 +503,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.dump_param_reduction_stats("In ipg_epilogue")
 
         self.flush_unreduced_gradients()
+
         self.reduce_ipg_grads()
 
         self.dump_param_reduction_stats("After flush_unreduced_gradients")
 
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
+            self.params_prepared_to_reduce[i] = False
 
         if self.overlap_comm:
             torch.cuda.synchronize()
@@ -643,8 +650,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
         if self.elements_in_ipg_bucket + param.numel() > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
-                                         param.numel(),
-                                         force=True)
+                                         param.numel())
             self.reduce_ipg_grads()
             if self.contiguous_gradients and self.overlap_comm:
                 # Swap ipg_index between 0 and 1
@@ -674,6 +680,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.elements_in_ipg_bucket += param.numel()
         self.grads_in_ipg_bucket.append(param.grad)
         self.params_in_ipg_bucket.append((i, param, param_id))
+
+        self.params_prepared_to_reduce[param_id] = True
+        self.last_param_id_prepared_to_reduce = param_id
 
         self.report_ipg_memory_usage("End ipg_remove_grads", 0)
 
@@ -1014,7 +1023,32 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.elements_in_ipg_bucket = 0
         #####################################################################
 
+    def flush_unprepared_gradients(self, current_param_id):
+        last_prepared_param_id = self.last_param_id_prepared_to_reduce
+        if last_prepared_param_id == current_param_id + 1:
+            return
+
+        start_param_id_to_prepare = last_prepared_param_id - 1
+        #logger.info(f'rank {dist.get_rank()}: current {current_param_id} flush_range {start_param_id_to_prepare} ... {current_param_id + 1}')
+        for param_id in range(start_param_id_to_prepare, current_param_id, -1):
+            assert self.params_prepared_to_reduce[param_id] == False, \
+                f"Reducing {current_param_id} fails because {param_id} gradient is already prepared \
+                for reduction. Multiple preparation for reduction of gradient is not currently supported."
+
+            param = self.param_dict[param_id]
+            group_index = self.param_group_index_dict[param_id]
+            if param.grad is None:
+                param.grad = torch.zeros_like(param)
+            self.reduce_independent_p_g_buckets_and_remove_grads(param, group_index)
+
+
     def reduce_ready_partitions_and_remove_grads(self, param, i):
+        param_id = self.get_param_id(param)
+        if self.params_prepared_to_reduce[param_id]:
+            return
+
+        self.flush_unprepared_gradients(param_id)
+
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
@@ -1367,7 +1401,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         Not supporting closure.
         """
         orig_micro_step_id = self.micro_step_id
-        logger.info(f'{dist.get_rank()} Begin Step for micro step {orig_micro_step_id}' )
+        logger.info(f'{dist.get_rank()} Begin Step for micro step {orig_micro_step_id}')
+        see_memory_usage('Before zero_optimizer step', force=True)
         self.micro_step_id = -1
 
         if self.cpu_offload:
@@ -1403,6 +1438,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             timers('optimizer_step').stop()
             timers('optimizer_allgather').start()
             timers('optimizer_allgather').stop()
+
+            see_memory_usage('After zero_optimizer step', force=True)
             logger.info(f'{dist.get_rank()} End Step for micro step {orig_micro_step_id}' )
             return
 
@@ -1526,7 +1563,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             names=['optimizer_gradients',
                    'optimizer_step',
                    'optimizer_allgather'])
-        see_memory_usage('After zero_optimizer step')
+        see_memory_usage('After zero_optimizer step', force=True)
 
         logger.info(f'{dist.get_rank()} End Step for micro step {orig_micro_step_id}' )
 
@@ -1629,7 +1666,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         self.micro_step_id += 1
-        logger.info(f'{dist.get_rank()} Begin backward for micro step {self.micro_step_id}')
+        self.last_param_id_prepared_to_reduce = self.maximum_param_id
+        logger.info(f'{dist.get_rank()} Begin backward for micro step {self.micro_step_id} last_param_id_prepared {self.last_param_id_prepared_to_reduce}')
+        see_memory_usage(f'Before backward', force = True)
+
         if self.cpu_offload:
             torch.cuda.current_stream().wait_stream(self.migration_stream)
 
@@ -1650,6 +1690,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.ipg_index = 0
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        see_memory_usage(f'After backward', force=True)
         logger.info(f'{dist.get_rank()} End backward for micro step {self.micro_step_id}')
 
 

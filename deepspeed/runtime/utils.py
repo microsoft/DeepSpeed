@@ -10,6 +10,7 @@ import os
 from math import ceil
 from math import floor
 from bisect import bisect_left, bisect_right
+import psutil
 
 import torch
 import torch.distributed as dist
@@ -536,6 +537,12 @@ def see_memory_usage(message, force=False):
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB"
     )
+
+    vm_stats = psutil.virtual_memory()
+    used_GB = vm_stats.used / (1024**3)
+    logger.info(
+        f'CPU Virtual Memory:  used = {used_GB}GB, percent = {vm_stats.percent}%')
+
 
 #    # Print message except when distributed but not rank 0
 #    logger.info(message)
