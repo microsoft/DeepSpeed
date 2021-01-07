@@ -31,6 +31,20 @@ construct and manage the training optimizer, data loader, and the learning rate
 scheduler based on the parameters passed to `deepspeed.initialize` and the
 DeepSpeed [configuration file](#deepspeed-configuration).
 
+If you already have a distributed environment setup, you'd need to replace:
+
+```python
+torch.distributed.init_process_group(...)
+```
+
+with:
+
+```python
+deepspeed.init_distributed()
+```
+
+But if you don't need the distributed environment setup until after `deepspeed.initialize()` you don't have to use this function, as DeepSpeed will automatically initialize the distributed environment during its `initialize`. Regardless, you will need to remove `torch.distributed.init_process_group` if you already had one.
+
 
 ### Training
 
