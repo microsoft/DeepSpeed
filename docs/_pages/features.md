@@ -28,7 +28,8 @@ deepspeed --hostfile=<hostfile> \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
-The script `<client_entry.py>` will execute on the resources specified in `<hostfile>`.
+The script `<client_entry.py>` will execute on the resources specified in
+[`<hostfile>`](/getting-started/#resource-configuration-multi-node).
 
 ## Pipeline Parallelism
 DeepSpeed provides [pipeline parallelism](/tutorials/pipeline/) for memory-
@@ -78,7 +79,7 @@ DeepSpeed.
 
 ### Optimizer State and Gradient Partitioning
 Optimizer State and Gradient Partitioning in ZeRO reduces the memory consumption of the
-model states (optimizer states, gradients and parmaeters) by 8x compared to standard
+model states (optimizer states, gradients and parameters) by 8x compared to standard
 data parallelism by partitioning these states across data parallel process instead of
 replicating them.
 
@@ -149,8 +150,8 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 
 ### Activation Checkpointing API
 
-DeepSpeed's Activation Checkpoinitng API supports activation checkpoint partitioning,
-cpu checkpoiniting, and contiguous memory optimizations, while also allowing layerwise
+DeepSpeed's Activation Checkpointing API supports activation checkpoint partitioning,
+cpu checkpointing, and contiguous memory optimizations, while also allowing layerwise
 profiling. Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
 
 
@@ -189,7 +190,7 @@ NVIDIA, or any training optimizer that extends torch's `torch.optim.Optimizer` c
 We introduce an efficient implementation of Adam optimizer on CPU that improves the parameter-update
 performance by nearly an order of magnitude. We use the AVX SIMD instructions on Intel-x86 architecture
 for the CPU-Adam implementation. We support both AVX-512 and AVX-2 instruction sets. DeepSpeed uses
-AVX-2 by defualt which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
+AVX-2 by default which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
 installing DeepSpeed. Using AVX-512, we observe 5.1x to 6.5x speedups considering the model-size between
 1 to 10 billion parameters with respect to torch-adam.
 
