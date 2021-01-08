@@ -43,7 +43,7 @@ with:
 deepspeed.init_distributed()
 ```
 
-The default is to use the NCCL backend, which DeepSpeed has been thoroughly tested with, but other backends can be passed as an argument to `init_distributed`.
+The default is to use the NCCL backend, which DeepSpeed has been thoroughly tested with, but you can also [override the default](https://deepspeed.readthedocs.io/en/latest/initialize.html#distributed-initialization).
 
 But if you don't need the distributed environment setup until after `deepspeed.initialize()` you don't have to use this function, as DeepSpeed will automatically initialize the distributed environment during its `initialize`. Regardless, you will need to remove `torch.distributed.init_process_group` if you already had it in place.
 
