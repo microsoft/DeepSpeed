@@ -97,7 +97,7 @@ Example of ***scheduler***
           "warmup_max_lr": 0.001,
           "warmup_num_steps": 1000
       }
-  }  
+  }
 ```
 
 ### Communication options
@@ -222,7 +222,7 @@ Example of ***scheduler***
 
 | Description                         | Default |
 | ----------------------------------- | ------- |
-| Enable gradient clipping with value | `0`      |
+| Enable gradient clipping with value | `1.0`   |
 
 
 
