@@ -423,7 +423,6 @@ class CheckpointFunction(torch.autograd.Function):
                 inputs_cuda.append(item.to(cuda_device))
             else:
                 inputs_cuda.append(item)
-        #inputs_cuda = [item.to(cuda_device) for item in args]
 
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
@@ -587,7 +586,7 @@ class CheckpointFunction(torch.autograd.Function):
             timers.log(['backward'])
         if SYNCHRONIZE:
             torch.cuda.synchronize()
-        ret_list = [None]
+        ret_list = [None]  # first None for ctx
         for inp in detached_inputs:
             if torch.is_tensor(inp):
                 ret_list.append(inp.grad)

@@ -13,7 +13,6 @@ from common import distributed_test
 
 
 def _compute(module, *inputs, do_checkpoint=False):
-    print('inputs: ', inputs)
     if do_checkpoint:
         outputs = ckpt(module, *inputs)
     else:
