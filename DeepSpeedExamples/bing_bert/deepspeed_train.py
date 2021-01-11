@@ -485,6 +485,8 @@ def run(args, model, optimizer, start_epoch):
     else:
         pretrain_dataset_provider = BingBertDatasetProvider(args)
 
+    #breakpoint()
+
     for index in range(start_epoch, config["training"]["num_epochs"]):
         logger.info(f"Training Epoch: {index + 1}")
         pre = time.time()

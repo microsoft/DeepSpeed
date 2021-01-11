@@ -20,7 +20,7 @@ class BingBertDatasetProvider(BertDatasetProviderInterface):
 
         # Initialize dataset paths
         self.dataset_paths = []
-        for dataset in ['wiki_pretrain_dataset', 'bc_pretrain_dataset']:
+        for dataset in ['wiki_pretrain_dataset']:
             self.dataset_paths.append(
                 os.path.join(args.data_path_prefix,
                              args.config["data"]["datasets"][dataset]))

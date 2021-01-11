@@ -22,12 +22,10 @@
         },
         "mixed_seq_datasets": {
             "128": {
-                "wiki_pretrain_dataset": "bnorick_format/128/wiki_pretrain",
-                "bc_pretrain_dataset": "bnorick_format/128/bookcorpus_pretrain"
+                "wiki_pretrain_dataset": "/data/bert/wikicorpus_en"
             },
             "512": {
-                "wiki_pretrain_dataset": "bnorick_format/512/wiki_pretrain",
-                "bc_pretrain_dataset": "bnorick_format/512/bookcorpus_pretrain"
+                "wiki_pretrain_dataset": "/data/bert/wikicorpus_en"
             }
         }
     },
