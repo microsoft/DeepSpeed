@@ -64,17 +64,18 @@ public:
         return _ctx;
     }
 
-    void GenWorkSpace(size_t size)
+    void GenWorkSpace(void* workspace)  // (size_t size)
     {
-        if (!_workspace) {
+        if (!workspace) { throw std::runtime_error("Workspace is null."); }
+        _workspace = workspace;
+        /*if (!_workspace) {
             assert(_workspace == nullptr);
             cudaMalloc(&_workspace, size);
         } else if (_workSpaceSize < size) {
             cudaFree(_workspace);
             cudaMalloc(&_workspace, size);
         }
-
-        _workSpaceSize = size;
+        _workSpaceSize = size;*/
     }
 
     void* GetWorkSpace() { return _workspace; }
