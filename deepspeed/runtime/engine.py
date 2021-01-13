@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import torch
 import warnings
+import hashlib
 import torch.distributed as dist
 
 from torch.nn.modules import Module
@@ -212,6 +213,12 @@ class DeepSpeedEngine(Module):
                 before averaging and applying them.
         """
         return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
+
+    def checkpoint_tag_validation_enabled(self):
+        return self._config.checkpoint_tag_validation_enabled
+
+    def checkpoint_tag_validation_fail(self):
+        return self._config.checkpoint_tag_validation_fail
 
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
@@ -1440,7 +1447,8 @@ class DeepSpeedEngine(Module):
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
+                used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
@@ -1453,6 +1461,22 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
+
+        if self.checkpoint_tag_validation_enabled():
+            s_hash = hashlib.sha1(s.encode())
+            bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
+            max_bhash = bhash.clone()
+            min_bhash = bhash.clone()
+            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            valid = all(min_bhash == bhash) and all(max_bhash == bhash)
+            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not uniform " \
+                "across all ranks. Including rank information in checkpoint tag could cause issues when " \
+                "restoring with different world sizes."
+            if self.checkpoint_tag_validation_fail():
+                assert valid, msg
+            elif not valid:
+                logger.warning(msg)
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)

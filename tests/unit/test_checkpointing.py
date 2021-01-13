@@ -761,3 +761,30 @@ def test_checkpoint_missing_latest(tmpdir):
         model.load_checkpoint(tmpdir)
 
     _helper(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_checkpoint_unique_tag(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    hidden_dim = 10
+    args = args_from_dict(tmpdir, config_dict)
+
+    model = SimpleModel(hidden_dim, rank=args.local_rank)
+
+    @distributed_test(world_size=[1])
+    def _helper(args, model, hidden_dim):
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                             model=model,
+                                             model_parameters=model.parameters())
+        # should be no-op, since latest doesn't exist
+        # model.load_checkpoint(tmpdir)
+
+    _helper(args=args, model=model, hidden_dim=hidden_dim)
