@@ -64,18 +64,10 @@ public:
         return _ctx;
     }
 
-    void GenWorkSpace(void* workspace)  // (size_t size)
+    void SetWorkSpace(void* workspace)
     {
         if (!workspace) { throw std::runtime_error("Workspace is null."); }
         _workspace = workspace;
-        /*if (!_workspace) {
-            assert(_workspace == nullptr);
-            cudaMalloc(&_workspace, size);
-        } else if (_workSpaceSize < size) {
-            cudaFree(_workspace);
-            cudaMalloc(&_workspace, size);
-        }
-        _workSpaceSize = size;*/
     }
 
     void* GetWorkSpace() { return _workspace; }
@@ -173,6 +165,5 @@ private:
     void* _workspace;
     uint64_t _seed;
     uint64_t _curr_offset;
-    size_t _workSpaceSize;
     std::vector<std::array<int, 3>> _gemm_algos;
 };
