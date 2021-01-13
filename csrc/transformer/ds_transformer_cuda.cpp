@@ -875,7 +875,7 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
     int seq_len = layer->GetSeqLength();
     if (g_output.size(1) != seq_len) {
         seq_len = g_output.size(1);
-        layer->SetSeqLength(seq_len, bsz);
+        layer->SetSeqLength(seq_len);
     }
 
     auto workspace = torch::empty({get_workspace_size<T>(bsz,
