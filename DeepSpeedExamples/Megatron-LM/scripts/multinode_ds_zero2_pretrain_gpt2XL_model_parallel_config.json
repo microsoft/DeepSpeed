@@ -1,6 +1,6 @@
 {
-  "train_batch_size": 64,
-  "train_micro_batch_size_per_gpu": 16,
+  "train_batch_size": 128,
+  "train_micro_batch_size_per_gpu": 32,
   "gradient_accumulation_steps": 1,
   "steps_per_print": 1,
   "optimizer": {
