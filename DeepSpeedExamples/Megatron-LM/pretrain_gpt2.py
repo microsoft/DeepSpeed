@@ -457,10 +457,12 @@ def train(model, optimizer, lr_scheduler,
             save_checkpoint(iteration, model, optimizer, lr_scheduler, args)
 
         # Evaluation
+        """
         if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
             prefix = 'iteration {}'.format(iteration)
             evaluate_and_print_results(
                 prefix, val_data_iterator, model, args, timers, False)
+        """
 
         if args.exit_interval and iteration % args.exit_interval == 0:
             torch.distributed.barrier()
