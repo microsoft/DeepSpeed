@@ -132,7 +132,7 @@ public:
     inline int GetSeqLength() const { return _seq_length; }
     inline int GetIntermediateSize() const { return _intermediate_size; }
 
-    void SetSeqLength(int seq_len, int bsz);
+    void SetSeqLength(int seq_len);
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
     inline bool IsTrainingMode() const { return _training; }

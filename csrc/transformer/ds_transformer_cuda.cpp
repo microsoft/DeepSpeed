@@ -565,7 +565,7 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 }
 
 template <typename T>
-void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
+void BertTransformerLayer<T>::SetSeqLength(int seq_len)
 {
     _seq_length = seq_len;
 
@@ -695,7 +695,7 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     int seq_len = layer->GetSeqLength();
     if (input.size(1) != seq_len) {
         seq_len = input.size(1);
-        layer->SetSeqLength(seq_len, bsz);
+        layer->SetSeqLength(seq_len);
     }
 
     auto workspace = torch::empty({get_workspace_size<T>(bsz,
@@ -878,12 +878,6 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
         layer->SetSeqLength(seq_len, bsz);
     }
 
-    auto options = torch::TensorOptions()
-                       .dtype(g_output.options().dtype())
-                       .layout(torch::kStrided)
-                       .device(torch::kCUDA)
-                       .requires_grad(true);
-
     auto workspace = torch::empty({get_workspace_size<T>(bsz,
                                                          seq_len,
                                                          layer->GetHiddenSize(),
@@ -891,7 +885,7 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
                                                          layer->GetNumHeads(),
                                                          layer->IsTrainingMode(),
                                                          layer->GeluCheckpoint())},
-                                  options);
+                                  grad_output.options());
     Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto grad_input = torch::empty_like(input);
