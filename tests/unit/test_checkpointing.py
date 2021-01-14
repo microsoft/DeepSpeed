@@ -772,6 +772,9 @@ def test_checkpoint_unique_tag(tmpdir):
             "params": {
                 "lr": 0.00015
             }
+        },
+        "checkpoint": {
+            "tag_validation": "FAIL"
         }
     }
     hidden_dim = 10
@@ -779,12 +782,11 @@ def test_checkpoint_unique_tag(tmpdir):
 
     model = SimpleModel(hidden_dim, rank=args.local_rank)
 
-    @distributed_test(world_size=[1])
+    @distributed_test(world_size=[2])
     def _helper(args, model, hidden_dim):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
-        # should be no-op, since latest doesn't exist
-        # model.load_checkpoint(tmpdir)
+        model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{torch.distributed.get_rank()}")
 
     _helper(args=args, model=model, hidden_dim=hidden_dim)

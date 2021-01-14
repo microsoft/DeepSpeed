@@ -1470,8 +1470,8 @@ class DeepSpeedEngine(Module):
             dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
             dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
             valid = all(min_bhash == bhash) and all(max_bhash == bhash)
-            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not uniform " \
-                "across all ranks. Including rank information in checkpoint tag could cause issues when " \
+            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
+                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
                 "restoring with different world sizes."
             if self.checkpoint_tag_validation_fail():
                 assert valid, msg
