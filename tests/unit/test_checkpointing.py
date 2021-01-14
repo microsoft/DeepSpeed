@@ -763,7 +763,8 @@ def test_checkpoint_missing_latest(tmpdir):
     _helper(args=args, model=model, hidden_dim=hidden_dim)
 
 
-def test_checkpoint_unique_tag(tmpdir):
+@pytest.mark.parametrize('valid_mode', ["FAIL", "WARN", "IGNORE"])
+def test_checkpoint_unique_tag(tmpdir, valid_mode):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -774,7 +775,7 @@ def test_checkpoint_unique_tag(tmpdir):
             }
         },
         "checkpoint": {
-            "tag_validation": "FAIL"
+            "tag_validation": valid_mode
         }
     }
     hidden_dim = 10
@@ -787,6 +788,12 @@ def test_checkpoint_unique_tag(tmpdir):
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
                                              model_parameters=model.parameters())
-        model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{torch.distributed.get_rank()}")
+        if valid_mode == "FAIL":
+            with pytest.raises(AssertionError):
+                model.save_checkpoint(save_dir=tmpdir,
+                                      tag=f"tag-{torch.distributed.get_rank()}")
+        else:
+            model.save_checkpoint(save_dir=tmpdir,
+                                  tag=f"tag-{torch.distributed.get_rank()}")
 
     _helper(args=args, model=model, hidden_dim=hidden_dim)

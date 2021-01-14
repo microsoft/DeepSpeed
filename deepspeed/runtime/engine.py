@@ -1463,7 +1463,7 @@ class DeepSpeedEngine(Module):
             tag = f"global_step{self.global_steps}"
 
         if self.checkpoint_tag_validation_enabled():
-            s_hash = hashlib.sha1(s.encode())
+            s_hash = hashlib.sha1(tag.encode())
             bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
             max_bhash = bhash.clone()
             min_bhash = bhash.clone()
