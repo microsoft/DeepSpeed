@@ -1442,6 +1442,23 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
+    def _checkpoint_tag_validation(self, tag):
+        if self.checkpoint_tag_validation_enabled():
+            s_hash = hashlib.sha1(tag.encode())
+            bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
+            max_bhash = bhash.clone()
+            min_bhash = bhash.clone()
+            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            valid = all(min_bhash == bhash) and all(max_bhash == bhash)
+            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
+                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
+                "restoring with different world sizes."
+            if self.checkpoint_tag_validation_fail():
+                assert valid, msg
+            elif not valid:
+                logger.warning(msg)
+
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
@@ -1462,21 +1479,8 @@ class DeepSpeedEngine(Module):
         if tag is None:
             tag = f"global_step{self.global_steps}"
 
-        if self.checkpoint_tag_validation_enabled():
-            s_hash = hashlib.sha1(tag.encode())
-            bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
-            max_bhash = bhash.clone()
-            min_bhash = bhash.clone()
-            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
-            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
-            valid = all(min_bhash == bhash) and all(max_bhash == bhash)
-            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
-                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
-                "restoring with different world sizes."
-            if self.checkpoint_tag_validation_fail():
-                assert valid, msg
-            elif not valid:
-                logger.warning(msg)
+        # Ensure checkpoint tag is consistent across ranks
+        self._checkpoint_tag_validation(tag)
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
