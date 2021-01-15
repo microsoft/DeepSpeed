@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import torch
 import warnings
+import hashlib
 import torch.distributed as dist
 
 from torch.nn.modules import Module
@@ -18,8 +19,8 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
-    ADAM_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
-    TORCH_ADAM_PARAM, ADAM_W_MODE_PARAM
+    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
+    TORCH_ADAM_PARAM
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
@@ -38,6 +39,8 @@ from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
+
+from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -211,6 +214,12 @@ class DeepSpeedEngine(Module):
         """
         return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
 
+    def checkpoint_tag_validation_enabled(self):
+        return self._config.checkpoint_tag_validation_enabled
+
+    def checkpoint_tag_validation_fail(self):
+        return self._config.checkpoint_tag_validation_fail
+
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
 
@@ -264,6 +273,21 @@ class DeepSpeedEngine(Module):
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
+
+    def flops_profiler_enabled(self):
+        return self._config.flops_profiler_config.enabled
+
+    def flops_profiler_start_step(self):
+        return self._config.flops_profiler_config.start_step
+
+    def flops_profiler_end_step(self):
+        return self._config.flops_profiler_config.end_step
+
+    def flops_profiler_module_depth(self):
+        return self._config.flops_profiler_config.module_depth
+
+    def flops_profiler_top_modules(self):
+        return self._config.flops_profiler_config.top_modules
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -558,10 +582,9 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
-        if self.optimizer_name() == ADAM_OPTIMIZER:
+        if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
-            adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE_PARAM, True)
-
+            adam_w_mode = self.optimizer_name() == ADAMW_OPTIMIZER
             # zero-offload  torch-adam  adam_w_mode optimizer
             # T|F           T           T           torch.optim.AdamW
             # T|F           T           F           torch.optim.Adam
@@ -579,7 +602,7 @@ class DeepSpeedEngine(Module):
                                              **optimizer_parameters,
                                              adamw_mode=adam_w_mode)
             else:
-                optimizer_parameters[ADAM_W_MODE_PARAM] = adam_w_mode
+                optimizer_parameters['adam_w_mode'] = adam_w_mode
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
 
         elif self.optimizer_name() == LAMB_OPTIMIZER:
@@ -764,6 +787,30 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_start_step(
+        ) and self.global_rank == 0:
+            self.flops_profiler = FlopsProfiler(self.module)
+            self.flops_profiler.start_profile(ignore_list=None)
+
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_end_step(
+        ) and self.global_rank == 0:
+            print('{:<30}  {:<8}'.format(
+                'Number of multiply-adds: ',
+                self.flops_profiler.get_total_flops(in_str=False)))
+            print('{:<30}  {:<8}'.format(
+                'Number of parameters: ',
+                self.flops_profiler.get_total_params(in_str=False)))
+            print('{:<30}  {:<8}'.format('Number of steps profiled: ',
+                                         self.flops_profiler.get_total_steps()))
+            self.flops_profiler.print_model_profile()
+            self.flops_profiler.print_model_aggregated_profile(
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules())
+            self.flops_profiler.flops = self.flops_profiler.get_total_flops()
+            self.flops_profiler.params = self.flops_profiler.get_total_params()
+            self.flops_profiler.end_profile()
 
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
@@ -1394,12 +1441,30 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
+    def _checkpoint_tag_validation(self, tag):
+        if self.checkpoint_tag_validation_enabled():
+            s_hash = hashlib.sha1(tag.encode())
+            bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
+            max_bhash = bhash.clone()
+            min_bhash = bhash.clone()
+            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            valid = all(min_bhash == bhash) and all(max_bhash == bhash)
+            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
+                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
+                "restoring with different world sizes."
+            if self.checkpoint_tag_validation_fail():
+                assert valid, msg
+            elif not valid:
+                logger.warning(msg)
+
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
+                used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
@@ -1412,6 +1477,9 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
+
+        # Ensure checkpoint tag is consistent across ranks
+        self._checkpoint_tag_validation(tag)
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
