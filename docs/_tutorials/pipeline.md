@@ -270,14 +270,15 @@ by DeepSpeed:
 
 ### Memory-Efficient Model Construction
 Building a `Sequential` container and providing it to a `PipelineModule` is a convenient way
-of specifying a pipeline parallel model. However, this approach encounters
-scalability issues for massive models. In this approach each worker replicates
-the whole model in CPU memory. For example, a machine with 16 GPUs
-must have as much local CPU memory as 16 times the model size.
+of specifying a pipeline parallel model. However, this approach encounters scalability issues
+for massive models because each worker replicates the whole model in CPU memory.
+For example, a machine with 16 GPUs must have as much local CPU memory as 16 times the model size.
 
 DeepSpeed provides a `LayerSpec` class that delays the construction of
-modules until the model layers have been partitioned across workers. Then,
-each GPU allocates only the modules assigned to it.
+modules until the model layers have been partitioned across workers.
+Then each worker will allocate only the layers it's assigned to. So, continuing the
+example from the previous paragraph, a machine with 16 GPUs will need to allocate a
+total of 1x model size on its CPU, compared to 16x in the LayerSpec example.
 
 Here is an example of the abbreviated AlexNet model, but expressed only
 with `LayerSpec`s. Note that the syntax is almost unchanged: `nn.ReLU(inplace=True)`
