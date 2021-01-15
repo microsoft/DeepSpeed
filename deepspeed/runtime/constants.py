@@ -73,11 +73,6 @@ MAX_GRAD_NORM = 'max_grad_norm'
 ZERO_ALLOW_UNTESTED_OPTIMIZER = "zero_allow_untested_optimizer"
 ZERO_ALLOW_UNTESTED_OPTIMIZER_DEFAULT = False
 
-#############################################
-# Torch distributed constants
-#############################################
-TORCH_DISTRIBUTED_DEFAULT_PORT = "29500"
-
 # Steps
 STEPS_PER_PRINT = "steps_per_print"
 STEPS_PER_PRINT_DEFAULT = 10
@@ -292,7 +287,9 @@ TENSORBOARD_OUTPUT_PATH_DEFAULT = ""
 TENSORBOARD_JOB_NAME = "job_name"
 TENSORBOARD_JOB_NAME_DEFAULT = "DeepSpeedJobName"
 
+#########################################
 # Progressive Layer Drop (PLD)
+#########################################
 PROGRESSIVE_LAYER_DROP = "progressive_layer_drop"
 
 # PLD enable signal
@@ -304,3 +301,26 @@ PLD_THETA_DEFAULT = 1.0
 
 PLD_GAMMA = "gamma"
 PLD_GAMMA_DEFAULT = 0.001
+
+
+#########################################
+# Validation modes
+#########################################
+class ValidationMode:
+    WARN = "WARN"
+    IGNORE = "IGNORE"
+    FAIL = "FAIL"
+
+
+#########################################
+# Checkpoint config params
+#########################################
+# "checkpoint": {tag_validation=["Ignore"|"Warn"|"Fail"]}
+CHECKPOINT = "checkpoint"
+CHECKPOINT_TAG_VALIDATION = "tag_validation"
+CHECKPOINT_TAG_VALIDATION_DEFAULT = ValidationMode.WARN
+CHECKPOINT_TAG_VALIDATION_MODES = [
+    ValidationMode.WARN,
+    ValidationMode.IGNORE,
+    ValidationMode.FAIL
+]

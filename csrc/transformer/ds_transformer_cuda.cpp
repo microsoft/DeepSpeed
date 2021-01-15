@@ -14,6 +14,8 @@
 
 static std::unordered_map<int, std::shared_ptr<void>> s_transformer_layers;
 
+const int init_seq_length = 128;
+
 // C++ interface
 
 template <typename T>
@@ -31,7 +33,7 @@ size_t get_workspace_size(int maxBatchSize,
                                      2 * (size_t(maxBatchSize) * heads * seq_len * seq_len)));
         if (gelu_checkpoint) workSpacesize += 2 * (size_t(maxBatchSize) * seq_len * hidden_size);
     }
-    return workSpacesize * sizeof(T);
+    return workSpacesize;  // * sizeof(T);
 }
 
 // NOTE: AT_ASSERT has become AT_CHECK on master after 0.4.
@@ -121,7 +123,6 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
                                                          gemm_algos[4]))
 {
     assert(_hidden_size % _heads == 0);
-    assert(_seq_length <= 1024);
 
     Initialize();
 }
@@ -134,14 +135,6 @@ BertTransformerLayer<T>::~BertTransformerLayer()
 template <typename T>
 void BertTransformerLayer<T>::Initialize()
 {
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(_batch_size,
-                                                           _seq_length,
-                                                           _hidden_size,
-                                                           _intermediate_size,
-                                                           _heads,
-                                                           _training,
-                                                           _gelu_checkpoint));
-
     if (std::is_same<T, __half>::value) cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
 }
 
@@ -572,7 +565,7 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 }
 
 template <typename T>
-void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
+void BertTransformerLayer<T>::SetSeqLength(int seq_len)
 {
     _seq_length = seq_len;
 
@@ -580,9 +573,6 @@ void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
     _attn_prob_dropout.SetDimension(_seq_length);
     _attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
     _attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
-
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(
-        bsz, _seq_length, _hidden_size, _intermediate_size, _heads, _training, _gelu_checkpoint));
 }
 
 template <typename T>
@@ -591,7 +581,6 @@ int create_transformer_layer(int layer_id,
                              int hidden_dim,
                              int num_heads,
                              int intermediate_size,
-                             int seq_length,
                              float attn_dropout_ratio,
                              float hidden_dropout_ratio,
                              int seed,
@@ -604,14 +593,14 @@ int create_transformer_layer(int layer_id,
 {
     Context::Instance().SetSeed(seed);
     Context::Instance().TestGemmFP16(
-        test_gemm, batch_size, seq_length, num_heads, hidden_dim / num_heads);
+        test_gemm, batch_size, init_seq_length, num_heads, hidden_dim / num_heads);
 
     auto layer = std::make_shared<BertTransformerLayer<T>>(layer_id,
                                                            batch_size,
                                                            hidden_dim,
                                                            num_heads,
                                                            intermediate_size,
-                                                           seq_length,
+                                                           init_seq_length,
                                                            attn_dropout_ratio,
                                                            hidden_dropout_ratio,
                                                            pre_or_postLayerNorm,
@@ -706,8 +695,18 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     int seq_len = layer->GetSeqLength();
     if (input.size(1) != seq_len) {
         seq_len = input.size(1);
-        layer->SetSeqLength(seq_len, bsz);
+        layer->SetSeqLength(seq_len);
     }
+
+    auto workspace = torch::empty({get_workspace_size<T>(bsz,
+                                                         seq_len,
+                                                         layer->GetHiddenSize(),
+                                                         layer->GetIntermediateSize(),
+                                                         layer->GetNumHeads(),
+                                                         layer->IsTrainingMode(),
+                                                         layer->GeluCheckpoint())},
+                                  options);
+    Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
     auto add_res = (normalize_invertible ? inp_norm : torch::empty_like(input));
@@ -872,6 +871,22 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
 
     std::shared_ptr<BertTransformerLayer<T>> layer =
         std::static_pointer_cast<BertTransformerLayer<T>>(s_transformer_layers[layer_id]);
+
+    int seq_len = layer->GetSeqLength();
+    if (g_output.size(1) != seq_len) {
+        seq_len = g_output.size(1);
+        layer->SetSeqLength(seq_len);
+    }
+
+    auto workspace = torch::empty({get_workspace_size<T>(bsz,
+                                                         seq_len,
+                                                         layer->GetHiddenSize(),
+                                                         layer->GetIntermediateSize(),
+                                                         layer->GetNumHeads(),
+                                                         layer->IsTrainingMode(),
+                                                         layer->GeluCheckpoint())},
+                                  grad_output.options());
+    Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto grad_input = torch::empty_like(input);
     auto grad_attn_qkvw = torch::empty_like(attn_qkvw);

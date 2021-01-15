@@ -10,10 +10,11 @@ from .runtime.engine import DeepSpeedEngine
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.pipe.engine import PipelineEngine
 from .runtime.lr_schedules import add_tuning_arguments
-from .runtime.config import DeepSpeedConfig
+from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .utils import log_dist
+from .utils.distributed import init_distributed
 
 from .pipe import PipelineModule
 

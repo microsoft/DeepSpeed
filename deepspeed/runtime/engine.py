@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import torch
 import warnings
+import hashlib
 import torch.distributed as dist
 
 from torch.nn.modules import Module
@@ -24,12 +25,12 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    TORCH_DISTRIBUTED_DEFAULT_PORT, PLD_THETA, PLD_GAMMA
+    PLD_THETA, PLD_GAMMA
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
-from deepspeed.utils import logger, log_dist
+from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 
@@ -132,29 +133,18 @@ class DeepSpeedEngine(Module):
         if dist_init_required is False:
             assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
 
-        # DeepSpeed will initialize torch distributed only if the user has not already intialized it.
-        if dist_init_required and not dist.is_initialized():
-            # discover using mpi4py if user specifies the flag
-            if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
-                # if in Azure ML environment and user specified this flag, notify the user to remove the flag.
-                if self._in_aml():
-                    logger.warning(
-                        "Please remove the --deepspeed_mpi flag if running on AzureML.")
-                self._mpi_check(args, dist_init_required)
-            else:
-                # detect if we are in Azure ML environment
-                if self._in_aml():
-                    self._set_environment_variables_for_nccl_backend(args)
-
-            logger.info("Initializing torch distributed with backend: {}".format(
-                self.dist_backend))
-            dist.init_process_group(backend=self.dist_backend)
+        # Initialize torch distributed if needed
+        init_distributed(dist_backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
 
-        self._init_distributed(dist_init_required)
+        if mpu is not None:
+            assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+                " with model parallelism."
+
+        self._set_distributed_vars()
 
         if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
@@ -211,86 +201,27 @@ class DeepSpeedEngine(Module):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
-    def _in_aml(self):
-        # read AzureML environment variable to detect if we are using an Azure ML environment
-        if 'AZUREML_EXPERIMENT_ID' in os.environ:
-            return True
-        else:
-            return False
+    def get_batch_info(self):
+        """ Get all training batch related settings.
 
-    def _set_environment_variables_for_nccl_backend(self,
-                                                    args,
-                                                    master_port=6105,
-                                                    verbose=True):
-        """Helper routine to get and set environment variables.
-        This is adapted from Azure ML's documentation available from:
-        https://azure.github.io/azureml-web/docs/cheatsheet/distributed-training/#environment-variables-from-openmpi
+        Returns:
+            train_batch_size (int): The effective training batch size. This is the amount of data
+                samples that leads to one step of model update.
+            train_micro_batch_size_per_gpu (int): Batch size to be processed by one GPU in one
+                step (without gradient accumulation).
+            gradient_accumulation_steps (int): Number of training steps to accumulate gradients
+                before averaging and applying them.
         """
-        os.environ["RANK"] = os.environ["OMPI_COMM_WORLD_RANK"]
-        os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
-        single_node = int(os.environ["OMPI_COMM_WORLD_LOCAL_SIZE"]) == int(
-            os.environ["WORLD_SIZE"])
-        if not single_node:
-            master_node_params = os.environ["AZ_BATCH_MASTER_NODE"].split(":")
-            os.environ["MASTER_ADDR"] = master_node_params[0]
-            # Do not overwrite master port with that defined in AZ_BATCH_MASTER_NODE
-            if "MASTER_PORT" not in os.environ:
-                os.environ["MASTER_PORT"] = str(master_port)
-        else:
-            os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
-            os.environ["MASTER_PORT"] = "54965"
-        print("NCCL_SOCKET_IFNAME original value = {}".format(
-            os.environ["NCCL_SOCKET_IFNAME"]))
+        return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
 
-        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-        args.local_rank = int(os.environ["OMPI_COMM_WORLD_LOCAL_RANK"])
+    def checkpoint_tag_validation_enabled(self):
+        return self._config.checkpoint_tag_validation_enabled
 
-        if verbose:
-            logger.info(
-                "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-                .format(os.environ['RANK'],
-                        args.local_rank,
-                        os.environ['WORLD_SIZE'],
-                        os.environ['MASTER_ADDR'],
-                        os.environ['MASTER_PORT']))
+    def checkpoint_tag_validation_fail(self):
+        return self._config.checkpoint_tag_validation_fail
 
-    def _mpi_check(self, args, dist_init_required):
-        from mpi4py import MPI
-        import subprocess
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
-        world_size = comm.Get_size()
-
-        master_addr = None
-        if rank == 0:
-            hostname_cmd = ["hostname -I"]
-            result = subprocess.check_output(hostname_cmd, shell=True)
-            master_addr = result.decode('utf-8').split()[0]
-        master_addr = comm.bcast(master_addr, root=0)
-
-        # Determine local rank by assuming hostnames are unique
-        proc_name = MPI.Get_processor_name()
-        all_procs = comm.allgather(proc_name)
-        local_rank = sum([i == proc_name for i in all_procs[:rank]])
-
-        os.environ['RANK'] = str(rank)
-        os.environ['WORLD_SIZE'] = str(world_size)
-        args.local_rank = local_rank
-        os.environ['MASTER_ADDR'] = master_addr
-        os.environ['MASTER_PORT'] = TORCH_DISTRIBUTED_DEFAULT_PORT
-
-        logger.info(
-            "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
-            .format(os.environ['RANK'],
-                    args.local_rank,
-                    os.environ['WORLD_SIZE'],
-                    os.environ['MASTER_ADDR'],
-                    os.environ['MASTER_PORT']))
-
-        if not dist_init_required and dist.is_initialized():
-            assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-            assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
-                world_size, dist.get_world_size())
+    def elasticity_enabled(self):
+        return self._config.elasticity_enabled
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -514,7 +445,7 @@ class DeepSpeedEngine(Module):
         else:
             return None
 
-    def _init_distributed(self, dist_init_required):
+    def _set_distributed_vars(self):
         if self.local_rank >= 0:
             torch.cuda.set_device(self.local_rank)
             self.device = torch.device("cuda", self.local_rank)
@@ -528,9 +459,9 @@ class DeepSpeedEngine(Module):
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
         self.local_rank = args.local_rank if hasattr(args, 'local_rank') else 0
-        self._config = DeepSpeedConfig(args.deepspeed_config,
-                                       mpu,
-                                       param_dict=self.config_params)
+        config_file = args.deepspeed_config if hasattr(args,
+                                                       'deepspeed_config') else None
+        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -559,10 +490,9 @@ class DeepSpeedEngine(Module):
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
         if not self.client_optimizer:
-            assert self._is_supported_optimizer(self.optimizer_name()), \
-                '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
-            assert self.client_model_parameters, \
-                'DeepSpeed {} optimizer requires parameters in initialize() call'.format(self.optimizer_name())
+            if self.optimizer_name() is not None:
+                assert self._is_supported_optimizer(self.optimizer_name()), \
+                    '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
         if self.optimizer_name() == LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
@@ -643,7 +573,6 @@ class DeepSpeedEngine(Module):
         else:
             self.optimizer = basic_optimizer
         logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer))
-        logger.info('DeepSpeed Final Optimizer = {}'.format(self.optimizer.state_dict()))
 
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
@@ -1354,17 +1283,23 @@ class DeepSpeedEngine(Module):
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
-        Return:
-            load_path: Path of the loaded checkpoint. None if loading the checkpoint failed
-            client_state: State dictionary used for loading required training states in the client code.
+        Returns:
+            A tuple of ``load_path`` and ``client_state``.
+
+            *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
+
+            *``client_state``: State dictionary used for loading required training states in the client code.
         """
 
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')
-            assert os.path.isfile(latest_path), f"Unable to find latest file at {latest_path}, if trying to load latest " \
-                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
-            with open(latest_path, 'r') as fd:
-                tag = fd.read().strip()
+            if os.path.isfile(latest_path):
+                with open(latest_path, 'r') as fd:
+                    tag = fd.read().strip()
+            else:
+                logger.warning(f"Unable to find latest file at {latest_path}, if trying to load latest " \
+                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint.")
+                return None, None
 
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
@@ -1403,7 +1338,7 @@ class DeepSpeedEngine(Module):
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
-        if not self.zero_optimization():
+        if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
                     checkpoint['optimizer'],
@@ -1507,12 +1442,30 @@ class DeepSpeedEngine(Module):
         )
         return zero_optimizer_sd
 
+    def _checkpoint_tag_validation(self, tag):
+        if self.checkpoint_tag_validation_enabled():
+            s_hash = hashlib.sha1(tag.encode())
+            bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
+            max_bhash = bhash.clone()
+            min_bhash = bhash.clone()
+            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            valid = all(min_bhash == bhash) and all(max_bhash == bhash)
+            msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
+                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
+                "restoring with different world sizes."
+            if self.checkpoint_tag_validation_fail():
+                assert valid, msg
+            elif not valid:
+                logger.warning(msg)
+
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
-            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is used if not provided.
+            tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
+                used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
@@ -1525,6 +1478,9 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
+
+        # Ensure checkpoint tag is consistent across ranks
+        self._checkpoint_tag_validation(tag)
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
