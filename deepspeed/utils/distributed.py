@@ -23,7 +23,6 @@ def init_distributed(dist_backend="nccl",
         verbose (bool, optional): verbose logging
         timeout (timedelta, optional): Timeout for operations executed against the process group. Default value equals 30 minutes.
     """
-
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
     if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
         if verbose:
