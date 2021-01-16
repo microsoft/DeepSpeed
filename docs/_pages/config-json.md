@@ -229,7 +229,7 @@ Example of ***scheduler***
 
 ### ZeRO Optimizations for FP16 Training
 
-Enabling and configure ZeRO memory optimizations
+Enabling and configuring ZeRO memory optimizations
 ```json
   "zero_optimization": {
     "stage": [0|1|2],
