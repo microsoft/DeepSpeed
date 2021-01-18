@@ -26,6 +26,8 @@ def add_model_config_args(parser):
 
     group = parser.add_argument_group('model', 'model configuration')
 
+    group.add_argument('--all-gather-logits', action='store_true',
+                       help='All-gather logits from Model-Parallel outputs')
     group.add_argument('--pretrained-bert', action='store_true',
                        help='use a pretrained bert-large-uncased model instead'
                        'of initializing from scratch. See '

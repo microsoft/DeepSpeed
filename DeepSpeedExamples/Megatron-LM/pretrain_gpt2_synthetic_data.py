@@ -71,7 +71,7 @@ def get_model(args):
                       max_sequence_length=args.max_position_embeddings,
                       checkpoint_activations=args.checkpoint_activations,
                       checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=True)
+                      parallel_output=not args.all_gather_logits)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
@@ -293,10 +293,13 @@ def forward_step(data_iterator, model, args, timers):
 
     # Forward model.
     output = model(tokens, position_ids, attention_mask)
-    losses = mpu.vocab_parallel_cross_entropy(output.contiguous().float(),
-                                              labels)
-    loss_mask = loss_mask.view(-1)
-    loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
+    if args.all_gather_logits:
+        loss = torch.nn.CrossEntropyLoss()(output.view(-1, output.size(-1)), labels.view(-1))
+    else:
+        losses = mpu.vocab_parallel_cross_entropy(output.contiguous().float(),
+                                                labels)
+        loss_mask = loss_mask.view(-1)
+        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
 
     return loss
 
@@ -419,7 +422,7 @@ def train(model, optimizer, lr_scheduler,
     timers('interval time').start()
     report_memory_flag = True
 
-    f = open("throughput.txt", "w")
+    f = open("throughput.csv", "w")
 
     while iteration < args.train_iters:
         #start_event.record()
