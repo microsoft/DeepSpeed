@@ -564,6 +564,28 @@ class GPT2Dataset(data.Dataset):
             return True
         return False
 
+
+class SyntheticDataset(data.Dataset):
+
+    def __init__(self,
+                 max_seq_len=1024,
+                 num_samples=1000,
+                 sample_across_doc=True,
+                 random_across_doc_sampling=True,
+                 sentence_start=False, **kwargs):
+        self.num_samples = num_samples
+        self.max_seq_len = max_seq_len
+        self.samples = []
+        for _ in range(self.num_samples):
+            self.samples.append(np.random.randint(low=0, high=50256, size=max_seq_len+1))
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        return {'text': self.samples[idx]}
+
+
 class bert_sentencepair_dataset(data.Dataset):
     """
     Dataset containing sentencepairs for BERT training. Each index corresponds to a randomly generated sentence pair.

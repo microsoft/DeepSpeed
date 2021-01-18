@@ -132,14 +132,14 @@ def make_loaders(args):
         eval_seq_length = eval_seq_length * world_size
     split = get_split(args)
     data_set_args = {
-        'path': args.train_data,
+        'path': args.train_data,    # webtext | synthetic
         'seq_length': seq_length,
         'lazy': args.lazy_loader,
         'delim': args.delim,
         'text_key': args.text_key,
         'label_key': 'label',
         'non_binary_cols': None,
-        'ds_type': args.data_set_type,
+        'ds_type': args.data_set_type,  # e.g. "GPT2"
         'split': split,
         'loose': args.loose_json,
         'tokenizer_type': args.tokenizer_type,
@@ -167,6 +167,10 @@ def make_loaders(args):
     test = None
 
     if args.train_data is not None:
+        # >>> train[0][0]['text']
+        # array([45639, 11254,   362, ...,  4004,  2239, 50256])
+        # >>> train[0]['text'].__len__()
+        # 1025 (= seq_len + 1)
         train, tokenizer = data_utils.make_dataset(**data_set_args)
         if data_utils.should_split(split):
             train, valid, test = train

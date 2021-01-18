@@ -1,0 +1,14 @@
+{
+  "train_batch_size": 8,
+  "gradient_accumulation_steps": 1,
+  "steps_per_print": 1,
+  "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 0.00015,
+      "weight_decay": 1e-2
+    }
+  },
+  "gradient_clipping": 1.0,
+  "wall_clock_breakdown": true
+}

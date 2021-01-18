@@ -17,7 +17,7 @@ import os
 import math
 
 from .samplers import DistributedBatchSampler
-from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, GPT2Dataset
+from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, GPT2Dataset, SyntheticDataset
 from .lazy_loader import exists_lazy, make_lazy, lazy_array_loader
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, GPT2BPETokenizer, make_tokenizer
 from . import corpora
@@ -90,7 +90,7 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, process_fn=N
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
         path = [path]
-    datasets = [get_dataset_from_path(p) for p in path]
+    datasets = [get_dataset_from_path(p) for p in path]     # len: 250,000 (raw texts)
     if len(datasets) == 1:
         ds = datasets[0]
     else:
@@ -111,11 +111,18 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, process_fn=N
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             ds = [bert_sentencepair_dataset(d, max_seq_len=seq_length, presplit_sentences=presplit_sentences)  if d is not None else None  for d in ds]
         elif ds_type.lower() == 'gpt2':
+            # splitted vectorized (np arrays) datasets (train: 237250000, validation: 12500000, test: 250000)
             ds = [GPT2Dataset(d, max_seq_len=seq_length) if d is not None else None for d in ds]
+        elif ds_type.lower() == 'synthetic':
+            print("Use synthetic datasets")
+            ds = [SyntheticDataset(max_seq_len=seq_length) if d is not None else None for d in ds]
     else:
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
             ds = GPT2Dataset(ds, max_seq_len=seq_length)
+        elif ds_type.lower() == 'synthetic':
+            print("Use synthetic datasets")
+            ds = SyntheticDataset(max_seq_len=seq_length)
     return ds, tokenizer
