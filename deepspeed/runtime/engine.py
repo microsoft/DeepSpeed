@@ -1156,23 +1156,28 @@ class DeepSpeedEngine(Module):
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
         grads = []
         for param_name, param in self.module.named_parameters():
-            if param.grad is None:
-                # In cases where there is an imbalance of empty grads across
-                # ranks we must create empty grads, this will ensure that every
-                # rank is reducing the same size. In some cases it may make
-                # sense in the future to support the ability to average not
-                # w.r.t. world size but with a different value.
-                param.grad = torch.zeros(param.size(),
+            # Do not perform allreduce for MoE params marked with param.allreduce=False
+            if hasattr(param, 'allreduce') and not param.allreduce:
+                #print(f"skipping allreduce for param {param_name}")
+                pass
+            else:
+                if param.grad is None:
+                    # In cases where there is an imbalance of empty grads across
+                    # ranks we must create empty grads, this will ensure that every
+                    # rank is reducing the same size. In some cases it may make
+                    # sense in the future to support the ability to average not
+                    # w.r.t. world size but with a different value.
+                    param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
                                          device=param.device)
-                grads.append(param.grad.data)
-            else:
-                grad_data = param.grad.data
-                if self.sparse_gradients_enabled(
-                ) and param_name in self.csr_tensor_module_names:
-                    grads.append(CSRTensor(grad_data))
+                    grads.append(param.grad.data)
                 else:
-                    grads.append(grad_data)
+                    grad_data = param.grad.data
+                    if self.sparse_gradients_enabled(
+                    ) and param_name in self.csr_tensor_module_names:
+                        grads.append(CSRTensor(grad_data))
+                    else:
+                        grads.append(grad_data)
 
         split_buckets = split_half_float_double_csr(grads)
 
