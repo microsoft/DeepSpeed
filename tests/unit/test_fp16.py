@@ -5,6 +5,9 @@ import pytest
 import json
 import os
 from deepspeed.ops.adam import FusedAdam
+from deepspeed.runtime.pipe.topology import PipelineParallelGrid as Grid
+from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
+
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
 
@@ -795,3 +798,54 @@ def test_fp16_adam_types(tmpdir, adam_type, torch_impl):
             model.step()
 
     _test_fp16_adam_types(args=args, model=model, hidden_dim=hidden_dim)
+
+
+# Later (shaden): Add .model_parallel and ._pipe_replicated variations.
+@distributed_test(world_size=4)
+def test_mpu_grad_norm():
+    topo = Topo(axes=['pipe', 'model', 'data'], dims=[2, 2, 1])
+    grid = Grid(topology=topo)
+
+    from deepspeed.runtime.utils import get_grad_norm
+
+    grads = [1. * x for x in range(1, 5)]
+    grads_t = torch.FloatTensor(grads)
+    global_norm = torch.norm(grads_t, 2.0)
+
+    mine = grads[torch.distributed.get_rank()]
+    param = torch.FloatTensor([0.]).cuda()
+    param.model_parallel = True
+    param.grad = torch.FloatTensor([mine]).cuda()
+
+    test_norm = get_grad_norm([param], mpu=grid)
+    assert torch.allclose(torch.tensor([test_norm]), global_norm)
+
+
+@distributed_test(world_size=4)
+def test_mpu_overflow():
+    topo = Topo(axes=['pipe', 'model', 'data'], dims=[2, 2, 1])
+    mpu = Grid(topology=topo)
+
+    rank = torch.distributed.get_rank()
+    world = torch.distributed.get_world_size()
+
+    from deepspeed.runtime.utils import CheckOverflow
+    checker = CheckOverflow(mpu=mpu)
+
+    grads = [1. * x for x in range(1, world + 1)]
+    param = torch.FloatTensor([0.]).cuda()
+
+    for overflow_rank in range(world + 1):
+        if rank == overflow_rank:
+            mine = float('nan')
+        else:
+            mine = grads[rank]
+
+        param.grad = torch.FloatTensor([mine]).cuda()
+        if mpu.get_data_parallel_world_size() > 1:
+            torch.distributed.all_reduce(param.grad, group=mpu.get_data_parallel_group())
+
+        if overflow_rank < world:
+            assert checker.has_overflow([param]) == True
+        else:
+            assert checker.has_overflow([param]) == False
