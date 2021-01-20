@@ -39,7 +39,7 @@ A key reason why this model does not fit in GPU memory is that the Adam optimize
 {
     "zero_optimization": {
         "stage":1,
-        "reduce_bucket_size": 500000000
+        "reduce_bucket_size": 5e8
     }
 }
 ```
@@ -75,8 +75,8 @@ Next, we need to update the DeepSpeed json configuration, as shown below, to ena
         "contiguous_gradients": true,
         "overlap_comm": true,
         "reduce_scatter": true,
-        "reduce_bucket_size": 50000000,
-        "allgather_bucket_size": 500000000
+        "reduce_bucket_size": 5e8,
+        "allgather_bucket_size": 5e8
     }
 }
 ```
