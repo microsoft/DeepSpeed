@@ -109,7 +109,7 @@ def test_flops_profiler_in_inference():
         top_modules=3,
         warm_up=5,
         num_steps=10,
-        as_strings=True,
+        as_string=True,
         ignore_modules=None,
     )
     print(macs, params, steps)

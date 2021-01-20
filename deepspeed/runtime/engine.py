@@ -798,10 +798,10 @@ class DeepSpeedEngine(Module):
         ) and self.global_rank == 0:
             print('{:<30}  {:<8}'.format(
                 'Number of multiply-adds: ',
-                self.flops_profiler.get_total_flops(in_str=False)))
+                self.flops_profiler.get_total_flops(as_string=False)))
             print('{:<30}  {:<8}'.format(
                 'Number of parameters: ',
-                self.flops_profiler.get_total_params(in_str=False)))
+                self.flops_profiler.get_total_params(as_string=False)))
             print('{:<30}  {:<8}'.format('Number of steps profiled: ',
                                          self.flops_profiler.get_total_steps()))
             self.flops_profiler.print_model_profile()
