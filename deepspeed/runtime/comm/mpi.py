@@ -89,6 +89,48 @@ class MpiBackend(object):
         cupy.cuda.get_current_stream().synchronize()
 
         # 2. use numpy buffers for communication
+        comm.Alltoall(numpy_sign_list_packed, numpy_recvbuf_sign)
+        comm.Allgather(numpy_worker_scale, numpy_recvbuf_scale)
+
+        # 3. Convert back from numpy to cupy
+        cupy_recvbuf_sign = cupy.asarray(numpy_recvbuf_sign)
+        for idx in range(world_size):
+            cupy_sign_list_packed[idx] = cupy.asarray(numpy_sign_list_packed[idx])
+
+        cupy_worker_scale = cupy.asarray(numpy_worker_scale)
+        cupy_recvbuf_scale = cupy.asarray(numpy_recvbuf_scale)
+        cupy.cuda.get_current_stream().synchronize()
+
+        return cupy_sign_list_packed, cupy_recvbuf_sign, cupy_worker_scale, cupy_recvbuf_scale
+
+    def gather_host_igather(self,
+                            rank,
+                            world_size,
+                            comm,
+                            cupy_sign_list_packed,
+                            cupy_recvbuf_sign,
+                            cupy_worker_scale,
+                            cupy_recvbuf_scale):
+
+        # In-place operations are not possible for newly created cupy arrays
+        # so we need to return the new buffers
+        numpy_recvbuf_sign = np.zeros([world_size,
+                                       cupy_sign_list_packed[rank].size],
+                                      dtype=cupy_sign_list_packed[0].dtype)
+        numpy_recvbuf_scale = np.zeros([world_size, 1], dtype=cupy_worker_scale.dtype)
+
+        # 1. convert from cupy to numpy
+        numpy_sign_list_packed = cupy_sign_list_packed
+
+        for idx in range(world_size):
+            numpy_sign_list_packed[idx] = cupy.asnumpy(cupy_sign_list_packed[idx])
+
+        numpy_worker_scale = cupy.asnumpy(cupy_worker_scale)
+        numpy_recvbuf_scale = cupy.asnumpy(cupy_recvbuf_scale)
+
+        cupy.cuda.get_current_stream().synchronize()
+
+        # 2. use numpy buffers for communication
         requests = []
 
         for idx in range(world_size):
@@ -197,6 +239,7 @@ class MpiBackend(object):
             [self.size,
              cupy_sign_list_packed[self.rank].size],
             dtype=cupy_sign_list_packed[0].dtype)
+
         cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
 
         # Communication Phase 1
