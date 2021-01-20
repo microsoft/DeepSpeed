@@ -121,11 +121,11 @@ class FlopsProfiler(object):
 
         self.model.apply(add_or_reset_attrs)
 
-    def get_total_flops(self, in_str=False):
+    def get_total_flops(self, as_string=False):
         """Returns the total flops of the model.
 
         Args:
-            in_str (bool, optional): whether to output the flops in string. Defaults to False.
+            as_string (bool, optional): whether to output the flops as string. Defaults to False.
         """
         if self.get_total_steps() == 0:
             return 0
@@ -133,27 +133,27 @@ class FlopsProfiler(object):
         for module in self.model.modules():
             sum += module.__flops__
         total_flops = sum / self.get_total_steps()
-        return flops_to_string(total_flops) if in_str else total_flops
+        return flops_to_string(total_flops) if as_string else total_flops
 
-    def get_total_duration(self, in_str=False):
+    def get_total_duration(self, as_string=False):
         """Returns the total duration of the model forward pass.
 
         Args:
-            in_str (bool, optional): whether to output the duration in string. Defaults to False.
+            as_string (bool, optional): whether to output the duration as string. Defaults to False.
         """
         if self.get_total_steps() == 0:
             return 0
         total_duration = self.model.__duration__ / self.get_total_steps()
-        return duration_to_string(total_duration) if in_str else total_duration
+        return duration_to_string(total_duration) if as_string else total_duration
 
-    def get_total_params(self, in_str=False):
+    def get_total_params(self, as_string=False):
         """Returns the total parameters of the model.
 
         Args:
-            in_str (bool, optional): whether to output the parameters in string. Defaults to False.
+            as_string (bool, optional): whether to output the parameters as string. Defaults to False.
         """
         return params_to_string(
-            self.model.__params__) if in_str else self.model.__params__
+            self.model.__params__) if as_string else self.model.__params__
 
     def get_total_steps(self):
         """Returns the total number of steps (or input batches) profiled.
@@ -697,7 +697,7 @@ def get_model_profile(
     top_modules=3,
     warm_up=5,
     num_steps=10,
-    as_strings=True,
+    as_string=True,
     ignore_modules=None,
 ):
     """Returns the total flops, parameters, and profiled steps of a model.
@@ -712,7 +712,7 @@ def get_model_profile(
         top_modules (int, optional): the number of top modules to print in the aggregated profile. Defaults to 3.
         warm_up (int, optional): the number of warm-up steps before measuring the time of each module. Defaults to 5.
         num_steps (int, optional): the number of steps to profile. Defaults to 10.
-        as_strings (bool, optional): whether to print the output as strings. Defaults to True.
+        as_string (bool, optional): whether to print the output as strings. Defaults to True.
         ignore_modules ([type], optional): the list of modules to ignore during profiling. Defaults to None.
     """
     assert type(input_res) is tuple
@@ -761,7 +761,7 @@ def get_model_profile(
         prof.print_model_aggregated_profile(module_depth=module_depth,
                                             top_modules=top_modules)
     prof.end_profile()
-    if as_strings:
+    if as_string:
         return flops_to_string(flops), params_to_string(params), steps
 
     return flops, params, steps
