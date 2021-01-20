@@ -12,7 +12,7 @@ FLOPS_PROFILER_FORMAT = '''
 flops profiler should be enabled as:
 "session_params": {
   "flops_profiler": {
-    "enalbe": [true|false],
+    "enabled": [true|false],
     "start_step": 5,
     "end_step": 6,
     "module_depth": -1,

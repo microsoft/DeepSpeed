@@ -317,6 +317,48 @@ Enabling and configure ZeRO memory optimizations
 | ------------------------------------------------------------ | ------- |
 | Print out state information of DeepSpeed object after initialization | `false`   |
 
+### Flops Profiler
+```json
+{
+  "flops_profiler": {
+    "enabled": false,
+    "start_step": 5,
+    "end_step": 6,
+    "module_depth": -1,
+    "top_modules": 3
+  }
+}
+```
+***enabled***: [boolean]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| Enables the flops profiler. | `false`   |
+
+***start\_step***: [integer]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| The global training step at which to start profiling. Note that warm up steps are needed for accurate timing measurement. | `5`   |
+
+***end\_step***: [integer]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| The global training step at which to end profiling. |  `start_step + 1`  |
+
+***module\_depth***: [integer]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+|  The depth of the model at which to print aggregated module information. Defaults to `-1` to print information on the innermost modules (with maximum depth). | `-1`   |
+
+***top\_module***: [integer]
+
+| Description                                                  | Default |
+| ------------------------------------------------------------ | ------- |
+| The number of top modules to print aggregated profile. | `3`   |
+
 ### Activation Checkpointing
 ```json
   "activation_checkpointing": {

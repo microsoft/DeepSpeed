@@ -240,19 +240,52 @@ comes to data loading. Users simply provide a PyTorch dataset, and DeepSpeed dat
 can automatically handle batch creation appropriately.
 
 ## Performance Analysis and Debugging
-For performance debugging, DeepSpeed can give you a detailed breakdown of the time spent
-in different parts of the training by simply enabling it in the `deepspeed_config`
+
+DeepSpeed provides a set of tools for performance analysis debugging.
+
+### Wall Clock Breakdown
+
+This gives you a detailed breakdown of the time spent
+in different parts of the training and can be enabled in the `deepspeed_config`
 file.
-Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
+
 ```json
 {
   "wall_clock_breakdown": true,
+}
 
+```
+
+###  Timing Activiation Checkpoint Functions
+
+When activiation checkpoingint is enabled, the logging of the forward and backward time for each checkpoint function can be turned on in the `deepspeed_config` file.
+
+```json
+{
   "activation_checkpointing": {
     "profile": true
   }
 }
+
 ```
+
+### Flops Profiler
+
+The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorch model and shows which modules or layers are the bottleneck. When used within the DeepSpeed runtime, the flops profiler can be configured in the `deepspeed_config` file.
+```json
+{
+  "flops_profiler": {
+    "enabled": false,
+    "start_step": 5,
+    "end_step": 6,
+    "module_depth": -1,
+    "top_modules": 3
+  }
+}
+
+```
+The flops profiler can also be used as a standalone package. Please refer to the [Flops Profiler](/tutorials/flops-profiler) tutorial for more details.
+
 ## Sparse Attention
 DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
 
