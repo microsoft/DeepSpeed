@@ -339,7 +339,7 @@ Enabling and configure ZeRO memory optimizations
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| The global training step at which to start profiling. Note that warm up steps are needed for accurate timing measurement. | `5`   |
+| The global training step at which to start profiling. Note that warm up steps are needed for accurate time measurement. | `5`   |
 
 ***end\_step***: [integer]
 
@@ -351,13 +351,13 @@ Enabling and configure ZeRO memory optimizations
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-|  The depth of the model at which to print aggregated module information. Defaults to `-1` to print information on the innermost modules (with maximum depth). | `-1`   |
+|  The depth of the model at which to print the aggregated module information. When set to `-1`, it prints information on the innermost modules (with the maximum depth). | `-1`   |
 
-***top\_module***: [integer]
+***top\_modules***: [integer]
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| The number of top modules to print aggregated profile. | `3`   |
+| Limits the aggregated profile output to the number of top modules specified. | `3`   |
 
 ### Activation Checkpointing
 ```json

@@ -241,13 +241,13 @@ can automatically handle batch creation appropriately.
 
 ## Performance Analysis and Debugging
 
-DeepSpeed provides a set of tools for performance analysis debugging.
+DeepSpeed provides a set of tools for performance analysis and debugging.
 
 ### Wall Clock Breakdown
 
-This gives you a detailed breakdown of the time spent
-in different parts of the training and can be enabled in the `deepspeed_config`
-file.
+DeepSpeed provides a detailed breakdown of the time spent
+in different parts of the training.
+This can be enabled by setting the following in the `deepspeed_config` file.
 
 ```json
 {
@@ -258,7 +258,7 @@ file.
 
 ###  Timing Activiation Checkpoint Functions
 
-When activiation checkpoingint is enabled, the logging of the forward and backward time for each checkpoint function can be turned on in the `deepspeed_config` file.
+When activiation checkpoingint is enabled, profiling the forward and backward time of each checkpoint function can be enabled in the `deepspeed_config` file.
 
 ```json
 {
@@ -271,7 +271,8 @@ When activiation checkpoingint is enabled, the logging of the forward and backwa
 
 ### Flops Profiler
 
-The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorch model and shows which modules or layers are the bottleneck. When used within the DeepSpeed runtime, the flops profiler can be configured in the `deepspeed_config` file.
+The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorch model and shows which modules or layers are the bottleneck. When used with the DeepSpeed runtime, the flops profiler can be configured in the `deepspeed_config` file as follows:
+
 ```json
 {
   "flops_profiler": {
