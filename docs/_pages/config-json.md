@@ -34,7 +34,7 @@ title: "DeepSpeed Configuration JSON"
 
 | Fields | Value                                                        | Example                        |
 | ------ | ------------------------------------------------------------ | ------------------------------ |
-| type   | The optimizer name. DeepSpeed natively supports **Adam**, **OneBitAdam**, and **Lamb** optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
+| type   | The optimizer name. DeepSpeed natively supports **Adam**, **AdamW**, **OneBitAdam**, and **Lamb** optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
 | params | Dictionary of parameters to instantiate optimizer. The parameter names must match the optimizer constructor signature (e.g., for [Adam](https://pytorch.org/docs/stable/optim.html#torch.optim.Adam)). | `{"lr": 0.001, "eps": 1e-8}` |
 
   Example of ***optimizer*** with Adam
@@ -54,6 +54,7 @@ title: "DeepSpeed Configuration JSON"
   }
 ```
 The Adam optimizer also supports the following two params keys/values in addition to the standard parameters from [torch.optim.Adam](https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam):
+
 | "params" key  | Description                                                                 | Default |
 | ------------- | --------------------------------------------------------------------------- | --------|
 | torch\_adam   | Use torch's implementation of adam instead of our fused adam implementation | false   |
@@ -97,7 +98,7 @@ Example of ***scheduler***
           "warmup_max_lr": 0.001,
           "warmup_num_steps": 1000
       }
-  }  
+  }
 ```
 
 ### Communication options
