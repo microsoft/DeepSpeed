@@ -7,10 +7,10 @@ In this tutorial, we introduce the DeepSpeed flops profiler and provide examples
 
 ## Overview
 
-The DeepSpeed flops profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. 
+The DeepSpeed flops profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module.
 It shows the latency, flops, and number of parameters of the modules within the model to identify potential bottlenecks.
-It also outputs the names of the top `k` modules in terms of aggregated time, flops, and number of parameters at depth `l` with `k` and `l` specified by the user. 
-The DeepSpeed flops profiler can be used with the DeepSpeed runtime or as a standalone package. 
+It also outputs the names of the top `k` modules in terms of aggregated time, flops, and number of parameters at depth `l` with `k` and `l` specified by the user.
+The DeepSpeed flops profiler can be used with the DeepSpeed runtime or as a standalone package.
 
 The output profile is computed for each batch of input and printed to the `stdout`. If multiple forward passes are specified by the user to caputre (in the case where the model have different paths or for more accurate time measurement), the average profile of the multiple batches is taken. For each module, the measured profile is annotated after the name and is listed in the order of `number of parameters, percentage of total parameters, number of multiply-accumulate operations (MACs), percentage of total MACs, latency of the module, percentage of the totatal latency, floating point operations per second (FLOPS) of the module`. Note that the number of flops is estimated as `2 * MACs` in the profiler (each MAC operation is counted as 2 floating point operations).
 
@@ -51,7 +51,7 @@ The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov
 
 ## Multi-GPU, Multi-node Runs
 
-For models running on multi-GPU or multi-node, only the model parallelism (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affects the number of flops and parameters profiled, i.e., 
+For models running on multi-GPU or multi-node, only the model parallelism (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affects the number of flops and parameters profiled, i.e.,
 `model_parallel_size * flops = total_flops` and `model_parallel_size * parameters = total_parameters`. The number of GPUs or nodes does not affect the output profile.
 
 
@@ -60,7 +60,7 @@ For models running on multi-GPU or multi-node, only the model parallelism (e.g. 
 When using DeepSpeed for model training, the flops profiler can be configured in the `deepspeed_config` file. No explict API calls are needed to use the profiler. Refer to [flops profiler](/config-json/#flops-profiler) for details.
 
 
-### Example: Megatron-LM 
+### Example: Megatron-LM
 
 For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM)
 
@@ -80,30 +80,30 @@ The flops profiler can be enabled by adding the following field to the `deepspee
 
 An example output of 4-layer Megatron-LM model (`hidden_size = 512, num_attention_heads = 16, batch_size = 8, seq_length = 1024`) is shown below.
 
-```shell  
+```shell
 DistributedDataParallel(
-  38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.86 ms, 100.00% time, 1.3e+01 TFLOPS, 1, 
+  38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.86 ms, 100.00% time, 1.3e+01 TFLOPS, 1,
   (module): FP16_Module(
-    38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.84 ms, 99.95% time, 1.3e+01 TFLOPS, 1, 
+    38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.84 ms, 99.95% time, 1.3e+01 TFLOPS, 1,
     (module): GPT2Model(
-      38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.81 ms, 99.84% time, 1.3e+01 TFLOPS, 1, 
+      38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 32.81 ms, 99.84% time, 1.3e+01 TFLOPS, 1,
       (language_model): TransformerLanguageModel(
-        38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 4.96 ms, 15.08% time, 8.4e+01 TFLOPS, 1, 
+        38.89 M, 100.00% Params, 207.23 GMACs, 100.00% MACs, 4.96 ms, 15.08% time, 8.4e+01 TFLOPS, 1,
         (embedding): Embedding(
-          26.28 M, 67.57% Params, 0.0 MACs, 0.00% MACs, 288.96 us, 0.88% time, 0.0 TFLOPS, 1, 
+          26.28 M, 67.57% Params, 0.0 MACs, 0.00% MACs, 288.96 us, 0.88% time, 0.0 TFLOPS, 1,
           (word_embeddings): VocabParallelEmbedding(25.76 M, 66.23% Params, 0.0 MACs, 0.00% MACs, 97.04 us, 0.30% time, 0.0 TFLOPS, 1, )
           (position_embeddings): Embedding(524.29 k, 1.35% Params, 0.0 MACs, 0.00% MACs, 67.95 us, 0.21% time, 0.0 TFLOPS, 1, 1024, 512)
           (embedding_dropout): Dropout(0, 0.00% Params, 0.0 MACs, 0.00% MACs, 71.53 us, 0.22% time, 0.0 TFLOPS, 1, p=0.1, inplace=False)
         )
         (transformer): ParallelTransformer(
-          12.61 M, 32.43% Params, 207.23 GMACs, 100.00% MACs, 4.65 ms, 14.14% time, 8.9e+01 TFLOPS, 1, 
+          12.61 M, 32.43% Params, 207.23 GMACs, 100.00% MACs, 4.65 ms, 14.14% time, 8.9e+01 TFLOPS, 1,
           (layers): ModuleList(
-            12.61 M, 32.42% Params, 207.23 GMACs, 100.00% MACs, 0.0, 0.00% time, 0.0 TFLOPS, 0, 
+            12.61 M, 32.42% Params, 207.23 GMACs, 100.00% MACs, 0.0, 0.00% time, 0.0 TFLOPS, 0,
             (0): ParallelTransformerLayer(
-              3.15 M, 8.11% Params, 51.81 GMACs, 25.00% MACs, 2.13 ms, 6.49% time, 4.9e+01 TFLOPS, 2, 
+              3.15 M, 8.11% Params, 51.81 GMACs, 25.00% MACs, 2.13 ms, 6.49% time, 4.9e+01 TFLOPS, 2,
               (input_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0.0 MACs, 0.00% MACs, 110.63 us, 0.34% time, 0.0 TFLOPS, 2, torch.Size([512]), eps=1e-05, elementwise_affine=True)
               (attention): ParallelSelfAttention(
-                1.05 M, 2.70% Params, 17.45 GMACs, 8.42% MACs, 1.11 ms, 3.37% time, 3.2e+01 TFLOPS, 2, 
+                1.05 M, 2.70% Params, 17.45 GMACs, 8.42% MACs, 1.11 ms, 3.37% time, 3.2e+01 TFLOPS, 2,
                 (query_key_value): ColumnParallelLinear(787.97 k, 2.03% Params, 12.88 GMACs, 6.22% MACs, 202.66 us, 0.62% time, 1.3e+02 TFLOPS, 2, )
                 (scale_mask_softmax): FusedScaleMaskSoftmax(0, 0.00% Params, 268.44 MMACs, 0.13% MACs, 165.94 us, 0.51% time, 3.2 TFLOPS, 2, )
                 (attention_dropout): Dropout(0, 0.00% Params, 0.0 MACs, 0.00% MACs, 74.63 us, 0.23% time, 0.0 TFLOPS, 2, p=0.1, inplace=False)
@@ -111,7 +111,7 @@ DistributedDataParallel(
               )
               (post_attention_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0.0 MACs, 0.00% MACs, 101.33 us, 0.31% time, 0.0 TFLOPS, 2, torch.Size([512]), eps=1e-05, elementwise_affine=True)
               (mlp): ParallelMLP(
-                2.1 M, 5.40% Params, 34.36 GMACs, 16.58% MACs, 411.03 us, 1.25% time, 1.7e+02 TFLOPS, 2, 
+                2.1 M, 5.40% Params, 34.36 GMACs, 16.58% MACs, 411.03 us, 1.25% time, 1.7e+02 TFLOPS, 2,
                 (dense_h_to_4h): ColumnParallelLinear(1.05 M, 2.70% Params, 17.18 GMACs, 8.29% MACs, 138.28 us, 0.42% time, 2.5e+02 TFLOPS, 2, )
                 (dense_4h_to_h): RowParallelLinear(1.05 M, 2.70% Params, 17.18 GMACs, 8.29% MACs, 155.21 us, 0.47% time, 2.2e+02 TFLOPS, 2, )
               )
@@ -136,7 +136,7 @@ Number of parameters:           38.89 M
 
 ##  Usage Outside the DeepSpeed Runtime
 
-The flops profiler can be used as a standalone package outside of the DeepSpeed runtime. 
+The flops profiler can be used as a standalone package outside of the DeepSpeed runtime.
 One can simply install DeepSpeed and import the `flops_profiler` package to use the APIs directly.
 Refer to [installation of DeepSpeed](https://www.deepspeed.ai/getting-started/#installation) for installing DeepSpeed.
 

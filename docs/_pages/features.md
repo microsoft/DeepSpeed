@@ -113,7 +113,7 @@ to contiguous buffers preventing memory fragmentation.
 
 ## ZeRO-Offload
 
-ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.  
+ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.
 
 For more details see the [ZeRO-Offload release blog]( https://www.microsoft.com/en-us/research/?p=689370&secret=iSlooB), and [tutorial](/tutorials/zero-offload/) on integration with DeepSpeed.
 
@@ -133,7 +133,7 @@ micro-batch, specially when the number of micro-batches per effective batch is l
 During back propagation, DeepSpeed can overlap the communication required for averaging
 parameter gradients that have already been computed with the ongoing gradient computation.
 This computation-communication overlap allows DeepSpeed to achieve higher throughput even
-at modest batch sizes.  
+at modest batch sizes.
 
 ## Training Features
 
