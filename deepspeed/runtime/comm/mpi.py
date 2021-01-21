@@ -89,8 +89,13 @@ class MpiBackend(object):
         cupy.cuda.get_current_stream().synchronize()
 
         # 2. use numpy buffers for communication
+
+        numpy_sign_list_packed = np.concatenate(numpy_sign_list_packed)
+
         comm.Alltoall(numpy_sign_list_packed, numpy_recvbuf_sign)
         comm.Allgather(numpy_worker_scale, numpy_recvbuf_scale)
+
+        numpy_sign_list_packed = np.split(numpy_sign_list_packed, world_size)
 
         # 3. Convert back from numpy to cupy
         cupy_recvbuf_sign = cupy.asarray(numpy_recvbuf_sign)
