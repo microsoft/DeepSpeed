@@ -570,6 +570,5 @@ class PipelineModule(nn.Module):
         if self.__class__.__name__ == 'GPT2ModelPipe':
             return all('ParallelTransformerLayerPipe' in f.__class__.__name__
                        for f in funcs)
-
-        params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
-        return any(len(list(p)) > 0 for p in params)
+        return all('TransformerBlock' in f.__class__.__name__
+                       for f in funcs)
