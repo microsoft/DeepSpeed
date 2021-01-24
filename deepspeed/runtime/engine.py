@@ -458,11 +458,11 @@ class DeepSpeedEngine(Module):
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
-        self.local_rank = args.local_rank if hasattr(args,
-                                                     'local_rank') else os.environ.get(
-                                                         "LOCAL_RANK",
-                                                         -1)
-        env_local_rank = os.environ.get("LOCAL_RANK", -1)
+        self.local_rank = args.local_rank if hasattr(
+            args,
+            'local_rank') else int(os.environ.get("LOCAL_RANK",
+                                                  -1))
+        env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
         if env_local_rank >= 0:
             assert self.local_rank == int(env_local_rank), "Mismatch in local rank setting, args.local_rank={self.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
