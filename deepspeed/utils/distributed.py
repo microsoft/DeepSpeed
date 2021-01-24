@@ -18,17 +18,17 @@ def init_distributed(dist_backend="nccl",
     """Initialize torch.distributed backend, potentially performing MPI discovery if needed
 
     Arguments:
-        dist_backend (str): torch distributed backend, e.g., nccl, mpi, gloo
+        dist_backend: Optional (str). torch distributed backend, e.g., nccl, mpi, gloo
 
-        auto_mpi_discovery (bool): if distributed environment variables are not set, attempt to discover them from MPI
+        auto_mpi_discovery Optional (bool). if distributed environment variables are not set, attempt to discover them from MPI
 
-        distributed_port (int, optional): torch distributed backend port
+        distributed_port: Optional (int). torch distributed backend port
 
-        verbose (bool, optional): verbose logging
+        verbose: Optional (bool). verbose logging
 
-        timeout (timedelta, optional): Timeout for operations executed against the process group. Default value equals 30 minutes.
+        timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
 
-        init_method (string, optional): Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
+        init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
     """
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
     if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
