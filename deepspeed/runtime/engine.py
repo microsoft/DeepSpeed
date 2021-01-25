@@ -464,7 +464,7 @@ class DeepSpeedEngine(Module):
                                                   -1))
         env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
         if env_local_rank >= 0:
-            assert self.local_rank == int(env_local_rank), "Mismatch in local rank setting, args.local_rank={self.local_rank} but env['LOCAL_RANK']={env_local_rank}."
+            assert self.local_rank == int(env_local_rank), f"Mismatch in local rank setting, args.local_rank={self.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
         config_file = args.deepspeed_config if hasattr(args,
                                                        'deepspeed_config') else None
