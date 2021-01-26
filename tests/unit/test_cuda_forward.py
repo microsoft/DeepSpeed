@@ -48,11 +48,10 @@ class DSEncoder(nn.Module):
         super(DSEncoder, self).__init__()
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.layer = nn.ModuleList([
-            copy.deepcopy(DeepSpeedTransformerLayer(i,
-                                                    config,
+            copy.deepcopy(DeepSpeedTransformerLayer(config,
                                                     weights,
                                                     biases))
-            for i in range(config.num_hidden_layers)
+            for _ in range(config.num_hidden_layers)
         ])
         self.grads = []
         self.pre_or_post = config.pre_layer_norm
@@ -88,11 +87,6 @@ class DSEncoder(nn.Module):
         else:
             for i, layer_module in enumerate(self.layer):
                 hidden_states = layer_module(hidden_states, attention_mask)
-                hidden_states.register_hook(
-                    lambda x,
-                    i=i,
-                    self=self: self.grads.append([x,
-                                                  "hidden_state"]))
 
                 if output_all_encoded_layers:
                     all_encoder_layers.append(hidden_states)
@@ -102,9 +96,6 @@ class DSEncoder(nn.Module):
                 hidden_states = self.FinalLayerNorm(hidden_states)
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
-
-    def get_grads(self):
-        return self.grads
 
 
 def create_models(ds_config):
@@ -117,7 +108,7 @@ def create_models(ds_config):
                              hidden_act="gelu",
                              hidden_dropout_prob=ds_config.hidden_dropout_ratio,
                              attention_probs_dropout_prob=ds_config.attn_dropout_ratio,
-                             max_position_embeddings=ds_config.max_seq_length,
+                             max_position_embeddings=512,
                              type_vocab_size=2,
                              initializer_range=ds_config.initializer_range,
                              fp16=ds_config.fp16)
@@ -186,13 +177,8 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
 
     # prepare test data
     kwargs = kwargs_fp16 if ds_config.fp16 else kwargs_fp32
-    hidden_states = torch.randn(bsz,
-                                seq_len, #ds_config.max_seq_length,
-                                ds_config.hidden_size,
-                                **kwargs)
-    input_mask = torch.randn(bsz, 1, 1,
-                             seq_len, #ds_config.max_seq_length,
-                             **kwargs)
+    hidden_states = torch.randn(bsz, seq_len, ds_config.hidden_size, **kwargs)
+    input_mask = torch.randn(bsz, 1, 1, seq_len, **kwargs)
 
     # run baseline
     base_results = bert_encoder(hidden_states,
@@ -206,36 +192,42 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
                             output_all_encoded_layers=False,
                             checkpoint_activations=False)
 
-    # check grads
+    # check forward evaluation
     check_equal(base_results, ds_results, atol=atol, verbose=verbose)
 
 
 # FP16 test cases can only run on the devices support FP16.
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16',
                          [
-                             (64,1024,128,16,3,True,False),
-                             (64,1024,128,16,3,True,True),
-                             (8,1024,384,16,3,True,False),
+                             (8,256,53,4,3,True,False),
+                             (8,256,52,4,3,True,True),
+                             (3,1024,51,16,3,True,False),
+                             (3,1024,54,16,3,True,True),
+                             (8,1024,381,16,3,True,False),
                              (8,1024,384,16,3,True,True),
                              (8,1024,384,16,3,True,True),
-                             (8,1024,120,16,3,True,False),
+                             (8,1024,119,16,3,True,False),
                              (8,1024,120,16,3,True,True),
-                             (8,1024,512,16,3,True,False),
+                             (8,1024,509,16,3,True,False),
                              (8,1024,512,16,3,True,True),
                              (64,1024,56,16,3,False,False),
-                             (64,1024,56,16,3,False,True),
+                             (64,1024,53,16,3,False,True),
                              (64,1024,24,16,3,False,False),
-                             (64,1024,24,16,3,False,True),
+                             (64,1024,21,16,3,False,True),
                              (8,1024,384,16,3,False,False),
                              (8,1024,384,16,3,False,True),
                              (8,1024,512,16,3,False,False),
-                             (8,1024,512,16,3,False,True),
+                             (8,1024,511,16,3,False,True),
                              (8,1536,128,24,3,False,False),
                              (8,1536,128,24,3,False,True),
                              (8,2048,128,32,3,False,False),
                              (8,2048,128,32,3,False,True),
                              (8,2560,128,40,3,False,False),
                              (8,2560,128,40,3,False,True),
+                             (8,128,128,2,3,True,False),
+                             (8,128,128,2,3,True,True),
+                             (8,4096,128,64,3,True,True),
+                             (8,8192,128,64,3,False,True),
                          ]) # yapf: disable
 def test_forward(batch_size,
                  hidden_size,
@@ -253,7 +245,6 @@ def test_forward(batch_size,
     ds_config.layer_id = None
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
-    ds_config.max_seq_length = 128  #seq_len
     ds_config.intermediate_size = 4 * hidden_size
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
@@ -291,7 +282,6 @@ def test_forward_with_small_bsz(batch_size,
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
     ds_config.intermediate_size = 4 * hidden_size
-    ds_config.max_seq_length = seq_len
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
     ds_config.hidden_dropout_ratio = 0.0
@@ -326,7 +316,6 @@ def test_forward_stochastic(batch_size,
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
     ds_config.intermediate_size = 4 * hidden_size
-    ds_config.max_seq_length = seq_len
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
     ds_config.hidden_dropout_ratio = 0.0

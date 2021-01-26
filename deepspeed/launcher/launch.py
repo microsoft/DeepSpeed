@@ -16,7 +16,7 @@ import base64
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
-from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
 
@@ -113,6 +113,7 @@ def main():
         # each process's rank
         dist_rank = global_rank_mapping[local_node][local_rank]
         current_env["RANK"] = str(dist_rank)
+        current_env["LOCAL_RANK"] = str(local_rank)
 
         # spawn the processes
         cmd = [

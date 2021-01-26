@@ -18,7 +18,6 @@ stochastic_transformer_cuda_module = None
 class TransformerConfig():
     def __init__(self,
                  batch_size,
-                 max_seq_length,
                  hidden_size,
                  intermediate_size,
                  heads,
@@ -30,7 +29,6 @@ class TransformerConfig():
         self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
-        self.max_seq_length = max_seq_length
         self.heads = heads
         self.attn_dropout_ratio = attn_dropout_ratio
         self.hidden_dropout_ratio = hidden_dropout_ratio
@@ -89,10 +87,13 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
+
+            huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+
+            training: Enable for training rather than inference.
     """
     def __init__(self,
                  batch_size=-1,
-                 max_seq_length=-1,
                  hidden_size=-1,
                  intermediate_size=-1,
                  heads=-1,
@@ -108,11 +109,12 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  gelu_checkpoint=False,
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
-                 stochastic_mode=False):
+                 stochastic_mode=False,
+                 huggingface=False,
+                 training=True):
         super(DeepSpeedTransformerConfig,
               self).__init__(
                   batch_size,
-                  max_seq_length,
                   hidden_size,
                   (intermediate_size if intermediate_size > 0 else 4 * hidden_size),
                   heads,
@@ -128,10 +130,11 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.gelu_checkpoint = gelu_checkpoint  # True: if higher batch size is required
         self.adjust_init_range = adjust_init_range
         self.test_gemm = False
-        self.training = True
+        self.training = training
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
+        self.huggingface = huggingface
 
     @classmethod
     def from_dict(cls, json_object):
@@ -142,7 +145,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
 
     @classmethod
     def from_json_file(cls, json_file):
-        with open(json_file, "r", encoding='utf-8') as reader:
+        with open(json_file, "r", encoding='utf-16') as reader:
             text = reader.read()
         return cls.from_dict(json.loads(text))
 
@@ -176,6 +179,18 @@ class DeepSpeedTransformerFunction(Function):
 
         cuda_module = stochastic_transformer_cuda_module if config.stochastic_mode else transformer_cuda_module
         forward_func = cuda_module.forward_fp16 if config.fp16 else cuda_module.forward_fp32
+
+        inp_size = input.size()
+        if inp_size[1] % 16 != 0:
+            input = torch.cat((input,
+                               torch.randn((inp_size[0],
+                                            (16 - (inp_size[1] % 16)),
+                                            inp_size[2]),
+                                           device=input.device,
+                                           dtype=input.dtype)),
+                              1)
+            input_mask = torch.cat((input_mask, torch.ones((inp_size[0], input_mask.shape[1], input_mask.shape[2], \
+                                            (16 - (inp_size[1] % 16))), device=input_mask.device, dtype=input_mask.dtype) * -10000), 3)
 
         (output,
          inp_norm,
@@ -244,7 +259,7 @@ class DeepSpeedTransformerFunction(Function):
             norm_w.register_hook(lambda x, self=self: grads.append([x, "norm_W"]))
             norm_b.register_hook(lambda x, self=self: grads.append([x, "norm_B"]))
 
-        if config.is_grad_enabled:
+        if config.is_grad_enabled and config.training:
             if (config.pre_layer_norm and config.normalize_invertible):
                 ctx.save_for_backward(input_mask,
                                       attn_qkvw,
@@ -303,11 +318,21 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_layer_norm_var = attn_layer_norm_var
             ctx.layer_norm_var = layer_norm_var
 
-        return output
+        if inp_size[1] % 16 != 0:
+            output = torch.narrow(output, 1, 0, inp_size[1])
+
+        if config.huggingface:
+            return (output, )  # outputs -> (output) : outputs[0] = output
+        else:
+            return output
 
     @staticmethod
     def backward(ctx, grad_output):
         bsz = grad_output.shape[0]
+        grad_output_shape = grad_output.size()
+        if grad_output_shape[1] % 16 != 0:
+            grad_output = torch.cat((grad_output, torch.zeros((bsz, (16 - (grad_output_shape[1] % 16)), \
+                                        grad_output_shape[2]), device=grad_output.device, dtype=grad_output.dtype)), 1)
 
         if bsz > ctx.config.batch_size:
             raise ValueError('grad_output batch size exceeds the limit.')
@@ -398,6 +423,28 @@ class DeepSpeedTransformerFunction(Function):
              norm_w,
              norm_b)
 
+        # This appears to be an effective way to release context memory
+        ctx.qkv_tf = None
+        ctx.soft_inp = None
+        ctx.ctx_bufB = None
+        ctx.gelu_inp = None
+        ctx.ff2_inp = None
+        ctx.attn_o_inp = None
+        ctx.ff1_inp = None
+        ctx.add_res = None
+        ctx.inp_norm = None
+        ctx.config = None
+        ctx.attn_layer_norm_mean = None
+        ctx.layer_norm_mean = None
+        ctx.attn_prob_dropout_mask = None
+        ctx.attn_output_dropout_mask = None
+        ctx.layer_output_dropout_mask = None
+        ctx.attn_layer_norm_var = None
+        ctx.layer_norm_var = None
+
+        if grad_output_shape[1] % 16 != 0:
+            grad_input = torch.narrow(grad_input, 1, 0, grad_output_shape[1])
+
         return (grad_input,
                 None,
                 None,
@@ -421,21 +468,24 @@ class DeepSpeedTransformerFunction(Function):
 class DeepSpeedTransformerLayer(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
 
+        Static variable:
+            layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
+            e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
         Arguments:
-            layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
-                layer_id will be 0,1,2...23 when each layer object is instantiated
-
             config: An object of DeepSpeedTransformerConfig
 
             initial_weights: Optional: Only used for unit test
 
             initial_biases: Optional: Only used for unit test
     """
-    def __init__(self, layer_id, config, initial_weights=None, initial_biases=None):
+    layer_id = 0
+
+    def __init__(self, config, initial_weights=None, initial_biases=None):
         super(DeepSpeedTransformerLayer, self).__init__()
 
         self.config = config
-        self.config.layer_id = layer_id
+        self.config.layer_id = DeepSpeedTransformerLayer.layer_id
+        DeepSpeedTransformerLayer.layer_id = DeepSpeedTransformerLayer.layer_id + 1
 
         print("DeepSpeed Transformer config is ", self.config.__dict__)
 
@@ -501,7 +551,6 @@ class DeepSpeedTransformerLayer(nn.Module):
                           self.config.hidden_size,
                           self.config.heads,
                           self.config.intermediate_size,
-                          self.config.max_seq_length,
                           self.config.attn_dropout_ratio,
                           self.config.hidden_dropout_ratio,
                           self.config.seed,
@@ -532,11 +581,18 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.norm_w.data.fill_(1.0)
         self.norm_b.data.zero_()
 
-    def forward(self, input, input_mask, grads=None):
+    def forward(self,
+                hidden_states,
+                attention_mask=None,
+                head_mask=None,
+                encoder_hidden_states=None,
+                encoder_attention_mask=None,
+                output_attentions=False,
+                grads=None):
         self.config.training = self.training
         self.config.is_grad_enabled = torch.is_grad_enabled()
-        return DeepSpeedTransformerFunction.apply(input,
-                                                  input_mask,
+        return DeepSpeedTransformerFunction.apply(hidden_states,
+                                                  attention_mask,
                                                   self,
                                                   grads,
                                                   self.config.layer_id,

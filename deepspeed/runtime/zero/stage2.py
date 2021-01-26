@@ -487,6 +487,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.reduce_ready_partitions_and_remove_grads(param, group_index)
 
     def dump_param_reduction_stats(self, message):
+        return
         num_reduced = sum(1 for r in self.params_already_reduced if r)
         num_unreduced = len(self.params_already_reduced) - num_reduced
         logger.info(
@@ -1401,8 +1402,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         Not supporting closure.
         """
         orig_micro_step_id = self.micro_step_id
-        logger.info(f'{dist.get_rank()} Begin Step for micro step {orig_micro_step_id}')
-        see_memory_usage('Before zero_optimizer step', force=True)
         self.micro_step_id = -1
 
         if self.cpu_offload:
@@ -1563,9 +1562,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             names=['optimizer_gradients',
                    'optimizer_step',
                    'optimizer_allgather'])
-        see_memory_usage('After zero_optimizer step', force=True)
-
-        logger.info(f'{dist.get_rank()} End Step for micro step {orig_micro_step_id}' )
+        see_memory_usage('After zero_optimizer step', force=False)
 
         return
 
@@ -1667,8 +1664,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         self.micro_step_id += 1
         self.last_param_id_prepared_to_reduce = self.maximum_param_id
-        logger.info(f'{dist.get_rank()} Begin backward for micro step {self.micro_step_id} last_param_id_prepared {self.last_param_id_prepared_to_reduce}')
-        see_memory_usage(f'Before backward', force = True)
 
         if self.cpu_offload:
             torch.cuda.current_stream().wait_stream(self.migration_stream)
@@ -1690,8 +1685,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.ipg_index = 0
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
-        see_memory_usage(f'After backward', force=True)
-        logger.info(f'{dist.get_rank()} End backward for micro step {self.micro_step_id}')
 
 
     def check_overflow(self, partition_gradients=True):
