@@ -659,7 +659,7 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     }
 
     if (threadIdx.x == 0) {
-        int pos = blockIdx.x * TILE_DIM + threadIdx.y;    
+        int pos = blockIdx.x * TILE_DIM + threadIdx.y;
         betta_grad[pos] = s1;
         gamma_grad[pos] = s2;
     }
