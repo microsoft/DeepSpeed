@@ -55,7 +55,8 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
     master_addr = None
     if rank == 0:
         ips = [
-            addrinfo[4][0] for addrinfo in socket.getaddrinfo(socket.gethostname(), None)
+            addrinfo[4][0] for addrinfo in socket.getaddrinfo(socket.gethostname(),
+                                                              None)
             if addrinfo[0] == socket.AF_INET and addrinfo[1] == socket.SOCK_STREAM
         ]
         master_addr = ips[0]
