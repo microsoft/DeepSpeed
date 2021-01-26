@@ -48,15 +48,16 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
     Discovery MPI environment via mpi4py and map to relevant torch.distributed state
     """
     from mpi4py import MPI
-    import subprocess
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     world_size = comm.Get_size()
 
     master_addr = None
     if rank == 0:
-        ips = [addrinfo[4][0] for addrinfo in socket.getaddrinfo(socket.gethostname(), None)
-                              if addrinfo[0] == socket.AF_INET and addrinfo[1] == socket.SOCK_STREAM]
+        ips = [
+            addrinfo[4][0] for addrinfo in socket.getaddrinfo(socket.gethostname(), None)
+            if addrinfo[0] == socket.AF_INET and addrinfo[1] == socket.SOCK_STREAM
+        ]
         master_addr = ips[0]
     master_addr = comm.bcast(master_addr, root=0)
 
