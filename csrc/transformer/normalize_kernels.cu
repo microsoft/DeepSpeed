@@ -1369,8 +1369,8 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     int y_stride = width * TILE_DIM;
 
     int pos = blockIdx.x * TILE_DIM + threadIdx.y;
-    float betta_reg = (invertible ? (float)betta[pos] : 0.0f);
-    float gamma_reg = (float)gamma[pos];
+    float betta_reg = (invertible ? (float)betta[idx] : 0.0f);
+    float gamma_reg = (float)gamma[idx];
 
     // Loop across matrix height
     float betta_tmp = 0;
