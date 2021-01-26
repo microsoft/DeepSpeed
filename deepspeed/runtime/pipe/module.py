@@ -185,22 +185,6 @@ class PipelineModule(nn.Module):
         #ds_utils.set_random_seed(newseed)
 
         #with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
-        print(f'cuda:{self.global_rank}')
         self._build()
         self.to(f'cuda:{self.global_rank}')
 
