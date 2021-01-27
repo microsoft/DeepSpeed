@@ -20,22 +20,44 @@ if TYPE_CHECKING:
 else:
     Base = Module
 
-# einsum dimensions: (g)roup, (s)equence, (e)xpert, (m)odel, (c)apacity
-# See https://arxiv.org/pdf/2006.16668.pdf for details.
-
+def custom_alltoall(input, output):
+    '''
+        Note: This is an inefficient way to implement alltoall but we are doing it temporarily
+              to workaround the hangs we see in dist.all_to_all_single() PyTorch API.
+    '''
+    print("a2a: input shape=", input.shape)
+    output_list = [torch.empty_like(output) for i in range(dist.get_world_size())]
+    dist.all_gather(output_list, input)
+    stacked_list = torch.stack(output_list)
+    print("st shape", stacked_list.shape)
+    transposed_stack_indexed_with_rank = torch.transpose(stacked_list, 0, 1)
+    print("transposed_stack_indexed_with_rank", transposed_stack_indexed_with_rank.shape)
+    return transposed_stack_indexed_with_rank
 
 # Based on https://github.com/pytorch/pytorch/pull/40762
 class _AllToAll(torch.autograd.Function):
     @staticmethod
     def forward(ctx: Any, group: dist.ProcessGroup, input: Tensor) -> Tensor:  # type: ignore
         ctx.group = group
+
+        print(f"input shape original = {input.shape} at rank:{dist.get_rank()}")
         input = input.contiguous()
+
+        print(f"input shape contig = {input.shape} at rank:{dist.get_rank()}")
         output = torch.empty_like(input)
-        dist.all_to_all_single(output, input, group=group)
+        print(f"output shape contig = {output.shape} at rank:{dist.get_rank()}")
+        #output_list = [torch.empty_like(input) for i in range(dist.get_world_size())]
+        print(f"calling alltoall  at rank:{dist.get_rank()} with cuda device:{input.device} and device:{output.device}")
+        #dist.all_to_all_single(output, input, group=group)
+        #custom_alltoall(input, output)
+        print("dist alltoall finished")
+        dist.barrier()
+        print("alltoall finished at rank ", dist.get_rank())
         return output
 
     @staticmethod
     def backward(ctx: Any, *grad_output: Tensor) -> Tuple[None, Tensor]:
+        print("in backward pass alltoall")
         return (None, _AllToAll.apply(ctx.group, *grad_output))
 
 from torch import nn
@@ -285,81 +307,25 @@ class ShardedMoE(nn.Module):
 
         gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
         self.gate = Top2Gating(dim, num_gates = num_experts, **gating_kwargs)
+
         self.experts = default(experts, lambda: Experts(dim, num_experts = num_experts, hidden_dim = hidden_dim, activation = activation))
         self.loss_coef = loss_coef
 
     def forward(self, inputs, **kwargs):
         b, n, d, e = *inputs.shape, self.num_experts
+        print(f"bnde = {b},{n},{d},{e} at rank:{dist.get_rank()}")
         dispatch_tensor, combine_tensor, loss = self.gate(inputs)
         expert_inputs = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor.half())
         ourgroup = dist.group.WORLD 
         expert_inputs = _AllToAll.apply(ourgroup, expert_inputs)
-
+        print("first all to all applied")
         # Now feed the expert inputs through the experts.
         orig_shape = expert_inputs.shape
         expert_inputs = expert_inputs.reshape(e, -1, d)
         expert_outputs = self.experts(expert_inputs)
         expert_outputs = expert_outputs.reshape(*orig_shape)
         expert_outputs = _AllToAll.apply(ourgroup, expert_outputs)
+        print("second all to all applied")
 
         output = torch.einsum('ebcd,bnec->bnd', expert_outputs, combine_tensor.half())
         return output, loss * self.loss_coef
-
-# 2-level heirarchical mixture of experts
-
-class HeirarchicalMoE(nn.Module):
-    def __init__(self,
-        dim,
-        num_experts = (4, 4),
-        hidden_dim = None,
-        activation = nn.ReLU,
-        second_policy_train = 'random',
-        second_policy_eval = 'random',
-        second_threshold_train = 0.2,
-        second_threshold_eval = 0.2,
-        capacity_factor_train = 1.25,
-        capacity_factor_eval = 2.,
-        loss_coef = 1e-2,
-        experts = None):
-        super().__init__()
-
-        assert len(num_experts) == 2, 'only 2 levels of heirarchy for experts allowed for now'
-        num_experts_outer, num_experts_inner = num_experts
-        self.num_experts_outer = num_experts_outer
-        self.num_experts_inner = num_experts_inner
-
-        gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-
-        self.gate_outer = Top2Gating(dim, num_gates = num_experts_outer, **gating_kwargs)
-        self.gate_inner = Top2Gating(dim, num_gates = num_experts_inner, outer_expert_dims = (num_experts_outer,), **gating_kwargs)
-
-        self.experts = default(experts, lambda: Experts(dim, num_experts = num_experts, hidden_dim = hidden_dim, activation = activation))
-        self.loss_coef = loss_coef
-
-    def forward(self, inputs, **kwargs):
-        b, n, d, eo, ei = *inputs.shape, self.num_experts_outer, self.num_experts_inner
-        dispatch_tensor_outer, combine_tensor_outer, loss_outer = self.gate_outer(inputs)
-        expert_inputs_outer = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor_outer)
-
-        # we construct an "importance" Tensor for the inputs to the second-level
-        # gating.  The importance of an input is 1.0 if it represents the
-        # first-choice expert-group and 0.5 if it represents the second-choice expert
-        # group.  This is used by the second-level gating.
-        importance = combine_tensor_outer.permute(2, 0, 3, 1).sum(dim=-1)
-        importance = 0.5 * ((importance > 0.5).float() + (importance > 0.).float())
-
-        dispatch_tensor_inner, combine_tensor_inner, loss_inner = self.gate_inner(expert_inputs_outer, importance = importance)
-        expert_inputs = torch.einsum('ebnd,ebnfc->efbcd', expert_inputs_outer, dispatch_tensor_inner)
-
-        # Now feed the expert inputs through the experts.
-        orig_shape = expert_inputs.shape
-        expert_inputs = expert_inputs.reshape(eo, ei, -1, d)
-        expert_outputs = self.experts(expert_inputs)
-        expert_outputs = expert_outputs.reshape(*orig_shape)
-
-        # NOW COMBINE EXPERT OUTPUTS (reversing everything we have done)
-        # expert_output has shape [y0, x1, h, d, n]
-
-        expert_outputs_outer = torch.einsum('efbcd,ebnfc->ebnd', expert_outputs, combine_tensor_inner)
-        output = torch.einsum('ebcd,bnec->bnd', expert_outputs_outer, combine_tensor_outer)
-        return output, (loss_outer + loss_inner) * self.loss_coef

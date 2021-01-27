@@ -1158,7 +1158,7 @@ class DeepSpeedEngine(Module):
         for param_name, param in self.module.named_parameters():
             # Do not perform allreduce for MoE params marked with param.allreduce=False
             if hasattr(param, 'allreduce') and not param.allreduce:
-                #print(f"skipping allreduce for param {param_name}")
+                print(f"skipping allreduce for param {param_name}")
                 pass
             else:
                 if param.grad is None:
