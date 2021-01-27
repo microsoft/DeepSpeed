@@ -277,8 +277,7 @@ The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorc
 {
   "flops_profiler": {
     "enabled": false,
-    "start_step": 5,
-    "end_step": 6,
+    "profile_step": 1,
     "module_depth": -1,
     "top_modules": 3
   }
