@@ -480,9 +480,6 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        assert hasattr(args, 'local_rank') and type(args.local_rank) == int, \
-            'DeepSpeed requires integer command line parameter --local_rank'
-
         local_rank_err = "DeepSpeed requires a command line parameter of --local_rank [int] and/or setting the LOCAL_RANK environment variable."
         if hasattr(args, 'local_rank'):
             assert type(args.local_rank) == int, local_rank_err
