@@ -106,7 +106,7 @@ def test_lamb_fp16_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True, rank=args.local_rank)
+    model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[2])
     def _test_lamb_fp16_empty_grad(args, model, hidden_dim):
@@ -143,7 +143,7 @@ def test_adam_fp32_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True, rank=args.local_rank)
+    model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[2])
     def _test_adam_fp32_empty_grad(args, model, hidden_dim):
@@ -648,7 +648,7 @@ def test_adam_amp_o2_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False, rank=args.local_rank)
+    model = SimpleModel(hidden_dim, empty_grad=False)
 
     @distributed_test(world_size=[2])
     def _test_adam_amp_o2_empty_grad(args, model, hidden_dim):
@@ -728,7 +728,7 @@ def test_zero2_reduce_scatter_off(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, rank=args.local_rank)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[2])
     def _helper(args, model, hidden_dim):
