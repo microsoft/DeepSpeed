@@ -148,8 +148,6 @@ def main():
         process = subprocess.Popen(cmd, env=current_env)
         processes.append(process)
 
-    # for process in processes:
-    #     process.wait()
     alive_processes = set(processes)
     while len(alive_processes):
         finished_processes = []
