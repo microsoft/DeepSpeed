@@ -148,7 +148,6 @@ def main():
         process = subprocess.Popen(cmd, env=current_env)
         processes.append(process)
 
-
     # for process in processes:
     #     process.wait()
     alive_processes = set(processes)
@@ -168,6 +167,7 @@ def main():
         alive_processes = set(alive_processes) - set(finished_processes)
 
         time.sleep(1)
+
 
 if __name__ == "__main__":
     main()
