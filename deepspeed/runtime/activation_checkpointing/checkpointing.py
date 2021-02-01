@@ -462,13 +462,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         #just in case something funky is happening such as reuse of inputs
         inputs_cuda = move_to_device(args, cuda_device)
-#        inputs_cuda = []
-#        for item in args:
-#            if torch.is_tensor(item):
-#                inputs_cuda.append(item.to(cuda_device))
-#            else:
-#                inputs_cuda.append(item)
-#
+
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
         ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
@@ -652,17 +646,17 @@ class CheckpointFunction(torch.autograd.Function):
 
         return tuple(ret_list)
 
-
+ALL_OUTPUTS = 'all_outputs'
 def checkpoint(function, *args, **kwargs):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
 
-    if not 'all_outputs' in kwargs:
+    if not ALL_OUTPUTS in kwargs:
         return CheckpointFunction.apply(function, None, *args)
 
     all_outputs = []
     outputs = CheckpointFunction.apply(function, all_outputs, *args)
-    kwargs['all_outputs'] += all_outputs
+    kwargs[ALL_OUTPUTS] += all_outputs
     return outputs
 
 
