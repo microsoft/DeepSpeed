@@ -541,11 +541,13 @@ class CheckpointFunction(torch.autograd.Function):
             non_grad_outputs = [o for o in outputs if torch.is_tensor(o) and not o.is_floating_point()]
         ctx.mark_non_differentiable(*non_grad_outputs)
 
-        if all_outputs is not None:
+        if torch.is_tensor(outputs):
+            all_outputs += [outputs]
+            return outputs
+        else:
             all_outputs += outputs
             outputs, _, _ = filter_tensor_values(outputs)
-
-        return outputs
+            return tuple(outputs)
 
     @staticmethod
     def backward(ctx, *grads):
@@ -646,18 +648,17 @@ class CheckpointFunction(torch.autograd.Function):
 
         return tuple(ret_list)
 
-ALL_OUTPUTS = 'all_outputs'
-def checkpoint(function, *args, **kwargs):
+
+def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
 
-    if not ALL_OUTPUTS in kwargs:
-        return CheckpointFunction.apply(function, None, *args)
-
     all_outputs = []
-    outputs = CheckpointFunction.apply(function, all_outputs, *args)
-    kwargs[ALL_OUTPUTS] += all_outputs
-    return outputs
+    CheckpointFunction.apply(function, all_outputs, *args)
+    if len(all_outputs) == 1:
+        return all_outputs[0]
+    else:
+        return tuple(all_outputs)
 
 
 def partition_activations_in_checkpoint(partition_activation):
