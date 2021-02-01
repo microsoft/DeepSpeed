@@ -310,6 +310,7 @@ def get_full_inputs(tensors, device=None):
 
     return tuple(inputs)
 
+
 def move_to_device(item, device):
     if torch.is_tensor(item):
         return item.to(device)
@@ -358,7 +359,6 @@ class CheckpointFunction(torch.autograd.Function):
            4) CPU Checkpointing
            5) Profile forward and backward functions
     """
-
     @staticmethod
     def forward(ctx, run_function, all_outputs, *args):
         global mpu, timers, SYNCHRONIZE, PROFILE_TIME
@@ -538,7 +538,9 @@ class CheckpointFunction(torch.autograd.Function):
         if torch.is_tensor(outputs):
             non_grad_outputs = [outputs] if not outputs.is_floating_point() else []
         else:
-            non_grad_outputs = [o for o in outputs if torch.is_tensor(o) and not o.is_floating_point()]
+            non_grad_outputs = [
+                o for o in outputs if torch.is_tensor(o) and not o.is_floating_point()
+            ]
         ctx.mark_non_differentiable(*non_grad_outputs)
 
         if torch.is_tensor(outputs):
@@ -592,7 +594,9 @@ class CheckpointFunction(torch.autograd.Function):
             detached_inputs = detach_variable(inputs)
 
         # Add non tensor input args
-        detached_inputs = merge_tensor_values(detached_inputs, ctx.non_tensor_args, ctx.tensor_flags)
+        detached_inputs = merge_tensor_values(detached_inputs,
+                                              ctx.non_tensor_args,
+                                              ctx.tensor_flags)
 
         # Store the current states.
         bwd_cpu_rng_state = torch.get_rng_state()

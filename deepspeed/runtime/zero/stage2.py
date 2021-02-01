@@ -240,11 +240,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     self.fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
-            see_memory_usage(f"After flattening and moving param group {i} to GPU", force=True)
+            see_memory_usage(f"After flattening and moving param group {i} to GPU",
+                             force=True)
 
             if dist.get_rank(group=self.dp_process_group) == 0:
                 see_memory_usage(
-                    f"After Flattening and after emptying param group {i} cache", force=True)
+                    f"After Flattening and after emptying param group {i} cache",
+                    force=True)
 
             # set model fp16 weight to slices of flattened buffer
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
@@ -406,9 +408,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             logger.info(f"optimizer state initialized")
 
         for i, group in enumerate(self.fp16_groups):
-            logger.info(f'rank {dist.get_rank()} total parameters in group [{i}] = {len(group)}')
+            logger.info(
+                f'rank {dist.get_rank()} total parameters in group [{i}] = {len(group)}')
             params_with_grad = [p for p in group if p.requires_grad]
-            logger.info(f'rank {dist.get_rank()} gradient parameters in group [{i}] = {len(params_with_grad)}')
+            logger.info(
+                f'rank {dist.get_rank()} gradient parameters in group [{i}] = {len(params_with_grad)}'
+            )
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
@@ -477,7 +482,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         param_group,
                         partition_id)
 
-
     def flush_unreduced_gradients(self):
         if not self.params_already_reduced[0]:
             param = self.param_dict[0]
@@ -491,7 +495,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         num_reduced = sum(1 for r in self.params_already_reduced if r)
         num_unreduced = len(self.params_already_reduced) - num_reduced
         logger.info(
-            f'In {message} param reduction stats: rank {dist.get_rank()} all {len(self.params_already_reduced)} reduced {num_reduced} unreduced {num_unreduced}')
+            f'In {message} param reduction stats: rank {dist.get_rank()} all {len(self.params_already_reduced)} reduced {num_reduced} unreduced {num_unreduced}'
+        )
 
     def independent_gradient_partition_epilogue(self):
         self.report_ipg_memory_usage(f"In ipg_epilogue before reduce_ipg_grads", 0)
@@ -644,8 +649,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         elem_count = self.elements_in_ipg_bucket + param_elems
         percent_of_bucket_size = (100.0 * elem_count) // self.reduce_bucket_size
         see_memory_usage(
-            f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}", force
-        )
+            f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}",
+            force)
 
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
@@ -1042,7 +1047,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 param.grad = torch.zeros_like(param)
             self.reduce_independent_p_g_buckets_and_remove_grads(param, group_index)
 
-
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         param_id = self.get_param_id(param)
         if self.params_prepared_to_reduce[param_id]:
@@ -1191,13 +1195,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                  log=None):
         split_buckets = split_half_float_double(grads)
 
-        logger.info(f'{dist.get_rank()} Begin ReduceFallBack {len(split_buckets)} buckets, {len(grads)} gradients ')
+        logger.info(
+            f'{dist.get_rank()} Begin ReduceFallBack {len(split_buckets)} buckets, {len(grads)} gradients '
+        )
         for i, bucket in enumerate(split_buckets):
             self.allreduce_no_retain(bucket,
                                      numel_per_bucket=elements_per_buffer,
                                      rank=rank,
                                      log=log)
-        logger.info(f'{dist.get_rank()} End ReduceFallBack {len(split_buckets)} buckets, {len(grads)} gradients ')
+        logger.info(
+            f'{dist.get_rank()} End ReduceFallBack {len(split_buckets)} buckets, {len(grads)} gradients '
+        )
 
     #############################################################################
     #############################################################################
@@ -1439,7 +1447,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             timers('optimizer_allgather').stop()
 
             see_memory_usage('After zero_optimizer step', force=True)
-            logger.info(f'{dist.get_rank()} End Step for micro step {orig_micro_step_id}' )
+            logger.info(
+                f'{dist.get_rank()} End Step for micro step {orig_micro_step_id}')
             return
 
         timers('optimizer_gradients').start()
@@ -1685,7 +1694,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.ipg_index = 0
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
-
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)

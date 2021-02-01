@@ -524,7 +524,7 @@ def memory_status(msg, print_rank=-1, reset_max=False):
 
 
 def see_memory_usage(message, force=False):
-#    return
+    #    return
     if not force:
         return
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
@@ -535,8 +535,7 @@ def see_memory_usage(message, force=False):
         f"MA {round(torch.cuda.memory_allocated() / (1024 * 1024 * 1024),2 )} GB \
         Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
-        Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB"
-    )
+        Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB")
 
     vm_stats = psutil.virtual_memory()
     used_GB = vm_stats.used / (1024**3)
