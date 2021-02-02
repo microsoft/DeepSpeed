@@ -354,23 +354,28 @@ class ShardedMoE(nn.Module):
         num_experts = 16,
         hidden_dim = None,
         activation = nn.ReLU,
-        # second_policy_train = 'random',
-        # second_policy_eval = 'random',
-        # second_threshold_train = 0.2,
-        # second_threshold_eval = 0.2,
+        second_policy_train = 'random',
+        second_policy_eval = 'random',
+        second_threshold_train = 0.2,
+        second_threshold_eval = 0.2,
         capacity_factor_train = 1.25,
         capacity_factor_eval = 2.,
         loss_coef = 1e-2,
+        k = 1,
         experts = None):
         super().__init__()
 
         self.num_experts = num_experts
 
         # change to top-1 gating
-        gating_kwargs = {'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-        self.gate = Top1Gating(dim, num_gates = num_experts, **gating_kwargs)
-        # gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-        # self.gate = Top2Gating(dim, num_gates = num_experts, **gating_kwargs)
+        if k == 1:
+            gating_kwargs = {'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
+            self.gate = Top1Gating(dim, num_gates = num_experts, **gating_kwargs)
+        
+        if k == 2:
+            gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
+            self.gate = Top2Gating(dim, num_gates = num_experts, **gating_kwargs)
+        
         self.experts = default(experts, lambda: Experts(dim, num_experts = num_experts, hidden_dim = hidden_dim, activation = activation))
         self.loss_coef = loss_coef
 

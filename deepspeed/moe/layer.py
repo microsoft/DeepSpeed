@@ -18,7 +18,7 @@ class MoE(torch.nn.Module):
         DeepSpeed MOE API: This defines a simple API that can be used from client-side code.
         E.g. See more details of usage from Megatron-LM code in https://github.com/microsoft/DeepSpeedExamples/tree/amawa/moe
     '''
-    def __init__(self, hidden_size, output_dropout_prob, expert, num_experts=1): 
+    def __init__(self, hidden_size, output_dropout_prob, expert, num_experts = 1, k = 1): 
         super(MoE, self).__init__()
         
         num_experts = num_experts // dist.get_world_size()
@@ -35,6 +35,7 @@ class MoE(torch.nn.Module):
                         capacity_factor_train = 1.25,   # experts have fixed capacity per batch. we need some extra capacity in case gating is not perfectly balanced.
                         capacity_factor_eval = 2.,      # capacity_factor_* should be set to a value >=1
                         loss_coef = 1e-2,               # multiplier on the auxiliary expert balancing auxiliary loss
+                        k = k,
                         experts=experts)
 
         self.dropout = torch.nn.Dropout(output_dropout_prob)
