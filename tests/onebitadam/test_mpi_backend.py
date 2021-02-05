@@ -18,7 +18,7 @@ torch.distributed.init_process_group(backend='nccl',
                                      rank=rank)
 
 # Change cuda_aware to True to test out CUDA-Aware MPI communication
-backend = MpiBackend(cuda_aware=False)
+backend = MpiBackend(cuda_aware=True)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 

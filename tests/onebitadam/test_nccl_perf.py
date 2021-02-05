@@ -44,7 +44,7 @@ worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
 warmup = 10
-iters = 100
+iters = 10
 
 local_rank = rank % torch.cuda.device_count()
 
@@ -54,9 +54,15 @@ for i in range(warmup):
 
 time_list = []
 
+a_sign = a.sign().add_(1).bool().float().add_(-0.5).mul_(2.0)
+scale = a.norm() / np.sqrt(a.numel())
+a_compressed = scale * a_sign
+print(a_compressed.shape)
+
 for i in range(iters):
     timers('compressed_allreduce').start()
     backend.compressed_allreduce(a, worker_error, server_error, local_rank)
+    #torch.distributed.all_reduce(a_compressed)
     timers('compressed_allreduce').stop()
     time_list.append(timers('compressed_allreduce').elapsed())
 
@@ -76,3 +82,11 @@ minlat = round(min(time_list) * convert)
 maxlat = round(max(time_list) * convert)
 meanlat = round(mean(time_list) * convert, places)
 print("min, max, and mean = {} ms, {} ms, {} ms".format(minlat, maxlat, meanlat))
+print("tensor shape", a.shape)
+duration=meanlat/1e3
+tput = ((tensor_size*4)/duration)
+print("algo throughput: %f Bytes/s, %f GB/s" % (tput, tput/1e9))
+size = tensor_size * 4
+n = dist.get_world_size()
+busbw = (size / duration) * (2 * (n - 1) / n)
+print("busbw: %f GB/s" % (busbw / 1e9))

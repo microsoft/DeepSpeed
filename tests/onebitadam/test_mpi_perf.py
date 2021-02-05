@@ -24,7 +24,7 @@ torch.distributed.init_process_group(backend='nccl',
                                      world_size=size,
                                      rank=rank)
 
-backend = MpiBackend(cuda_aware=False)
+backend = MpiBackend(cuda_aware=True)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 
@@ -44,7 +44,7 @@ worker_error = torch.zeros(right_tensor_size, device=device)
 server_error = torch.zeros(right_server_size, device=device)
 
 warmup = 10
-iters = 100
+iters = 10
 
 local_rank = rank % torch.cuda.device_count()
 
