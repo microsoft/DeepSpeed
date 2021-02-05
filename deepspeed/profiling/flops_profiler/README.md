@@ -2,6 +2,11 @@
 
 > Measures the time, number of estimated flops and parameters of each module in a PyTorch Model.
 
+  - [Overview](#overview)
+  - [Supported Models](#supported-models)
+  - [Multi-GPU, Multi-node Runs](#multi-gpu-multi-node-runs)
+  - [Usage](#usage)
+
 ## Overview
 
 The DeepSpeed flops profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module.
@@ -52,12 +57,24 @@ For models running on multi-GPU or multi-node, only the model parallelism (e.g. 
 `model_parallel_size * flops = total_flops` and `model_parallel_size * parameters = total_parameters`. The number of GPUs or nodes does not affect the output profile.
 
 
-## Usage With the DeepSpeed Runtime
+## Usage
+
+The DeepSpeed flops profiler can be used with the DeepSpeed runtime or as a standalone package. When using DeepSpeed for model training, the flops profiler can be configured in the deepspeed_config file without user code changes. To use the flops profiler outside of the DeepSpeed runtime, one can simply install DeepSpeed and import the flops_profiler package to use the APIs directly. Examples of each usage are given below.
+
+  - [Usage With the DeepSpeed Runtime](#usage-with-the-deepspeed-runtime)
+    - [Example: Megatron-LM](#example-megatron-lm)
+  - [Usage Outside the DeepSpeed Runtime](#usage-outside-the-deepspeed-runtime)
+    - [In Model Inference](#in-model-inference)
+      - [Example: AlexNet](#example-alexnet)
+      - [Example: Bert](#example-bert)
+    - [In Model Training Workflow](#in-model-training-workflow)
+      - [Example Training Workflow](#example-training-workflow)
+### Usage With the DeepSpeed Runtime
 
 When using DeepSpeed for model training, the flops profiler can be configured in the `deepspeed_config` file. No explict API calls are needed to use the profiler. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
 
 
-### Example: Megatron-LM
+#### Example: Megatron-LM
 
 For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM)
 
@@ -78,38 +95,38 @@ An example output of 4-layer Megatron-LM model (`hidden_size = 512, num_attentio
 
 ```shell
 DistributedDataParallel(
-  38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.31 ms, 100.00% time, 6.2 TFLOPS,
+  38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.3 ms, 100.00% time, 6.2 TFLOPS,
   (module): FP16_Module(
-    38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.29 ms, 99.94% time, 6.2 TFLOPS,
+    38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.28 ms, 99.94% time, 6.2 TFLOPS,
     (module): GPT2Model(
-      38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.25 ms, 99.80% time, 6.2 TFLOPS,
+      38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 33.23 ms, 99.79% time, 6.2 TFLOPS,
       (language_model): TransformerLanguageModel(
-        38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 4.73 ms, 14.21% time, 4.4e+01 TFLOPS,
+        38.89 M, 100.00% Params, 103.62 GMACs, 100.00% MACs, 5.2 ms, 15.63% time, 4e+01 TFLOPS,
         (embedding): Embedding(
-          26.28 M, 67.57% Params, 0 MACs, 0.00% MACs, 307.56 us, 0.92% time, 0.0 TFLOPS,
-          (word_embeddings): VocabParallelEmbedding(25.76 M, 66.23% Params, 0 MACs, 0.00% MACs, 130.41 us, 0.39% time, 0.0 TFLOPS, )
-          (position_embeddings): Embedding(524.29 k, 1.35% Params, 0 MACs, 0.00% MACs, 68.19 us, 0.20% time, 0.0 TFLOPS, 1024, 512)
-          (embedding_dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 56.27 us, 0.17% time, 0.0 TFLOPS, p=0.1, inplace=False)
+          26.28 M, 67.57% Params, 0 MACs, 0.00% MACs, 330.45 us, 0.99% time, 0.0 TFLOPS,
+          (word_embeddings): VocabParallelEmbedding(25.76 M, 66.23% Params, 0 MACs, 0.00% MACs, 140.67 us, 0.42% time, 0.0 TFLOPS, )
+          (position_embeddings): Embedding(524.29 k, 1.35% Params, 0 MACs, 0.00% MACs, 83.68 us, 0.25% time, 0.0 TFLOPS, 1024, 512)
+          (embedding_dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 50.78 us, 0.15% time, 0.0 TFLOPS, p=0.1, inplace=False)
         )
         (transformer): ParallelTransformer(
-          12.61 M, 32.43% Params, 103.62 GMACs, 100.00% MACs, 4.4 ms, 13.22% time, 4.7e+01 TFLOPS,
+          12.61 M, 32.43% Params, 103.62 GMACs, 100.00% MACs, 4.85 ms, 14.57% time, 4.3e+01 TFLOPS,
           (layers): ModuleList(
-            12.61 M, 32.42% Params, 103.62 GMACs, 100.00% MACs, 0, 0.00% time, 0.0 TFLOPS,
+            12.61 M, 32.42% Params, 103.62 GMACs, 100.00% MACs, 4.41 ms, 13.24% time, 4.7e+01 TFLOPS,
             (0): ParallelTransformerLayer(
-              3.15 M, 8.11% Params, 25.9 GMACs, 25.00% MACs, 1.18 ms, 3.54% time, 4.4e+01 TFLOPS,
-              (input_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0 MACs, 0.00% MACs, 66.52 us, 0.20% time, 0.0 TFLOPS, torch.Size([512]), eps=1e-05, elementwise_affine=True)
+              3.15 M, 8.11% Params, 25.9 GMACs, 25.00% MACs, 1.16 ms, 3.47% time, 4.5e+01 TFLOPS,
+              (input_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0 MACs, 0.00% MACs, 65.09 us, 0.20% time, 0.0 TFLOPS, torch.Size([512]), eps=1e-05, elementwise_affine=True)
               (attention): ParallelSelfAttention(
-                1.05 M, 2.70% Params, 8.72 GMACs, 8.42% MACs, 650.17 us, 1.95% time, 2.7e+01 TFLOPS,
-                (query_key_value): ColumnParallelLinear(787.97 k, 2.03% Params, 6.44 GMACs, 6.22% MACs, 139.24 us, 0.42% time, 9.3e+01 TFLOPS, )
-                (scale_mask_softmax): FusedScaleMaskSoftmax(0, 0.00% Params, 134.22 MMACs, 0.13% MACs, 108.24 us, 0.32% time, 2.5 TFLOPS, )
-                (attention_dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 39.58 us, 0.12% time, 0.0 TFLOPS, p=0.1, inplace=False)
-                (dense): RowParallelLinear(262.66 k, 0.68% Params, 2.15 GMACs, 2.07% MACs, 73.19 us, 0.22% time, 5.9e+01 TFLOPS, )
+                1.05 M, 2.70% Params, 8.72 GMACs, 8.42% MACs, 601.05 us, 1.81% time, 2.9e+01 TFLOPS,
+                (query_key_value): ColumnParallelLinear(787.97 k, 2.03% Params, 6.44 GMACs, 6.22% MACs, 115.63 us, 0.35% time, 1.1e+02 TFLOPS, )
+                (scale_mask_softmax): FusedScaleMaskSoftmax(0, 0.00% Params, 134.22 MMACs, 0.13% MACs, 89.41 us, 0.27% time, 3.0 TFLOPS, )
+                (attention_dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 42.2 us, 0.13% time, 0.0 TFLOPS, p=0.1, inplace=False)
+                (dense): RowParallelLinear(262.66 k, 0.68% Params, 2.15 GMACs, 2.07% MACs, 77.25 us, 0.23% time, 5.6e+01 TFLOPS, )
               )
-              (post_attention_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0 MACs, 0.00% MACs, 54.36 us, 0.16% time, 0.0 TFLOPS, torch.Size([512]), eps=1e-05, elementwise_affine=True)
+              (post_attention_layernorm): FusedLayerNorm(1.02 k, 0.00% Params, 0 MACs, 0.00% MACs, 56.27 us, 0.17% time, 0.0 TFLOPS, torch.Size([512]), eps=1e-05, elementwise_affine=True)
               (mlp): ParallelMLP(
-                2.1 M, 5.40% Params, 17.18 GMACs, 16.58% MACs, 199.08 us, 0.60% time, 1.7e+02 TFLOPS,
-                (dense_h_to_4h): ColumnParallelLinear(1.05 M, 2.70% Params, 8.59 GMACs, 8.29% MACs, 60.56 us, 0.18% time, 2.8e+02 TFLOPS, )
-                (dense_4h_to_h): RowParallelLinear(1.05 M, 2.70% Params, 8.59 GMACs, 8.29% MACs, 75.34 us, 0.23% time, 2.3e+02 TFLOPS, )
+                2.1 M, 5.40% Params, 17.18 GMACs, 16.58% MACs, 204.09 us, 0.61% time, 1.7e+02 TFLOPS,
+                (dense_h_to_4h): ColumnParallelLinear(1.05 M, 2.70% Params, 8.59 GMACs, 8.29% MACs, 65.09 us, 0.20% time, 2.6e+02 TFLOPS, )
+                (dense_4h_to_h): RowParallelLinear(1.05 M, 2.70% Params, 8.59 GMACs, 8.29% MACs, 77.96 us, 0.23% time, 2.2e+02 TFLOPS, )
               )
             )
             ...
@@ -127,18 +144,18 @@ Number of MACs:                 103616086016
 Number of parameters:           38890496
 ```
 
-##  Usage Outside the DeepSpeed Runtime
+###  Usage Outside the DeepSpeed Runtime
 
 The flops profiler can be used as a standalone package outside of the DeepSpeed runtime.
 One can simply install DeepSpeed and import the `flops_profiler` package to use the APIs directly.
 Refer to [installation of DeepSpeed](https://www.deepspeed.ai/getting-started/#installation) for installing DeepSpeed.
 
-### In Model Inference
+#### In Model Inference
 
 To profile a trained model in inference, use the `get_model_profile` function.
 Examples are given below.
 
-#### Example: AlexNet
+##### Example: AlexNet
 
 The following example shows how to profile AlexNet using the DeepSpeed flops profiler.
 
@@ -206,7 +223,7 @@ Number of MACs:                 183.18 GMACs
 Number of parameters:           61.1 M
 ```
 
-#### Example: Bert
+##### Example: Bert
 
 ```python
 from functools import partial
@@ -218,77 +235,86 @@ from deepspeed.profiling.flops_profiler import get_model_profile
 def bert_input_constructor(input_shape, tokenizer):
     fake_seq = ""
     for _ in range(input_shape[1] - 2):  # ignore the two special tokens [CLS] and [SEP]
-        fake_seq += tokenizer.pad_token
-    input_tensor = tokenizer([fake_seq] * input_shape[0],
+      fake_seq += tokenizer.pad_token
+    inputs = tokenizer([fake_seq] * input_shape[0],
                        padding=True,
                        truncation=True,
                        return_tensors="pt")
-    return input_tensor
+    labels = torch.tensor([1] * input_shape[0])
+    inputs = dict(inputs)
+    inputs.update({"labels": labels})
+    return inputs
 
 
 with torch.cuda.device(0):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
-    batch_size = 5
+    batch_size = 4
     seq_len = 128
-    macs, params = get_model_profile(
-        model,
-        (batch_size, seq_len),
-        input_constructor=partial(bert_input_constructor,
-                                  tokenizer=tokenizer),
-        print_profile=True,
-        print_aggregated_profile=True,
-    )
-    print("{:<30}  {:<8}".format("Number of MACs: ", macs))
-    print("{:<30}  {:<8}".format("Number of parameters: ", params))
+    profile = True
+    if profile:
+      macs, params = get_model_profile(
+          model,
+          (batch_size, seq_len),
+          input_constructor=partial(bert_input_constructor,
+                                    tokenizer=tokenizer),
+          print_profile=True,
+          print_aggregated_profile=True,
+      )
+      print("{:<30}  {:<8}".format("Number of MACs: ", macs))
+      print("{:<30}  {:<8}".format("Number of parameters: ", params))
+    else:
+      inputs = bert_input_constructor((batch_size, seq_len), tokenizer)
+      outputs = model(inputs)
+
 ```
 
 An example output:
 
 ```
 BertForSequenceClassification(
-  109.48 M, 100.00% Params, 43.49 GMACs, 100.00% MACs, 390.23 ms, 100.00% time, 0.22 TFLOPS,
+  109.48 M, 100.00% Params, 43.49 GMACs, 100.00% MACs, 308.44 ms, 100.00% time, 0.28 TFLOPS,
   (bert): BertModel(
-    109.48 M, 100.00% Params, 43.49 GMACs, 100.00% MACs, 389.92 ms, 99.92% time, 0.22 TFLOPS,
+    109.48 M, 100.00% Params, 43.49 GMACs, 100.00% MACs, 308.31 ms, 99.96% time, 0.28 TFLOPS,
     (embeddings): BertEmbeddings(
-      23.84 M, 21.77% Params, 0 MACs, 0.00% MACs, 1.48 ms, 0.38% time, 0.0 TFLOPS,
-      (word_embeddings): Embedding(23.44 M, 21.41% Params, 0 MACs, 0.00% MACs, 336.89 us, 0.09% time, 0.0 TFLOPS, 30522, 768, padding_idx=0)
-      (position_embeddings): Embedding(393.22 k, 0.36% Params, 0 MACs, 0.00% MACs, 104.19 us, 0.03% time, 0.0 TFLOPS, 512, 768)
-      (token_type_embeddings): Embedding(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 80.59 us, 0.02% time, 0.0 TFLOPS, 2, 768)
-      (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 309.71 us, 0.08% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
-      (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 22.41 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
+      23.84 M, 21.77% Params, 0 MACs, 0.00% MACs, 731.71 us, 0.24% time, 0.0 TFLOPS,
+      (word_embeddings): Embedding(23.44 M, 21.41% Params, 0 MACs, 0.00% MACs, 287.77 us, 0.09% time, 0.0 TFLOPS, 30522, 768, padding_idx=0)
+      (position_embeddings): Embedding(393.22 k, 0.36% Params, 0 MACs, 0.00% MACs, 72.72 us, 0.02% time, 0.0 TFLOPS, 512, 768)
+      (token_type_embeddings): Embedding(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 59.84 us, 0.02% time, 0.0 TFLOPS, 2, 768)
+      (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 83.45 us, 0.03% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
+      (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 22.65 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
     )
     (encoder): BertEncoder(
-      85.05 M, 77.69% Params, 43.49 GMACs, 100.00% MACs, 387.94 ms, 99.41% time, 0.22 TFLOPS,
+      85.05 M, 77.69% Params, 43.49 GMACs, 99.99% MACs, 307.12 ms, 99.57% time, 0.28 TFLOPS,
       (layer): ModuleList(
-        85.05 M, 77.69% Params, 43.49 GMACs, 100.00% MACs, 0, 0.00% time, 0.0 TFLOPS,
+        85.05 M, 77.69% Params, 43.49 GMACs, 99.99% MACs, 306.95 ms, 99.52% time, 0.28 TFLOPS,
         (0): BertLayer(
-          7.09 M, 6.47% Params, 3.62 GMACs, 8.33% MACs, 31.32 ms, 8.03% time, 0.23 TFLOPS,
+          7.09 M, 6.47% Params, 3.62 GMACs, 8.33% MACs, 9.33 ms, 3.02% time, 0.78 TFLOPS,
           (attention): BertAttention(
-            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 16.05 ms, 4.11% time, 0.15 TFLOPS,
+            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 3.23 ms, 1.05% time, 0.75 TFLOPS,
             (self): BertSelfAttention(
-              1.77 M, 1.62% Params, 905.97 MMACs, 2.08% MACs, 15.24 ms, 3.91% time, 0.12 TFLOPS,
-              (query): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 3.49 ms, 0.89% time, 0.17 TFLOPS, in_features=768, out_features=768, bias=True)
-              (key): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 4.12 ms, 1.05% time, 0.15 TFLOPS, in_features=768, out_features=768, bias=True)
-              (value): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 4.19 ms, 1.07% time, 0.14 TFLOPS, in_features=768, out_features=768, bias=True)
-              (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 33.86 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
+              1.77 M, 1.62% Params, 905.97 MMACs, 2.08% MACs, 2.6 ms, 0.84% time, 0.7 TFLOPS,
+              (query): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 622.51 us, 0.20% time, 0.97 TFLOPS, in_features=768, out_features=768, bias=True)
+              (key): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 410.8 us, 0.13% time, 1.5 TFLOPS, in_features=768, out_features=768, bias=True)
+              (value): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 405.79 us, 0.13% time, 1.5 TFLOPS, in_features=768, out_features=768, bias=True)
+              (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 19.31 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
             )
             (output): BertSelfOutput(
-              592.13 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 772.24 us, 0.20% time, 0.78 TFLOPS,
-              (dense): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 514.98 us, 0.13% time, 1.2 TFLOPS, in_features=768, out_features=768, bias=True)
-              (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 119.45 us, 0.03% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
-              (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 27.42 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
+              592.13 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 601.29 us, 0.19% time, 1.0 TFLOPS,
+              (dense): Linear(590.59 k, 0.54% Params, 301.99 MMACs, 0.69% MACs, 430.35 us, 0.14% time, 1.4 TFLOPS, in_features=768, out_features=768, bias=True)
+              (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 77.25 us, 0.03% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
+              (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 17.17 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
             )
           )
           (intermediate): BertIntermediate(
-            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 9.26 ms, 2.37% time, 0.26 TFLOPS,
-            (dense): Linear(2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 8.47 ms, 2.17% time, 0.29 TFLOPS, in_features=768, out_features=3072, bias=True)
+            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 1.5 ms, 0.49% time, 1.6 TFLOPS,
+            (dense): Linear(2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 1.12 ms, 0.36% time, 2.2 TFLOPS, in_features=768, out_features=3072, bias=True)
           )
           (output): BertOutput(
-            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 5.81 ms, 1.49% time, 0.42 TFLOPS,
-            (dense): Linear(2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 5.04 ms, 1.29% time, 0.48 TFLOPS, in_features=3072, out_features=768, bias=True)
-            (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 342.61 us, 0.09% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
-            (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 36.95 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
+            2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 4.46 ms, 1.45% time, 0.54 TFLOPS,
+            (dense): Linear(2.36 M, 2.16% Params, 1.21 GMACs, 2.78% MACs, 4.18 ms, 1.36% time, 0.58 TFLOPS, in_features=3072, out_features=768, bias=True)
+            (LayerNorm): LayerNorm(1.54 k, 0.00% Params, 0 MACs, 0.00% MACs, 124.45 us, 0.04% time, 0.0 TFLOPS, (768,), eps=1e-12, elementwise_affine=True)
+            (dropout): Dropout(0, 0.00% Params, 0 MACs, 0.00% MACs, 27.18 us, 0.01% time, 0.0 TFLOPS, p=0.1, inplace=False)
           )
         )
         ...
@@ -311,9 +337,9 @@ Number of multiply-adds:        43.49 GMACs
 Number of parameters:           109.48 M
 ```
 
-### In Model Training Workflow
+#### In Model Training Workflow
 
-To profile a model in a training workflow, use the `FlopsProfiler`class.
+To profile model forward in a training workflow, use the `FlopsProfiler`class.
 The `FlopsProfiler`class provides the follwing methods:
   * `start_profile()` - starts profiling
   * `get_total_flops(as_string=False)` - returns the total number of MACs in the model
@@ -322,9 +348,9 @@ The `FlopsProfiler`class provides the follwing methods:
   * `print_model_aggregated_profile(module_depth=-1, top_modules=3)` - prints the names of the top modules in terms of aggregated time, flops, and parameters at depth `module_depth`.
   * `end_profile()` - ends profiling and cleans up. This should be invoked at the end of the profiling and after any printing method.
 
-#### Example Training Workflow
+##### Example Training Workflow
 
-Below is an example of this usage in a typical training workflow.
+Below is an example of this usage in a typical training workflow. Note that the flops profiler only captures the forward pass in a training step. The flops of a backward pass can be roughly estimated from that of the forward pass (~2x).
 
 ```python
 from deepspeed.profiling.flops_profiler import FlopsProfiler

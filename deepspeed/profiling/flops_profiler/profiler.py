@@ -42,13 +42,14 @@ class FlopsProfiler(object):
 
             # if computing the flops of the functionals in a module
             def pre_hook(module, input):
-                module_flop_count.clear()
+                module_flop_count.append([])
 
             module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
             def post_hook(module, input, output):
-                module.__flops__ += sum([elem[1] for elem in module_flop_count])
-                module_flop_count.clear()
+                if module_flop_count:
+                    module.__flops__ += sum([elem[1] for elem in module_flop_count[-1]])
+                    module_flop_count.pop()
 
             has_children = len(module._modules.items()) != 0
             if not has_children:
@@ -171,6 +172,10 @@ class FlopsProfiler(object):
                 "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
             ]
             duration = module.__duration__
+            if duration == 0:
+                for m in module.children():
+                    duration += m.__duration__
+
             items.append(duration_to_string(duration))
             items.append("{:.2%} time".format(0.0 if total_duration == 0 else duration /
                                               total_duration))
@@ -429,7 +434,8 @@ def wrapFunc(func, funcFlopCompute):
 
     def newFunc(*args, **kwds):
         flops = funcFlopCompute(*args, **kwds)
-        module_flop_count.append((name, flops))
+        if module_flop_count:
+            module_flop_count[-1].append((name, flops))
         return oldFunc(*args, **kwds)
 
     return newFunc
