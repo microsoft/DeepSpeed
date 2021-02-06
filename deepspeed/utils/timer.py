@@ -4,6 +4,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 
 import time
 import torch
+from deepspeed.utils.logging import log_dist
 
 from deepspeed.utils import logger
 
@@ -13,14 +14,6 @@ try:
 except ImportError:
     PSUTILS_INSTALLED = False
     pass
-
-
-def print_rank_0(message):
-    if torch.distributed.is_initialized():
-        if torch.distributed.get_rank() == 0:
-            print(message)
-    else:
-        print(message)
 
 
 class SynchronizedWallClockTimer:
@@ -98,9 +91,9 @@ class SynchronizedWallClockTimer:
                     reset=reset) * 1000.0 / normalizer
                 string += ' | {}: {:.2f}'.format(name, elapsed_time)
 
-        # TODO: use our logging utilitied to selectively print. Useful for model
-        # parallelism because rank=0 is too restrictive.
-        print_rank_0(string)
+        # TODO: expose ranks as rank=0 is too restrictive
+        # useful for model parallelism
+        log_dist(string, ranks=[0])
 
 
 class ThroughputTimer():
