@@ -65,6 +65,9 @@ public:
     {
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
+
+        _streams[0] = Context::Instance().GetCurrentStream();
+        _streams[1] = Context::Instance().GetNewStream();
     }
     ~Adam_Optimizer()
     {
@@ -152,4 +155,6 @@ private:
     float* _doubled_buffer[2];
     bool _buf_index;
     bool _adamw_mode;
+
+    cudaStream_t _streams[2];
 };

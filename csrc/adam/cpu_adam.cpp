@@ -62,6 +62,8 @@ void Adam_Optimizer::Step(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH) {
             AVX_Data grad_4;
@@ -101,10 +103,8 @@ void Adam_Optimizer::Step(float* _params,
             SIMD_STORE(_exp_avg_sq + i, variance_4.data);
         }
         if (dev_params) {
-            launch_param_update(_doubled_buffer[_buf_index],
-                                dev_params + t,
-                                copy_size,
-                                Context::Instance().GetCurrentStream());
+            launch_param_update(
+                _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
     }
@@ -116,6 +116,7 @@ void Adam_Optimizer::Step(float* _params,
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
+            if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
                 float grad = grads[k];
@@ -142,10 +143,8 @@ void Adam_Optimizer::Step(float* _params,
                 _exp_avg_sq[k] = variance;
             }
             if (dev_params) {
-                launch_param_update(_doubled_buffer[_buf_index],
-                                    dev_params + t,
-                                    (copy_size),
-                                    Context::Instance().GetCurrentStream());
+                launch_param_update(
+                    _doubled_buffer[_buf_index], dev_params + t, (copy_size), _streams[_buf_index]);
                 _buf_index = !_buf_index;
             }
         }
@@ -195,6 +194,7 @@ void Adam_Optimizer::Step_4(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 2)) {
             AVX_Data grad_4[4];
@@ -301,10 +301,8 @@ void Adam_Optimizer::Step_4(float* _params,
         }
 
         if (dev_params) {
-            launch_param_update(_doubled_buffer[_buf_index],
-                                dev_params + t,
-                                copy_size,
-                                Context::Instance().GetCurrentStream());
+            launch_param_update(
+                _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
     }
@@ -406,6 +404,7 @@ void Adam_Optimizer::Step_8(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) {
             AVX_Data grad_4[8];
@@ -588,10 +587,8 @@ void Adam_Optimizer::Step_8(float* _params,
             SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 7, variance_4[7].data);
         }
         if (dev_params) {
-            launch_param_update(_doubled_buffer[_buf_index],
-                                dev_params + t,
-                                copy_size,
-                                Context::Instance().GetCurrentStream());
+            launch_param_update(
+                _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
     }
@@ -634,6 +631,7 @@ int ds_adam_step(int optimizer_id,
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
+    for (int i = 0; i < 2; i++) cudaStreamSynchronize(opt->_streams[i]);
     return 0;
 }
 
@@ -670,6 +668,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 
+    for (int i = 0; i < 2; i++) cudaStreamSynchronize(opt->_streams[i]);
     return 0;
 }
 
