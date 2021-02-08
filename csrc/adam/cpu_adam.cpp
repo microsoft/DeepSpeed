@@ -112,36 +112,42 @@ void Adam_Optimizer::Step(float* _params,
 #endif
 
     if (_param_size > rounded_size) {
+        for (size_t t = rounded_size; t < _param_size; t += TILE) {
+            size_t copy_size = TILE;
+            if ((t + TILE) > _param_size) copy_size = _param_size - t;
+            size_t offset = copy_size + t;
 #pragma omp parallel for
-        for (size_t k = rounded_size; k < _param_size; k++) {
-            float grad = grads[k];
-            float param = _params[k];
-            float momentum = _exp_avg[k];
-            float variance = _exp_avg_sq[k];
-            if (_weight_decay > 0 && !_adamw_mode) { grad = param * _weight_decay + grad; }
-            momentum = momentum * _betta1;
-            momentum = grad * betta1_minus1 + momentum;
+            for (size_t k = t; k < offset; k++) {
+                float grad = grads[k];
+                float param = _params[k];
+                float momentum = _exp_avg[k];
+                float variance = _exp_avg_sq[k];
+                if (_weight_decay > 0 && !_adamw_mode) { grad = param * _weight_decay + grad; }
+                momentum = momentum * _betta1;
+                momentum = grad * betta1_minus1 + momentum;
 
-            variance = variance * _betta2;
-            grad = grad * grad;
-            variance = grad * betta2_minus1 + variance;
+                variance = variance * _betta2;
+                grad = grad * grad;
+                variance = grad * betta2_minus1 + variance;
 
-            grad = sqrt(variance);
-            grad = grad * _bias_correction2 + _eps;
-            grad = momentum / grad;
-            if (_weight_decay > 0 && _adamw_mode) { param += w_decay * param; }
-            param = grad * step_size + param;
-            if (dev_params) _doubled_buffer[_buf_index][k - rounded_size] = (__half)param;
+                grad = sqrt(variance);
+                grad = grad * _bias_correction2 + _eps;
+                grad = momentum / grad;
+                if (_weight_decay > 0 && _adamw_mode) { param += w_decay * param; }
+                param = grad * step_size + param;
+                if (dev_params) _doubled_buffer[_buf_index][k - t] = param;
 
-            _params[k] = param;
-            _exp_avg[k] = momentum;
-            _exp_avg_sq[k] = variance;
-        }
-        if (dev_params) {
-            launch_param_update(_doubled_buffer[_buf_index],
-                                dev_params + rounded_size,
-                                (_param_size - rounded_size),
-                                Context::Instance().GetCurrentStream());
+                _params[k] = param;
+                _exp_avg[k] = momentum;
+                _exp_avg_sq[k] = variance;
+            }
+            if (dev_params) {
+                launch_param_update(_doubled_buffer[_buf_index],
+                                    dev_params + t,
+                                    (copy_size),
+                                    Context::Instance().GetCurrentStream());
+                _buf_index = !_buf_index;
+            }
         }
     }
 }
