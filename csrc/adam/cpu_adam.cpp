@@ -631,7 +631,7 @@ int ds_adam_step(int optimizer_id,
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
-    for (int i = 0; i < 2; i++) cudaStreamSynchronize(opt->_streams[i]);
+    opt->SynchronizeStreams();
     return 0;
 }
 
@@ -668,7 +668,7 @@ int ds_adam_step_plus_copy(int optimizer_id,
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 
-    for (int i = 0; i < 2; i++) cudaStreamSynchronize(opt->_streams[i]);
+    opt->SynchronizeStreams();
     return 0;
 }
 
