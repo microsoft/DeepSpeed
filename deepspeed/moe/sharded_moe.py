@@ -23,7 +23,6 @@ else:
 
 import torch.distributed as dist
 
-
 # einsum dimensions: (g)roup, (s)equence, (e)xpert, (m)odel, (c)apacity
 # See https://arxiv.org/pdf/2006.16668.pdf for details.
 
@@ -120,10 +119,6 @@ class TopKGate(torch.nn.Module):
         logits = self.wg(input)
         return top1gating(logits, self.capacity_factor)
 
-
-# einsum dimensions: (g)roup, (s)equence, (e)xpert, (m)odel, (c)apacity
-# See https://arxiv.org/pdf/2006.16668.pdf for details.
-
 class MOELayer(Base):
     """MOELayer module which implements MixtureOfExperts as described in Gshard_.
     ::
@@ -148,6 +143,7 @@ class MOELayer(Base):
         self.experts = experts
 
         self.group = group if group is not None else dist.group.WORLD
+        # TODO below code is in the Experts code
         # for expert in self.experts:
         #     for p in experts.parameters():
         #         p.expert = True  # type: ignore
@@ -175,48 +171,3 @@ class MOELayer(Base):
         expert_output = expert_output.reshape(self.world_size * self.num_local_experts, -1, d_model)
         combined_output = torch.einsum("sec,ecm->sm", combine_weights, expert_output)
         return combined_output.reshape(input[0].shape)
-
-# # plain mixture of experts
-
-# class ShardedMoE(nn.Module):
-#     def __init__(self,
-#         dim,
-#         num_experts = 16,
-#         hidden_dim = None,
-#         activation = nn.ReLU,
-#         # second_policy_train = 'random',
-#         # second_policy_eval = 'random',
-#         # second_threshold_train = 0.2,
-#         # second_threshold_eval = 0.2,
-#         capacity_factor_train = 1.25,
-#         capacity_factor_eval = 2.,
-#         loss_coef = 1e-2,
-#         experts = None):
-#         super().__init__()
-
-#         self.num_experts = num_experts
-
-#         # change to top-1 gating
-#         gating_kwargs = {'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-#         self.gate = Top1Gating(dim, num_gates = num_experts, **gating_kwargs)
-#         # gating_kwargs = {'second_policy_train': second_policy_train, 'second_policy_eval': second_policy_eval, 'second_threshold_train': second_threshold_train, 'second_threshold_eval': second_threshold_eval, 'capacity_factor_train': capacity_factor_train, 'capacity_factor_eval': capacity_factor_eval}
-#         # self.gate = Top2Gating(dim, num_gates = num_experts, **gating_kwargs)
-#         self.experts = default(experts, lambda: Experts(dim, num_experts = num_experts, hidden_dim = hidden_dim, activation = activation))
-#         self.loss_coef = loss_coef
-
-#     def forward(self, inputs, **kwargs):
-#         b, n, d, e = *inputs.shape, self.num_experts
-#         dispatch_tensor, combine_tensor, loss = self.gate(inputs)
-#         expert_inputs = torch.einsum('bnd,bnec->ebcd', inputs, dispatch_tensor.half())
-#         ourgroup = dist.group.WORLD 
-#         expert_inputs = _AllToAll.apply(ourgroup, expert_inputs)
-
-#         # Now feed the expert inputs through the experts.
-#         orig_shape = expert_inputs.shape
-#         expert_inputs = expert_inputs.reshape(e, -1, d)
-#         expert_outputs = self.experts(expert_inputs)
-#         expert_outputs = expert_outputs.reshape(*orig_shape)
-#         expert_outputs = _AllToAll.apply(ourgroup, expert_outputs)
-
-#         output = torch.einsum('ebcd,bnec->bnd', expert_outputs, combine_tensor.half())
-#         return output, loss * self.loss_coef
