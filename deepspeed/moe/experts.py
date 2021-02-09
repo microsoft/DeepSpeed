@@ -18,8 +18,6 @@ class Experts(torch.nn.Module):
                 param.allreduce = False
                     
     def forward(self, inputs):
-        # Re-shape after all-to-all: ecm -> gecm
-        inputs = inputs.reshape(self.world_size, self.experts, -1, d_model)
         chunks = inputs.chunk(self.experts, dim=1)
         expert_outputs = []
         for chunk, expert in zip(chunks, self.experts):

@@ -167,6 +167,8 @@ class MOELayer(Base):
         self.l_aux, combine_weights, dispatch_mask = self.gate(reshaped_input)
         dispatched_input = torch.einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
         dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+        # Re-shape after all-to-all: ecm -> gecm
+        dispatched_input = dispatched_input.reshape(self.world_size, self.num_local_experts, -1, d_model)
         expert_output = self.experts(dispatched_input)
         expert_output = _AllToAll.apply(self.group, expert_output)
         # Re-shape back: gecm -> ecm
