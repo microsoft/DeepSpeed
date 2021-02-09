@@ -26,7 +26,7 @@ class MoE(torch.nn.Module):
 
         num_local_experts = num_experts // world_size
 
-        experts = Experts(expert, num_local_experts, world_size)
+        experts = Experts(expert, num_local_experts)
 
         self.moe = MOELayer(TopKGate(hidden_size, num_experts), experts, num_local_experts)
         
