@@ -9,7 +9,8 @@ import torch.distributed as dist
 # import for sanity testing only
 #from .basic_moe import BasicMoE
 
-from .sharded_moe import ShardedMoE
+# from .sharded_moe import ShardedMoE
+from .sharded_moe import MOELayer
 from .experts import Experts
 import copy 
 
