@@ -311,6 +311,44 @@ def get_full_inputs(tensors, device=None):
     return tuple(inputs)
 
 
+def move_to_device(item, device):
+    if torch.is_tensor(item):
+        return item.to(device)
+    elif isinstance(item, list):
+        return [move_to_device(v, device) for v in item]
+    elif isinstance(item, tuple):
+        return tuple([move_to_device(v, device) for v in item])
+    elif isinstance(item, dict):
+        return {k: move_to_device(v, device) for k, v in item.items()}
+    else:
+        return item
+
+
+def filter_tensor_values(all_values):
+    tensor_values = [v for v in all_values if torch.is_tensor(v)]
+    non_tensor_values = [v for v in all_values if not torch.is_tensor(v)]
+    tensor_flags = [torch.is_tensor(v) for v in all_values]
+    if type(all_values) is tuple:
+        return tuple(tensor_values), tuple(non_tensor_values), tuple(tensor_flags)
+    return tensor_values, non_tensor_values, tensor_flags
+
+
+def merge_tensor_values(tensor_values, non_tensor_values, tensor_flags):
+    merged_values = []
+    tensor_idx = 0
+    non_tensor_idx = 0
+
+    for is_tensor in tensor_flags:
+        if is_tensor:
+            merged_values.append(tensor_values[tensor_idx])
+            tensor_idx += 1
+        else:
+            merged_values.append(non_tensor_values[non_tensor_idx])
+            non_tensor_idx += 1
+
+    return tuple(merged_values)
+
+
 class CheckpointFunction(torch.autograd.Function):
     """This function is adapted from torch.utils.checkpoint with
        two main changes:
@@ -322,8 +360,14 @@ class CheckpointFunction(torch.autograd.Function):
            5) Profile forward and backward functions
     """
     @staticmethod
-    def forward(ctx, run_function, *args):
+    def forward(ctx, run_function, all_outputs, *args):
         global mpu, timers, SYNCHRONIZE, PROFILE_TIME
+
+        def save_args_for_backward(*all_args):
+            tensor_args, non_tensor_args, tensor_flags = filter_tensor_values(all_args)
+            ctx.save_for_backward(*tensor_args)
+            ctx.non_tensor_args = non_tensor_args
+            ctx.tensor_flags = tensor_flags
 
         if SYNCHRONIZE:
             torch.cuda.synchronize()
@@ -417,12 +461,7 @@ class CheckpointFunction(torch.autograd.Function):
             inputs.append(args[-1])
 
         #just in case something funky is happening such as reuse of inputs
-        inputs_cuda = []
-        for item in args:
-            if torch.is_tensor(item):
-                inputs_cuda.append(item.to(cuda_device))
-            else:
-                inputs_cuda.append(item)
+        inputs_cuda = move_to_device(args, cuda_device)
 
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
@@ -485,9 +524,10 @@ class CheckpointFunction(torch.autograd.Function):
                 #if dist.get_rank() == 0:
                 #    logger.info(f"The stored tensor is {contiguous_size} and orginal one is {size} ")
 
-            ctx.save_for_backward(*new_args)
+            save_args_for_backward(*new_args)
         else:
-            ctx.save_for_backward(*args)
+            save_args_for_backward(*args)
+
         if PROFILE_TIME:
             timers('forward').stop()
             timers.log(['forward'])
@@ -498,9 +538,18 @@ class CheckpointFunction(torch.autograd.Function):
         if torch.is_tensor(outputs):
             non_grad_outputs = [outputs] if not outputs.is_floating_point() else []
         else:
-            non_grad_outputs = [o for o in outputs if not o.is_floating_point()]
+            non_grad_outputs = [
+                o for o in outputs if torch.is_tensor(o) and not o.is_floating_point()
+            ]
         ctx.mark_non_differentiable(*non_grad_outputs)
-        return outputs
+
+        if torch.is_tensor(outputs):
+            all_outputs += [outputs]
+            return outputs
+        else:
+            all_outputs += outputs
+            outputs, _, _ = filter_tensor_values(outputs)
+            return tuple(outputs)
 
     @staticmethod
     def backward(ctx, *grads):
@@ -544,6 +593,11 @@ class CheckpointFunction(torch.autograd.Function):
             inputs = ctx.saved_tensors
             detached_inputs = detach_variable(inputs)
 
+        # Add non tensor input args
+        detached_inputs = merge_tensor_values(detached_inputs,
+                                              ctx.non_tensor_args,
+                                              ctx.tensor_flags)
+
         # Store the current states.
         bwd_cpu_rng_state = torch.get_rng_state()
         bwd_cuda_rng_state = torch.cuda.get_rng_state()
@@ -569,6 +623,9 @@ class CheckpointFunction(torch.autograd.Function):
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs, )
 
+        # Filter out non tensor outputs
+        outputs, _, _ = filter_tensor_values(outputs)
+
         # Construct arguments to autograd.backward().
         # This is usually just outputs and grads, but forward() can return tensors that
         # are not differentiable.
@@ -586,7 +643,7 @@ class CheckpointFunction(torch.autograd.Function):
             timers.log(['backward'])
         if SYNCHRONIZE:
             torch.cuda.synchronize()
-        ret_list = [None]  # first None for ctx
+        ret_list = [None, None]  # first None for ctx
         for inp in detached_inputs:
             if torch.is_tensor(inp):
                 ret_list.append(inp.grad)
@@ -599,7 +656,13 @@ class CheckpointFunction(torch.autograd.Function):
 def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
-    return CheckpointFunction.apply(function, *args)
+
+    all_outputs = []
+    CheckpointFunction.apply(function, all_outputs, *args)
+    if len(all_outputs) == 1:
+        return all_outputs[0]
+    else:
+        return tuple(all_outputs)
 
 
 def partition_activations_in_checkpoint(partition_activation):
