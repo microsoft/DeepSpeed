@@ -6,10 +6,11 @@ import torch
 import copy
 
 class Experts(torch.nn.Module):
-    def __init__(self, expert, num_experts=1):
+    def __init__(self, expert, num_local_experts=1):
         super(Experts, self).__init__()
 
-        self.experts = torch.nn.ModuleList([copy.deepcopy(expert) for i in range(num_experts)])
+        self.experts = torch.nn.ModuleList([copy.deepcopy(expert) for i in range(num_local_experts)])
+        self.num_local_experts = num_local_experts
 
         for expert in self.experts:
             # TODO: Create param groups to handle expert + data case (e.g. param.group = moe_group)
@@ -17,6 +18,9 @@ class Experts(torch.nn.Module):
                 param.allreduce = False
                     
     def forward(self, inputs):
-        for expert in self.experts:
-            intermediate, extra_output = expert(inputs)
-        return intermediate
+        chunks = inputs.chunk(self.num_local_experts, dim=1)
+        expert_outputs = []
+        for chunk, expert in zip(chunks, self.experts):
+            expert_outputs += [expert(chunk)]
+        expert_output = torch.cat(expert_outputs, dim=1)
+        return expert_output
