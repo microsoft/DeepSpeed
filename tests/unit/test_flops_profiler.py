@@ -111,5 +111,5 @@ def test_flops_profiler_in_inference():
         ignore_modules=None,
     )
     print(macs, params)
-    assert macs == "439.55 MMACs"
+    assert macs == "439.56 MMACs"
     assert params == "61.71 k"

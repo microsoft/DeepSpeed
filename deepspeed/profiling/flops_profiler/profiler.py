@@ -119,10 +119,7 @@ class FlopsProfiler(object):
         Args:
             as_string (bool, optional): whether to output the flops as string. Defaults to False.
         """
-        sum = 0
-        for module in self.model.modules():
-            sum += module.__flops__
-        total_flops = sum
+        total_flops = get_module_flops(self.model)
         return flops_to_string(total_flops) if as_string else total_flops
 
     def get_total_duration(self, as_string=False):
@@ -150,19 +147,9 @@ class FlopsProfiler(object):
         total_duration = self.get_total_duration()
         total_params = self.get_total_params()
 
-        def accumulate_flops(module):
-            has_children = len(module._modules.items()) != 0
-            if not has_children:
-                return module.__flops__
-            else:
-                sum = 0
-                for m in module.children():
-                    sum += m.accumulate_flops()
-            return sum
-
         def flops_repr(module):
             params = module.__params__
-            flops = module.accumulate_flops()
+            flops = get_module_flops(module)
             items = [
                 params_to_string(params),
                 "{:.2%} Params".format(params / total_params),
@@ -170,7 +157,7 @@ class FlopsProfiler(object):
                 "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
             ]
             duration = module.__duration__
-            if duration == 0:
+            if duration == 0:  # e.g. ModuleList
                 for m in module.children():
                     duration += m.__duration__
 
@@ -184,7 +171,6 @@ class FlopsProfiler(object):
             return ", ".join(items)
 
         def add_extra_repr(module):
-            module.accumulate_flops = accumulate_flops.__get__(module)
             flops_extra_repr = flops_repr.__get__(module)
             if module.extra_repr != flops_extra_repr:
                 module.original_extra_repr = module.extra_repr
@@ -195,8 +181,6 @@ class FlopsProfiler(object):
             if hasattr(module, "original_extra_repr"):
                 module.extra_repr = module.original_extra_repr
                 del module.original_extra_repr
-            if hasattr(module, "accumulate_flops"):
-                del module.accumulate_flops
 
         self.model.apply(add_extra_repr)
         print(self.model)
@@ -657,6 +641,16 @@ def duration_to_string(duration, units=None, precision=2):
             return str(round(duration * 10.0**3, precision)) + " " + units
         else:
             return str(round(duration, precision)) + " s"
+
+
+    # can not iterate over all submodules using self.model.modules()
+    # since modules() returns duplicate modules only once
+def get_module_flops(module):
+    sum = module.__flops__
+    # iterate over immediate children modules
+    for child in module.children():
+        sum += get_module_flops(child)
+    return sum
 
 
 def get_model_profile(
