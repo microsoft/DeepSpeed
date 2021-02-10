@@ -51,9 +51,7 @@ class FlopsProfiler(object):
                     module.__flops__ += sum([elem[1] for elem in module_flop_count[-1]])
                     module_flop_count.pop()
 
-            has_children = len(module._modules.items()) != 0
-            if not has_children:
-                module.__post_hook_handle__ = module.register_forward_hook(post_hook)
+            module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
             def start_time_hook(module, input):
                 module.__start_time__ = time.time()
