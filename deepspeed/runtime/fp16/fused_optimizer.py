@@ -13,6 +13,35 @@ from deepspeed.runtime.utils import get_grad_norm, CheckOverflow, get_weight_nor
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger, log_dist
 
+from ...ops.adam import FusedAdam
+FP16_FUSED_SUPPORTED_OPTIMIZERS = [
+    FusedAdam,
+]
+
+# Add apex FusedAdam to supported list if apex is installed
+try:
+    import apex
+    FP16_FUSED_SUPPORTED_OPTIMIZERS.append(apex.optimizers.FusedAdam)
+except ImportError:
+    pass
+
+
+def is_fp16_fused_supported_optimizer(optimizer):
+    """Is an optimizer compatible with ``FP16_Optimizer``?
+
+    Args:
+        optimizer (torch.optim.Optimizer): Optimizer to query.
+
+    Returns:
+        bool: True if ``optimizer`` is compatible with ``FP16_Optimizer``.
+    """
+    from deepspeed.runtime.config import ONEBIT_ADAM_OPTIMIZER
+    if isinstance(optimizer, tuple(FP16_FUSED_SUPPORTED_OPTIMIZERS)):
+        return True
+    if optimizer.__class__.__name__.lower() == ONEBIT_ADAM_OPTIMIZER.lower():
+        return True
+    return False
+
 
 class FP16_Optimizer(object):
     """

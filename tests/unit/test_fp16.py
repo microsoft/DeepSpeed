@@ -795,3 +795,32 @@ def test_fp16_adam_types(tmpdir, adam_type, torch_impl):
             model.step()
 
     _test_fp16_adam_types(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_fp16_fused_compatible_dsfusedadam():
+    from deepspeed.runtime.fp16.fused_optimizer import is_fp16_fused_supported_optimizer
+
+    model = torch.nn.ModuleList([torch.nn.Linear(16, 16) for _ in range(4)])
+
+    optim = deepspeed.ops.adam.FusedAdam(params=model.parameters())
+    assert is_fp16_fused_supported_optimizer(optim)
+
+    optim = torch.optim.Adam(params=model.parameters())
+    assert not is_fp16_fused_supported_optimizer(optim)
+
+    # Hacked simulation of OneBitAdam - only the class name is used for portability
+    class OneBitAdam(torch.optim.Adam):
+        pass
+
+    optim = OneBitAdam(params=model.parameters())
+    assert is_fp16_fused_supported_optimizer(optim)
+
+
+@amp_available
+def test_fp16_fused_compatible_amp():
+    import apex
+    from deepspeed.runtime.fp16.fused_optimizer import is_fp16_fused_supported_optimizer
+
+    model = torch.nn.Sequential(torch.nn.Linear(16, 16) for _ in range(4))
+    optim = apex.optimizers.FusedAdam(params=model.parameters())
+    assert is_fp16_fused_supported_optimizer(optim)
