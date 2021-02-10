@@ -79,6 +79,7 @@ def _test_activation_checkpoint(module, *inputs):
         for b, t in zip(base[group], test[group]):
             _match_outputs(b, t)
 
+
 #
 # Helpers
 #
@@ -107,6 +108,7 @@ class MaskedLinearSeqDup(MaskedLinearSeq):
         dup = x.clone().detach() * 1.38  # just an arbitrary scaling
         x, mask = super().forward(x, mask)
         return dup, x, mask
+
 
 HIDDEN_DIM = 20
 
@@ -186,25 +188,26 @@ def test_ckpt_arg_none():
     _test_activation_checkpoint(module, *inputs)
 
 
-
 class LinearNonTensorInput(torch.nn.Linear):
     def forward(self, x, non_tensor_input):
         return super().forward(x)
 
-@pytest.mark.parametrize('non_tensor_input',
-                        [
-                            None,
-                            2,
-                            True,
-                            (None, 2.5),
-                            (None, True, torch.randn(HIDDEN_DIM))
-                        ])
+
+@pytest.mark.parametrize(
+    'non_tensor_input',
+    [None,
+     2,
+     True,
+     (None,
+      2.5),
+     (None,
+      True,
+      torch.randn(HIDDEN_DIM))])
 def test_ckpt_non_tensor_input(non_tensor_input):
     module = LinearNonTensorInput(HIDDEN_DIM, HIDDEN_DIM)
     inputs = torch.rand(HIDDEN_DIM)
     inputs.requires_grad = True
     _test_activation_checkpoint(module, inputs, non_tensor_input)
-
 
 
 class LinearNonTensorOutput(torch.nn.Linear):
@@ -216,17 +219,19 @@ class LinearNonTensorOutput(torch.nn.Linear):
         out = super().forward(x)
         return out, self.non_tensor_output
 
-@pytest.mark.parametrize('non_tensor_output',
-                        [
-                            None,
-                            2,
-                            True,
-                            (None, 2.5),
-                            (None, True, torch.randn(HIDDEN_DIM))
-                        ])
+
+@pytest.mark.parametrize(
+    'non_tensor_output',
+    [None,
+     2,
+     True,
+     (None,
+      2.5),
+     (None,
+      True,
+      torch.randn(HIDDEN_DIM))])
 def test_ckpt_non_tensor_output(non_tensor_output):
     module = LinearNonTensorOutput(non_tensor_output)
     inputs = torch.rand(HIDDEN_DIM)
     inputs.requires_grad = True
     _test_activation_checkpoint(module, inputs)
-
