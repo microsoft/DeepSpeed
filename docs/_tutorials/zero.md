@@ -1,7 +1,7 @@
 ---
 title: "Zero Redundancy Optimizer (ZeRO)"
 ---
-If you have not done so already, we advise that you read the DeepSpeed tutorials on [Getting Started](/getting-started/) and [Megatron-LM GPT-2](/tutorials/megatron/) before stepping through this tutorial.  
+If you have not done so already, we advise that you read the DeepSpeed tutorials on [Getting Started](/getting-started/) and [Megatron-LM GPT-2](/tutorials/megatron/) before stepping through this tutorial.
 
 In this tutorial, we will apply the ZeRO optimizer to the [Megatron-LM GPT-2](https://github.com/NVIDIA/Megatron-LM) model. ZeRO is a powerful set of memory optimization techniques that enable effective FP16 training of large models with billions of parameters, such as [GPT-2](https://openai.com/blog/better-language-models/) and [Turing-NLG 17B](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/). Compared to the alternative model parallelism approaches for training large models, a key appeal of ZeRO is that no model code modifications are required. As this tutorial will demonstrate, *using ZeRO in a DeepSpeed model is quick and easy because all you need is to change a few configurations in the DeepSpeed configuration json*. No code changes are needed.
 
@@ -13,10 +13,10 @@ ZeRO leverages the aggregate computation and memory resources of data parallelis
 * **Stage 2**: The reduced 32-bit gradients for updating the model weights are also partitioned such that each process retains only the gradients corresponding to its portion of the optimizer states.
 
 ## Training environment
-We use the DeepSpeed [Megatrom-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM) GPT-2 code for this exercise. You can step through the Megatron-LM [tutorial](/tutorials/megatron/) to familiarize yourself with the code. We will train the models in this tutorial on [NVIDIA Tesla V100-SXM3 Tensor Core GPUs](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM.  
+We use the DeepSpeed [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM) GPT-2 code for this exercise. You can step through the Megatron-LM [tutorial](/tutorials/megatron/) to familiarize yourself with the code. We will train the models in this tutorial on [NVIDIA Tesla V100-SXM3 Tensor Core GPUs](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM.
 
 ## Enabling ZeRO Optimization
-To enable ZeRO optimizations for a DeepSpeed model, we simply add the **_zero_optimization_** key to the DeepSpeed json configuration. A full description of configuration knobs of the **zero_optimization** key is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).  
+To enable ZeRO optimizations for a DeepSpeed model, we simply add the **_zero_optimization_** key to the DeepSpeed json configuration. A full description of configuration knobs of the **zero_optimization** key is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).
 
 ### Training a 1.5B Parameter GPT-2 model
 We demonstrate the benefits of ZeRO stage 1 by showing that it enables data parallel training of a 1.5 billion parameter GPT-2 model on eight V100 GPUs. We configure training to use a batch size of 1 per device to ensure that the memory consumption is primarily due to model parameters and optimizer states. We create this training scenario by applying the following modifications to the deepspeed launch script:
@@ -42,11 +42,11 @@ A key reason why this model does not fit in GPU memory is that the Adam optimize
 {
     "zero_optimization": {
         "stage":1,
-        "reduce_bucket_size": 500000000
+        "reduce_bucket_size": 5e8
     }
 }
 ```
-As seen above, we set two fields in the **zero_optimization** key. Specifically we set the _stage_ field to 1, and the optional _reduce_bucket_size_ for gradient reduction to 50M. With ZeRO stage 1 enabled, the model can now train smoothly on 8 GPUs without running out of memory.   Below we provide some screenshots of the model training:
+As seen above, we set two fields in the **zero_optimization** key. Specifically we set the _stage_ field to 1, and the optional _reduce_bucket_size_ for gradient reduction to 500M. With ZeRO stage 1 enabled, the model can now train smoothly on 8 GPUs without running out of memory.   Below we provide some screenshots of the model training:
 
 
 <a href="/assets/images/zero1_dp8_1.5B_log.png">
@@ -58,10 +58,12 @@ As seen above, we set two fields in the **zero_optimization** key. Specifically 
 </a>
 
 
-From the nvidia-smi screenshot above we can see that that only GPUs 0--7 are being used for training the model. With ZeRO stage 1 we can further reduce the per-device memory consumption by increasing the data parallelism degree. These memory savings can be leveraged to either increase model size and/or batch size. In contrast, such benefits are not possible with data parallelism alone.  
+From the nvidia-smi screenshot above we can see that only GPUs 6-7 are being used for training the model. With ZeRO stage 1 we can further reduce the per-device memory consumption by increasing the data parallelism degree. These memory savings can be leveraged to either increase model size and/or batch size. In contrast, such benefits are not possible with data parallelism alone.
 
 ### Training a 10B Parameter GPT-2 model
-ZeRO stage 2 optimizations further increases the size of models that can be trained using data parallelism. We show this training a model with 10B parameters using 32 V100 GPUs. First, we need to configure a 10B parameter model with activation checkpointing enabled. This can be done by applying the following GPT-2 model configuration changes to the DeepSpeed launch script.
+ZeRO stage 2 optimizations further increases the size of models that can be trained using data parallelism. We show this by training a model with 10B parameters using 32 V100 GPUs.
+
+First, we need to configure a 10B parameter model with activation checkpointing enabled. This can be done by applying the following GPT-2 model configuration changes to the DeepSpeed launch script.
 
 ```bash
        --model-parallel-size 1 \
@@ -73,7 +75,7 @@ ZeRO stage 2 optimizations further increases the size of models that can be trai
        --checkpoint-activations
 ```
 
-Next, we need to update the DeepSpeed json configuration, as shown below, to enable ZeRO stage 2 optimizations:  
+Next, we need to update the DeepSpeed json configuration, as shown below, to enable ZeRO stage 2 optimizations:
 
 ```json
 {
@@ -81,14 +83,14 @@ Next, we need to update the DeepSpeed json configuration, as shown below, to ena
         "stage":2,
         "contiguous_gradients": true,
         "overlap_comm": true,
-        "reduce_scatter": true,  
-        "reduce_bucket_size": 50000000,
-        "allgather_bucket_size": 500000000
+        "reduce_scatter": true,
+        "reduce_bucket_size": 5e8,
+        "allgather_bucket_size": 5e8
     }
 }
 ```
 
-In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmenation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training). With these changes, we can now launch the training run.
+In the above changes, we have set the _stage_ field to 2, and configured other optimization knobs that are available in ZeRO stage 2. For example, we have enabled _contiguous_gradients_ to reduce memory fragmentation during backward pass. A full description of these optimization knobs is available [here](/docs/config-json/#zero-optimizations-for-fp16-training). With these changes, we can now launch the training run.
 
 Here is a screenshot of the training log:
 
@@ -96,7 +98,7 @@ Here is a screenshot of the training log:
 <img src="/assets/images/zero2_dp32_10B_log.png">
 </a>
 
-Here is a screenshot of nvidia-smi show GPU activity during training:
+Here is a screenshot of nvidia-smi showing GPU activity during training:
 
 <a href="/assets/images/zero2_dp32_10B_smi.png">
 <img src="/assets/images/zero2_dp32_10B_smi.png">

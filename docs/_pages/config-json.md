@@ -34,7 +34,7 @@ title: "DeepSpeed Configuration JSON"
 
 | Fields | Value                                                        | Example                        |
 | ------ | ------------------------------------------------------------ | ------------------------------ |
-| type   | The optimizer name. DeepSpeed natively supports **Adam**, **OneBitAdam**, and **Lamb** optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
+| type   | The optimizer name. DeepSpeed natively supports **Adam**, **AdamW**, **OneBitAdam**, and **Lamb** optimizers and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                         |
 | params | Dictionary of parameters to instantiate optimizer. The parameter names must match the optimizer constructor signature (e.g., for [Adam](https://pytorch.org/docs/stable/optim.html#torch.optim.Adam)). | `{"lr": 0.001, "eps": 1e-8}` |
 
   Example of ***optimizer*** with Adam
@@ -54,6 +54,7 @@ title: "DeepSpeed Configuration JSON"
   }
 ```
 The Adam optimizer also supports the following two params keys/values in addition to the standard parameters from [torch.optim.Adam](https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam):
+
 | "params" key  | Description                                                                 | Default |
 | ------------- | --------------------------------------------------------------------------- | --------|
 | torch\_adam   | Use torch's implementation of adam instead of our fused adam implementation | false   |
@@ -97,7 +98,7 @@ Example of ***scheduler***
           "warmup_max_lr": 0.001,
           "warmup_num_steps": 1000
       }
-  }  
+  }
 ```
 
 ### Communication options
@@ -228,15 +229,15 @@ Example of ***scheduler***
 
 ### ZeRO Optimizations for FP16 Training
 
-Enabling and configure ZeRO memory optimizations
+Enabling and configuring ZeRO memory optimizations
 ```json
   "zero_optimization": {
     "stage": [0|1|2],
     "allgather_partitions": [true|false],
-    "allgather_bucket_size": 500000000,
+    "allgather_bucket_size": 5e8,
     "overlap_comm": false,
     "reduce_scatter": [true|false],
-    "reduce_bucket_size": 500000000,
+    "reduce_bucket_size": 5e8,
     "contiguous_gradients" : [true|false],
     "cpu_offload": [true|false]
     }
@@ -264,7 +265,7 @@ Enabling and configure ZeRO memory optimizations
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| Number of elements allgathered at a time. Limits the memory required for the allgather for large model sizes   | `500000000`   |
+| Number of elements allgathered at a time. Limits the memory required for the allgather for large model sizes   | `5e8`   |
 
 ***overlap_comm***: [boolean]
 
@@ -282,7 +283,7 @@ Enabling and configure ZeRO memory optimizations
 
 | Description                                                  | Default |
 | ------------------------------------------------------------ | ------- |
-| Number of elements reduced/allreduced at a time. Limits the memory required for the allgather for large model sizes   | `500000000`   |
+| Number of elements reduced/allreduced at a time. Limits the memory required for the allgather for large model sizes   | `5e8`   |
 
 ***contiguous_gradients***: [boolean]
 

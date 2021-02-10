@@ -31,13 +31,13 @@ def test_lamb_fp32_grad_clip(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1, 2])
     def _test_lamb_fp32_grad_clip(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -69,13 +69,13 @@ def test_lamb_fp16_basic(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1, 2])
     def _test_lamb_fp16_basic(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -106,13 +106,13 @@ def test_lamb_fp16_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True, rank=args.local_rank)
+    model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[2])
     def _test_lamb_fp16_empty_grad(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -143,13 +143,13 @@ def test_adam_fp32_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True, rank=args.local_rank)
+    model = SimpleModel(hidden_dim, empty_grad=True)
 
     @distributed_test(world_size=[2])
     def _test_adam_fp32_empty_grad(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -174,14 +174,14 @@ def test_adamw_fp16_basic(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_adamw_fp16_basic(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             optimizer=optimizer)
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -205,15 +205,15 @@ def test_dict_config_adamw_fp16_basic():
     args = create_deepspeed_args()
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_adamw_fp16_basic(args, model, hidden_dim, config_dict):
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             optimizer=optimizer,
-                                             config_params=config_dict)
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer,
+                                              config_params=config_dict)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -240,14 +240,14 @@ def test_adamw_fp16_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_adamw_fp16_empty_grad(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             optimizer=optimizer)
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -270,7 +270,7 @@ def test_adamw_fp16_empty_grad(tmpdir):
                               True),
                          ])
 def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offload):
-    #if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+    # if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
     #    pytest.skip("cpu-adam is not installed")
     config_dict = {
         "train_batch_size": 1,
@@ -307,13 +307,13 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=True)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_adam_fp16_zero_onecycle_compatibility(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -338,7 +338,7 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
                               True),
                          ])
 def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
-    #if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+    # if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
     #    pytest.skip("cpu-adam is not installed")
     config_dict = {
         "train_batch_size": 4,
@@ -363,10 +363,10 @@ def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
     @distributed_test(world_size=2)
     def _test_zero_static_scale(args):
         hidden_dim = 10
-        model = SimpleModel(hidden_dim, empty_grad=True)
-        model, optim, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model = SimpleModel(hidden_dim)
+        model, optim, _, _ = deepspeed.initialize(args=args,
+                                                  model=model,
+                                                  model_parameters=model.parameters())
 
         # Ensure the static scaler is configured.
         assert optim.dynamic_loss_scale == False
@@ -406,10 +406,10 @@ def test_zero_static_scale_deprecated_format(tmpdir):
     @distributed_test(world_size=2)
     def _test_zero_static_scale(args):
         hidden_dim = 10
-        model = SimpleModel(hidden_dim, empty_grad=True)
-        model, optim, _,_ = deepspeed.initialize(args=args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model = SimpleModel(hidden_dim)
+        model, optim, _, _ = deepspeed.initialize(args=args,
+                                                  model=model,
+                                                  model_parameters=model.parameters())
 
         # Ensure the static scaler is configured.
         assert optim.dynamic_loss_scale == False
@@ -438,7 +438,7 @@ def test_zero_static_scale_deprecated_format(tmpdir):
                               True),
                          ])
 def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
-    #if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+    # if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
     #    pytest.skip("cpu-adam is not installed")
     config_dict = {
         "train_batch_size": 4,
@@ -457,13 +457,13 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
     @distributed_test(world_size=[1])
     def _test_zero_allow_untested_optimizer(args):
         hidden_dim = 10
-        model = SimpleModel(hidden_dim, empty_grad=True)
+        model = SimpleModel(hidden_dim)
         optimizer = SimpleOptimizer(model.parameters())
         with pytest.raises(AssertionError):
-            model, optim, _,_ = deepspeed.initialize(args=args,
-                                                    model=model,
-                                                    optimizer=optimizer,
-                                                    model_parameters=model.parameters())
+            model, optim, _, _ = deepspeed.initialize(args=args,
+                                                      model=model,
+                                                      optimizer=optimizer,
+                                                      model_parameters=model.parameters())
 
     _test_zero_allow_untested_optimizer(args)
 
@@ -478,7 +478,7 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
                               True),
                          ])
 def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
-    #if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
+    # if use_cpu_offload and not deepspeed.ops.__installed_ops__['cpu-adam']:
     #    pytest.skip("cpu-adam is not installed")
     config_dict = {
         "train_micro_batch_size_per_gpu": 1,
@@ -531,14 +531,14 @@ def test_adam_amp_basic(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_adam_amp_basic(args, model, hidden_dim):
         optimizer = torch.optim.Adam(params=model.parameters())
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             optimizer=optimizer)
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -570,13 +570,13 @@ def test_lamb_amp_basic(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1, 2])
     def _test_lamb_amp_basic(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -609,13 +609,13 @@ def test_adam_amp_o2(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1, 2])
     def _test_adam_amp_o2(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -648,13 +648,13 @@ def test_adam_amp_o2_empty_grad(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False, rank=args.local_rank)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[2])
     def _test_adam_amp_o2_empty_grad(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -688,14 +688,14 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
     def _test_zero_supported_client_optimizer(args, model, optimizer_constructor):
         client_optimizer = optimizer_constructor(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
-                                               model=model,
-                                               optimizer=client_optimizer)
+                                              model=model,
+                                              optimizer=client_optimizer)
 
     _test_zero_supported_client_optimizer(args=args,
                                           model=model,
@@ -728,13 +728,13 @@ def test_zero2_reduce_scatter_off(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, rank=args.local_rank)
+    model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[2])
     def _helper(args, model, hidden_dim):
-        model, _, _,_ = deepspeed.initialize(args=args,
-                                             model=model,
-                                             model_parameters=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -745,3 +745,53 @@ def test_zero2_reduce_scatter_off(tmpdir):
             model.step()
 
     _helper(args=args, model=model, hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize('adam_type, torch_impl',
+                         [('Adam',
+                           True),
+                          ('Adam',
+                           False),
+                          ('AdamW',
+                           True),
+                          ('AdamW',
+                           False)])
+def test_fp16_adam_types(tmpdir, adam_type, torch_impl):
+    config_dict = {
+        "train_batch_size": 1,
+        "steps_per_print": 1,
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 10
+        },
+        "optimizer": {
+            "type": adam_type,
+            "torch_adam": torch_impl,
+            "params": {
+                "lr": 0.00015
+            }
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim)
+
+    @distributed_test(world_size=[1])
+    def _test_fp16_adam_types(args, model, hidden_dim):
+
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
+
+        data_loader = random_dataloader(model=model,
+                                        total_samples=10,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+
+        for _, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_fp16_adam_types(args=args, model=model, hidden_dim=hidden_dim)
