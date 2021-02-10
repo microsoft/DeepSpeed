@@ -710,21 +710,20 @@ def get_model_profile(
 
     prof.start_profile(ignore_list=ignore_modules)
 
-    for _ in range(num_steps):
-        if input_constructor:
-            input = input_constructor(input_res)
-            _ = model(**input)
-        else:
-            try:
-                batch = torch.ones(()).new_empty(
-                    (*input_res,
-                     ),
-                    dtype=next(model.parameters()).dtype,
-                    device=next(model.parameters()).device,
-                )
-            except StopIteration:
-                batch = torch.ones(()).new_empty((*input_res, ))
-            _ = model(batch)
+    if input_constructor:
+        input = input_constructor(input_res)
+        _ = model(**input)
+    else:
+        try:
+            batch = torch.ones(()).new_empty(
+                (*input_res,
+                 ),
+                dtype=next(model.parameters()).dtype,
+                device=next(model.parameters()).device,
+            )
+        except StopIteration:
+            batch = torch.ones(()).new_empty((*input_res, ))
+        _ = model(batch)
 
     flops = prof.get_total_flops()
     params = prof.get_total_params()
