@@ -131,10 +131,10 @@ class DeepSpeedEngine(Module):
             dist_init_required = not dist.is_initialized()
 
         if dist_init_required is False:
-            assert (dist.is_initialized()==True), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
-
-        # Initialize torch distributed if needed
-        init_distributed(dist_backend=self.dist_backend)
+            assert dist.is_initialized() is True, "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
+        else:
+            # Initialize torch distributed if needed
+            init_distributed(dist_backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -277,17 +277,17 @@ class DeepSpeedEngine(Module):
     def flops_profiler_enabled(self):
         return self._config.flops_profiler_config.enabled
 
-    def flops_profiler_start_step(self):
-        return self._config.flops_profiler_config.start_step
-
-    def flops_profiler_end_step(self):
-        return self._config.flops_profiler_config.end_step
+    def flops_profiler_profile_step(self):
+        return self._config.flops_profiler_config.profile_step
 
     def flops_profiler_module_depth(self):
         return self._config.flops_profiler_config.module_depth
 
     def flops_profiler_top_modules(self):
         return self._config.flops_profiler_config.top_modules
+
+    def flops_profiler_detailed(self):
+        return self._config.flops_profiler_config.detailed
 
     def memory_breakdown(self):
         return self._config.memory_breakdown
@@ -458,7 +458,11 @@ class DeepSpeedEngine(Module):
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
-        self.local_rank = args.local_rank if hasattr(args, 'local_rank') else 0
+        if hasattr(args, 'local_rank') and args.local_rank >= 0:
+            self.local_rank = args.local_rank
+        else:
+            self.local_rank = int(os.environ.get("LOCAL_RANK", -1))
+
         config_file = args.deepspeed_config if hasattr(args,
                                                        'deepspeed_config') else None
         self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
@@ -473,8 +477,15 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        assert hasattr(args, 'local_rank') and type(args.local_rank) == int, \
-            'DeepSpeed requires integer command line parameter --local_rank'
+        local_rank_err = "DeepSpeed requires a command line parameter of --local_rank [int] and/or setting the LOCAL_RANK environment variable."
+        if hasattr(args, 'local_rank'):
+            assert type(args.local_rank) == int, local_rank_err
+            if "LOCAL_RANK" in os.environ and args.local_rank >= 0:
+                env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+                assert env_local_rank == args.local_rank, \
+                    f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
+        else:
+            assert "LOCAL_RANK" in os.environ, local_rank_err
 
         if self.config_params is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
@@ -788,29 +799,10 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
         if self.flops_profiler_enabled(
-        ) and self.global_steps == self.flops_profiler_start_step(
+        ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
             self.flops_profiler = FlopsProfiler(self.module)
             self.flops_profiler.start_profile(ignore_list=None)
-
-        if self.flops_profiler_enabled(
-        ) and self.global_steps == self.flops_profiler_end_step(
-        ) and self.global_rank == 0:
-            print('{:<30}  {:<8}'.format(
-                'Number of multiply-adds: ',
-                self.flops_profiler.get_total_flops(in_str=False)))
-            print('{:<30}  {:<8}'.format(
-                'Number of parameters: ',
-                self.flops_profiler.get_total_params(in_str=False)))
-            print('{:<30}  {:<8}'.format('Number of steps profiled: ',
-                                         self.flops_profiler.get_total_steps()))
-            self.flops_profiler.print_model_profile()
-            self.flops_profiler.print_model_aggregated_profile(
-                module_depth=self.flops_profiler_module_depth(),
-                top_modules=self.flops_profiler_top_modules())
-            self.flops_profiler.flops = self.flops_profiler.get_total_flops()
-            self.flops_profiler.params = self.flops_profiler.get_total_params()
-            self.flops_profiler.end_profile()
 
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
@@ -826,6 +818,16 @@ class DeepSpeedEngine(Module):
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
             self.timers('forward_microstep').stop()
+
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_profile_step(
+        ) and self.global_rank == 0:
+            self.flops_profiler.print_model_profile(
+                profile_step=self.global_steps,
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules(),
+                detailed=self.flops_profiler_detailed())
+            self.flops_profiler.end_profile()
 
         return loss
 
