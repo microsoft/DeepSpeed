@@ -1275,6 +1275,14 @@ class DeepSpeedEngine(Module):
                                  'mp_rank_{:02d}'.format(mp_rank) + '_model_states.pt')
         return ckpt_name
 
+    def _get_expert_ckpt_name(self, checkpoints_path, expert_id, tag):
+        mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
+        ckpt_name = os.path.join(checkpoints_path,
+                                 str(tag),
+                                 f'expert_{expert_id}_',
+                                 'mp_rank_{:02d}'.format(mp_rank) + '_model_states.pt')
+        return ckpt_name
+
     def load_checkpoint(self,
                         load_dir,
                         tag=None,
@@ -1295,8 +1303,8 @@ class DeepSpeedEngine(Module):
             *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
 
             *``client_state``: State dictionary used for loading required training states in the client code.
-        """
-
+        """ 
+        
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')
             if os.path.isfile(latest_path):
@@ -1482,11 +1490,20 @@ class DeepSpeedEngine(Module):
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
 
+        # TODO get this from config or something
+        is_moe = True
         if tag is None:
             tag = f"global_step{self.global_steps}"
 
         # Ensure checkpoint tag is consistent across ranks
         self._checkpoint_tag_validation(tag)
+
+        if is_moe:
+            self.save_non_zero_checkpoint = False
+
+            self._create_checkpoint_file(save_dir, tag, False)
+            self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
+
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
@@ -1502,6 +1519,101 @@ class DeepSpeedEngine(Module):
                 fd.write(tag)
 
         return True
+
+    def _get_moe_state_dict(self, full_state_dict, num_local_experts):
+        """Compute moe and non moe state dict from complete local model state dict
+            key : global_expert_id
+            value : state_dict
+            experts_state_dict = 
+            {
+                '0': {
+                    'models.seq2seq.encoder.layers.0.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
+                    'models.seq2seq.encoder.layers.1.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
+                    'models.seq2seq.encoder.layers.2.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
+                    ...
+                },
+                '1' : {
+                    ...
+                }
+            }
+
+            returns experts_state_dict, model_state_dict
+        """
+        dp_rank = self.global_rank
+        if self.mpu:
+            dp_rank = self.mpu.get_data_parallel_rank()
+
+        experts_state_dict, moe_state_dict = {}, {}
+        for key in full_state_dict:
+            if 'expert' in key:
+                moe_state_dict[key] = full_state_dict.pop(key)
+        non_moe_state_dict = full_state_dict
+
+        import re
+        moe_str_prefix = '.moe.experts.experts'
+        for key in moe_state_dict:
+            m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
+
+            local_expert_id = None
+            if not m:
+                logger.warn(f'No expert found in key {key}.')
+            else:
+                local_expert_id = m.group(0)
+
+            global_expert_id = dp_rank * num_local_experts + int(local_expert_id)
+            key = key.replace(f'{moe_str_prefix}.{local_expert_id}', f'{moe_str_prefix}.{global_expert_id}')
+            experts_state_dict[str(global_expert_id)].add(key)
+
+        return experts_state_dict, non_moe_state_dict
+
+
+    def _save_moe_checkpoint(self, save_dir, tag, client_state={}):
+
+        save_path = self._get_ckpt_name(save_dir, tag)
+        # A hack to save the checkpointing directory. Pipeline parallelism overrides
+        # module_state_dict() and uses this path to save the model. module_state_dict()
+        # then instead just returns None.
+        self._curr_ckpt_path = os.path.join(save_dir, tag)
+
+        """"
+        experts_state_dict = {
+            'e_id' : state_dict_for_eid
+        }
+        """
+        experts_state_dict, model_state_dict = self._get_moe_state_dict(self.module_state_dict())
+
+        state = {
+            'module':
+            model_state_dict,
+            'optimizer':
+            self.optimizer.state_dict()
+            if self.optimizer and not self.zero_optimization() else None,
+            'lr_scheduler':
+            self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
+            'csr_tensor_module_names':
+            self.csr_tensor_module_names,
+            'skipped_steps':
+            self.skipped_steps,
+            'global_steps':
+            self.global_steps,
+            'global_samples':
+            self.global_samples,
+            'dp_world_size':
+            self.dp_world_size,
+            'mp_world_size':
+            self.mp_world_size
+        }
+        state.update(client_state)
+
+        for global_expert_id, expert_state_dict in experts_state_dict.values():
+            expert_save_dir = self._get_expert_ckpt_name(save_dir, global_expert_id, tag)
+            logger.info(f'Saving model expert {global_expert_id} checkpoint: {save_path}')
+            torch.save(expert_state_dict, expert_save_dir)
+
+        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
+        #logger.info('Saving model checkpoint: {}'.format(save_path))
+        torch.save(state, save_path)
+        self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
         name_function = self._get_zero_ckpt_name if zero_checkpoint else self._get_ckpt_name
