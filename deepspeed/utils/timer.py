@@ -81,7 +81,7 @@ class SynchronizedWallClockTimer:
             torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))
         return " | {} | {} | {} | {}".format(alloc, max_alloc, cache, max_cache)
 
-    def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False):
+    def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
         """Log a group of timers."""
         assert normalizer > 0.0
         string = f'rank={torch.distributed.get_rank()} time (ms)'
@@ -91,9 +91,7 @@ class SynchronizedWallClockTimer:
                     reset=reset) * 1000.0 / normalizer
                 string += ' | {}: {:.2f}'.format(name, elapsed_time)
 
-        # TODO: expose ranks as rank=0 is too restrictive
-        # useful for model parallelism
-        log_dist(string, ranks=[0])
+        log_dist(string, ranks=ranks or [0])
 
 
 class ThroughputTimer():
