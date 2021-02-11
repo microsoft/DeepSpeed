@@ -10,6 +10,8 @@
 
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
 
+import time
+from time import perf_counter 
 import torch
 from torch import Tensor
 import torch.distributed as dist
@@ -162,9 +164,15 @@ class MOELayer(Base):
         reshaped_input = input[0].reshape(-1, d_model)
         self.l_aux, combine_weights, dispatch_mask = self.gate(reshaped_input)
         dispatched_input = torch.einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
+
+        #print(f"alltoall called at rank:{dist.get_rank()} with dispatched_input shape:{dispatched_input.shape}")
+        a = time.perf_counter()
         dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+        b = time.perf_counter()
+        #print(f"alltoall took {b-a} seconds at rank:{dist.get_rank()}")
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.world_size, self.num_local_experts, -1, d_model)
+        #print(f"reshaped input after alltoall called at rank:{dist.get_rank()} is dispatched_input shape:{dispatched_input.shape}")
         expert_output = self.experts(dispatched_input)
         expert_output = _AllToAll.apply(self.group, expert_output)
         # Re-shape back: gecm -> ecm

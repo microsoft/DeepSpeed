@@ -1473,7 +1473,7 @@ class DeepSpeedEngine(Module):
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
-
+        print(f"deepspeed checkpoint function called at rank {torch.distributed.get_rank()} on module {self}")
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
