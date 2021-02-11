@@ -9,9 +9,9 @@ old_functions = {}
 
 
 class FlopsProfiler(object):
-    """Measures the time, number of estimated flops and parameters of each module in a PyTorch model.
+    """Measures the latency, number of estimated floating point operations and parameters of each module in a PyTorch model.
 
-    The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how time, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated time, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input.
+    The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how latency, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated latency, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input.
 
     Args:
         object (torch.nn.Module): The PyTorch model to profile.
@@ -120,7 +120,7 @@ class FlopsProfiler(object):
             as_string (bool, optional): whether to output the flops as string. Defaults to False.
         """
         total_flops = get_module_flops(self.model)
-        return flops_to_string(total_flops) if as_string else total_flops
+        return macs_to_string(total_flops) if as_string else total_flops
 
     def get_total_duration(self, as_string=False):
         """Returns the total duration of the model forward pass.
@@ -140,12 +140,36 @@ class FlopsProfiler(object):
         return params_to_string(
             self.model.__params__) if as_string else self.model.__params__
 
-    def print_model_profile(self):
+    def print_model_profile(self,
+                            profile_step=1,
+                            module_depth=-1,
+                            top_modules=3,
+                            detailed=True):
         """Prints the model graph with the measured profile attached to each module.
         """
+
         total_flops = self.get_total_flops()
         total_duration = self.get_total_duration()
         total_params = self.get_total_params()
+
+        self.flops = total_flops
+        self.params = total_params
+
+        print(
+            "\n-------------------------- DeepSpeed Flops Profiler --------------------------"
+        )
+        print("Summary of forward pass:")
+        print('{:<30}  {:<8}'.format('Profile step: ', profile_step))
+        print('{:<30}  {:<8}'.format('Number of parameters: ',
+                                     params_to_string(total_params)))
+        print('{:<30}  {:<8}'.format('Number of multiply-accumulate operations (MACs): ',
+                                     num_to_string(total_flops)))
+        print('{:<30}  {:<8}'.format(
+            'Number of floating point operations ( = 2 * MACs): ',
+            num_to_string(2 * total_flops)))
+        print('{:<30}  {:<8}'.format('Latency: ', duration_to_string(total_duration)))
+        print('{:<30}  {:<8}'.format('Floating point operations per second(FLOPS): ',
+                                     flops_to_string(2 * total_flops / total_duration)))
 
         def flops_repr(module):
             params = module.__params__
@@ -153,7 +177,7 @@ class FlopsProfiler(object):
             items = [
                 params_to_string(params),
                 "{:.2%} Params".format(params / total_params),
-                flops_to_string(flops),
+                macs_to_string(flops),
                 "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
             ]
             duration = module.__duration__
@@ -162,11 +186,11 @@ class FlopsProfiler(object):
                     duration += m.__duration__
 
             items.append(duration_to_string(duration))
-            items.append("{:.2%} time".format(0.0 if total_duration == 0 else duration /
-                                              total_duration))
+            items.append(
+                "{:.2%} latency".format(0.0 if total_duration == 0 else duration /
+                                        total_duration))
             # flops = 2 * MACs
-            items.append(("{:.2} TFLOPS".format(0.0 if duration == 0 else 2 * flops /
-                                                duration / 10**12)))
+            items.append(flops_to_string(0.0 if duration == 0 else 2 * flops / duration))
             items.append(module.original_extra_repr())
             return ", ".join(items)
 
@@ -183,8 +207,30 @@ class FlopsProfiler(object):
                 del module.original_extra_repr
 
         self.model.apply(add_extra_repr)
-        print(self.model)
+
+        print(
+            "\n----------------------------- Aggregated Profile -----------------------------"
+        )
+        self.print_model_aggregated_profile(module_depth=module_depth,
+                                            top_modules=top_modules)
+
+        if detailed:
+            print(
+                "\n------------------------------ Detailed Profile ------------------------------"
+            )
+            print(
+                "Each module profile is listed after its name in the follwing order: \nnumber of parameters, percentage of total parameters, number of multiply-accumulate operations (MACs), percentage of total MACs, latency, percentage of total latency, number of floating point operations per second (FLOPS, computed as 2 * MACs / latency)."
+            )
+            print(
+                "Note: \n1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throught.\n"
+            )
+            print(self.model)
+
         self.model.apply(del_extra_repr)
+
+        print(
+            "------------------------------------------------------------------------------"
+        )
 
     def print_model_aggregated_profile(self, module_depth=-1, top_modules=3):
         """Prints the names of the top top_modules modules in terms of aggregated time, flops, and parameters at depth module_depth.
@@ -226,7 +272,7 @@ class FlopsProfiler(object):
         num_items = min(top_modules, len(info[depth]))
 
         sort_flops = {
-            k: flops_to_string(v[0])
+            k: macs_to_string(v[0])
             for k,
             v in sorted(info[depth].items(),
                         key=lambda item: item[1][0],
@@ -246,9 +292,9 @@ class FlopsProfiler(object):
                         key=lambda item: item[1][2],
                         reverse=True)[:num_items]
         }
-        print(f"Top {num_items} modules in flops at depth {depth} are {sort_flops}")
+        print(f"Top {num_items} modules in MACs at depth {depth} are {sort_flops}")
         print(f"Top {num_items} modules in params at depth {depth} are {sort_params}")
-        print(f"Top {num_items} modules in time at depth {depth} are {sort_time}")
+        print(f"Top {num_items} modules in latency at depth {depth} are {sort_time}")
 
 
 def _prod(dims):
@@ -586,25 +632,61 @@ MODULE_HOOK_MAPPING = {
 }
 
 
-def flops_to_string(flops, units=None, precision=2):
+def num_to_string(num, precision=2):
+    if num // 10**9 > 0:
+        return str(round(num / 10.0**9, precision)) + " G"
+    elif num // 10**6 > 0:
+        return str(round(num / 10.0**6, precision)) + " M"
+    elif num // 10**3 > 0:
+        return str(round(num / 10.0**3, precision)) + " K"
+    else:
+        return str(num)
+
+
+def macs_to_string(macs, units=None, precision=2):
     if units is None:
-        if flops // 10**9 > 0:
-            return str(round(flops / 10.0**9, precision)) + " GMACs"
-        elif flops // 10**6 > 0:
-            return str(round(flops / 10.0**6, precision)) + " MMACs"
-        elif flops // 10**3 > 0:
-            return str(round(flops / 10.0**3, precision)) + " KMACs"
+        if macs // 10**9 > 0:
+            return str(round(macs / 10.0**9, precision)) + " GMACs"
+        elif macs // 10**6 > 0:
+            return str(round(macs / 10.0**6, precision)) + " MMACs"
+        elif macs // 10**3 > 0:
+            return str(round(macs / 10.0**3, precision)) + " KMACs"
         else:
-            return str(flops) + " MACs"
+            return str(macs) + " MACs"
     else:
         if units == "GMACs":
-            return str(round(flops / 10.0**9, precision)) + " " + units
+            return str(round(macs / 10.0**9, precision)) + " " + units
         elif units == "MMACs":
-            return str(round(flops / 10.0**6, precision)) + " " + units
+            return str(round(macs / 10.0**6, precision)) + " " + units
         elif units == "KMACs":
+            return str(round(macs / 10.0**3, precision)) + " " + units
+        else:
+            return str(macs) + " MACs"
+
+
+def flops_to_string(flops, units=None, precision=2):
+    if units is None:
+        if flops // 10**12 > 0:
+            return str(round(flops / 10.0**12, precision)) + " TFLOPS"
+        if flops // 10**9 > 0:
+            return str(round(flops / 10.0**9, precision)) + " GFLOPS"
+        elif flops // 10**6 > 0:
+            return str(round(flops / 10.0**6, precision)) + " MFLOPS"
+        elif flops // 10**3 > 0:
+            return str(round(flops / 10.0**3, precision)) + " KFLOPS"
+        else:
+            return str(flops) + " FLOPS"
+    else:
+        if units == "TFLOPS":
+            return str(round(flops / 10.0**12, precision)) + " " + units
+        if units == "GFLOPS":
+            return str(round(flops / 10.0**9, precision)) + " " + units
+        elif units == "MFLOPS":
+            return str(round(flops / 10.0**6, precision)) + " " + units
+        elif units == "KFLOPS":
             return str(round(flops / 10.0**3, precision)) + " " + units
         else:
-            return str(flops) + " MACs"
+            return str(flops) + " FLOPS"
 
 
 def params_to_string(params_num, units=None, precision=2):
@@ -658,24 +740,24 @@ def get_model_profile(
     input_res,
     input_constructor=None,
     print_profile=True,
-    print_aggregated_profile=True,
+    detailed=True,
     module_depth=-1,
     top_modules=3,
-    warm_up=5,
+    warm_up=1,
     as_string=True,
     ignore_modules=None,
 ):
-    """Returns the total flops and parameters of a model.
+    """Returns the total MACs and parameters of a model.
 
     Args:
         model ([torch.nn.Module]): the PyTorch model to be profiled.
         input_res (list): input shape or input to the input_constructor
         input_constructor (func, optional): input constructor. If specified, the constructor is applied to input_res and the constructor output is used as the input to the model. Defaults to None.
-        print_profile (bool, optional): whether to print the model graph with the profile annotated. Defaults to True.
-        print_aggregated_profile (bool, optional): whether to print the aggregated profile for top modules. Defaults to True.
+        print_profile (bool, optional): whether to print the model profile. Defaults to True.
+        detailed (bool, optional): whether to print the detailed model profile. Defaults to True.
         module_depth (int, optional): the depth into the nested modules. Defaults to -1 (the inner most modules).
         top_modules (int, optional): the number of top modules to print in the aggregated profile. Defaults to 3.
-        warm_up (int, optional): the number of warm-up steps before measuring the time of each module. Defaults to 5.
+        warm_up (int, optional): the number of warm-up steps before measuring the latency of each module. Defaults to 1.
         as_string (bool, optional): whether to print the output as string. Defaults to True.
         ignore_modules ([type], optional): the list of modules to ignore during profiling. Defaults to None.
     """
@@ -720,12 +802,13 @@ def get_model_profile(
     flops = prof.get_total_flops()
     params = prof.get_total_params()
     if print_profile:
-        prof.print_model_profile()
-    if print_aggregated_profile:
-        prof.print_model_aggregated_profile(module_depth=module_depth,
-                                            top_modules=top_modules)
+        prof.print_model_profile(profile_step=warm_up,
+                                 module_depth=module_depth,
+                                 top_modules=top_modules,
+                                 detailed=detailed)
+
     prof.end_profile()
     if as_string:
-        return flops_to_string(flops), params_to_string(params)
+        return macs_to_string(flops), params_to_string(params)
 
     return flops, params

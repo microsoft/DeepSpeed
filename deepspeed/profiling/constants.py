@@ -12,10 +12,11 @@ FLOPS_PROFILER_FORMAT = '''
 flops profiler should be enabled as:
 "session_params": {
   "flops_profiler": {
-    "enabled": [true|false],
+    "enabled": true,
     "profile_step": 1,
     "module_depth": -1,
     "top_modules": 3,
+    "detailed": true,
     }
 }
 '''
@@ -33,3 +34,6 @@ FLOPS_PROFILER_MODULE_DEPTH_DEFAULT = -1
 
 FLOPS_PROFILER_TOP_MODULES = "top_modules"
 FLOPS_PROFILER_TOP_MODULES_DEFAULT = 3
+
+FLOPS_PROFILER_DETAILED = "detailed"
+FLOPS_PROFILER_DETAILED_DEFAULT = True

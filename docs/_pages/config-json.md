@@ -322,11 +322,12 @@ Enabling and configuring ZeRO memory optimizations
 ```json
 {
   "flops_profiler": {
-    "enabled": false,
+    "enabled": true,
     "profile_step": 1,
     "module_depth": -1,
-    "top_modules": 3
-  }
+    "top_modules": 3,
+    "detailed": true,
+    }
 }
 ```
 ***enabled***: [boolean]
@@ -352,6 +353,12 @@ Enabling and configuring ZeRO memory optimizations
 | Description                                                                  | Default |
 | ---------------------------------------------------------------------------- | ------- |
 | Limits the aggregated profile output to the number of top modules specified. | `3`     |
+
+***detailed***: [boolean]
+
+| Description                                  | Default |
+| -------------------------------------------- | ------- |
+| Whether to print the detailed model profile. | `true`  |
 
 ### Activation Checkpointing
 ```json

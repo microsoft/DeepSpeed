@@ -103,10 +103,10 @@ def test_flops_profiler_in_inference():
         mod,
         tuple(input.shape),
         print_profile=True,
-        print_aggregated_profile=True,
+        detailed=True,
         module_depth=-1,
         top_modules=3,
-        warm_up=5,
+        warm_up=1,
         as_string=True,
         ignore_modules=None,
     )
