@@ -1543,13 +1543,6 @@ class DeepSpeedEngine(Module):
                 moe_state_dict[key] = full_state_dict.pop(key)
         non_moe_state_dict = full_state_dict
 
-        # log_dist(message=f'Non_moe_state_dict: {non_moe_state_dict.keys()}', ranks=[0])
-        # log_dist(message=f'Moe_state_dict: {moe_state_dict.keys()}', ranks=[0])
-
-        # if dp_rank == 0:
-        #     import pdb; pdb.set_trace() # DEBUG
-        # dist.barrier()
-
         moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
         for key in moe_state_dict:
             m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
@@ -1559,7 +1552,6 @@ class DeepSpeedEngine(Module):
                 logger.warn(f'No expert found in key {key}.')
             else:
                 local_expert_id = m.group(1)
-                logger.warn(local_expert_id)
 
             global_expert_id = dp_rank * num_local_experts + int(local_expert_id)
             expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}', f'{moe_str_prefix}{global_expert_id}')

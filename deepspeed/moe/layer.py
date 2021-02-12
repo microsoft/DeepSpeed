@@ -35,5 +35,5 @@ class MoE(torch.nn.Module):
     def forward(self, hidden_states):
         output = self.deepspeed_moe(hidden_states)
         output = self.dropout(output)
-        return output, self.moe.l_aux
+        return output, self.deepspeed_moe.l_aux
 
