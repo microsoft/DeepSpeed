@@ -40,6 +40,7 @@ from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
+from ..moe.layer import MoE
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 
@@ -127,6 +128,8 @@ class DeepSpeedEngine(Module):
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+        self.has_moe_layers = False
+        self.num_experts = None
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -1490,15 +1493,19 @@ class DeepSpeedEngine(Module):
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
 
-        # TODO get this from config or something
-        is_moe = True
+        for _, module in self.module.named_modules():
+            if isinstance(module, MoE):
+                self.has_moe_layers = True
+                self.num_experts = module.num_experts
+                break
+
         if tag is None:
             tag = f"global_step{self.global_steps}"
 
         # Ensure checkpoint tag is consistent across ranks
         self._checkpoint_tag_validation(tag)
 
-        if is_moe:
+        if self.has_moe_layers:
             self.save_non_zero_checkpoint = False
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
@@ -1544,7 +1551,7 @@ class DeepSpeedEngine(Module):
         non_moe_state_dict = full_state_dict
 
         moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
-        for key in moe_state_dict:
+        for key in list(moe_state_dict.keys()):
             m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
 
             local_expert_id = None
@@ -1555,7 +1562,7 @@ class DeepSpeedEngine(Module):
 
             global_expert_id = dp_rank * num_local_experts + int(local_expert_id)
             expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}', f'{moe_str_prefix}{global_expert_id}')
-            experts_state_dict[str(global_expert_id)][expert_key] = moe_state_dict[key]
+            experts_state_dict[str(global_expert_id)][expert_key] = moe_state_dict.pop(key)
 
         return experts_state_dict, non_moe_state_dict
 
@@ -1577,8 +1584,8 @@ class DeepSpeedEngine(Module):
         if self.mpu:
             dp_rank = self.mpu.get_data_parallel_rank()
 
-        # TODO: get this from correct place
-        num_local_experts = 8
+        # TODO: add assertion for divisibility
+        num_local_experts = self.num_experts // self.dp_world_size
         experts_state_dict, model_state_dict = self._get_moe_state_dict(self.module_state_dict(), num_local_experts, dp_rank)
 
         state = {
@@ -1600,7 +1607,9 @@ class DeepSpeedEngine(Module):
             'dp_world_size':
             self.dp_world_size,
             'mp_world_size':
-            self.mp_world_size
+            self.mp_world_size,
+            'num_experts':
+            self.num_experts
         }
         state.update(client_state)
 
