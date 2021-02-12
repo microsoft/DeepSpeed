@@ -71,7 +71,7 @@ To speed up the build-all process, you can parallelize the compilation process w
 DS_BUILD_OPS=1 pip install deepspeed --global-option="build_ext" --global-option="-j8"
 ```
 
-This should complete the full build 2-3 times faster. You can adjust `-j` to specify how many cpu-cores to be used during the build. In the example 8 cores will be used.
+This should complete the full build 2-3 times faster. You can adjust `-j` to specify how many cpu-cores are to be used during the build. In the example it is set to 8 cores.
 
 
 ## Install DeepSpeed from source
