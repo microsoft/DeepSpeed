@@ -1543,14 +1543,22 @@ class DeepSpeedEngine(Module):
         if self.mpu:
             dp_rank = self.mpu.get_data_parallel_rank()
 
-        experts_state_dict, moe_state_dict = {}, {}
-        for key in full_state_dict:
-            if 'expert' in key:
+        from collections import defaultdict
+        experts_state_dict, moe_state_dict = defaultdict(dict), {}
+        for key in list(full_state_dict.keys()):
+            if 'expert' in key and 'moe.gate.wg.weight' not in key:
                 moe_state_dict[key] = full_state_dict.pop(key)
         non_moe_state_dict = full_state_dict
 
+        # log_dist(message=f'Non_moe_state_dict: {non_moe_state_dict.keys()}', ranks=[0])
+        # log_dist(message=f'Moe_state_dict: {moe_state_dict.keys()}', ranks=[0])
+
+        # if dp_rank == 0:
+        #     import pdb; pdb.set_trace() # DEBUG
+        # dist.barrier()
+
         import re
-        moe_str_prefix = '.moe.experts.experts'
+        moe_str_prefix = '.moe.experts.experts.'
         for key in moe_state_dict:
             m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
 
@@ -1558,11 +1566,12 @@ class DeepSpeedEngine(Module):
             if not m:
                 logger.warn(f'No expert found in key {key}.')
             else:
-                local_expert_id = m.group(0)
+                local_expert_id = m.group(1)
+                logger.warn(local_expert_id)
 
             global_expert_id = dp_rank * num_local_experts + int(local_expert_id)
-            key = key.replace(f'{moe_str_prefix}.{local_expert_id}', f'{moe_str_prefix}.{global_expert_id}')
-            experts_state_dict[str(global_expert_id)].add(key)
+            expert_key = key.replace(f'{moe_str_prefix}.{local_expert_id}', f'{moe_str_prefix}.{global_expert_id}')
+            experts_state_dict[str(global_expert_id)][expert_key] = moe_state_dict[key]
 
         return experts_state_dict, non_moe_state_dict
 
@@ -1580,7 +1589,9 @@ class DeepSpeedEngine(Module):
             'e_id' : state_dict_for_eid
         }
         """
-        experts_state_dict, model_state_dict = self._get_moe_state_dict(self.module_state_dict())
+        # TODO: get this from correct place
+        num_local_experts = 8
+        experts_state_dict, model_state_dict = self._get_moe_state_dict(self.module_state_dict(), num_local_experts)
 
         state = {
             'module':
