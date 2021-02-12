@@ -1279,8 +1279,7 @@ class DeepSpeedEngine(Module):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         ckpt_name = os.path.join(checkpoints_path,
                                  str(tag),
-                                 f'expert_{expert_id}_',
-                                 'mp_rank_{:02d}'.format(mp_rank) + '_model_states.pt')
+                                 f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt')
         return ckpt_name
 
     def load_checkpoint(self,
@@ -1615,10 +1614,10 @@ class DeepSpeedEngine(Module):
             self.mp_world_size
         }
         state.update(client_state)
-
-        for global_expert_id, expert_state_dict in experts_state_dict.values():
+        
+        for global_expert_id, expert_state_dict in experts_state_dict.items():
             expert_save_dir = self._get_expert_ckpt_name(save_dir, global_expert_id, tag)
-            logger.info(f'Saving model expert {global_expert_id} checkpoint: {save_path}')
+            logger.info(f'Saving model expert {global_expert_id} checkpoint: {save_path}, save_dir:{expert_save_dir}')
             torch.save(expert_state_dict, expert_save_dir)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
