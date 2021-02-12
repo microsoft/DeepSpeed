@@ -1,12 +1,13 @@
 '''
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
-
 import os
+import re
 import torch
 import warnings
 import hashlib
 import torch.distributed as dist
+from collections import defaultdict
 
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -1536,7 +1537,6 @@ class DeepSpeedEngine(Module):
 
             returns experts_state_dict, model_state_dict
         """
-        from collections import defaultdict
         experts_state_dict, moe_state_dict = defaultdict(dict), {}
         for key in list(full_state_dict.keys()):
             if 'expert' in key and 'moe.gate.wg.weight' not in key:
@@ -1550,8 +1550,7 @@ class DeepSpeedEngine(Module):
         #     import pdb; pdb.set_trace() # DEBUG
         # dist.barrier()
 
-        import re
-        moe_str_prefix = '.moe.experts.experts.'
+        moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
         for key in moe_state_dict:
             m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
 
