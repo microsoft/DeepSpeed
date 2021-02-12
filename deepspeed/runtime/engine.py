@@ -432,6 +432,13 @@ class DeepSpeedEngine(Module):
             # optimizer state checkpoints for zero
             self.save_zero_checkpoint = (param_rank == dp_rank)
 
+        # MoE related initialization
+        for _, module in self.module.named_modules():
+            if isinstance(module, MoE):
+                self.has_moe_layers = True
+                self.num_experts = module.num_experts
+                break
+
     def _scheduler_from_config(self, optimizer):
         scheduler_name = self.scheduler_name()
         if scheduler_name is not None:
@@ -1256,6 +1263,24 @@ class DeepSpeedEngine(Module):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
+    def load_moe_state_dict(self, checkpoint_path, tag, state_dict, strict=True):
+        dp_rank = self.global_rank
+        if self.mpu:
+            dp_rank = self.mpu.get_data_parallel_rank()
+
+        num_local_experts = self.num_experts // self.dp_world_size
+        for local_expert_id in range(num_local_experts):
+            global_expert_id = dp_rank * num_local_experts + local_expert_id
+            expert_state_dict = torch.load(
+                self._get_expert_ckpt_name(checkpoint_path, global_expert_id, tag))
+
+            # Updating global -> local expert ids
+            moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
+            for key in list(expert_state_dict.keys()):
+                local_key = key.replace(f'{moe_str_prefix}{global_expert_id}', f'{moe_str_prefix}{local_expert_id}')
+                expert_state_dict[local_key] = expert_state_dict.pop(key)
+            state_dict.update(expert_state_dict)
+
     def load_module_state_dict(self, state_dict, strict=True):
         self.module.load_state_dict(state_dict, strict=strict)
 
@@ -1353,8 +1378,13 @@ class DeepSpeedEngine(Module):
             # Pipeline parallelism uses this to load its own checkpoint files.
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
-        self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+        if self.has_moe_layers:
+            self.load_moe_state_dict(load_path, tag,
+                                     state_dict=checkpoint['module'],
+                                     strict=load_module_strict)
+        else:
+            self.load_module_state_dict(state_dict=checkpoint['module'],
+                                        strict=load_module_strict)
         if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
@@ -1492,12 +1522,6 @@ class DeepSpeedEngine(Module):
 
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
-
-        for _, module in self.module.named_modules():
-            if isinstance(module, MoE):
-                self.has_moe_layers = True
-                self.num_experts = module.num_experts
-                break
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
