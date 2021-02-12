@@ -23,6 +23,7 @@ from torch.cuda import _lazy_call, device as device_ctx_manager
 
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.utils import logger
+from deepspeed.runtime.utils import move_to_device
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers
 
 #DeepSpeed Checkpointing Enabled or Disabled
@@ -311,42 +312,51 @@ def get_full_inputs(tensors, device=None):
     return tuple(inputs)
 
 
-def move_to_device(item, device):
-    if torch.is_tensor(item):
-        return item.to(device)
-    elif isinstance(item, list):
-        return [move_to_device(v, device) for v in item]
-    elif isinstance(item, tuple):
-        return tuple([move_to_device(v, device) for v in item])
-    elif isinstance(item, dict):
-        return {k: move_to_device(v, device) for k, v in item.items()}
-    else:
-        return item
+def extract_tensors(all_objects):
+    """
+    Separate objects in list/tuple into tensors and non-tensors and create a mapping to enable re-aggregation.
+    The order of tensors and non-tensors is preserved in their respective output groups.
+
+    Parameters:
+        all_objects (list/tuple): Objects containing tensors and non-tensors to be split.
+
+    Returns:
+        tuple: Containing tensors, non-tensors, and bools of whether each position in original list/tuple was a tensor.
+
+    """
+    tensor_objects = [v for v in all_objects if torch.is_tensor(v)]
+    non_tensor_objects = [v for v in all_objects if not torch.is_tensor(v)]
+    tensor_flags = [torch.is_tensor(v) for v in all_objects]
+    if type(all_objects) is tuple:
+        return tuple(tensor_objects), tuple(non_tensor_objects), tuple(tensor_flags)
+    return tensor_objects, non_tensor_objects, tensor_flags
 
 
-def filter_tensor_values(all_values):
-    tensor_values = [v for v in all_values if torch.is_tensor(v)]
-    non_tensor_values = [v for v in all_values if not torch.is_tensor(v)]
-    tensor_flags = [torch.is_tensor(v) for v in all_values]
-    if type(all_values) is tuple:
-        return tuple(tensor_values), tuple(non_tensor_values), tuple(tensor_flags)
-    return tensor_values, non_tensor_values, tensor_flags
+def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
+    """
+    Merge two lists (or tuples) of tensors and non-tensors using a mapping of positions in merged list (or tuple).
 
+    Parameters:
+        tensor_objects (list/tuple): Tensors to merge.
+        non_tensor_objects (list/tuple): Non-tensors to merge.
+        tensor_flags (list/tuple): Indicates whether each position in output is a tensor.
 
-def merge_tensor_values(tensor_values, non_tensor_values, tensor_flags):
-    merged_values = []
+    Returns:
+        tuple: Merge of tensors and non-tensors
+    """
+    merged_objects = []
     tensor_idx = 0
     non_tensor_idx = 0
 
     for is_tensor in tensor_flags:
         if is_tensor:
-            merged_values.append(tensor_values[tensor_idx])
+            merged_objects.append(tensor_objects[tensor_idx])
             tensor_idx += 1
         else:
-            merged_values.append(non_tensor_values[non_tensor_idx])
+            merged_objects.append(non_tensor_objects[non_tensor_idx])
             non_tensor_idx += 1
 
-    return tuple(merged_values)
+    return tuple(merged_objects)
 
 
 class CheckpointFunction(torch.autograd.Function):
@@ -364,7 +374,7 @@ class CheckpointFunction(torch.autograd.Function):
         global mpu, timers, SYNCHRONIZE, PROFILE_TIME
 
         def save_args_for_backward(*all_args):
-            tensor_args, non_tensor_args, tensor_flags = filter_tensor_values(all_args)
+            tensor_args, non_tensor_args, tensor_flags = extract_tensors(all_objects=all_args)
             ctx.save_for_backward(*tensor_args)
             ctx.non_tensor_args = non_tensor_args
             ctx.tensor_flags = tensor_flags
@@ -548,7 +558,7 @@ class CheckpointFunction(torch.autograd.Function):
             return outputs
         else:
             all_outputs += outputs
-            outputs, _, _ = filter_tensor_values(outputs)
+            outputs, _, _ = extract_tensors(all_objects=outputs)
             return tuple(outputs)
 
     @staticmethod
@@ -594,9 +604,9 @@ class CheckpointFunction(torch.autograd.Function):
             detached_inputs = detach_variable(inputs)
 
         # Add non tensor input args
-        detached_inputs = merge_tensor_values(detached_inputs,
-                                              ctx.non_tensor_args,
-                                              ctx.tensor_flags)
+        detached_inputs = merge_tensors(tensor_objects=detached_inputs,
+                                        non_tensor_objects=ctx.non_tensor_args,
+                                        tensor_flags=ctx.tensor_flags)
 
         # Store the current states.
         bwd_cpu_rng_state = torch.get_rng_state()
@@ -624,7 +634,7 @@ class CheckpointFunction(torch.autograd.Function):
             outputs = (outputs, )
 
         # Filter out non tensor outputs
-        outputs, _, _ = filter_tensor_values(outputs)
+        outputs, _, _ = extract_tensors(all_objects=outputs)
 
         # Construct arguments to autograd.backward().
         # This is usually just outputs and grads, but forward() can return tensors that
