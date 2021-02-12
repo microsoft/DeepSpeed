@@ -133,9 +133,9 @@ else
 fi
 
 if [ "$pip_mirror" != "" ]; then
-    PIP_INSTALL="pip install $VERBOSE -i $pip_mirror"
+    PIP_INSTALL="pip3 install $VERBOSE -i $pip_mirror"
 else
-    PIP_INSTALL="pip install $VERBOSE"
+    PIP_INSTALL="pip3 install $VERBOSE"
 fi
 
 
@@ -145,7 +145,7 @@ if [ ! -f $hostfile ]; then
 fi
 
 echo "Building deepspeed wheel"
-python setup.py $VERBOSE bdist_wheel
+python3 setup.py $VERBOSE bdist_wheel
 
 if [ "$local_only" == "1" ]; then
     echo "Installing deepspeed"
@@ -167,7 +167,7 @@ else
     pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
 
     echo "Installing deepspeed"
-    pdsh -w $hosts "$PIP_SUDO pip uninstall -y deepspeed"
+    pdsh -w $hosts "$PIP_SUDO pip3 uninstall -y deepspeed"
     pdcp -w $hosts dist/deepspeed*.whl $tmp_wheel_path/
     pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL $tmp_wheel_path/deepspeed*.whl"
     pdsh -w $hosts "ds_report"
