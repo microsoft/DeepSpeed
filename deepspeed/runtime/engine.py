@@ -1499,10 +1499,8 @@ class DeepSpeedEngine(Module):
 
         if is_moe:
             self.save_non_zero_checkpoint = False
-
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
-
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
@@ -1569,7 +1567,7 @@ class DeepSpeedEngine(Module):
                 logger.warn(local_expert_id)
 
             global_expert_id = dp_rank * num_local_experts + int(local_expert_id)
-            expert_key = key.replace(f'{moe_str_prefix}.{local_expert_id}', f'{moe_str_prefix}.{global_expert_id}')
+            expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}', f'{moe_str_prefix}{global_expert_id}')
             experts_state_dict[str(global_expert_id)][expert_key] = moe_state_dict[key]
 
         return experts_state_dict, non_moe_state_dict
@@ -1614,14 +1612,13 @@ class DeepSpeedEngine(Module):
             self.mp_world_size
         }
         state.update(client_state)
-        
+
         for global_expert_id, expert_state_dict in experts_state_dict.items():
             expert_save_dir = self._get_expert_ckpt_name(save_dir, global_expert_id, tag)
-            logger.info(f'Saving model expert {global_expert_id} checkpoint: {save_path}, save_dir:{expert_save_dir}')
+            log_dist(message=f'Saving model expert {global_expert_id} checkpoint: {save_path}, save_dir:{expert_save_dir}', ranks=[0,1])
             torch.save(expert_state_dict, expert_save_dir)
 
-        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
-        #logger.info('Saving model checkpoint: {}'.format(save_path))
+        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
         torch.save(state, save_path)
         self._curr_save_path = None
 
@@ -1678,7 +1675,7 @@ class DeepSpeedEngine(Module):
         }
         state.update(client_state)
 
-        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
+        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
         #logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
         self._curr_save_path = None
