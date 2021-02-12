@@ -1379,7 +1379,7 @@ class DeepSpeedEngine(Module):
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         if self.has_moe_layers:
-            self.load_moe_state_dict(load_path, tag,
+            self.load_moe_state_dict(load_dir, tag,
                                      state_dict=checkpoint['module'],
                                      strict=load_module_strict)
         else:
