@@ -730,7 +730,6 @@ __global__ void dropout_kernel(const int N,
 {
     const float scale = 1. / (1. - ratio);
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int tid = threadIdx.x % (dim / unroll_factor);
 
     curandStatePhilox4_32_10_t state;
     curand_init(seed.first, idx, seed.second, &state);
@@ -738,10 +737,9 @@ __global__ void dropout_kernel(const int N,
     float2* out_cast = reinterpret_cast<float2*>(out);
     uint32_t* mask_32 = reinterpret_cast<uint32_t*>(mask);
 
-    const float2* bias_cast = reinterpret_cast<const float2*>(bias);
+    // const float2* bias_cast = reinterpret_cast<const float2*>(bias);
     const float2* residual_cast = reinterpret_cast<const float2*>(residual);
     const float2* input_cast = reinterpret_cast<const float2*>(input);
-
     CUDA_1D_KERNEL_LOOP(j, N)
     {
         float4 rand = curand_uniform4(&state);
@@ -749,8 +747,8 @@ __global__ void dropout_kernel(const int N,
         float2 data_f;
         __half2* data_h = reinterpret_cast<__half2*>(&data_f);
 
-        float2 bias_f;
-        __half2* bias_h = reinterpret_cast<__half2*>(&bias_f);
+        // float2 bias_f;
+        //__half2* bias_h = reinterpret_cast<__half2*>(&bias_f);
 
         float2 residual_f;
         __half2* residual_h = reinterpret_cast<__half2*>(&residual_f);
@@ -758,15 +756,20 @@ __global__ void dropout_kernel(const int N,
         float2 input_f;
         __half2* input_h = reinterpret_cast<__half2*>(&input_f);
 
-        bias_f = bias_cast[tid];
+        // bias_f = bias_cast[j % dim];
         residual_f = residual_cast[j];
         input_f = input_cast[j];
+        __half bias_h[4];
+        bias_h[0] = bias[j % dim];
+        bias_h[1] = bias[j % dim + 1];
+        bias_h[2] = bias[j % dim + 2];
+        bias_h[3] = bias[j % dim + 3];
 
         float2 data_h_0 = __half22float2(data_h[0]);
         float2 data_h_1 = __half22float2(data_h[1]);
 
-        float2 bias_h_0 = __half22float2(bias_h[0]);
-        float2 bias_h_1 = __half22float2(bias_h[1]);
+        // float2 bias_h_0 = __half22float2(bias_h[0]);
+        // float2 bias_h_1 = __half22float2(bias_h[1]);
 
         float2 residual_h_0 = __half22float2(residual_h[0]);
         float2 residual_h_1 = __half22float2(residual_h[1]);
@@ -774,10 +777,10 @@ __global__ void dropout_kernel(const int N,
         float2 input_h_0 = __half22float2(input_h[0]);
         float2 input_h_1 = __half22float2(input_h[1]);
 
-        data_h_0.x = (bias_h_0.x + input_h_0.x);
-        data_h_0.y = (bias_h_0.y + input_h_0.y);
-        data_h_1.x = (bias_h_1.x + input_h_1.x);
-        data_h_1.y = (bias_h_1.y + input_h_1.y);
+        data_h_0.x = (__half2float(bias_h[0]) + input_h_0.x);
+        data_h_0.y = (__half2float(bias_h[1]) + input_h_0.y);
+        data_h_1.x = (__half2float(bias_h[2]) + input_h_1.x);
+        data_h_1.y = (__half2float(bias_h[3]) + input_h_1.y);
 
         uint32_t m_32;
         uint8_t* m = (uint8_t*)&m_32;
@@ -787,10 +790,10 @@ __global__ void dropout_kernel(const int N,
         m[2] = (uint8_t)(rand.z > ratio);
         m[3] = (uint8_t)(rand.w > ratio);
 
-        data_h_0.x = __float2half(data_h_0.x * scale * m[0]);
-        data_h_0.y = __float2half(data_h_0.y * scale * m[1]);
-        data_h_1.x = __float2half(data_h_1.x * scale * m[2]);
-        data_h_1.y = __float2half(data_h_1.y * scale * m[3]);
+        data_h_0.x = data_h_0.x * scale * m[0];
+        data_h_0.y = data_h_0.y * scale * m[1];
+        data_h_1.x = data_h_1.x * scale * m[2];
+        data_h_1.y = data_h_1.y * scale * m[3];
 
         data_h_0.x += residual_h_0.x;
         data_h_0.y += residual_h_0.y;
@@ -813,7 +816,7 @@ __global__ void dropout_kernel(const int N,
         float* rand_data = &(rand.x);
         int k = 0;
         for (int i = high_index; i < N; i++) {
-            float x_data = (float)input[i] + (float)bias[threadIdx.x % dim];
+            float x_data = (float)input[i] + (float)bias[high_index % dim];
             uint8_t m = (uint8_t)(rand_data[k++] > ratio);
             x_data = x_data * scale * m;
             x_data += (float)residual[i];

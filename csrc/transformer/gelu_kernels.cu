@@ -103,8 +103,8 @@ __global__ void fused_bias_gelu(const float* input,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
-    int iterations = intermediate_size / blockDim.x / 4;
-    int row_stride = intermediate_size / 4;
+    int iterations = intermediate_size / blockDim.x;
+    int row_stride = intermediate_size;
 
     const float4* input_cast = reinterpret_cast<const float4*>(input);
     float4* vals_cast = reinterpret_cast<float4*>(vals);
@@ -139,8 +139,8 @@ __global__ void fused_bias_gelu(const __half* input,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
-    int iterations = intermediate_size / blockDim.x / 4;
-    int row_stride = intermediate_size / 4;
+    int iterations = intermediate_size / blockDim.x;
+    int row_stride = intermediate_size;
 
     const float2* input_cast = reinterpret_cast<const float2*>(input);
     float2* vals_cast = reinterpret_cast<float2*>(vals);
@@ -149,7 +149,7 @@ __global__ void fused_bias_gelu(const __half* input,
     for (int i = 0; i < iterations; i++) {
         if (i * loop_stride + id < row_stride) {
             float2 vals_vec = input_cast[row * row_stride + i * loop_stride + id];
-            float2 bias_vec = bias_cast[i * loop_stride + id];
+            float2 bias_vec = bias_cast[0];
 
             __half2* vals_half = reinterpret_cast<__half2*>(&vals_vec);
             __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
@@ -187,8 +187,8 @@ __global__ void d_gelu_func(float* d_output,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
-    int iterations = intermediate_size / blockDim.x / 4;
-    int row_stride = intermediate_size / 4;
+    int iterations = intermediate_size / blockDim.x;
+    int row_stride = intermediate_size;
 
     float4* d_output_cast = reinterpret_cast<float4*>(d_output);
     const float4* gelu_input_cast = reinterpret_cast<const float4*>(gelu_input);
@@ -224,8 +224,8 @@ __global__ void d_gelu_func(__half* d_output,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int loop_stride = blockDim.x;
-    int iterations = intermediate_size / blockDim.x / 4;
-    int row_stride = intermediate_size / 4;
+    int iterations = intermediate_size / blockDim.x;
+    int row_stride = intermediate_size;
 
     float2* d_output_cast = reinterpret_cast<float2*>(d_output);
     const float2* gelu_input_cast = reinterpret_cast<const float2*>(gelu_input);
@@ -281,12 +281,12 @@ void launch_bias_gelu(const T* input,
                       int batch_size,
                       cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size - 1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(batch_size);
-
-    fused_bias_gelu<<<grid_dims, block_dims, 0, stream>>>(input, bias, output, intermediate_size);
+    fused_bias_gelu<<<grid_dims, block_dims, 0, stream>>>(
+        input, bias, output, intermediate_size / 4);
 }
 
 template <typename T>
@@ -296,12 +296,12 @@ void launch_gelu(const T* input,
                  int batch_size,
                  cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size - 1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(batch_size);
 
-    gelu_kernel<<<grid_dims, block_dims, 0, stream>>>(input, output, intermediate_size);
+    gelu_kernel<<<grid_dims, block_dims, 0, stream>>>(input, output, intermediate_size / 4);
 }
 
 template void launch_bias_gelu<float>(const float*, const float*, float*, int, int, cudaStream_t);
@@ -323,12 +323,12 @@ void launch_d_gelu(T* d_output,
                    int batch_size,
                    cudaStream_t stream)
 {
-    int iterations = (intermediate_size + 1023) / 1024;
+    int iterations = (intermediate_size - 1) / 1024 + 1;
     int threads = intermediate_size / iterations / 4;
     dim3 block_dims(threads);
     dim3 grid_dims(batch_size);
 
-    d_gelu_func<<<grid_dims, block_dims, 0, stream>>>(d_output, input, bias, intermediate_size);
+    d_gelu_func<<<grid_dims, block_dims, 0, stream>>>(d_output, input, bias, intermediate_size / 4);
 }
 
 template void launch_d_gelu<float>(float*, const float*, const float*, int, int, cudaStream_t);

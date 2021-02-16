@@ -13,54 +13,19 @@ from modeling import BertEncoder as BertEncoderPostln
 from modeling import BertConfig, BertLayerNorm
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 import deepspeed
-from deepspeed.utils import logger
 
 import sys
 
-
-def see_memory_usage(message):
-
-    # Print message except when distributed but not rank 0
-    logger.info(message)
-    logger.info(
-        "Memory Allocated %s GigaBytes ",
-        torch.cuda.memory_allocated() / (1024 * 1024 * 1024),
-    )
-    logger.info(
-        "Max Memory Allocated %s GigaBytes",
-        torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),
-    )
-    logger.info(
-        "Cache Allocated %s GigaBytes",
-        torch.cuda.memory_cached() / (1024 * 1024 * 1024),
-    )
-    logger.info(
-        "Max cache Allocated %s GigaBytes",
-        torch.cuda.max_memory_cached() / (1024 * 1024 * 1024),
-    )
-
-
 #if not deepspeed.ops.__installed_ops__['transformer']:
 #    pytest.skip("transformer kernels are not installed", allow_module_level=True)
-def check_equal1(first, second, atol=1e-2, verbose=False):
-    if verbose:
-        print()
-    for i, (x, y) in enumerate(zip(first, second)):
-        x = x[0].cpu().detach().numpy()
-        y = y[0].cpu().detach().numpy()
-        if verbose:
-            print("x = {}".format(x.flatten()))
-            print("y = {}".format(y.flatten()))
-            print('-' * 80)
-        np.testing.assert_allclose(x, y, err_msg="Index: {}".format(i), atol=atol)
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     diction_x = {}
     diction_y = {}
 
-    #for i, (x, y) in enumerate(zip(first, second)):
-    #print(x[1], y[1])
+    for i, (x, y) in enumerate(zip(first, second)):
+        print(x[1], y[1])
 
     for i, (x, y) in enumerate(zip(first, second)):
         k = 0
@@ -73,18 +38,18 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         diction_y[k, y[1]] = y[0]
     if verbose:
         print()
-    #for i, (x, y) in enumerate(zip(diction_x, diction_y)):
-    #print(x, y)
+    for i, (x, y) in enumerate(zip(diction_x, diction_y)):
+        print(x, y)
 
     for i, (x, y) in enumerate(zip(diction_x, diction_y)):
         if (x[0] == 1): continue
-        #print("checking ", x[1], ":")
+        print("checking ", x[1], ":")
         y = diction_y[x[0], x[1]]
         x = diction_x[x[0], x[1]]
         x = x.cpu().detach().numpy()
         y = y.cpu().detach().numpy()
-        # print(x)
-        # print(y)
+        print(x)
+        print(y)
 
         avgx = np.sum(abs(x), dtype=float)
         countx = x.shape[0]
@@ -95,7 +60,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         if avgx != float('inf') and avgx != -float('inf'):
             avgx = avgx / countx
             tollerance = avgx * atol
-    # print("tollerance is ", tollerance)
+        print("tollerance is ", tollerance)
         if verbose:
             print("x = {}".format(x.flatten()))
             print("y = {}".format(y.flatten()))
@@ -157,7 +122,9 @@ class DSEncoder(nn.Module):
             # decoder layers
         else:
             for i, layer_module in enumerate(self.layer):
-                hidden_states = layer_module(hidden_states, attention_mask, self.grads)
+                hidden_states = layer_module(hidden_states,
+                                             attention_mask,
+                                             grads=self.grads)
                 hidden_states.register_hook(
                     lambda x,
                     self=self: self.grads.append([x,
@@ -263,24 +230,20 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
                                 input_mask,
                                 output_all_encoded_layers=False,
                                 checkpoint_activations=False)
-    see_memory_usage("After Baseline FWD:")
+
     loss = (Y - base_results[0]).pow(2).sum()
     loss.backward()
     base_grads = bert_encoder.get_grads()
-    see_memory_usage("After Baseline BWD:")
 
     # run ds
     ds_results = ds_encoder(hidden_states,
                             input_mask,
                             output_all_encoded_layers=False,
                             checkpoint_activations=False)
-    see_memory_usage("After DS_Kernel FWD:")
-    check_equal1(base_results, ds_results, atol=0.1, verbose=verbose)
 
     loss = (Y - ds_results[0]).pow(2).sum()
     loss.backward()
     ds_grads = ds_encoder.get_grads()
-    see_memory_usage("After DS_Kernel BWD:")
 
     # check grads
     check_equal(base_grads, ds_grads, atol=atol, verbose=verbose)
@@ -289,27 +252,12 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
 #test_backward[3-1024-120-16-24-True-True-0.05]
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
                          [
-                             (3,160,128,2,24,False,True, 0.2),
-                             (64,160,128,2,24,False,True, 0.2),
-                             (32,800,128,2,4,False,True, 0.2),
-                             (32,1600,128,25,4,False,True, 0.2),
-                             (32,1600,128,20,4,False,True, 0.2),
-
-                             (3,160,128,2,24,True,True, 0.2),
-                             (64,160,128,2,24,True,True, 0.2),
-                             (32,800,128,2,4,True,True, 0.2),
-                             (64,1600,128,25,4,True,True, 0.2),
-                             #(64,1600,128,20,4,True,True, 0.2),
-                             #(16,1600,128,2,24,False,True, 0.2),
-                             #(1,1600,128,20,1,True,True, 0.06),
-                             #(1,1600,128,2,1,True,True, 0.06),
-                             #(1,1600,128,1,1,True,True, 0.06),
-                             #(1,16,128,1,1,True,True, 0.05),
-                             #(1,1536,128,24,1,True,True, 0.05),
-                             #(1,2560,128,40,2,True,True, 0.1),
-                             #(3,1024,52,16,24,False,True, 0.2),
-                             #(3,128,51,2,24,False,False, 0.1),
-                             #(3,128,54,2,24,False,True, 0.2),
+                             (3,1024,128,16,24,True,True, 0.3),
+                             (3,1024,115,16,24,True,True, 0.05),
+                             (128,128,10,2,2,False,False, 0.1),
+                             (3,1024,52,16,24,False,True, 0.3),
+                             (3,128,51,2,24,False,False, 0.2),
+                             (3,128,54,2,24,False,True, 0.3),
                          ]) # yapf: disable
 def test_backward(batch_size,
                   hidden_size,
