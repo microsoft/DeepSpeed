@@ -72,9 +72,9 @@ lnav:
         url: /tutorials/lrrt/
       - title: "Megatron-LM GPT2"
         url: /tutorials/megatron/
-      - title: "1-Cycle Schedule"
-        url: /tutorials/1Cycle/
-      - title: "1-bit Adam"
+      - title: "One-Cycle Schedule"
+        url: /tutorials/one-cycle/
+      - title: "One-bit Adam"
         url: /tutorials/onebit-adam/
       - title: "Pipeline Parallelism"
         url: /tutorials/pipeline/
