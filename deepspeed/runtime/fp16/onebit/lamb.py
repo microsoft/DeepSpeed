@@ -288,7 +288,7 @@ class Lamb(torch.optim.Optimizer):
             torch.cuda.empty_cache()
 
         if self.lamb_freeze_key:
-            if self.size > 1 and self.linear_step != 0:
+            if self.size > 1:
                 for i in range(len(self.exp_avg_flat)):
                     if not self.initialize:
                         torch.cuda.empty_cache()
@@ -329,6 +329,9 @@ class Lamb(torch.optim.Optimizer):
                     beta1, beta2 = group['betas']
                     exp_avg.div_(self.scaling_coeffs[i][j])
                     if 'exp_avg_mask' in group:
+                        if exp_avg.device != group['exp_avg_mask'].device:
+                            group['exp_avg_mask'] = group['exp_avg_mask'].to(
+                                device=exp_avg.device)
                         exp_avg.mul_(group['exp_avg_mask'])
 
                     grad_reconstruct = ((exp_avg - exp_avg_last_step[i][j] * beta1) /
@@ -398,7 +401,17 @@ class Lamb(torch.optim.Optimizer):
         """
         Overrides state_dict() to reset fused momentum and load/reset 1-bit Lamb states
         """
+        mask = {}
+        for i, group in enumerate(self.param_groups):
+            if 'exp_avg_mask' in group:
+                mask[i] = group['exp_avg_mask']
         super().load_state_dict(state_dict)
+        # Because at different stage exp_avg_mask may change (e.g.,
+        # when loading seq 128 checkpoint for seq 512 pretraining),
+        # we don't load the exp_avg_mask from the checkpoint but always
+        # use the one provided in optimizer_grouped_parameters in deepspeed_train.py.
+        for k, v in mask.items():
+            self.param_groups[k]['exp_avg_mask'] = v
         del self.exp_avg_flat[:]
         self.dummy_exp_avg.clear()
         del self.corrected_tensor_sizes[:]
@@ -411,6 +424,13 @@ class Lamb(torch.optim.Optimizer):
             self.worker_errors = state_dict.pop('worker_errors')
             self.server_errors = state_dict.pop('server_errors')
             self.scaling_coeffs = state_dict.pop('scaling_coeffs')
+            for i_error in range(len(self.worker_errors)):
+                self.worker_errors[i_error] = self.worker_errors[i_error].to(
+                    device=self.state[self.param_groups[0]['params']
+                                      [0]]['exp_avg'].device)
+                self.server_errors[i_error] = self.server_errors[i_error].to(
+                    device=self.state[self.param_groups[0]['params']
+                                      [0]]['exp_avg'].device)
         else:
             if torch.distributed.get_rank() == 0:
                 print(
