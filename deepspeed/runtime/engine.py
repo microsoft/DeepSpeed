@@ -1346,6 +1346,8 @@ class DeepSpeedEngine(Module):
                     load_optimizer_states=load_optimizer_states)
             elif load_optimizer_states:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
+        elif self.optimizer is not None and self.fp16_enabled():
+            self.optimizer._restore_from_fp16_weights()
 
         if load_lr_scheduler_states and self.lr_scheduler is not None:
             self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
