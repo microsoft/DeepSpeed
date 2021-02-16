@@ -27,8 +27,6 @@ class Adam(torch.optim.Optimizer):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-8)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-        max_coeff(float, optional): maximum value of the lamb coefficient (default: 10.0)
-        min_coeff(float, optional): minimum value of the lamb coefficient (default: 0.01)
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
             (default: False) NOT SUPPORTED in 1-bit Adam!
@@ -39,7 +37,6 @@ class Adam(torch.optim.Optimizer):
         cuda_aware (boolean, required): Set True if the underlying MPI implementation
             supports CUDA-Aware communication. (default: False)
         comm_backend_name (string, optional): Set to 'mpi' if needed. (default: 'nccl')
-            from cupy. (default: 'deepspeed')
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
@@ -153,9 +150,7 @@ class Adam(torch.optim.Optimizer):
                 if grad is None:
                     grad = p.grad.data
                 if grad.is_sparse:
-                    raise RuntimeError(
-                        'FusedAdam does not support sparse gradients, please consider SparseAdam instead'
-                    )
+                    raise RuntimeError('1-bit Adam does not support sparse gradients')
 
                 state = self.state[p]
 
@@ -220,6 +215,11 @@ class Adam(torch.optim.Optimizer):
                                     state['worker_error'],
                                     state['server_error'],
                                     self.deepspeed.local_rank))
+                        if 'exp_avg_mask' in group:
+                            if exp_avg.device != group['exp_avg_mask'].device:
+                                group['exp_avg_mask'] = group['exp_avg_mask'].to(
+                                    device=exp_avg.device)
+                            exp_avg.mul_(group['exp_avg_mask'])
 
                     if self.initialize:
                         update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
@@ -249,3 +249,31 @@ class Adam(torch.optim.Optimizer):
                 self.deepspeed.enable_backward_allreduce = False
 
         return loss
+
+    def load_state_dict(self, state_dict):
+        """
+        Overrides state_dict() to reset 1-bit Adam states when needed
+        """
+        mask = {}
+        for i, group in enumerate(self.param_groups):
+            if 'exp_avg_mask' in group:
+                mask[i] = group['exp_avg_mask']
+        super().load_state_dict(state_dict)
+        # Because at different stage exp_avg_mask may change (e.g.,
+        # when loading seq 128 checkpoint for seq 512 pretraining),
+        # we don't load the exp_avg_mask from the checkpoint but always
+        # use the one provided in optimizer_grouped_parameters in deepspeed_train.py.
+        for k, v in mask.items():
+            self.param_groups[k]['exp_avg_mask'] = v
+        if self.state[self.param_groups[0]['params'][0]]['step'] < self.freeze_step:
+            if torch.distributed.get_rank() == 0:
+                print(
+                    "Checkpoint loaded and warmup stage starts/continues, reset 1-bit Adam states."
+                )
+            if self.adam_freeze_key is True:
+                self.adam_freeze_key = False
+                self.deepspeed.enable_backward_allreduce = True
+            for group in self.param_groups:
+                for p in group['params']:
+                    self.state[p].pop('worker_error')
+                    self.state[p].pop('server_error')
