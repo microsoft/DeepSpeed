@@ -961,7 +961,7 @@ class DeepSpeedEngine(Module):
                 master_params = amp.master_params(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                max_norm=self.gradient_clipping())
-            self.timers('step_clipping').stop()
+            self.timers('_step_clipping').stop()
 
         self.timers('_step_step').start()
         self.optimizer.step()
