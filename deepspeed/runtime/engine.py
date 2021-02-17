@@ -952,6 +952,7 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
+            self.timers('_step_clipping').start()
             if not self.fp16_enabled() and not self.amp_enabled():
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
@@ -960,8 +961,13 @@ class DeepSpeedEngine(Module):
                 master_params = amp.master_params(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(parameters=master_params,
                                                max_norm=self.gradient_clipping())
-        self.optimizer.step()
+            self.timers('step_clipping').stop()
 
+        self.timers('_step_step').start()
+        self.optimizer.step()
+        self.timers('_step_step').stop()
+
+        self.timers('_step_zero_grad').start()
         #zero grad in basic optimizer could be unreliable and may not exhibit
         #the behaviour that we want
         if not self.zero_optimization() and not self.fp16_enabled(
@@ -969,9 +975,11 @@ class DeepSpeedEngine(Module):
             self.zero_grad()
         else:
             self.optimizer.zero_grad()
+        self.timers('_step_zero_grad').stop()
 
         report_progress = self.global_rank == 0 if self.global_rank else True
 
+        self.timers('_step_check_overflow').start()
         # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
         overflow = False
         if hasattr(self.optimizer, 'overflow'):
@@ -984,6 +992,7 @@ class DeepSpeedEngine(Module):
                 self.lr_scheduler.step(**(lr_kwargs or {}))
             if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
                 self._report_progress(self.global_steps + 1)
+        self.timers('_step_check_overflow').stop()
 
         self.global_steps += 1
         self.global_samples += self.train_batch_size()

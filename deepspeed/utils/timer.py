@@ -97,6 +97,8 @@ class SynchronizedWallClockTimer:
                 elapsed_time = self.timers[name].elapsed(
                     reset=reset) * 1000.0 / normalizer
                 string += ' | {}: {:.2f}'.format(name, elapsed_time)
+            else:
+                print_rank_0(f'logging failed for timer {name}')
 
         # TODO: use our logging utilitied to selectively print. Useful for model
         # parallelism because rank=0 is too restrictive.

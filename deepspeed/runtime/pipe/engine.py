@@ -178,22 +178,6 @@ class PipelineEngine(DeepSpeedEngine):
             if not self.is_last_stage():
                 p2p.send(self.loss, self.next_stage)
 
-        # XXX look into timer reporting timing
-        # Initialize some timers because of early weirdness.
-        if self.wall_clock_breakdown():
-            self.timers('forward_microstep').start()
-            self.timers('forward_microstep').stop()
-            self.timers('backward_microstep').start()
-            self.timers('backward_microstep').stop()
-            self.timers('backward_inner_microstep').start()
-            self.timers('backward_inner_microstep').stop()
-            self.timers('backward_allreduce_microstep').start()
-            self.timers('backward_allreduce_microstep').stop()
-            self.timers('backward_allreduce').start()
-            self.timers('backward_allreduce').stop()
-            self.timers('step_microstep').start()
-            self.timers('step_microstep').stop()
-
     def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset,
@@ -206,6 +190,8 @@ class PipelineEngine(DeepSpeedEngine):
         self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
+        self.timers('reduce_tied_grads').start()
+
         # We need to run this first to write to self.averaged_gradients;
         # since this class turns `enable_backward_allreduce` off,
         # `self.overlapping_partition_gradients_reduce_epilogue()` defined in the DeepSpeedEngine
@@ -217,13 +203,17 @@ class PipelineEngine(DeepSpeedEngine):
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
         self.module.allreduce_tied_weight_gradients()
+        self.timers('reduce_tied_grads').stop()
+
 
     def _exec_reduce_grads(self):
+        self.timers('reduce_grads').start()
         self._force_grad_boundary = True
         if self.is_data_parallel:
             self.buffered_allreduce_fallback(
                 elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
+        self.timers('reduce_grads').stop()
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
@@ -557,10 +547,7 @@ class PipelineEngine(DeepSpeedEngine):
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
         if self.wall_clock_breakdown():
-            self.timers('backward_microstep').start()
             self.timers('backward').start()
-            self.timers('backward_inner_microstep').start()
-            self.timers('backward_inner').start()
 
         # Reconstruct if we previously partitioned the output. We must be
         # careful to also restore the computational graph of the tensors we partitioned.
@@ -606,10 +593,7 @@ class PipelineEngine(DeepSpeedEngine):
         grad_tensors = None
 
         if self.wall_clock_breakdown():
-            self.timers('backward_inner').stop()
-            self.timers('backward_inner_microstep').stop()
             self.timers('backward').stop()
-            self.timers('backward_microstep').stop()
 
         self.mem_status('AFTER BWD')
 
@@ -943,7 +927,6 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
-            self.timers('step_microstep').start()
             self.timers('step').start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
@@ -966,26 +949,10 @@ class PipelineEngine(DeepSpeedEngine):
                     self.summary_writer.add_scalar(event[0], event[1], event[2])
 
         if self.wall_clock_breakdown():
-            self.timers('step_microstep').stop()
             self.timers('step').stop()
             if self.global_steps % self.steps_per_print() == 0:
-                self.timers.log([
-                    'batch_input',
-                    'forward_microstep',
-                    'backward_microstep',
-                    'backward_inner_microstep',
-                    'backward_allreduce_microstep',
-                    'backward_tied_allreduce_microstep',
-                    'step_microstep'
-                ])
-            if self.global_steps % self.steps_per_print() == 0:
-                self.timers.log([
-                    'forward',
-                    'backward',
-                    'backward_inner',
-                    'backward_allreduce',
-                    'step'
-                ])
+                names = list(self.timers.timers.keys())
+                self.timers.log(names)
 
     def _zero_grads(self, inputs):
         if isinstance(inputs, torch.Tensor):
