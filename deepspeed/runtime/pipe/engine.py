@@ -41,6 +41,12 @@ mem_cached = 0
 def _tensor_bytes(tensor):
     return tensor.numel() * tensor.element_size()
 
+def print_rank_0(message):
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0:
+            print(message)
+    else:
+        print(message)
 
 class PipelineEngine(DeepSpeedEngine):
     """ A training engine hybrid pipeline, data, and model parallel training.
@@ -190,7 +196,9 @@ class PipelineEngine(DeepSpeedEngine):
         self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
-        self.timers('reduce_tied_grads').start()
+        if self.wall_clock_breakdown():
+            self.timers('reduce_tied_grads').start()
+            self.timers('comms').start()
 
         # We need to run this first to write to self.averaged_gradients;
         # since this class turns `enable_backward_allreduce` off,
@@ -203,17 +211,25 @@ class PipelineEngine(DeepSpeedEngine):
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
         self.module.allreduce_tied_weight_gradients()
-        self.timers('reduce_tied_grads').stop()
+        if self.wall_clock_breakdown():
+            self.timers('reduce_tied_grads').stop()
+            self.timers('comms').stop()
+
 
 
     def _exec_reduce_grads(self):
-        self.timers('reduce_grads').start()
+        if self.wall_clock_breakdown():
+            self.timers('reduce_grads').start()
+            self.timers('comms').start()
+
         self._force_grad_boundary = True
         if self.is_data_parallel:
             self.buffered_allreduce_fallback(
                 elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
-        self.timers('reduce_grads').stop()
+        if self.wall_clock_breakdown():
+            self.timers('reduce_grads').stop()
+            self.timers('comms').start()
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
@@ -754,6 +770,7 @@ class PipelineEngine(DeepSpeedEngine):
     def _exec_send_activations(self, buffer_id):
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').start()
+            self.timers('comms').start()
 
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
@@ -786,6 +803,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').stop()
+            self.timers('comms').stop()
 
     def _exec_send_grads(self, buffer_id):
         if self.wall_clock_breakdown():
@@ -887,6 +905,7 @@ class PipelineEngine(DeepSpeedEngine):
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').start()
+            self.timers('comms').start()
 
         outputs = self.pipe_buffers['outputs'][buffer_id]
         # XXX these shapes are hardcoded for Megatron
@@ -924,6 +943,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
+            self.timers('comms').stop()
 
     def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
@@ -951,6 +971,15 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('step').stop()
             if self.global_steps % self.steps_per_print() == 0:
+                pct_comms = self.timers('comms').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_optimizer_step = self.timers('step').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_fwd = self.timers('forward').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_backward = self.timers('backward').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                print_rank_0(f'%comms: {pct_comms} \n %optimizer_step {pct_optimizer_step} \n %forward: {pct_fwd} \n %backward: {pct_backward}')
                 names = list(self.timers.timers.keys())
                 self.timers.log(names)
 

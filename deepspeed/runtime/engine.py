@@ -808,7 +808,6 @@ class DeepSpeedEngine(Module):
             kwargs.update(self.progressive_layer_drop.get_state())
 
         if self.wall_clock_breakdown():
-            self.timers('forward_microstep').start()
             self.timers('forward').start()
 
         if self.training_dataloader is None:
@@ -817,7 +816,6 @@ class DeepSpeedEngine(Module):
 
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
-            self.timers('forward_microstep').stop()
 
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
@@ -964,7 +962,10 @@ class DeepSpeedEngine(Module):
             self.timers('_step_clipping').stop()
 
         self.timers('_step_step').start()
-        self.optimizer.step()
+        if self.zero_optimization_stage() == 1 and self.wall_clock_breakdown():
+            self.optimizer.step(comms_timer=self.timers('comms'))
+        else:
+            self.optimizer.step()
         self.timers('_step_step').stop()
 
         self.timers('_step_zero_grad').start()

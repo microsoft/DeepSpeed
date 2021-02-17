@@ -663,16 +663,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                                         input_list=single_comm_all_partitions,
                                         group=self.dp_process_group)
 
-    def step(self, closure=None):
-        timer = Timer('overflow')
-        timer.start()
+    def step(self, closure=None, comms_timer=None):
         # First compute norm for all group so we know if there is overflow
         self.overflow = self.overflow_checker.check()
 
-
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
-        logger.info(f"check overflow time: {timer.elapsed(reset=True)}")
         if self.overflow:
             self.zero_grad()
             if self.verbose:
@@ -685,8 +681,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         norm_groups = []
         local_sub_partitions_grad_groups = []
 
-        timer = Timer('gather_norm_groups')
-        timer.start()
         partition_id = dist.get_rank(group=self.dp_process_group)
         for i, group in enumerate(self.fp16_groups):
             #TODO RS: update get grad norm to support sub partitions
@@ -717,21 +711,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             local_sub_partitions_grad_groups.append(local_grad_sub_partitions)
 
-        logger.info(f"Gather norm groups + update local params: {timer.elapsed(reset=True)}")
 
-        timer = Timer('unscale_and_clip_grads')
-        timer.start()
         #RS: update unscale/clip with sub partitions
         self.unscale_and_clip_grads(local_sub_partitions_grad_groups, norm_groups)
-        logger.info(f"unscale_and_clip_grads: {timer.elapsed(reset=True)}")
 
-        timer = Timer('optimizer_step')
-        timer.start()
+
         self.optimizer.step()
-        logger.info(f"unscale_and_clip_grads: {timer.elapsed(reset=True)}")
 
-        timer = Timer('copy_fp32_params_to_fp16_partitions')
-        timer.start()
         #RS: clear our sub partition grads
         #get rid of the fp32 gradients. Not needed anymore
         for group in self.local_sub_partitions_of_fp32_groups:
@@ -746,10 +732,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             for local_sub_partition_param_fp16, local_sub_partition_param_fp32 in zip(fp16_all_sub_partitions[partition_id], fp32_local_sub_partitions):
                 local_sub_partition_param_fp16.data.copy_(
                     local_sub_partition_param_fp32.data)
-        logger.info(f"copy_fp32_params_to_fp16_partitions: {timer.elapsed(reset=True)}")
 
-        timer = Timer('all_gather_updated_weights')
-        timer.start()
+
+        if comms_timer is not None:
+            comms_timer.start()
         #RS: all_gather/broadcast sub-partitions in separate comm calls
         #gather the updated weights from everyone
         for fp16_all_sub_partitions in self.parallel_comm_sub_partitioned_fp16_groups:
@@ -757,18 +743,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 dist.all_gather(sub_partitions,
                                 sub_partitions[partition_id],
                                 group=self.dp_process_group)
-        logger.info(f"all_gather_updated_weights: {timer.elapsed(reset=True)}")
+        if comms_timer is not None:
+            comms_timer.stop()
 
-        timer = Timer('unflatten_norm_groups')
-        timer.start()
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
                                                       self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
-        logger.info(f"unflatten_norm_groups: {timer.elapsed(reset=True)}")
-
         return self.overflow
 
     def unscale_and_clip_grads(self, grad_groups_flat, norm_groups):
