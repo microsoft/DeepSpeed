@@ -458,8 +458,8 @@ class DeepSpeedEngine(Module):
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
-        # After the distributed backend is initialized we are guaranteed the LOCAL_RANK 
-        # environment variable is set. We must align args.local_rank to this value for 
+        # After the distributed backend is initialized we are guaranteed the LOCAL_RANK
+        # environment variable is set. We must align args.local_rank to this value for
         # backwards compatability with scripts relying on [args|self].local_rank containing
         # the correct local rank info.
         args.local_rank = int(os.environ['LOCAL_RANK'])
