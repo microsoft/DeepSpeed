@@ -229,7 +229,7 @@ class PipelineEngine(DeepSpeedEngine):
         self._force_grad_boundary = False
         if self.wall_clock_breakdown():
             self.timers('reduce_grads').stop()
-            self.timers('comms').start()
+            self.timers('comms').stop()
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
