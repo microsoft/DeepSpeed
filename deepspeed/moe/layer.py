@@ -24,7 +24,7 @@ class MoE(torch.nn.Module):
 
         if mpu is None:
             self.dp_group = dist.group.WORLD
-        else
+        else:
             self.dp_group = mpu.get_data_parallel_group()
 
         world_size = dist.get_world_size(group=self.dp_group)
