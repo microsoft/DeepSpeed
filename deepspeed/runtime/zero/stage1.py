@@ -9,7 +9,7 @@ from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
-from time import time
+import time
 
 def get_alignment_padding(flattened_lean_size, sub_partition_id, sub_partition_size):
     sub_partition_high_limit = (sub_partition_id + 1) * sub_partition_size
