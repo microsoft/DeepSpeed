@@ -362,12 +362,13 @@ class OnebitAdam(torch.optim.Optimizer):
             self.adam_freeze_key = False
             self.initialize = True
             print(
-                f"Finished the initialization step at rant {torch.distributed.get_rank()}"
+                f"Finished the initialization step at rank {torch.distributed.get_rank()}"
             )
             return loss
 
         if self.adam_freeze_key is False:
             if state['step'] >= self.freeze_step:
+                print('Starting compressed communication')
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
 
