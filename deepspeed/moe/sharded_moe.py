@@ -143,13 +143,8 @@ class MOELayer(Base):
         super().__init__()
         self.gate = gate
         self.experts = experts
-
-        self.group = group if group is not None else dist.group.WORLD
-        # TODO below code is in the Experts code
-        # for expert in self.experts:
-        #     for p in experts.parameters():
-        #         p.expert = True  # type: ignore
-        self.world_size = dist.get_world_size(self.group)
+        self.group = group
+        self.world_size = dist.get_world_size(group)
         self.num_local_experts = num_local_experts
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
@@ -157,7 +152,6 @@ class MOELayer(Base):
         assert len(input[0].shape) == 3, "input Tensor must have dimensions: (s)equence, (t)oken, (m)odel"
         # removed wrong assert
         # assert input[0].shape[0] % len(self.experts) == 0, "num tokens must be order of number of local experts"
-
         # Implement Algorithm 2 from GShard paper.
         d_model = input[0].shape[2]
         # Reshape into S tokens by dropping sequence dimension.

@@ -31,6 +31,7 @@ from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
+import deepspeed.utils.groups as groups
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
@@ -432,13 +433,6 @@ class DeepSpeedEngine(Module):
             # optimizer state checkpoints for zero
             self.save_zero_checkpoint = (param_rank == dp_rank)
 
-        # MoE related initialization
-        for _, module in self.module.named_modules():
-            if isinstance(module, MoE):
-                self.has_moe_layers = True
-                self.num_experts = module.num_experts
-                break
-
     def _scheduler_from_config(self, optimizer):
         scheduler_name = self.scheduler_name()
         if scheduler_name is not None:
@@ -522,16 +516,29 @@ class DeepSpeedEngine(Module):
 
     def _broadcast_model(self):
         for p in self.module.parameters():
-            if torch.is_tensor(p):
-                dist.broadcast(p,
-                               self.broadcast_src_rank,
-                               group=self.data_parallel_group)
+            if hasattr(p, 'allreduce') and not p.allreduce:
+                if torch.is_tensor(p):
+                    dist.broadcast(p,
+                                self.expert_broadcast_src_rank,
+                                group=self.expert_data_parallel_group)
+            else:
+                if torch.is_tensor(p):
+                    dist.broadcast(p,
+                                self.broadcast_src_rank,
+                                group=self.data_parallel_group)
 
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
             self.module.half()
         self.module.to(self.device)
+
+        # MoE related initialization
+        for _, module in self.module.named_modules():
+            if isinstance(module, MoE):
+                self.has_moe_layers = True
+                self.num_experts = module.num_experts
+                break
 
         if self.mpu is None:
             self.data_parallel_group = _initialize_parameter_parallel_groups()
@@ -544,6 +551,17 @@ class DeepSpeedEngine(Module):
             self.mp_world_size = self.mpu.get_model_parallel_world_size()
             self.broadcast_src_rank = _get_global_rank(
                 self.mpu.get_data_parallel_group(),
+                0)
+
+        if self.has_moe_layers:
+            assert groups.expert_parallel_is_initialized(), \
+                'Please call deepspeed.utils.groups.initialize_expert_parallel() before using MoE layers'
+            self.ep_world_size = groups.get_expert_parallel_world_size() # unused
+            self.expert_parallel_group = groups.get_expert_parallel_group()
+            self.expert_data_parallel_group = groups.get_expert_data_parallel_group()
+            self.data_parallel_group = groups.get_data_parallel_group()
+            self.expert_broadcast_src_rank = _get_global_rank(
+                groups.get_expert_data_parallel_group(),
                 0)
 
         if not self.amp_enabled():
@@ -590,6 +608,7 @@ class DeepSpeedEngine(Module):
                     "Unable to import apex/amp, please make sure it is installed")
             self.module, self.optimizer = amp.initialize(self.module, basic_optimizer, **amp_params)
             self._broadcast_model()
+            # TODO: maybe need to broadcast experts differently?
         elif self.fp16_enabled():
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
         else:
@@ -1121,7 +1140,7 @@ class DeepSpeedEngine(Module):
         log_dist(f'step={step}, skipped={self.skipped_steps}, lr={lr}, mom={mom}',
                  ranks=[0])
 
-    def allreduce_bucket(self, bucket):
+    def allreduce_bucket(self, bucket, dp_group):
         tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
@@ -1133,101 +1152,125 @@ class DeepSpeedEngine(Module):
             if self.gradient_predivide_factor() != 1.0:
                 tensor_to_allreduce.mul_(1. / self.gradient_predivide_factor())
 
-            dist.all_reduce(tensor_to_allreduce, group=self.data_parallel_group)
-
+            dist.all_reduce(tensor_to_allreduce, group=dp_group)
             if self.gradient_average:
-                if self.gradient_predivide_factor() != self.dp_world_size:
+                if self.gradient_predivide_factor() != dist.get_world_size(group=dp_group):
                     tensor_to_allreduce.mul_(self.gradient_predivide_factor() /
-                                             self.dp_world_size)
+                                             dist.get_world_size(group=dp_group))
         else:
-            tensor_to_allreduce.div_(self.dp_world_size)
-            dist.all_reduce(tensor_to_allreduce, group=self.data_parallel_group)
+            tensor_to_allreduce.div_(dist.get_world_size(group=dp_group))
+            dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
         if self.allreduce_always_fp32() and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor
 
-    def allreduce_and_copy(self, small_bucket):
-        allreduced = self.allreduce_bucket(small_bucket)
+    def allreduce_and_copy(self, small_bucket, dp_group):
+        allreduced = self.allreduce_bucket(small_bucket, dp_group)
         for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
             buf.copy_(synced)
 
-    def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):
+    def allreduce_no_retain(self, bucket, dp_group, numel_per_bucket=500000000):
         small_bucket = []
         numel = 0
         for tensor in bucket:
             small_bucket.append(tensor)
             numel = numel + tensor.numel()
             if numel > numel_per_bucket:
-                self.allreduce_and_copy(small_bucket)
+                self.allreduce_and_copy(small_bucket, dp_group)
                 small_bucket = []
                 numel = 0
         if len(small_bucket) > 0:
-            self.allreduce_and_copy(small_bucket)
+            self.allreduce_and_copy(small_bucket, dp_group)
 
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
-        grads = []
+        grads, expert_grads = [], []
         for param_name, param in self.module.named_parameters():
-            # Do not perform allreduce for MoE params marked with param.allreduce=False
             if hasattr(param, 'allreduce') and not param.allreduce:
-                #print(f"skipping allreduce for param {param_name}")
-                pass
+                is_moe_param = True
             else:
-                if param.grad is None:
-                    # In cases where there is an imbalance of empty grads across
-                    # ranks we must create empty grads, this will ensure that every
-                    # rank is reducing the same size. In some cases it may make
-                    # sense in the future to support the ability to average not
-                    # w.r.t. world size but with a different value.
-                    param.grad = torch.zeros(param.size(),
-                                         dtype=param.dtype,
-                                         device=param.device)
-                    grads.append(param.grad.data)
+                is_moe_param = False
+            if param.grad is None:
+                # In cases where there is an imbalance of empty grads across
+                # ranks we must create empty grads, this will ensure that every
+                # rank is reducing the same size. In some cases it may make
+                # sense in the future to support the ability to average not
+                # w.r.t. world size but with a different value.
+                param.grad = torch.zeros(param.size(),
+                                        dtype=param.dtype,
+                                        device=param.device)
+                if is_moe_param:
+                    expert_grads.append(param.grad.data)
                 else:
-                    grad_data = param.grad.data
-                    if self.sparse_gradients_enabled(
-                    ) and param_name in self.csr_tensor_module_names:
+                    grads.append(param.grad.data)
+            else:
+                grad_data = param.grad.data
+                if self.sparse_gradients_enabled(
+                ) and param_name in self.csr_tensor_module_names:
+                    if is_moe_param:
+                        expert_grads.append(CSRTensor(grad_data))
+                    else:
                         grads.append(CSRTensor(grad_data))
+                else:
+                    if is_moe_param:
+                        expert_grads.append(grad_data)
                     else:
                         grads.append(grad_data)
 
         split_buckets = split_half_float_double_csr(grads)
-
         for i, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
             if bucket_type == CSRTensor.type():
-                self.csr_allreduce_no_retain(bucket)
+                # TODO: do we have to do something here?
+                self.csr_allreduce_no_retain(bucket, dp_group=groups.get_data_parallel_group())
             else:
-                self.allreduce_no_retain(bucket, numel_per_bucket=elements_per_buffer)
+                self.allreduce_no_retain(
+                    bucket, 
+                    dp_group=groups.get_data_parallel_group(), 
+                    numel_per_bucket=elements_per_buffer)
 
-    def csr_allreduce_no_retain(self, bucket):
-        allreduced_csrs = self.csr_allreduce_bucket(bucket)
+        if self.has_moe_layers:
+            expert_split_buckets = split_half_float_double_csr(expert_grads)
+            for i, bucket_tuple in enumerate(expert_split_buckets):
+                bucket_type, bucket = bucket_tuple
+                if bucket_type == CSRTensor.type():
+                    # TODO: do we have to do something here?
+                    self.csr_allreduce_no_retain(bucket, groups.get_expert_data_parallel_group())
+                else:
+                    # Separate between diff groups
+                    self.allreduce_no_retain(
+                        bucket, 
+                        dp_group=groups.get_expert_data_parallel_group(), 
+                        numel_per_bucket=elements_per_buffer)
+
+    def csr_allreduce_no_retain(self, bucket, dp_group):
+        allreduced_csrs = self.csr_allreduce_bucket(bucket, dp_group)
         # Densify csr tensor and copy back to original location
         for csr in allreduced_csrs:
             dense_tensor = csr.to_dense()
             csr.orig_dense_tensor.copy_(dense_tensor)
 
-    def csr_allreduce_bucket(self, bucket):
+    def csr_allreduce_bucket(self, bucket, dp_group):
         csr_list = []
         for csr in bucket:
-            csr_list.append(self.csr_allreduce(csr))
+            csr_list.append(self.csr_allreduce(csr, dp_group))
         return csr_list
 
-    def csr_allreduce(self, csr):
+    def csr_allreduce(self, csr, dp_group):
         # Pre-divide for fp16 stability
-        csr.values.div_(self.dp_world_size)
+        csr.values.div_(dist.get_world_size(group=dp_group))
 
-        indices_device_list = self.csr_all_gather(csr.indices)
-        values_device_list = self.csr_all_gather(csr.values)
+        indices_device_list = self.csr_all_gather(csr.indices, dp_group)
+        values_device_list = self.csr_all_gather(csr.values, dp_group)
 
         csr.indices = torch.cat(indices_device_list)
         csr.values = torch.cat(values_device_list)
         return csr
 
-    def csr_all_gather(self, value):
+    def csr_all_gather(self, value, dp_group):
         my_size = torch.LongTensor([value.size()[0]]).to(self.device)
-        all_sizes = self.all_gather_scalar(my_size)
+        all_sizes = self.all_gather_scalar(my_size, dp_group)
         max_size = torch.cat(all_sizes).max()
         fill_size = (max_size - my_size)
 
@@ -1235,16 +1278,16 @@ class DeepSpeedEngine(Module):
         if value.dim() == 1:
             if fill_size > 0:
                 value = torch.cat([value, value.new_zeros(fill_size)])
-            tensor_list = [value.new_zeros(max_size) for _ in range(self.dp_world_size)]
+            tensor_list = [value.new_zeros(max_size) for _ in range(dist.get_world_size(group=dp_group))]
         else:
             if fill_size > 0:
                 value = torch.cat([value, value.new_zeros(fill_size, value.size()[1])])
             tensor_list = [
                 value.new_zeros(max_size,
-                                value.size()[1]) for _ in range(self.dp_world_size)
+                                value.size()[1]) for _ in range(dist.get_world_size(group=dp_group))
             ]
 
-        dist.all_gather(tensor_list, value, group=self.data_parallel_group)
+        dist.all_gather(tensor_list, value, group=dp_group)
         tensors = []
         for dev_idx, t in enumerate(tensor_list):
             size = all_sizes[dev_idx][0]
@@ -1254,9 +1297,9 @@ class DeepSpeedEngine(Module):
 
         return tensors
 
-    def all_gather_scalar(self, value):
-        tensor_list = [value.new_zeros(value.size()) for _ in range(self.dp_world_size)]
-        dist.all_gather(tensor_list, value, group=self.data_parallel_group)
+    def all_gather_scalar(self, value, dp_group):
+        tensor_list = [value.new_zeros(value.size()) for _ in range(dist.get_world_size(group=dp_group))]
+        dist.all_gather(tensor_list, value, group=dp_group)
         return tensor_list
 
     def module_state_dict(self, destination=None, prefix='', keep_vars=False):
@@ -1268,7 +1311,7 @@ class DeepSpeedEngine(Module):
         if self.mpu:
             dp_rank = self.mpu.get_data_parallel_rank()
 
-        num_local_experts = self.num_experts // self.dp_world_size
+        num_local_experts = self.num_experts // self.ep_world_size
         for local_expert_id in range(num_local_experts):
             global_expert_id = dp_rank * num_local_experts + local_expert_id
             expert_state_dict = torch.load(
@@ -1516,7 +1559,6 @@ class DeepSpeedEngine(Module):
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
-        print(f"deepspeed checkpoint function called at rank {torch.distributed.get_rank()} on module {self}")
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 
@@ -1609,9 +1651,10 @@ class DeepSpeedEngine(Module):
             dp_rank = self.mpu.get_data_parallel_rank()
 
         # TODO: add assertion for divisibility
-        num_local_experts = self.num_experts // self.dp_world_size
+        num_local_experts = self.num_experts // self.ep_world_size
         experts_state_dict, model_state_dict = self._get_moe_state_dict(self.module_state_dict(), num_local_experts, dp_rank)
 
+        # TODO: update num experts info,.. in checkpoint
         state = {
             'module':
             model_state_dict,
