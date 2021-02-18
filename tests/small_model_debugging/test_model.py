@@ -60,10 +60,6 @@ def print0(msg):
         print(msg, flush=True)
 
 
-rank = int(os.environ['RANK'])
-print('seed:', 2222 + rank)
-torch.random.manual_seed(2222 + rank)
-
 config_dict = {
     "train_batch_size": 8,
     "steps_per_print": 1,
