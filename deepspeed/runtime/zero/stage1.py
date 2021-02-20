@@ -806,14 +806,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
     # Return base optimizer states.
     # This method assumes that each param group contains a single flattened tensor.
-    def _get_base_optimizer_state(self):
+    def _get_base_optimizer_state(self, key):
         optimizer_groups_state = []
 
         for group_index, group in enumerate(self.optimizer.param_groups):
             param_paddings = self._get_local_group_paddings(group_index)
 
             group_lean_state = []
-            for param_idx, param in enumerate(group['params']):
+            for param_idx, param in enumerate(group[key]):
                 lean_state = self._get_state_without_padding(self.optimizer.state[param],
                                                              param_paddings[param_idx])
                 group_lean_state.append(lean_state)
@@ -845,6 +845,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             'local_sub_partitions_of_fp32_groups'] = self.local_sub_partitions_of_fp32_groups
         return state_dict
 
+    def _get_single_state_without_padding(self, value, padding):
+        lean_length = value.numel() - padding
+        return value[:lean_length]
+
+    def _remove_opt_padding(self, state_dict):
+        for group_idx, param_group_dict in enumerate(state_dict['param_groups']):
+            param_paddings = self._get_local_group_paddings(group_idx)
+            for local_param_idx, global_param_id in enumerate(param_group_dict['params']):
+                for key in state_dict['state'][global_param_id].keys():
+                    state_dict['state'][global_param_id][key] = self._get_single_state_without_padding(state_dict['state'][global_param_id][key],
+                                                                                                       param_paddings[local_param_idx])
+        return state_dict
+
+
     def _elastic_state_dict(self):
         """
             Returns a dict that can be loaded for elastic training with different DP degree
@@ -853,7 +867,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+        #state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+        import copy
+        state_dict['base_optimizer_state'] = self._remove_opt_padding(copy.deepcopy(self.optimizer.state_dict()))
 
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_OPTIMIZER_STATES
         state_dict['partition_count'] = self.partition_count
@@ -863,7 +879,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.local_sub_partitions_of_fp32_groups)
         state_dict['local_sub_partitions_of_fp32_groups'] = fp32_groups_without_padding
-
+        state_dict['rigid_local_sub_partitions_of_fp32_groups'] = self.local_sub_partitions_of_fp32_groups
+        state_dict['rigid_base_optimizer_state'] = self.optimizer.state_dict()
         return state_dict
 
     def state_dict(self):
@@ -996,11 +1013,30 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return group_optimizer_states
 
+#    def _remove_opt_padding(self, state_dict):
+#         for group_idx, param_group_dict in enumerate(state_dict['param_groups']):
+#             param_paddings = self._get_local_group_paddings(group_index)
+#             for local_param_idx, global_param_id in enumerate(param_group_dict['params']):
+#                 for key in state_dict['state'][global_param_id].keys():
+#                     state_dict['state'][global_param_id][key] = self._get_state_without_padding(state_dict['state'][global_param_id][key],
+#                                                                                                 param_paddings[local_param_idx])
+#         return state_dict
+
+    def _restore_base_optimizer_state(self, state_dict_list):
+        merged_optimizer_states = []
+        #HACK: for 1 gpu hack
+        base_optimizer_state = state_dict_list[0]['base_optimizer_state']
+        for group_idx, param_group_dict in enumerate(base_optimizer_state['param_groups']):
+            max_elems_per_comm = self.max_elems_per_comm[group_idx]
+            for local_param_idx, global_param_id in enumerate(param_group_dict['params']):
+                for key in base_optimizer_state['state'][global_param_id].keys():
+                    base_optimizer_state['state'][global_param_id][key] = self._partition_base_optimizer_state(key, [base_optimizer_state['state'][global_param_id][key]], max_elems_per_comm)
+
     # Restore base optimizer state from checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
     # 2) Extracting optimizer state for current partition from the merged state
     # 3) Using the extracted value to directly update the base optimizer.
-    def _restore_base_optimizer_state(self, state_dict_list):
+    def __restore_base_optimizer_state(self, state_dict_list):
         base_optimizer_group_states = []
         for group_idx in range(len(self.optimizer.param_groups)):
             all_partition_group_states = [
@@ -1069,8 +1105,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
         self.overflow = state_dict_list[0]['overflow']
 
+        rank = torch.distributed.get_rank()
+
         if load_optimizer_states:
             self._restore_base_optimizer_state(state_dict_list)
+            #self.optimizer.load_state_dict(state_dict_list[rank]['rigid_base_optimizer_state'])
+
+        #state_dict = state_dict_list[torch.distributed.get_rank()]
+        #print(f"[{torch.distributed.get_rank()}] ********** state_dict['rigid_local_sub_partitions_of_fp32_groups']={state_dict['rigid_local_sub_partitions_of_fp32_groups']}")
+        #for curr_group, saved_group in zip(self.local_sub_partitions_of_fp32_groups, state_dict['rigid_local_sub_partitions_of_fp32_groups']):
+        #    for curr_param, saved_param in zip(curr_group, saved_group):
+        #        curr_param.data.copy_(saved_param.data)
+        #print(f"[{torch.distributed.get_rank()}] ********** self.local_sub_partitions_of_fp32_groups={self.local_sub_partitions_of_fp32_groups}")
 
         if load_from_fp32_weights:
             self._restore_from_fp32_weights(state_dict_list)
@@ -1104,6 +1150,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             self._rigid_load_state_dict(
                 state_dict_list[dist.get_rank(group=self.dp_process_group)],
                 load_optimizer_states)
+
+        #self.refresh_fp32_params()
 
     def _dump_optimizer_state(self, message):
         logger.info(f'{message}')
