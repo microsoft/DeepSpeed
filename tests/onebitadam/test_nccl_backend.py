@@ -1,26 +1,26 @@
-from mpi4py import MPI
 import time
 import torch
 import torch.distributed as dist
 import numpy as np
+import argparse
 import deepspeed
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 
-comm = MPI.COMM_WORLD
-size = comm.Get_size()
-rank = comm.Get_rank()
+parser = argparse.ArgumentParser()
+parser.add_argument('--local_rank', type=int, default=-1)
+args = parser.parse_args()
 
-#TODO: Detect the hostname we are running on automatically
-torch.distributed.init_process_group(backend='nccl',
-                                     init_method='tcp://worker-0:2245',
-                                     world_size=size,
-                                     rank=rank)
+dist.init_process_group(backend='nccl')
+
+torch.cuda.set_device(args.local_rank)
+device = torch.device("cuda", args.local_rank)
+
+size = dist.get_world_size()
+rank = dist.get_rank()
 
 backend = NcclBackend()
-
-device = torch.device('cuda', rank % torch.cuda.device_count())
-
+local_rank = args.local_rank
 
 # A simulated compression function using torch.distributed
 def torch_sim(a):
@@ -44,7 +44,7 @@ def torch_sim(a):
     return a_server_compressed, worker_error, server_error
 
 
-tensor_size = 100 * 2**20
+tensor_size = 300 * 2**20
 server_size = int(tensor_size / size)
 if tensor_size % (8 * size) != 0:
     right_tensor_size = tensor_size + (8 * size - (tensor_size % (8 * size)))
@@ -61,7 +61,6 @@ server_error = torch.zeros(right_server_size, device=device)
 
 a_torch, worker_error_torch, server_error_torch = torch_sim(a)
 torch.cuda.empty_cache()
-local_rank = rank % torch.cuda.device_count()
 
 a_after = backend.compressed_allreduce(a, worker_error, server_error, local_rank)
 
