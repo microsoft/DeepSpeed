@@ -79,39 +79,34 @@ class NcclBackend(object):
 
         # worker_scale = self.compression_backend.cupy2torch(cupy_worker_scale)
         recvbuf_sign = self.compression_backend.cupy2torch(cupy_recvbuf_sign)
-        recvbuf_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale)
+        #recvbuf_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale)
+        recvbuf_scale = [torch.zeros(1, dtype=worker_scale.dtype, device=torch.device(local_rank)) for i in range(self.size)]
 
+
+        print(f"recvbuf_scale = {recvbuf_scale}, worker_scale={worker_scale}")
         # communication phase 1
         gather_start = time.time()
-        requests = []
-        for idx in range(self.size):
-            requests += self.my_igather(self.rank,
-                                        self.size,
-                                        self.world_group,
-                                        sign_list_packed[idx],
-                                        recvbuf_sign,
-                                        root=idx)
-            requests += self.my_igather(self.rank,
-                                        self.size,
-                                        self.world_group,
-                                        worker_scale,
-                                        recvbuf_scale,
-                                        root=idx)
-        for i in range(len(requests)):
-            requests[i].wait()
+        # Alltoall for sign
+        dist.all_to_all_single(recvbuf_sign, torch.stack(sign_list_packed))
+        # Allgather for scale
+        dist.all_gather(recvbuf_scale, worker_scale)
+        print(f"recvbuf_scale = {recvbuf_scale}, worker_scale={worker_scale}")
+
+
+
         gather_end = time.time()
 
         # cupy_sign_list_packed, sign_list_packed, cupy_worker_scale, worker_scale = None, None, None, None
         cupy_sign_list_packed = None
 
         cupy_recvbuf_sign = self.compression_backend.torch2cupy(recvbuf_sign)
-        cupy_recvbuf_scale = self.compression_backend.torch2cupy(recvbuf_scale)
+        #cupy_recvbuf_scale = self.compression_backend.torch2cupy(torch.stack(recvbuf_scale))
 
         compensated_server_m = self.compression_backend.cupy2torch(
             (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
                 self.size,
                 -1)).float().add_(-0.5).mul_(2.0).mul_(
-                    self.compression_backend.cupy2torch(cupy_recvbuf_scale).mul_(
+                    torch.stack(recvbuf_scale).mul_(
                         1 / self.size)).sum(0)
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(
@@ -146,7 +141,7 @@ class NcclBackend(object):
         # server_scale = self.compression_backend.cupy2torch(cupy_server_scale)
         cupy_recvbuf_scale_server = cupy.zeros([self.size,
                                                 1],
-                                               dtype=cupy_recvbuf_scale.dtype)
+                                               dtype=cupy_worker_scale.dtype)
         # cupy_recvbuf_scale, recvbuf_scale = None, None
 
         recvbuf_scale_server = [
