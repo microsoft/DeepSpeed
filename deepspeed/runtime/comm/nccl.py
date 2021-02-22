@@ -82,17 +82,12 @@ class NcclBackend(object):
         #recvbuf_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale)
         recvbuf_scale = [torch.zeros(1, dtype=worker_scale.dtype, device=torch.device(local_rank)) for i in range(self.size)]
 
-
-        print(f"recvbuf_scale = {recvbuf_scale}, worker_scale={worker_scale}")
         # communication phase 1
         gather_start = time.time()
         # Alltoall for sign
         dist.all_to_all_single(recvbuf_sign, torch.stack(sign_list_packed))
         # Allgather for scale
         dist.all_gather(recvbuf_scale, worker_scale)
-        print(f"recvbuf_scale = {recvbuf_scale}, worker_scale={worker_scale}")
-
-
 
         gather_end = time.time()
 
