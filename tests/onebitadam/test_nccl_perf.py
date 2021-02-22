@@ -7,7 +7,7 @@ import deepspeed
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 from deepspeed.utils.timer import SynchronizedWallClockTimer
-from statistics import mean 
+from statistics import mean
 
 timers = SynchronizedWallClockTimer()
 
@@ -20,11 +20,11 @@ dist.init_process_group(backend='nccl')
 torch.cuda.set_device(args.local_rank)
 device = torch.device("cuda", args.local_rank)
 
-size = dist.get_world_size() 
-rank = dist.get_rank() 
+size = dist.get_world_size()
+rank = dist.get_rank()
 
 backend = NcclBackend()
-local_rank = args.local_rank  
+local_rank = args.local_rank
 
 # Setting tensor_size (BERT-Large)
 tensor_size = 300 * 2**20
@@ -79,11 +79,13 @@ if rank == 0:
 minlat = round(min(time_list) * convert)
 maxlat = round(max(time_list) * convert)
 meanlat = round(mean(time_list) * convert, places)
-print("min, max, and mean = {} ms, {} ms, {} ms".format(minlat, maxlat, meanlat)) if rank == 0 else None
+print("min, max, and mean = {} ms, {} ms, {} ms".format(minlat,
+                                                        maxlat,
+                                                        meanlat)) if rank == 0 else None
 #print("tensor shape", a.shape)
-duration = meanlat/1e3
-tput = ((tensor_size*4)/duration)
-print("algo throughput: %f Bytes/s, %f GB/s" % (tput, tput/1e9)) if rank == 0 else None
+duration = meanlat / 1e3
+tput = ((tensor_size * 4) / duration)
+print("algo throughput: %f Bytes/s, %f GB/s" % (tput, tput / 1e9)) if rank == 0 else None
 size = tensor_size * 4
 n = dist.get_world_size()
 busbw = (size / duration) * (2 * (n - 1) / n)

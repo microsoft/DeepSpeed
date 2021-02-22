@@ -10,7 +10,7 @@ from deepspeed.runtime.comm.mpi import MpiBackend
 # Configure wall clock timer
 from deepspeed.utils.timer import SynchronizedWallClockTimer
 
-from statistics import mean 
+from statistics import mean
 
 timers = SynchronizedWallClockTimer()
 
