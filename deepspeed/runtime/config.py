@@ -22,22 +22,29 @@ from ..elasticity.config import ElasticityConfigError
 from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
 
+from ..profiling.config import DeepSpeedFlopsProfilerConfig
+
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAM_OPTIMIZER = 'adam'
+ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
 ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
+    ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
     ONEBIT_LAMB_OPTIMIZER,
 ]
 
-# extra optimizer parameters for adam
+# extra optimizer parameters for adam/adamw
 TORCH_ADAM_PARAM = "torch_adam"
-ADAM_W_MODE_PARAM = "adam_w_mode"
+
+
+class DeepSpeedConfigError(Exception):
+    pass
 
 
 def get_pld_enabled(param_dict):
@@ -471,6 +478,21 @@ def get_tensorboard_job_name(param_dict):
         return TENSORBOARD_JOB_NAME_DEFAULT
 
 
+def get_checkpoint_params(param_dict):
+    return param_dict.get(CHECKPOINT, {})
+
+
+def get_checkpoint_tag_validation_mode(checkpoint_params):
+    tag_validation_mode = checkpoint_params.get(CHECKPOINT_TAG_VALIDATION,
+                                                CHECKPOINT_TAG_VALIDATION_DEFAULT)
+    tag_validation_mode = tag_validation_mode.upper()
+    if tag_validation_mode in CHECKPOINT_TAG_VALIDATION_MODES:
+        return tag_validation_mode
+    else:
+        raise DeepSpeedConfigError("Checkpoint config contains invalid tag_validation " \
+            f"value of {tag_validation_mode}, expecting one of {CHECKPOINT_TAG_VALIDATION_MODES}")
+
+
 '''Write deepspeed config files by modifying basic templates.
 Can be used for quicly changing parameters via command line parameters.'''
 
@@ -615,6 +637,7 @@ class DeepSpeedConfig(object):
         self.scheduler_params = get_scheduler_params(param_dict)
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
+        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
@@ -625,6 +648,11 @@ class DeepSpeedConfig(object):
 
         self.pld_enabled = get_pld_enabled(param_dict)
         self.pld_params = get_pld_params(param_dict)
+
+        checkpoint_params = get_checkpoint_params(param_dict)
+        validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
+        self.checkpoint_tag_validation_enabled = validation_mode != ValidationMode.IGNORE
+        self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
 
     def _batch_assertion(self):
 

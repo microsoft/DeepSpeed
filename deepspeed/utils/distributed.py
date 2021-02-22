@@ -3,24 +3,33 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import os
 import torch
+from datetime import timedelta
 
 from .logging import logger
-from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 
 
 def init_distributed(dist_backend="nccl",
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
-                     verbose=True):
-    """
-    Initialize torch.distributed backend, potentially performing MPI discovery if needed
-    Arguments:
-        dist_backend (str): torch distributed backend, e.g., nccl, mpi, gloo
-        auto_mpi_discovery (bool): if distributed environment variables are not set, attempt to discover them from MPI
-        distributed_port (int, optional): torch distributed backend port
-        verbose (bool, optional): verbose logging
-    """
+                     verbose=True,
+                     timeout=default_pg_timeout,
+                     init_method=None):
+    """Initialize torch.distributed backend, potentially performing MPI discovery if needed
 
+    Arguments:
+        dist_backend: Optional (str). torch distributed backend, e.g., nccl, mpi, gloo
+
+        auto_mpi_discovery Optional (bool). if distributed environment variables are not set, attempt to discover them from MPI
+
+        distributed_port: Optional (int). torch distributed backend port
+
+        verbose: Optional (bool). verbose logging
+
+        timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
+
+        init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
+    """
     required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
     if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
         if verbose:
@@ -36,7 +45,10 @@ def init_distributed(dist_backend="nccl",
         if verbose:
             logger.info(
                 "Initializing torch distributed with backend: {}".format(dist_backend))
-        torch.distributed.init_process_group(backend=dist_backend)
+        assert isinstance(timeout, timedelta)
+        torch.distributed.init_process_group(backend=dist_backend,
+                                             timeout=timeout,
+                                             init_method=init_method)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
@@ -77,9 +89,10 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
                     os.environ['MASTER_PORT']))
 
     if torch.distributed.is_initialized():
-        assert dist.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(rank, dist.get_rank())
-        assert dist.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
-            world_size, dist.get_world_size())
+        assert torch.distributed.get_rank() == rank, "MPI rank {} does not match torch rank {}".format(
+            rank, torch.distributed.get_rank())
+        assert torch.distributed.get_world_size() == world_size, "MPI world size {} does not match torch world size {}".format(
+            world_size, torch.distributed.get_world_size())
 
 
 def in_aml():
