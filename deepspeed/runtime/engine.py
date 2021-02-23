@@ -1272,7 +1272,8 @@ class DeepSpeedEngine(Module):
         for local_expert_id in range(num_local_experts):
             global_expert_id = dp_rank * num_local_experts + local_expert_id
             expert_state_dict = torch.load(
-                self._get_expert_ckpt_name(checkpoint_path, global_expert_id, tag))
+                self._get_expert_ckpt_name(checkpoint_path, global_expert_id, tag),
+                map_location=f'cuda:{self.local_rank}')
 
             # Updating global -> local expert ids
             moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
@@ -1372,7 +1373,7 @@ class DeepSpeedEngine(Module):
             return None, None
 
         logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
-        checkpoint = torch.load(load_path, map_location=lambda storage, loc: storage)
+        checkpoint = torch.load(load_path, map_location=f'cuda:{self.local_rank}')
 
         if isinstance(self.module, PipelineModule):
             # Pipeline parallelism uses this to load its own checkpoint files.
@@ -1382,9 +1383,8 @@ class DeepSpeedEngine(Module):
             self.load_moe_state_dict(load_dir, tag,
                                      state_dict=checkpoint['module'],
                                      strict=load_module_strict)
-        else:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=load_module_strict)
+        self.load_module_state_dict(state_dict=checkpoint['module'],
+                                    strict=load_module_strict)
         if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
@@ -1516,7 +1516,8 @@ class DeepSpeedEngine(Module):
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
         """
-        print(f"deepspeed checkpoint function called at rank {torch.distributed.get_rank()} on module {self}")
+        # removed debug log
+        # print(f"deepspeed checkpoint function called at rank {torch.distributed.get_rank()} on module {self}")
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
 

@@ -21,7 +21,7 @@ class MoE(torch.nn.Module):
     def __init__(self, hidden_size, output_dropout_prob, expert, num_experts = 1, k = 1): 
         super(MoE, self).__init__()
 
-        world_size = dist.get_world_size()
+        world_size = 1 if not dist.is_initialized() else dist.get_world_size()
         num_local_experts = num_experts // world_size
 
         self.num_experts = num_experts

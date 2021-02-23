@@ -149,7 +149,7 @@ class MOELayer(Base):
         # for expert in self.experts:
         #     for p in experts.parameters():
         #         p.expert = True  # type: ignore
-        self.world_size = dist.get_world_size(self.group)
+        self.world_size = 1 if not dist.is_initialized() else dist.get_world_size(self.group)
         self.num_local_experts = num_local_experts
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
@@ -167,14 +167,16 @@ class MOELayer(Base):
 
         #print(f"alltoall called at rank:{dist.get_rank()} with dispatched_input shape:{dispatched_input.shape}")
         a = time.perf_counter()
-        dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+        if self.world_size > 1:
+            dispatched_input = _AllToAll.apply(self.group, dispatched_input)
         b = time.perf_counter()
         #print(f"alltoall took {b-a} seconds at rank:{dist.get_rank()}")
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.world_size, self.num_local_experts, -1, d_model)
         #print(f"reshaped input after alltoall called at rank:{dist.get_rank()} is dispatched_input shape:{dispatched_input.shape}")
         expert_output = self.experts(dispatched_input)
-        expert_output = _AllToAll.apply(self.group, expert_output)
+        if self.world_size > 1:
+            expert_output = _AllToAll.apply(self.group, expert_output)
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.world_size * self.num_local_experts, -1, d_model)
         combined_output = torch.einsum("sec,ecm->sm", combine_weights, expert_output)
