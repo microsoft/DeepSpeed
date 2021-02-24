@@ -10,6 +10,7 @@ def replace_transformer_layer(orig_layer_impl,
                               seed=-1,
                               preln=True,
                               fp16=True,
+                              training=True,
                               huggingface=False,
                               local_rank=-1):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
@@ -22,6 +23,7 @@ def replace_transformer_layer(orig_layer_impl,
         seed (int): random seed value
         preln (bool): does the original layer implementation do pre or post layer norm?
         fp16 (bool): fp16 or fp32
+        Training (bool): select between training (True) or inference (False) mode
         huggingface (bool): huggingface implementation is unique (supports both encoder/decoder modes)
 
     Returns:
@@ -40,7 +42,8 @@ def replace_transformer_layer(orig_layer_impl,
             fp16=fp16,
             pre_layer_norm=preln,
             huggingface=huggingface,
-            local_rank=local_rank)
+            local_rank=local_rank,
+            training=training)
         new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
 
         # copy relevant state from child -> new module
