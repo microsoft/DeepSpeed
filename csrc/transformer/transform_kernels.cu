@@ -259,6 +259,13 @@ __global__ void bias_add_transform_0213<__half>(__half* output,
 
     bias_arr = bias_vec[d3];
     vals_arr = vals_vec[d3];
+
+#if __ACC_HALF__
+    output_half[0] = vals_half[0] + bias_half[0];
+    output_half[1] = vals_half[1] + bias_half[1];
+    output_half[2] = vals_half[2] + bias_half[2];
+    output_half[3] = vals_half[3] + bias_half[3];
+#else
     float2 bias_arr_f[4];
     float2 vals_arr_f[4];
 #pragma unroll
@@ -269,12 +276,7 @@ __global__ void bias_add_transform_0213<__half>(__half* output,
         vals_arr_f[l].y += bias_arr_f[l].y;
         output_half[l] = __float22half2_rn(vals_arr_f[l]);
     }
-
-    // output_half[0] = vals_half[0] + bias_half[0];
-    // output_half[1] = vals_half[1] + bias_half[1];
-    // output_half[2] = vals_half[2] + bias_half[2];
-    // output_half[3] = vals_half[3] + bias_half[3];
-
+#endif
     output_vec[d3] = output_arr;
 
 #endif
