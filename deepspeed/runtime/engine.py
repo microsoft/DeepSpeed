@@ -1425,9 +1425,10 @@ class DeepSpeedEngine(Module):
             self.load_moe_state_dict(load_dir, tag,
                                      state_dict=checkpoint['module'],
                                      strict=load_module_strict)
-        else:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=load_module_strict)
+        
+        self.load_module_state_dict(state_dict=checkpoint['module'],
+                                    strict=load_module_strict)
+        
         if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
