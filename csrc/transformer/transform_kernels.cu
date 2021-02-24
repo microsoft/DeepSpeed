@@ -260,7 +260,7 @@ __global__ void bias_add_transform_0213<__half>(__half* output,
     bias_arr = bias_vec[d3];
     vals_arr = vals_vec[d3];
 
-#if __ACC_HALF__
+#if defined(__ACC_HALF__)
     output_half[0] = vals_half[0] + bias_half[0];
     output_half[1] = vals_half[1] + bias_half[1];
     output_half[2] = vals_half[2] + bias_half[2];
