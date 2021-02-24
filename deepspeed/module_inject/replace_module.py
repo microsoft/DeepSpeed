@@ -7,9 +7,8 @@ def replace_transformer_layer(orig_layer_impl,
                               model,
                               micro_batch_size,
                               bert_config,
-                              seed,
-                              max_seq_length,
-                              preln=False,
+                              seed=-1,
+                              preln=True,
                               fp16=True,
                               huggingface=False,
                               local_rank=-1):
@@ -21,7 +20,6 @@ def replace_transformer_layer(orig_layer_impl,
         micro_batch_size (int): micro batch size per gpu used during training/eval
         bert_config (dict): model config containing hidden size, attention heads, etc.
         seed (int): random seed value
-        max_seq_length (int): max sequence length for training
         preln (bool): does the original layer implementation do pre or post layer norm?
         fp16 (bool): fp16 or fp32
         huggingface (bool): huggingface implementation is unique (supports both encoder/decoder modes)
@@ -32,7 +30,6 @@ def replace_transformer_layer(orig_layer_impl,
     def replace_fn(child):
         transformer_config = deepspeed.DeepSpeedTransformerConfig(
             batch_size=micro_batch_size,
-            max_seq_length=max_seq_length,
             hidden_size=bert_config.hidden_size,
             heads=bert_config.num_attention_heads,
             attn_dropout_ratio=bert_config.attention_probs_dropout_prob,
