@@ -31,10 +31,10 @@ class SparseAttnBuilder(OpBuilder):
             self.warning(f"{self.NAME} cuda is not available from torch")
         else:
             major, minor = torch.version.cuda.split('.')[:2]
-            cuda_compatible = int(major) == 10 and int(minor) >= 1
+            cuda_compatible = (int(major) >= 10 and int(minor) >= 1) or (int(major) >= 11)
             if not cuda_compatible:
                 self.warning(
-                    f"{self.NAME} requires CUDA version 10.1+, does not currently support >=11 or <10.1"
+                    f"{self.NAME} requires CUDA version 10.1+, does not currently support <10.1"
                 )
 
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
