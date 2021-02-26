@@ -41,6 +41,19 @@ Pipeline Parallelism
 
    pipeline
 
+Optimizers
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   optimizers
+
+LR Schedules
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   schedules
 
 Indices and tables
 ------------------
