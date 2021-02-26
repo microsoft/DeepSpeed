@@ -55,6 +55,13 @@ Learning Rate Schedulers
 
    schedulers
 
+Flops Profiler
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   flops-profiler
+
 Indices and tables
 ------------------
 
