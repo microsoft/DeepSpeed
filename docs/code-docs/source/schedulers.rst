@@ -1,7 +1,7 @@
 Learning Rate Schedulers
 ===================
 
-DeepSpeed offers implementations of ``LRRangeTest``, ``OneCycle``, ``WarmupLR``, ``WarmupDecayLR`` learning rate schedules.
+DeepSpeed offers implementations of ``LRRangeTest``, ``OneCycle``, ``WarmupLR``, ``WarmupDecayLR`` learning rate schedulers.
 
 
 LRRangeTest
