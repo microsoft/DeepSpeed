@@ -48,12 +48,12 @@ Optimizers
 
    optimizers
 
-LR Schedules
+Learning Rate Schedulers
 --------------------
 .. toctree::
    :maxdepth: 2
 
-   schedules
+   schedulers
 
 Indices and tables
 ------------------
