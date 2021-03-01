@@ -46,7 +46,7 @@ class NcclBackend(object):
                              server_error,
                              local_rank):
 
-        all_start_time = time.time()
+        # all_start_time = time.time()
         original_size = buffer_m.numel()
         worker_error_size = worker_error.numel()
         cupy.cuda.Device(local_rank).use()
@@ -70,7 +70,7 @@ class NcclBackend(object):
             [self.size,
              cupy_sign_list_packed[self.rank].size],
             dtype=cupy_sign_list_packed[0].dtype)
-        cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
+        # cupy_recvbuf_scale = cupy.zeros([self.size, 1], dtype=cupy_worker_scale.dtype)
 
         sign_list_packed = [
             self.compression_backend.cupy2torch(cupy_sign_list_packed[idx])
@@ -80,16 +80,20 @@ class NcclBackend(object):
         # worker_scale = self.compression_backend.cupy2torch(cupy_worker_scale)
         recvbuf_sign = self.compression_backend.cupy2torch(cupy_recvbuf_sign)
         #recvbuf_scale = self.compression_backend.cupy2torch(cupy_recvbuf_scale)
-        recvbuf_scale = [torch.zeros(1, dtype=worker_scale.dtype, device=torch.device(local_rank)) for i in range(self.size)]
+        recvbuf_scale = [
+            torch.zeros(1,
+                        dtype=worker_scale.dtype,
+                        device=torch.device(local_rank)) for i in range(self.size)
+        ]
 
         # communication phase 1
-        gather_start = time.time()
+        # gather_start = time.time()
         # Alltoall for sign
         dist.all_to_all_single(recvbuf_sign, torch.stack(sign_list_packed))
         # Allgather for scale
         dist.all_gather(recvbuf_scale, worker_scale)
 
-        gather_end = time.time()
+        # gather_end = time.time()
 
         # cupy_sign_list_packed, sign_list_packed, cupy_worker_scale, worker_scale = None, None, None, None
         cupy_sign_list_packed = None
@@ -101,8 +105,7 @@ class NcclBackend(object):
             (cupy.unpackbits(cupy_recvbuf_sign.flatten())).reshape(
                 self.size,
                 -1)).float().add_(-0.5).mul_(2.0).mul_(
-                    torch.stack(recvbuf_scale).mul_(
-                        1 / self.size)).sum(0)
+                    torch.stack(recvbuf_scale).mul_(1 / self.size)).sum(0)
         compensated_server_m.add_(server_error)
         server_scale = torch.norm(compensated_server_m) / np.sqrt(
             compensated_server_m.numel())

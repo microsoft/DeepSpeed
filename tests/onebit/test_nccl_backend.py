@@ -22,6 +22,7 @@ rank = dist.get_rank()
 backend = NcclBackend()
 local_rank = args.local_rank
 
+
 # A simulated compression function using torch.distributed
 def torch_sim(a):
     a_sign = a.sign().add_(1).bool().float().add_(-0.5).mul_(2.0)
