@@ -19,7 +19,8 @@ class MoE(torch.nn.Module):
         DeepSpeed MOE API: This defines a simple API that can be used from client-side code.
         E.g. See more details of usage from Megatron-LM code in https://github.com/microsoft/DeepSpeedExamples/tree/amawa/moe
     '''
-    def __init__(self, hidden_size, output_dropout_prob, expert, num_experts = 1, k = 1): 
+    def __init__(self, hidden_size, output_dropout_prob, expert, num_experts = 1, k = 1, capacity_factor = 1.,
+                 noise_gate = True): 
         super(MoE, self).__init__()
 
         assert groups.expert_parallel_is_initialized(), \
@@ -31,7 +32,7 @@ class MoE(torch.nn.Module):
         experts = Experts(expert, num_local_experts)
         # TODO Capacity factor needs to be configurable
         # TODO add top-k gate
-        self.deepspeed_moe = MOELayer(TopKGate(hidden_size, num_experts), 
+        self.deepspeed_moe = MOELayer(TopKGate(hidden_size, num_experts, k, capacity_factor, noise_gate), 
                                       experts,
                                       num_local_experts,
                                       group=groups.get_expert_parallel_group())
@@ -42,4 +43,3 @@ class MoE(torch.nn.Module):
         output = self.deepspeed_moe(hidden_states)
         output = self.dropout(output)
         return output, self.deepspeed_moe.l_aux
-
