@@ -624,11 +624,11 @@ class DeepSpeedEngine(Module):
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
-            from deepspeed.runtime.fp16.onebit.adam import Adam
-            optimizer = Adam(model_parameters, self, **optimizer_parameters)
+            from deepspeed.runtime.fp16.onebit.onebitadam import OnebitAdam
+            optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
-            from deepspeed.runtime.fp16.onebit.lamb import Lamb
-            optimizer = Lamb(model_parameters, self, **optimizer_parameters)
+            from deepspeed.runtime.fp16.onebit.onebitlamb import OnebitLamb
+            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)

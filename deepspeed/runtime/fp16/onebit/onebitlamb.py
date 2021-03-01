@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 
-class Lamb(torch.optim.Optimizer):
+class OnebitLamb(torch.optim.Optimizer):
     """Implements the 1-bit Lamb algorithm. Currently GPU-only.
 
     Arguments:
@@ -85,7 +85,7 @@ class Lamb(torch.optim.Optimizer):
                         max_coeff=max_coeff,
                         min_coeff=min_coeff)
 
-        super(Lamb, self).__init__(params, defaults)
+        super(OnebitLamb, self).__init__(params, defaults)
         self.eps_mode = 0 if eps_inside_sqrt else 1
         assert (dist.is_initialized())
 

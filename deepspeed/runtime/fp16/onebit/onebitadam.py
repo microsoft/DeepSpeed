@@ -11,7 +11,7 @@ import torch.distributed as dist
 from deepspeed.utils.logging import logger
 
 
-class Adam(torch.optim.Optimizer):
+class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
     For usage example please see, https://www.deepspeed.ai/tutorials/onebit-adam/
     It has been proposed in APMSqueeze (https://arxiv.org/abs/2008.11343)
@@ -68,7 +68,7 @@ class Adam(torch.optim.Optimizer):
                         weight_decay=weight_decay,
                         max_grad_norm=max_grad_norm)
 
-        super(Adam, self).__init__(params, defaults)
+        super(OnebitAdam, self).__init__(params, defaults)
         self.eps_mode = 0 if eps_inside_sqrt else 1
         assert (dist.is_initialized())
 
