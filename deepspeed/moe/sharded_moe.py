@@ -62,8 +62,8 @@ def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = 
     # everything is in fp32 in this function
     if noise_gate:
         logits = logits + gumbel_rsample(logits.shape, device=logits.device)
-    logits_fp32 = logits.to(torch.float32)
-    gates = F.softmax(logits_fp32, dim=1)
+    # logits_fp32 = logits.to(torch.float32)
+    gates = F.softmax(logits, dim=1)
 
     # gates has shape of SE
     num_tokens = gates.shape[0]
@@ -104,13 +104,13 @@ def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = 
     combine_weights = torch.einsum("se,sc->sec", gates1, locations1_sc)
     dispatch_mask = combine_weights.bool()
 
-    return l_aux, combine_weights.type_as(logits), dispatch_mask
+    return l_aux, combine_weights, dispatch_mask
 
 def top2gating(logits: torch.Tensor, capacity_factor: float) -> Tuple[Tensor, Tensor, Tensor]:
     """Implements Top2Gating on logits."""
     # everything is in fp32 in this function
-    logits_fp32 = logits.to(torch.float32)
-    gates = F.softmax(logits_fp32, dim=1)
+    # logits_fp32 = logits.to(torch.float32)
+    gates = F.softmax(logits, dim=1)
 
     # gates has shape of SE
     num_tokens = gates.shape[0]
@@ -171,7 +171,7 @@ def top2gating(logits: torch.Tensor, capacity_factor: float) -> Tuple[Tensor, Te
     combine_weights = combine1_sec + combine2_sec
     dispatch_mask = combine_weights.bool()
 
-    return l_aux, combine_weights.type_as(logits), dispatch_mask
+    return l_aux, combine_weights, dispatch_mask
 
 class TopKGate(torch.nn.Module):
     """Gate module which implements Top2Gating as described in Gshard_.
@@ -198,13 +198,13 @@ class TopKGate(torch.nn.Module):
         # Only top-1 and top-2 are supported at the moment.
         if k != 1 and k != 2:
             raise ValueError('Only top-1 and top-2 gatings are supported.')
-        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False)
+        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False).float()
         self.k = k
         self.capacity_factor = capacity_factor
         self.noise_gate = noise_gate
 
     def forward(self, input: torch.Tensor) -> Tuple[Tensor, Tensor, Tensor]:  # type: ignore
-        logits = self.wg(input)
+        logits = self.wg(input.float())
         if self.k == 1:
             return top1gating(logits, self.capacity_factor, self.noise_gate)
         else:
@@ -260,5 +260,5 @@ class MOELayer(Base):
         expert_output = _AllToAll.apply(self.group, expert_output)
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.world_size * self.num_local_experts, -1, d_model)
-        combined_output = torch.einsum("sec,ecm->sm", combine_weights, expert_output)
+        combined_output = torch.einsum("sec,ecm->sm", combine_weights.type_as(input[0]), expert_output)
         return combined_output.reshape(input[0].shape)
