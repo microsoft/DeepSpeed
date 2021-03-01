@@ -61,7 +61,7 @@ def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = 
     """Implements Top1Gating on logits."""
     # everything is in fp32 in this function
     if noise_gate:
-        logits = logits + gumbel_rsample(logits.shape, device=logits.device)
+        logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
     # logits_fp32 = logits.to(torch.float32)
     gates = F.softmax(logits, dim=1)
 
@@ -73,7 +73,8 @@ def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = 
     capacity = math.ceil((num_tokens / num_experts) * capacity_factor)
 
     # Create a mask for 1st's expert per token
-    indices1_s = torch.argmax(gates, dim=1)
+    # noisy gating
+    indices1_s = torch.argmax(logits_w_noise if noise_gate else gates, dim=1)
     mask1 = F.one_hot(indices1_s, num_classes=num_experts)
 
     # Compute locations in capacity buffer
