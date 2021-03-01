@@ -20,7 +20,7 @@ class MoE(torch.nn.Module):
         E.g. See more details of usage from Megatron-LM code in https://github.com/microsoft/DeepSpeedExamples/tree/amawa/moe
     '''
     def __init__(self, hidden_size, output_dropout_prob, expert, num_experts = 1, k = 1, capacity_factor = 1.,
-                 noise_gate = True): 
+                 noisy_gate = False): 
         super(MoE, self).__init__()
 
         assert groups.expert_parallel_is_initialized(), \
@@ -32,7 +32,7 @@ class MoE(torch.nn.Module):
         experts = Experts(expert, num_local_experts)
         # TODO Capacity factor needs to be configurable
         # TODO add top-k gate
-        self.deepspeed_moe = MOELayer(TopKGate(hidden_size, num_experts, k, capacity_factor, noise_gate), 
+        self.deepspeed_moe = MOELayer(TopKGate(hidden_size, num_experts, k, capacity_factor, noisy_gate), 
                                       experts,
                                       num_local_experts,
                                       group=groups.get_expert_parallel_group())

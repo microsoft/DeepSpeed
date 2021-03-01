@@ -57,10 +57,10 @@ import torch.nn.functional as F
 
 import math
 
-def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = True) -> Tuple[Tensor, Tensor, Tensor]:
+def top1gating(logits: torch.Tensor, capacity_factor: float, noisy_gate: bool = False) -> Tuple[Tensor, Tensor, Tensor]:
     """Implements Top1Gating on logits."""
     # everything is in fp32 in this function
-    if noise_gate:
+    if noisy_gate:
         logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
     # logits_fp32 = logits.to(torch.float32)
     gates = F.softmax(logits, dim=1)
@@ -74,7 +74,7 @@ def top1gating(logits: torch.Tensor, capacity_factor: float, noise_gate: bool = 
 
     # Create a mask for 1st's expert per token
     # noisy gating
-    indices1_s = torch.argmax(logits_w_noise if noise_gate else gates, dim=1)
+    indices1_s = torch.argmax(logits_w_noise if noisy_gate else gates, dim=1)
     mask1 = F.one_hot(indices1_s, num_classes=num_experts)
 
     # Compute locations in capacity buffer
@@ -193,7 +193,7 @@ class TopKGate(torch.nn.Module):
     wg: torch.nn.Linear
 
     def __init__(self, model_dim: int, num_experts: int, k: int = 1,
-                 capacity_factor: float = 1.0, noise_gate: bool = True) -> None:
+                 capacity_factor: float = 1.0, noisy_gate: bool = False) -> None:
         super().__init__()
 
         # Only top-1 and top-2 are supported at the moment.
@@ -202,7 +202,7 @@ class TopKGate(torch.nn.Module):
         self.wg = torch.nn.Linear(model_dim, num_experts, bias=False).float()
         self.k = k
         self.capacity_factor = capacity_factor
-        self.noise_gate = noise_gate
+        self.noisy_gate = noisy_gate
 
     def forward(self, input: torch.Tensor) -> Tuple[Tensor, Tensor, Tensor]:  # type: ignore
         if self.wg.weight.dtype != torch.float32:
@@ -210,7 +210,7 @@ class TopKGate(torch.nn.Module):
             print("Cast gate weight to float 32")
         logits = self.wg(input.float())
         if self.k == 1:
-            return top1gating(logits, self.capacity_factor, self.noise_gate)
+            return top1gating(logits, self.capacity_factor, self.noisy_gate)
         else:
             return top2gating(logits, self.capacity_factor)
 
