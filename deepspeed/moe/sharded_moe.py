@@ -204,6 +204,9 @@ class TopKGate(torch.nn.Module):
         self.noise_gate = noise_gate
 
     def forward(self, input: torch.Tensor) -> Tuple[Tensor, Tensor, Tensor]:  # type: ignore
+        if self.wg.weight.dtype != torch.float32:
+            self.wg = self.wg.float()
+            print("Cast gate weight to float 32")
         logits = self.wg(input.float())
         if self.k == 1:
             return top1gating(logits, self.capacity_factor, self.noise_gate)
