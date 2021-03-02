@@ -181,7 +181,10 @@ void BertTransformerLayer<T>::Forward(int bsz,
     T* buf_1 = buf_0 + small_buf_size;
     T* buf_2 = buf_1;
 
-    if (_normalize_invertible) add_res_ptr = buf_1 + 3 * small_buf_size;
+    if (_normalize_invertible) {
+        add_res_ptr = buf_1 + 3 * small_buf_size;
+        buf_2 = add_res_ptr;
+    }
     if (_gelu_checkpoint) buf_2 += small_buf_size;
     if (_attn_dropout_checkpoint)
         ctx_bufB_ptr = buf_2 + (_intermediate_size / _hidden_size) * small_buf_size;
