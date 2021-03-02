@@ -187,7 +187,9 @@ void BertTransformerLayer<T>::Forward(int bsz,
     }
     if (_gelu_checkpoint) buf_2 += small_buf_size;
     if (_attn_dropout_checkpoint)
-        ctx_bufB_ptr = buf_2 + (_intermediate_size / _hidden_size) * small_buf_size;
+        ctx_bufB_ptr =
+            (_gelu_checkpoint ? (buf_2 + (_intermediate_size / _hidden_size) * small_buf_size)
+                              : (buf_1 + 4 * small_buf_size));
 
     int bsz_seq = bsz * _seq_length;
 
