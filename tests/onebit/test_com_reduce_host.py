@@ -79,7 +79,7 @@ torch_server = torch.chunk(a_torch, size)[rank] + server_error_torch
 if torch.sum(diff_server_mask) == 0:
     print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
 else:
-    check_mag_mask = mpi_server[diff_mask] > magnitude_threshold
+    check_mag_mask = mpi_server[diff_server_mask] > magnitude_threshold
     if torch.sum(check_mag_mask) == 0:
         print('Successfully passed the test for 1bit Adam at Rank {}'.format(rank))
     else:

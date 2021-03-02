@@ -81,7 +81,7 @@ if test_correctness:
     if torch.sum(diff_server_mask) == 0:
         print('Successfully passed the test for MPI Backend at Rank {}'.format(rank))
     else:
-        check_mag_mask = mpi_server[diff_mask] > magnitude_threshold
+        check_mag_mask = mpi_server[diff_server_mask] > magnitude_threshold
         if torch.sum(check_mag_mask) == 0:
             print('Successfully passed the test for MPI Backend at Rank {}'.format(rank))
         else:
