@@ -1182,6 +1182,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         fp16_param = self.fp16_partitioned_groups_flat[sub_group_id]
         self.optimizer.param_groups[param_group_id]['params'] = [fp32_param]
         self.optimizer.step()
+        self.optimizer.param_groups[param_group_id]['params'] = []
         fp16_param.data.copy_(fp32_param.data)
 
     def initialize_optimizer_states(self):
