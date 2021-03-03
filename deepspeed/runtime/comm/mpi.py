@@ -174,6 +174,9 @@ class MpiBackend(object):
                              local_rank):
 
         all_start_time = time.time()
+        original_shape = buffer_m.size()
+        if len(original_shape) > 1:
+            buffer_m = torch.flatten(buffer_m)
         original_size = buffer_m.numel()
         worker_error_size = worker_error.numel()
         cupy.cuda.Device(local_rank).use()
@@ -279,6 +282,8 @@ class MpiBackend(object):
                             cupy_recvbuf_scale_server)).flatten().data)
         if original_size != worker_error_size:
             buffer_m = buffer_m[0:original_size]
+        if len(original_shape) > 1:
+            buffer_m = buffer_m.reshape(original_shape)
 
         # cupy_recvbuf_sign_server, cupy_recvbuf_scale_server = None, None
 
