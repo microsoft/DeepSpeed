@@ -20,7 +20,6 @@ from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
     ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
-    ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
@@ -508,8 +507,7 @@ class DeepSpeedEngine(Module):
                 assert self._is_supported_optimizer(self.optimizer_name()), \
                     '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
-        if self.optimizer_name() == LAMB_OPTIMIZER or self.optimizer_name(
-        ) == ONEBIT_LAMB_OPTIMIZER:
+        if self.optimizer_name() == LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
@@ -626,9 +624,6 @@ class DeepSpeedEngine(Module):
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
             from deepspeed.runtime.fp16.onebit.onebitadam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
-        elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
-            from deepspeed.runtime.fp16.onebit.onebitlamb import OnebitLamb
-            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
