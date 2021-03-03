@@ -458,10 +458,12 @@ class DeepSpeedEngine(Module):
 
     # Configure based on command line arguments
     def _configure_with_arguments(self, args, mpu):
-        if hasattr(args, 'local_rank') and args.local_rank >= 0:
-            self.local_rank = args.local_rank
-        else:
-            self.local_rank = int(os.environ.get("LOCAL_RANK", -1))
+        # After the distributed backend is initialized we are guaranteed the LOCAL_RANK
+        # environment variable is set. We must align args.local_rank to this value for
+        # backwards compatability with scripts relying on [args|self].local_rank containing
+        # the correct local rank info.
+        args.local_rank = int(os.environ['LOCAL_RANK'])
+        self.local_rank = args.local_rank
 
         config_file = args.deepspeed_config if hasattr(args,
                                                        'deepspeed_config') else None
@@ -816,6 +818,16 @@ class DeepSpeedEngine(Module):
 
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
+
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_profile_step(
+        ) and self.global_rank == 0:
+            self.flops_profiler.print_model_profile(
+                profile_step=self.global_steps,
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules(),
+                detailed=self.flops_profiler_detailed())
+            self.flops_profiler.end_profile()
 
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
@@ -1479,6 +1491,11 @@ class DeepSpeedEngine(Module):
                 used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
+
+        Important: all processes must call this method and not just the process with rank 0. It is
+        because each process needs to save its master weights and scheduler+optimizer states. This
+        method will hang waiting to synchronize with other processes if it's called just for the
+        process with rank 0.
         """
 
         # This is to make sure the checkpoint names are created without collision
@@ -1489,6 +1506,9 @@ class DeepSpeedEngine(Module):
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
+
+        # Ensure tag is a string
+        tag = str(tag)
 
         # Ensure checkpoint tag is consistent across ranks
         self._checkpoint_tag_validation(tag)

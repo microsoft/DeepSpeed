@@ -52,6 +52,7 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
                                               int seq_length,
                                               float attn_prob_dropout_ratio,
                                               float hidden_output_dropout_ratio,
+                                              float layer_norm_eps,
                                               bool pre_or_postLayerNorm,
                                               const std::vector<std::array<int, 3>>& gemm_algos,
                                               bool attn_dropout_checkpoint,
@@ -83,11 +84,13 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
       _attn_layer_norm(typename Normalize_Layer<T>::Config(batch_size,
                                                            seq_length,
                                                            hidden_size,
+                                                           layer_norm_eps,
                                                            true,
                                                            !normalize_invertible)),
       _layer_norm(typename Normalize_Layer<T>::Config(batch_size,
                                                       seq_length,
                                                       hidden_size,
+                                                      layer_norm_eps,
                                                       true,
                                                       !normalize_invertible)),
       _ff1(typename FeedForward<T>::Config(batch_size * seq_length,
@@ -583,6 +586,7 @@ int create_transformer_layer(int layer_id,
                              int intermediate_size,
                              float attn_dropout_ratio,
                              float hidden_dropout_ratio,
+                             float layer_norm_eps,
                              int seed,
                              bool pre_or_postLayerNorm,
                              bool test_gemm,
@@ -603,6 +607,7 @@ int create_transformer_layer(int layer_id,
                                                            init_seq_length,
                                                            attn_dropout_ratio,
                                                            hidden_dropout_ratio,
+                                                           layer_norm_eps,
                                                            pre_or_postLayerNorm,
                                                            Context::Instance().GetGemmAlgos(),
                                                            attn_dropout_checkpoint,
@@ -877,7 +882,11 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
         seq_len = g_output.size(1);
         layer->SetSeqLength(seq_len);
     }
-
+    auto options = torch::TensorOptions()
+                       .dtype(g_output.options().dtype())
+                       .layout(torch::kStrided)
+                       .device(torch::kCUDA)
+                       .requires_grad(true);
     auto workspace = torch::empty({get_workspace_size<T>(bsz,
                                                          seq_len,
                                                          layer->GetHiddenSize(),
@@ -885,7 +894,7 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
                                                          layer->GetNumHeads(),
                                                          layer->IsTrainingMode(),
                                                          layer->GeluCheckpoint())},
-                                  grad_output.options());
+                                  options);
     Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto grad_input = torch::empty_like(input);
