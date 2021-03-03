@@ -21,8 +21,26 @@ class DeepSpeedZeroConfig(object):
         self.allgather_bucket_size = None
         self.overlap_comm = None
         self.load_from_fp32_weights = None
-        self.cpu_offload = None
+
         self.elastic_checkpoint = None
+
+        #Offload Specific Parameters
+        self.cpu_offload = None
+        self.cpu_offload_params = None
+        self.cpu_offload_use_pin_memory = None
+        self.sub_group_size = None
+
+        #Stage3 Specific Parameters
+        self.prefetch_bucket_size = None
+        self.param_persistence_threshold = None
+        self.max_live_parameters = None
+        self.max_reuse_distance = None
+
+        #Stage3 Specific Parameters
+        self.prefetch_bucket_size = None
+        self.param_persistence_threshold = None
+        self.max_live_parameters = None
+        self.max_reuse_distance = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -104,3 +122,37 @@ class DeepSpeedZeroConfig(object):
             zero_config_dict,
             ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT,
             ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT_DEFAULT)
+
+        self.cpu_offload_params = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS_DEFAULT)
+
+        self.cpu_offload_use_pin_memory = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY_DEFAULT)
+
+        self.sub_group_size = get_scalar_param(zero_config_dict,
+                                               ZERO_OPTIMIZATION_SUB_GROUP_SIZE,
+                                               ZERO_OPTIMIZATION_SUB_GROUP_SIZE_DEFAULT)
+
+        self.max_live_parameters = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_MAX_LIVE_PARAMETERS,
+            ZERO_OPTIMIZATION_MAX_LIVE_PARAMETERS_DEFAULT)
+
+        self.max_reuse_distance = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_MAX_REUSE_DISTANCE,
+            ZERO_OPTIMIZATION_MAX_REUSE_DISTANCE_DEFAULT)
+
+        self.prefetch_bucket_size = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_PREFETCH_BUCKET_SIZE,
+            ZERO_OPTIMIZATION_PREFETCH_BUCKET_SIZE_DEFAULT)
+
+        self.param_persistence_threshold = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD,
+            ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT)

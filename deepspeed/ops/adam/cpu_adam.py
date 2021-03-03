@@ -13,9 +13,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
     """Fast vectorized implementation of two variations of Adam optimizer on CPU:
 
         - Adam: A Method for Stochastic Optimization: (https://arxiv.org/abs/1412.6980);
-        - AdamW: FIXING WEIGHT DECAY REGULARIZATION IN ADAM (https://arxiv.org/abs/1711.05101v1)
+        - AdamW: Fixing Weight Decay Regularization in Adam (https://arxiv.org/abs/1711.05101)
 
-       DeepSpeed CPU Adam(W) provides between 5x to 7x speedu over torch.optim.adam(W).
+       DeepSpeed CPU Adam(W) provides between 5x to 7x speedup over torch.optim.adam(W).
        In order to apply this optimizer, the model requires to have its master parameter (in FP32)
        reside on the CPU memory.
 
@@ -100,7 +100,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
-                    print(f'group {group_id} param {param_id} = {p.numel()}')
+                    #print(f'group {group_id} param {param_id} = {p.numel()}')
                     state['step'] = 0
                     # gradient momentums
                     state['exp_avg'] = torch.zeros_like(p.data,
