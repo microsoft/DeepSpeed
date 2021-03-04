@@ -181,7 +181,6 @@ Table 1 shows the fine-tuning configuration we used in our experiments.
 | Weight-decay                   | 0.0   		|
 | Epoch count                    | 2     		|
 | **freeze_step**                | 400     	   	|
-| **cuda_aware**                 | false     		|
 | **comm_backend_name**          | "nccl"     		|
 
 Table 1. Fine-tuning configuration
@@ -271,7 +270,6 @@ Below is the DeepSpeed configuration file for running BERT-large pre-training wi
       "weight_decay": 0.01,
       "bias_correction": false,
       "freeze_step": 23000,
-      "cuda_aware": false,
       "comm_backend_name": "nccl"
     }
   },
