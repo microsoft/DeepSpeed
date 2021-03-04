@@ -313,13 +313,20 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.wall_clock_breakdown(
         ) and self.global_steps % self.steps_per_print() == 0:
-            self.timers.log([
-                'pipe_send_output',
-                'pipe_send_grad',
-                'pipe_recv_input',
-                'pipe_recv_grad'
-            ])
-
+            if self.global_steps % self.steps_per_print() == 0:
+                pct_comms = self.timers('comms').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_optimizer_step = self.timers('step').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_fwd = self.timers('forward').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                pct_backward = self.timers('backward').elapsed(reset=False) / self.timers('train_batch').elapsed(
+                    reset=False) * 100
+                print_rank_0(
+                    f'%comms: {pct_comms} \n %optimizer_step {pct_optimizer_step} \n %forward: {pct_fwd} \n %backward: {pct_backward}')
+                names = list(self.timers.timers.keys())
+                self.timers.log(names)
+                
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
@@ -970,18 +977,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.wall_clock_breakdown():
             self.timers('step').stop()
-            if self.global_steps % self.steps_per_print() == 0:
-                pct_comms = self.timers('comms').elapsed(reset=False) / self.timers('train_batch').elapsed(
-                    reset=False) * 100
-                pct_optimizer_step = self.timers('step').elapsed(reset=False) / self.timers('train_batch').elapsed(
-                    reset=False) * 100
-                pct_fwd = self.timers('forward').elapsed(reset=False) / self.timers('train_batch').elapsed(
-                    reset=False) * 100
-                pct_backward = self.timers('backward').elapsed(reset=False) / self.timers('train_batch').elapsed(
-                    reset=False) * 100
-                print_rank_0(f'%comms: {pct_comms} \n %optimizer_step {pct_optimizer_step} \n %forward: {pct_fwd} \n %backward: {pct_backward}')
-                names = list(self.timers.timers.keys())
-                self.timers.log(names)
 
     def _zero_grads(self, inputs):
         if isinstance(inputs, torch.Tensor):
