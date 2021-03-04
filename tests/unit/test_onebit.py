@@ -66,6 +66,45 @@ def test_onebitadam_fp16_basic(tmpdir):
     _test_onebitadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
+def test_onebitadam_fp32_basic(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "OneBitAdam",
+            "params": {
+                "lr": 0.00015,
+                "weight_decay": 0.01,
+                "freeze_step": 2,
+                "cuda_aware": False,
+                "comm_backend_name": "nccl"
+            }
+        },
+        "gradient_clipping": 1.0,
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim)
+
+    @distributed_test(world_size=[1, 2])
+    def _test_onebitadam_fp32_basic(args, model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device,
+                                        dtype=torch.float)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _test_onebitadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
+
+
 def test_compressed_allreduce_basic(tmpdir):
     @distributed_test(world_size=[1, 2])
     def _test_compressed_allreduce_basic():
