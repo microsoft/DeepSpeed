@@ -500,6 +500,7 @@ class PreBackwardFunction(torch.autograd.Function):
         ctx.pre_backward_function = pre_backward_function
         module.applied_pre_backward = False
         #print(f"After Forward: {ctx.module.__class__.__name__}")
+        outputs = outputs.detach()
         return outputs
 
     @staticmethod
@@ -524,6 +525,7 @@ class PostBackwardFunction(torch.autograd.Function):
             #    print(f"Before Forward: {ctx.module.__class__.__name__}")
             module.ds_grads_remaining += 1
             ctx.pre_backward_function = pre_backward_function
+        output = output.detach()
         return output
 
     @staticmethod
@@ -1626,6 +1628,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             if self.cpu_offload:
 
                 param.partition_gradients(partition_buffers=self.temp_grad_gpu_buffer)
+                with torch.cuda.stream(self.copy_grad_stream):
+                    self.reduction_stream.synchronize()
 
                 if self.gradient_accumulation_steps > 1:
                     # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
