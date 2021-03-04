@@ -91,7 +91,7 @@ class SynchronizedWallClockTimer:
                     reset=reset) * 1000.0 / normalizer
                 string += ' | {}: {:.2f}'.format(name, elapsed_time)
             else:
-                print_rank_0(f'logging failed for timer {name}')
+                log_dist(f'logging failed for timer {name}', ranks=[0])
 
         log_dist(string, ranks=ranks or [0])
 
