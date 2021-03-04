@@ -250,6 +250,7 @@ class OnebitAdam(torch.optim.Optimizer):
                 print('Starting compressed communication')
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
+                self.deepspeed.pipeline_enable_backward_allreduce = False
 
         return loss
 
@@ -276,6 +277,8 @@ class OnebitAdam(torch.optim.Optimizer):
             if self.adam_freeze_key is True:
                 self.adam_freeze_key = False
                 self.deepspeed.enable_backward_allreduce = True
+                self.deepspeed.pipeline_enable_backward_allreduce = True
+
             for group in self.param_groups:
                 for p in group['params']:
                     self.state[p].pop('worker_error')
