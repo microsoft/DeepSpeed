@@ -326,7 +326,7 @@ class PipelineEngine(DeepSpeedEngine):
                     f'%comms: {pct_comms} \n %optimizer_step {pct_optimizer_step} \n %forward: {pct_fwd} \n %backward: {pct_backward}')
                 names = list(self.timers.timers.keys())
                 self.timers.log(names)
-                
+
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
