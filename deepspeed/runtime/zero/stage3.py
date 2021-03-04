@@ -600,7 +600,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             group = None
             if mpu:
                 group = mpu.get_data_parallel_group()
-            InitContext(module=module, ds_group=group)
+            InitContext(module=module, data_parallel_group=group)
 
         for m in module.modules():
             _init_external_params(m)

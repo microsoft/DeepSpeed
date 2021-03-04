@@ -313,8 +313,7 @@ def test_adam_fp16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
 
     @distributed_test(world_size=[1])
     def _test_adam_fp16_zero_onecycle_compatibility(args, zero_stage, hidden_dim):
-        with deepspeed.ScatteredParameters(zero_modules=True, enabled=(zero_stage == 3)):
-            model = SimpleModel(hidden_dim)
+        model = SimpleModel(hidden_dim)
 
         model, _, _,_ = deepspeed.initialize(args=args,
                                              model=model,
@@ -371,8 +370,7 @@ def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
     @distributed_test(world_size=2)
     def _test_zero_static_scale(args, zero_stage):
         hidden_dim = 10
-        with deepspeed.ScatteredParameters(zero_modules=True, enabled=(zero_stage == 3)):
-            model = SimpleModel(hidden_dim)
+        model = SimpleModel(hidden_dim)
 
         model, optim, _, _ = deepspeed.initialize(args=args,
                                             model=model,
@@ -472,8 +470,7 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
     @distributed_test(world_size=[1])
     def _test_zero_allow_untested_optimizer(args, zero_stage):
         hidden_dim = 10
-        with deepspeed.ScatteredParameters(zero_modules=True, enabled=(zero_stage == 3)):
-            model = SimpleModel(hidden_dim)
+        model = SimpleModel(hidden_dim)
         optimizer = SimpleOptimizer(model.parameters())
         with pytest.raises(AssertionError):
             model, optim, _, _ = deepspeed.initialize(args=args,
@@ -524,8 +521,7 @@ def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
     @distributed_test(world_size=[3])
     def _test_zero_empty_partition(args, zero_stage):
         hidden_dim = 1
-        with deepspeed.ScatteredParameters(zero_modules=True, enabled=(zero_stage == 3)):
-            model = SimpleModel(hidden_dim)
+        model = SimpleModel(hidden_dim)
 
         # Ensure model has 2 parameters, to cause empty partition with DP=3
         assert len(list(model.parameters())) == 2
@@ -715,8 +711,7 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
 
     @distributed_test(world_size=[1])
     def _test_zero_supported_client_optimizer(args, zero_stage, optimizer_constructor):
-        with deepspeed.ScatteredParameters(zero_modules=True, enabled=(zero_stage == 3)):
-            model = SimpleModel(hidden_dim)
+        model = SimpleModel(hidden_dim)
 
         client_optimizer = optimizer_constructor(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
