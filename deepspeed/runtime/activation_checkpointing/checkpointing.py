@@ -363,7 +363,7 @@ def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
             previous_flag = flag
             real_tensor_flags.append(flag)
     else:
-        real_tensor_flags = tensor_flags 
+        real_tensor_flags = tensor_flags
 
     for is_tensor in real_tensor_flags:
         if is_tensor:
@@ -372,7 +372,7 @@ def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
         else:
             merged_objects.append(non_tensor_objects[non_tensor_idx])
             non_tensor_idx += 1
-        
+
     return tuple(merged_objects)
 
 
