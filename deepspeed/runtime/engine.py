@@ -622,7 +622,7 @@ class DeepSpeedEngine(Module):
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
-            from deepspeed.runtime.fp16.onebit.onebitadam import OnebitAdam
+            from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
                 logger.warning(
