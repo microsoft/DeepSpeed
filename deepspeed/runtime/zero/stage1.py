@@ -198,26 +198,35 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
-            # s_note: 什么是para_goups？参考：https://zhuanlan.zhihu.com/p/87209990
-            # optimizer初始化时传入params，被放到param_groups这里dict里面
-            # param_groups = [{'params': list(params)}]
+            # s_note: 什么是para_goups？
+            # 参考：https://pytorch.org/docs/stable/optim.html 和 https://zhuanlan.zhihu.com/p/87209990
+            # optimizer初始化时传入多组params，被放到param_groups这里List里面
+            # optim.SGD([
+            #    {'params': model.base.parameters()},
+            #    {'params': model.classifier.parameters(), 'lr': 1e-3}
+            #    ], lr=1e-2, momentum=0.9)
+            #
+            # param_groups = List[Dict[{'params': params_iter}, ...]]
             #
             # for group in self.param_groups:
+            #     # group 是个dict，其中有个key为params对应参数的iter
             #     weight_decay = group['weight_decay'] # 里面存了多组参数
             #     momentum = group['momentum']
             #     dampening = group['dampening']
             #     nesterov = group['nesterov']
+            #     # 遍历参数的iter，就拿到了参数tensor和其grad
             #     for p in group['params']:
             #         p 是optimizer关联的parameter tensor
             #         p.grad 是其梯度tensor
             # push this group to list before modify
-            # s_note: fp16_groups中有完整的parameters
+            # s_note: fp16_groups中有完整的fp16 parameters
             self.fp16_groups.append(param_group['params'])
 
             # calculate best max elements per comm based to minimize padding
+            # s_note: 该parameter tensor一次通信最大的element个数
             self.max_elems_per_comm.append(
                 self.best_max_elems_per_comm(
-                    num_elements=sum(t.numel() for t in self.fp16_groups[i]),
+                    num_elements=sum(t.numel() for t in self.fp16_groups[i]),  # 
                     max_elements_per_comm=max_elements_per_comm,
                     dp=dist.get_world_size(group=self.dp_process_group)))
 
