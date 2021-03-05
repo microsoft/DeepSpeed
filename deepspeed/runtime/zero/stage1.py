@@ -226,9 +226,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             # s_note: 该parameter tensor一次通信最大的element个数
             self.max_elems_per_comm.append(
                 self.best_max_elems_per_comm(
-                    num_elements=sum(t.numel() for t in self.fp16_groups[i]),  # 
-                    max_elements_per_comm=max_elements_per_comm,
-                    dp=dist.get_world_size(group=self.dp_process_group)))
+                    num_elements=sum(t.numel() for t in self.fp16_groups[i]),  # 一个para_group里面所有参数tensor里面的基础数据元素(fp16)个数总数
+                    max_elements_per_comm=max_elements_per_comm,  # 一次通信最大的基础数据元素个数
+                    dp=dist.get_world_size(group=self.dp_process_group)  # 进程数/卡数
+                ))
 
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
@@ -342,17 +343,34 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
     @staticmethod
     def best_max_elems_per_comm(num_elements, max_elements_per_comm, dp):
         # if we use max-elems-per-comm as is, how many comm intervals will there be
+        # s_note: 最大可能的通信次数，上取整
         max_comm_intervals = math.ceil(num_elements / max_elements_per_comm)
+        # s_note: 此时，最后一次通信需要padding，padding的元素数量
         padding_for_max_comm = (max_elements_per_comm *
                                 max_comm_intervals) - num_elements
 
         # if we use 1 less comm interval how much extra comm padding would be required
+        # s_note: 下取整，少一次通信，// 表示python 3的整数除法，/ 表示python 3的浮点除法
+        # 每次通信略超出上限的数量
         min_comm_intervals = num_elements // max_elements_per_comm
         if min_comm_intervals == 0:
+            # 下取整为0，表示本来就需要一次通信
             log_dist(f'Using default max_elements_per_comm {max_elements_per_comm}',
                      ranks=[0])
+            # 此时返回传入的单次最大通信大小
+            # 只需一次通信
             return max_elements_per_comm
 
+        # s_note: 现在需要至少2次通信
+        # dp代表一次通信分块进程数量块
+        # 上取整
+        # 每次通信的每个分块都padding一个元素
+        # num_elements / min_comm_intervals 表示现在需要的实际每次通信大小m
+        # m再除以dp得到x，x是每个分片的实际大小，这是有小数部分的数
+        # x上取整表示一个分片的实际大小
+        # z = x * (dp * min_comm_intervals) - num_elements
+        # z才是padding的数量
+        # s_quest: 这块没看懂？
         padding_for_min_comm = math.ceil(num_elements / (dp * min_comm_intervals))
 
         # choose padding that uses least amount of overhead
