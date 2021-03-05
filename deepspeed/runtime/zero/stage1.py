@@ -119,7 +119,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                  dynamic_loss_args=None,
                  verbose=True,
                  dp_process_group=None,
-                 partition_size=None,
+                 partition_size=None,  # s_note: Engine处这里没有赋值
                  mpu=None,
                  all_gather_partitions=True,
                  allgather_size=500000000,
@@ -139,6 +139,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         self.optimizer = init_optimizer
 
         self.verbose = verbose
+        # s_note: 使用的Engine传入的
         self.dp_process_group = dp_process_group
 
         # TODO: automatically turn off if #params > some_limit
@@ -197,7 +198,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
+            # s_note: 什么是para_goups？参考：https://zhuanlan.zhihu.com/p/87209990
+            # optimizer初始化时传入params，被放到param_groups这里dict里面
+            # param_groups = [{'params': list(params)}]
+            #
+            # for group in self.param_groups:
+            #     weight_decay = group['weight_decay'] # 里面存了多组参数
+            #     momentum = group['momentum']
+            #     dampening = group['dampening']
+            #     nesterov = group['nesterov']
+            #     for p in group['params']:
+            #         p 是optimizer关联的parameter tensor
+            #         p.grad 是其梯度tensor
             # push this group to list before modify
+            # s_note: fp16_groups中有完整的parameters
             self.fp16_groups.append(param_group['params'])
 
             # calculate best max elements per comm based to minimize padding
