@@ -2606,6 +2606,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         return groups_without_padding
 
+    def _set_fp32_optimizer_param_groups(self):
+        for sub_group_id, _ in enumerate(self.fp16_groups):
+            param_group_id = self.sub_group_to_group_id[sub_group_id]
+            self.optimizer.param_groups[param_group_id]['params'] = [
+                self.fp32_partitioned_groups_flat[sub_group_id]
+            ]
+
+    def _clear_fp32_optimizer_param_groups(self):
+        for sub_group_id, _ in enumerate(self.fp16_groups):
+            param_group_id = self.sub_group_to_group_id[sub_group_id]
+            self.optimizer.param_groups[param_group_id]['params'] = []
+
     def _rigid_state_dict(self):
         state_dict = {}
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_WEIGHTS
@@ -2614,8 +2626,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         state_dict['overflow'] = self.overflow
         state_dict['partition_count'] = self.partition_count
 
+        self._set_fp32_optimizer_param_groups()
         state_dict['optimizer_state_dict'] = self.optimizer.state_dict()
         state_dict['fp32_flat_groups'] = self.fp32_partitioned_groups_flat
+        self._clear_fp32_optimizer_param_groups()
 
         return state_dict
 
@@ -2720,7 +2734,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.overflow = state_dict['overflow']
 
         if load_optimizer_states:
+            self._set_fp32_optimizer_param_groups()
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+            self._clear_fp32_optimizer_param_groups()
 
         # restore fp32 partitions
         for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict['fp32_flat_groups']):
