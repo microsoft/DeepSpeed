@@ -248,7 +248,7 @@ def test_none_args(tmpdir):
         model, _, _, _ = deepspeed.initialize(args=None, model=model, config_params=config_dict)
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
-                                        hidden_dim=hidden_dim,
+                                        hidden_dim=10,
                                         device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
@@ -276,7 +276,7 @@ def test_no_args(tmpdir):
         model, _, _, _ = deepspeed.initialize(model=model, config_params=config_dict)
         data_loader = random_dataloader(model=model,
                                         total_samples=5,
-                                        hidden_dim=hidden_dim,
+                                        hidden_dim=10,
                                         device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
