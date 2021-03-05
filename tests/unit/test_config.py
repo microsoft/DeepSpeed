@@ -227,6 +227,7 @@ def test_init_no_optimizer(tmpdir):
 
     _helper()
 
+
 def test_no_args(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -240,7 +241,7 @@ def test_no_args(tmpdir):
             "enabled": True
         }
     }
-    
+
     @distributed_test(world_size=1)
     def _helper():
         model = SimpleModel(hidden_dim=10)
@@ -251,6 +252,5 @@ def test_no_args(tmpdir):
                                         device=model.device)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
-        
-    _helper()
 
+    _helper()
