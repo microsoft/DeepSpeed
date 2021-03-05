@@ -7,7 +7,7 @@ This tutorial is updated on 03/04/2021 to reflect the 1-bit Adam v2. Changes inc
 {: .notice--info}
 
 **Watch out!**
-1) The NCCL-based implementation requires PyTorch >= 1.8 and NCCL >= 2.8.3. See details below. 2) Although 1-bit Adam is compatible with both FP16 and FP32, currently we only verified the convergence under mixed precision/FP16 training.
+1) The NCCL-based implementation requires PyTorch >= 1.8 and NCCL >= 2.8.3. See details below. 2) Although 1-bit Adam is compatible with both FP16 and FP32, currently we only verified the convergence under mixed precision/FP16 training. 3) Currently 1-bit Adam is not compatible with pipeline parallelism.
 {: .notice--warning}
 
 In this tutorial, we are going to introduce the 1-bit Adam optimizer in DeepSpeed. 1-bit Adam can improve model training speed on communication-constrained clusters, especially for communication-intensive large models by reducing the overall communication volume by up to 5x. Detailed description of the 1-bit Adam algorithm, its implementation in DeepSpeed, and performance evaluation is available from our [blog post](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html). We also have a [paper](https://arxiv.org/abs/2102.02888) which provides the most complete details including algorithm, system implementation, theoretical analysis, and more evaluations.
