@@ -1202,7 +1202,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 force=False)
 
             num_elements = int(self.fp16_partitioned_groups_flat[i].numel())
-            if self.cpu_offload_use_pin_memory:
+            if self.cpu_offload and not self.cpu_offload_use_pin_memory:
+                self.fp32_partitioned_groups_flat[i].grad = torch.zeros(
+                    num_elements,
+                    dtype=gradient_dtype,
+                    device=self.device)
+            elif self.cpu_offload_use_pin_memory:
                 self.fp32_partitioned_groups_flat[i].grad = torch.zeros(
                     num_elements,
                     dtype=gradient_dtype,
