@@ -228,7 +228,7 @@ def test_init_no_optimizer(tmpdir):
     _helper()
 
 
-def test_no_args(tmpdir):
+def test_none_args(tmpdir):
     config_dict = {
         "train_batch_size": 1,
         "optimizer": {
@@ -254,3 +254,55 @@ def test_no_args(tmpdir):
             loss = model(batch[0], batch[1])
 
     _helper()
+
+
+def test_no_args(tmpdir):
+    config_dict = {
+        "train_batch_size": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+
+    @distributed_test(world_size=1)
+    def _helper():
+        model = SimpleModel(hidden_dim=10)
+        model, _, _, _ = deepspeed.initialize(model=model, config_params=config_dict)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=5,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+
+    _helper()
+
+
+def test_no_model(tmpdir):
+    config_dict = {
+        "train_batch_size": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+
+    @distributed_test(world_size=1)
+    def _helper():
+        model = SimpleModel(hidden_dim=10)
+        with pytest.raises(AssertionError):
+            model, _, _, _ = deepspeed.initialize(model=None, config_params=config_dict)
+
+        with pytest.raises(AssertionError):
+            model, _, _, _ = deepspeed.initialize(model, config_params=config_dict)
