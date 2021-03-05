@@ -462,8 +462,9 @@ class DeepSpeedEngine(Module):
         # environment variable is set. We must align args.local_rank to this value for
         # backwards compatability with scripts relying on [args|self].local_rank containing
         # the correct local rank info.
-        args.local_rank = int(os.environ['LOCAL_RANK'])
-        self.local_rank = args.local_rank
+        self.local_rank = int(os.environ['LOCAL_RANK'])
+        if hasattr(args, 'local_rank'):
+            args.local_rank = self.local_rank
 
         config_file = args.deepspeed_config if hasattr(args,
                                                        'deepspeed_config') else None
