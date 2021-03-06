@@ -548,8 +548,8 @@ class DeepSpeedEngine(Module):
                 if len(param_group["params"]) == 0:
                     client_optimizer.param_groups.pop(i)
                     logger.info(
-                        "Removing param_group {} in the client Optimizer since it has no 'params'"
-                        .format(i))
+                        "Removing param_group that has no 'params'in the client Optimizer"
+                    )
 
             basic_optimizer = client_optimizer
             if self.global_rank == 0:
