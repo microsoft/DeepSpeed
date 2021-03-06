@@ -1526,6 +1526,7 @@ class DeepSpeedEngine(Module):
             self._save_zero_checkpoint(save_dir, tag)
 
         # Save latest checkpoint tag
+        dist.barrier()
         if save_latest:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
