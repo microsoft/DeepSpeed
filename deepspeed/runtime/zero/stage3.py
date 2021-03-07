@@ -1287,12 +1287,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.cpu_offload:
-            for i, _ in enumerate(self.fp16_groups):
-                self.averaged_gradients[i] = self.get_flat_partition(
-                    self.fp16_groups[i],
-                    0,
-                    self.fp32_partitioned_groups_flat[i].numel(),
-                    return_tensor_list=True)
+            for i, sub_group in enumerate(self.fp16_groups):
+                self.averaged_gradients[i] = [torch.zeros_like(param.ds_tensor) if param.grad is None else param.grad.data.narrow(0,0,param.ds_tensor.numel()) for param in sub_group] 
+                # self.averaged_gradients[i] = self.get_flat_partition(
+                #     self.fp16_groups[i],
+                #     0,
+                #     self.fp32_partitioned_groups_flat[i].numel(),
+                #     return_tensor_list=True)
 
         self._release_ipg_buffers()
 
