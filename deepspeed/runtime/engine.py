@@ -544,12 +544,11 @@ class DeepSpeedEngine(Module):
     def _configure_optimizer(self, client_optimizer, model_parameters):
 
         if client_optimizer is not None:
-            for i, param_group in enumerate(client_optimizer.param_groups):
-                if len(param_group["params"]) == 0:
-                    client_optimizer.param_groups.pop(i)
-                    logger.info(
-                        "Removing param_group that has no 'params'in the client Optimizer"
-                    )
+            client_optimizer.param_groups[:] = [
+                pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
+            ]
+            logger.info(
+                "Removing param_group that has no 'params'in the client Optimizer")
 
             basic_optimizer = client_optimizer
             if self.global_rank == 0:
