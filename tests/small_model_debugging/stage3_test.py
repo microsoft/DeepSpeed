@@ -49,7 +49,7 @@ class LinearStack(torch.nn.Module):
 def test_driver():
     print()
     print('BUILDING MODEL')
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         model = LinearStack()
     print()
 

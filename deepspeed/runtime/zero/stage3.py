@@ -15,7 +15,7 @@ from torch.autograd import Variable
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
-from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, ZeroParamType, _init_external_params, InitContext, is_zero_param
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, ZeroParamType, _init_external_params, Init, is_zero_param
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
@@ -602,7 +602,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             group = None
             if mpu:
                 group = mpu.get_data_parallel_group()
-            InitContext(module=module, data_parallel_group=group)
+            Init(module=module, data_parallel_group=group)
 
         for m in module.modules():
             _init_external_params(m)

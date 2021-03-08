@@ -20,13 +20,13 @@ def setup_serial_env():
 def test_scattered_init_dist():
     setup_serial_env()
     assert not torch.distributed.is_initialized()
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         assert torch.distributed.is_initialized()
 
 
 @distributed_test(world_size=2)
 def test_scatter_gather():
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         l = torch.nn.Linear(6, 3)
     assert l.weight.ds_status == ZeroParamStatus.NOT_AVAILABLE
     assert l.weight.numel() == 1
@@ -43,7 +43,7 @@ def test_scatter_gather():
 
 @distributed_test(world_size=2)
 def test_gather_update():
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         l = torch.nn.Linear(4, 2)
     assert l.weight.ds_status == ZeroParamStatus.NOT_AVAILABLE
 
@@ -98,7 +98,7 @@ def test_external_param():
     l1_base_out = l1_base(input.clone().detach())
     l2_base_out = l2_base(input.clone().detach())
 
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         l1_test = ExtLinear(copycat=l1_base).cuda()
         #l2_test = ExtLinear(copycat=l2_base).cuda()
         assert l1_test.linear.weight.ds_status == ZeroParamStatus.NOT_AVAILABLE
@@ -116,7 +116,7 @@ def test_external_param():
 def test_scatter_halftype():
     setup_serial_env()
 
-    with deepspeed.zero.InitContext():
+    with deepspeed.zero.Init():
         l = torch.nn.Linear(10, 10)
         assert l.weight.ds_tensor.dtype == torch.float16
 

@@ -43,36 +43,46 @@ def _init_external_params(module):
 
 
 def register_external_parameter(module, parameter):
-    """Indicate that an unowned parameter is used in a module's forward pass.
+    """Instruct DeepSpeed to coordinate ``parameter``'s collection and partitioning in
+    the forward and backward passes of ``module``.
+
+    This is used when a parameter is accessed outside of its owning module's
+    ``forward()``. DeepSpeed must know to collect it from its partitioned
+    state and when to release the memory.
 
     .. note::
         This is only applicable to training with ZeRO stage 3.
 
     Args:
-        module (:class:`torch.nn.Module`): The module that requires ``parameter`` in its forward pass.
+        module (``torch.nn.Module``): The module that requires ``parameter`` in its forward pass.
         parameter (``torch.nn.Parameter``): The parameter to register.
 
     Raises:
         RuntimeError: If ``parameter`` is not of type ``torch.nn.Parameter``.
 
 
-    Example usage:
+    Examples
+    ========
 
-    .. code-block:: python
+    #. Register a weight that is used in another module's forward pass (line 6).
+       Parameter ``layer1.weight`` is used by ``layer2`` (line 11).
 
-        class ModuleZ3(torch.nn.Module):
-            def __init__(self, *args):
-                super().__init__(self, *args)
-                self.layer1 = SomeLayer()
-                self.layer2 = OtherLayer()
-                deepspeed.zero.register_external_parameter(self,
-                                                        self.layer1.weight)
-            def forward(self, input):
-                x = self.layer1(input)
-                # self.layer1.weight is required by self.layer2.forward
-                y = self.layer2(x, self.layer1.weight)
-                return y
+        .. code-block:: python
+            :linenos:
+            :emphasize-lines: 6,11
 
+            class ModuleZ3(torch.nn.Module):
+                def __init__(self, *args):
+                    super().__init__(self, *args)
+                    self.layer1 = SomeLayer()
+                    self.layer2 = OtherLayer()
+                    deepspeed.zero.register_external_parameter(self, self.layer1.weight)
+
+                def forward(self, input):
+                    x = self.layer1(input)
+                    # self.layer1.weight is required by self.layer2.forward
+                    y = self.layer2(x, self.layer1.weight)
+                    return y
     """
     if not isinstance(parameter, torch.nn.Parameter):
         raise RuntimeError('Parameter is not a torch.nn.Parameter')
@@ -138,8 +148,8 @@ empty_buffers = {}
 # Inserts _post_init_method at the end of init method
 # for all sub classes of torch.nn.Module
 class InsertPostInitMethodToModuleSubClasses(object):
-    def __init__(self, enabled=True, zero_modules=True):
-        self.zero_modules = zero_modules
+    def __init__(self, enabled=True, mem_efficient_linear=True):
+        self.mem_efficient_linear = mem_efficient_linear
         self.enabled = enabled
 
     def __enter__(self):
@@ -183,7 +193,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         torch.Tensor.__new__ = new_cuda_tensor
         torch.empty = empty_cuda_tensor
 
-        if self.zero_modules:
+        if self.mem_efficient_linear:
             self.linear_bk = torch.nn.functional.linear
             torch.nn.functional.linear = LinearFunctionForZeroStage3.apply
 
@@ -204,7 +214,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         torch.Tensor.__new__ = torch.Tensor.__old_new__
         torch.empty = _orig_torch_empty
 
-        if self.zero_modules:
+        if self.mem_efficient_linear:
             torch.nn.functional.linear = self.linear_bk
 
         # Now that we cleaned up the metaclass injection, raise the exception.
@@ -217,44 +227,108 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
 
 # Replaces all parameters in module with Scattered Parameters
-class InitContext(InsertPostInitMethodToModuleSubClasses):
+class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
 
     def __init__(self,
                  module=None,
                  data_parallel_group=None,
-                 enabled=True,
-                 zero_modules=True,
+                 mem_efficient_linear=True,
                  remote_device=None,
-                 pin_memory=False):
-        """A context for initializing and partitioning model weights among
-        data-parallel workers.
+                 pin_memory=False,
+                 enabled=True):
+        """A context to enable massive model construction for training with
+        ZeRO-3. Models are automatically partitioned (or, sharded) across the
+        system and converted to half precision.
 
-        Within the context, each parameter is initialized and immediately
-        partitioned among the group before moving to the next. This allows
-        for models that exceed the size of CPU local memory, but fit in the
-        total system memory.
+        Args:
+            module (``torch.nn.Module``, optional): If provided, partition the model as
+                if it was constructed in the context.
+            data_parallel_group (``torch.distributed`` process group, optional):
+                The group of processes to partition among. Defaults to all processes.
+            mem_efficient_linear (bool, optional): Replace
+                torch.nn.functional.linear with an implementation that allows
+                DeepSpeed to partition parameters. Defaults to ``True``.
+            remote_device (string, optional): The device to store model
+                weights. Passing ``"cpu"`` will create the model in CPU
+                memory. The model may still be moved to GPU if
+                ``cpu_offload_param`` is ``False`` in the config provided to
+                :meth:`deepspeed.initialize`. Defaults to the local GPU.
+            pin_memory (bool, optional): Potentially increase performance by
+                using pinned memory for model weights. ``remote_device`` must be
+                ``"cpu"``. Defaults to ``False``.
+            enabled (bool, optional): If ``False``, this context has no
+                effect. Defaults to ``True``.
 
-        Example usage:
+        This context accelerates model initialization and enables models that
+        are too large to allocate in their entirety in CPU memory. It has the
+        following effects:
 
-        .. code-block:: python
+        #. allocates tensors to either GPU or CPU memory
+        #. converts floating point tensors to half precision
+        #. immediately partitions tensors among the group of data-parallel devices
+        #. (*optional*) replaces ``torch.nn.functional.linear`` with a more
+           memory-efficient implementation
 
-            with deepspeed.ScatteredParameters():
-                model = MyLargeModel(*args)
+        These modifications allow for models that exceed the size of local CPU/GPU
+        memory, but fit within the total system memory (*i.e.*, aggregate CPU
+        or GPU memory) across all nodes. Consider initializing a model with one
+        trillion parameters, whose weights occupy two terabytes (TB) in half
+        precision. The initial CPU allocation in full precision requires 4TB of
+        memory *per process*, and so a system with 8 GPUs per node would need 32TB of
+        CPU memory due to data-parallel redundancies. Instead, by immediately
+        partitioning tensors we remove the redundancies. The result is that
+        regardless of the number of GPUs, we still only require the original 4TB. This
+        allows for a linear increase in model size with the aggregate system memory.
+        For example, if a node has 1TB of memory and 8 GPUs, we could fit a trillion
+        parameter model with 4 nodes and 32 GPUs.
 
         .. note::
             Initializes ``torch.distributed`` if it has not already been done so.
             See :meth:`deepseed.init_distributed` for more information.
 
+        .. note::
+            Can also be used as a decorator:
 
-        Args:
-            data_parallel_group (``torch.distributed`` group, optional): the group of data-parallel workers. Defaults to WORLD group.
-            zero_modules (bool, optional): [description]. Defaults to False.
-            remote_device ([type], optional): [description]. Defaults to None.
-            pin_memory (bool, optional): [description]. Defaults to False.
+            .. code-block:: python
+
+                @deepspeed.zero.Init()
+                def get_model():
+                    return MyLargeModel()
+
+        .. note::
+            Only applicable to training with ZeRO-3.
+
+
+        Examples
+        --------
+
+        #. Allocate a model and partition it among all processes:
+
+            .. code-block:: python
+
+                with deepspeed.zero.Init():
+                    model = MyLargeModel()
+
+
+        #. Allocate a model in pinned CPU memory and partition it among a subgroup of processes:
+
+            .. code-block:: python
+
+                with deepspeed.zero.Init(data_parallel_group=mpu.get_data_parallel_group(),
+                                         remote_device="cpu",
+                                         pin_memory=True):
+                    model = MyLargeModel()
+
+
+        #. Partition an already-allocated model in CPU memory:
+
+            .. code-block:: python
+
+                model = deepspeed.zero.Init(module=model)
         """
 
-        super().__init__(enabled=enabled, zero_modules=zero_modules)
+        super().__init__(enabled=enabled, mem_efficient_linear=mem_efficient_linear)
         if not torch.distributed.is_initialized():
             init_distributed()
             assert torch.distributed.is_initialized(), "Parameters cannot be scattered without initializing torch.distributed"
@@ -332,8 +406,8 @@ class InitContext(InsertPostInitMethodToModuleSubClasses):
         param.ds_process_group = self.ds_process_group
 
         # DeepSped Param ID
-        param.ds_id = InitContext.param_id
-        InitContext.param_id += 1
+        param.ds_id = Init.param_id
+        Init.param_id += 1
 
         def all_gather(param_list=None, async_op=False, hierarchy=0):
             cls = param
@@ -828,29 +902,52 @@ class InitContext(InsertPostInitMethodToModuleSubClasses):
 
 class GatheredParameters:
     def __init__(self, param, modifier_rank=None, fwd_module=None, enabled=True):
-        """A context that collects a parameter that was scattered via a
-        :class:`ScatteredParameters` context. The parameter is scattered
+        """A context that collects a parameter that was partitioned via a
+        :class:`deepspeed.zero.Init` context. The parameter is partitioned
         again upon exit.
 
         Args:
-            param (:class:`torch.nn.Parameter`): The parameter to collect.
-            modifier_rank (int, optional): If specified, this rank's parameter weight will be broadcasted after the context.
+            param (``torch.nn.Parameter``): The parameter to collect.
+            modifier_rank (int, optional): If specified, this rank's parameter will be
+                broadcasted after the context. This argument is required if ``param`` is
+                modified all processes should have a consistent view of the data. Defaults
+                to ``None``.
+            fwd_module (``torch.nn.Module``, optional): If specified, ``param`` will be
+                registered as an external parameter of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
+            enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
-        Examples:
+        Examples
+        ========
 
-        Allocate a sharded module, initialize its weight on rank 0, and update all
-        processes.
+        #. Allocate a partitioned module, initialize its weight on rank 0, and update all
+           processes.
 
-        .. code-block:: python
+            .. code-block:: python
 
-            with deepspeed.zero.InitContext():
-                linear = torch.nn.Linear(1000,1000)
+                with deepspeed.zero.Init():
+                    linear = torch.nn.Linear(1000,1000)
 
-            with deepspeed.zero.GatheredParameters(linear.weight,
-                                                   modifier_rank=0):
-                if torch.distributed.get_rank() == 0:
-                    linear.weight.zero_()
+                with deepspeed.zero.GatheredParameters(linear.weight,
+                                                       modifier_rank=0):
+                    if torch.distributed.get_rank() == 0:
+                        linear.weight.zero_()
 
+
+        #. Collect a partitioned weight to pass to another module during
+           training. The parameter will be registered as an external parameter
+           and made available during the backward pass.
+
+            .. code-block:: python
+                :emphasize-lines: 6
+
+                def forward(self, input):
+                    x = self.layer1(input)
+
+                    # self.layer1.weight is required by self.layer2.forward
+                    with deepspeed.zero.GatheredParameters(self.layer1.weight,
+                                                           fwd_module=self):
+                        y = self.layer2(x, self.layer1.weight)
+                    return y
         """
 
         self.enabled = enabled
