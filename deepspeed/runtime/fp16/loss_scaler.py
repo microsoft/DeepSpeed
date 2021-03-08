@@ -213,7 +213,7 @@ if __name__ == "__main__":
             optimizer.step()
         # Otherwise, don't do anything -- ie, skip iteration
         else:
-            print('OVERFLOW!')
+            print('Overflow!')
 
         # Update loss scale for next iteration
         loss_scaler.update_scale(has_overflow)

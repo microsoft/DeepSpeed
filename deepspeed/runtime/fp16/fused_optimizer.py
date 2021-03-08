@@ -153,7 +153,7 @@ class FP16_Optimizer(object):
 
         if self.overflow:
             if self.verbose:
-                logger.info("[deepspeed] OVERFLOW! Skipping step. Attempted loss "
+                logger.info("[deepspeed] Overflow! Skipping step. Attempted loss "
                             "scale: {}, reducing to {}".format(
                                 prev_scale,
                                 self.cur_scale))

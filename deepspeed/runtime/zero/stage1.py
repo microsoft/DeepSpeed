@@ -630,7 +630,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         if self.overflow:
             self.zero_grad()
             if self.verbose:
-                logger.info("[deepspeed] OVERFLOW! Skipping step. Attempted loss "
+                logger.info("[deepspeed] Overflow! Skipping step. Attempted loss "
                             "scale: {}, reducing to {}".format(
                                 prev_scale,
                                 self.loss_scale))
