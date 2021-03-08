@@ -84,6 +84,8 @@ class DeepSpeedZeroConfig(object):
         self.contiguous_gradients = get_scalar_param(
             zero_config_dict,
             ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS,
+            ZERO3_OPTIMIZATION_CONTIGUOUS_GRADIENTS_DEFAULT
+            if self.stage == ZERO_OPTIMIZATION_WEIGHTS else
             ZERO_OPTIMIZATION_CONTIGUOUS_GRADIENTS_DEFAULT)
 
         self.reduce_bucket_size = get_scalar_param(
@@ -95,9 +97,12 @@ class DeepSpeedZeroConfig(object):
                                                ZERO_OPTIMIZATION_REDUCE_SCATTER,
                                                ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT)
 
-        self.overlap_comm = get_scalar_param(zero_config_dict,
-                                             ZERO_OPTIMIZATION_OVERLAP_COMM,
-                                             ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT)
+        self.overlap_comm = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_OVERLAP_COMM,
+            ZERO3_OPTIMIZATION_OVERLAP_COMM_DEFAULT
+            if self.stage == ZERO_OPTIMIZATION_WEIGHTS else
+            ZERO_OPTIMIZATION_OVERLAP_COMM_DEFAULT)
 
         self.allgather_partitions = get_scalar_param(
             zero_config_dict,
