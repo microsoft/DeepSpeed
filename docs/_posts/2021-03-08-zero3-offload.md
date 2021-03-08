@@ -34,13 +34,15 @@ In addition to these three stages, ZeRO family of technology also consists of Ze
 * ZeRO-Offload: [Blog](https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/#toc-heading-3), [Tutorials](/tutorials/zero-offload), [Paper link](https://arxiv.org/abs/2101.06840)
 
 <h2>ZeRO-3 Offload</h2>
-With today’s release of ZeRO-3 Offload, we are adding support for partitioning and offloading parameters in addition to optimizer states and gradients partitioning already supported by ZeRO-2 Offload in DeepSpeed. While this may seem incremental, in fact, it is a massive leap, in three regards: 
+With today’s release of ZeRO-3 Offload, we are adding support for partitioning and offloading parameters in addition to optimizer states and gradients partitioning already supported by ZeRO-2 Offload in DeepSpeed. With parameter partitioning ZeRO-3 Offload implements the full set of features in the three stages of ZeRO, that allows for a linear growth in model size with the number of GPUs. In addition, ZeRO-3 Offload can also optionally offload all these model states to CPU to further reduce GPU memory consumption, leveraging both CPU and GPU to maximize memory and compute efficiency of the entire system.
 
-1. Unprecedented model scale, 
+We believe ZeRO-3 Offload offers a massive leap for large model training, in three regards: 
 
-2. Ease of supporting trillion parameter models, and 
+i) Unprecedented model scale, 
 
-3. Achieving excellent training efficiency.
+ii) Ease of supporting very-large models, and 
+
+iii) Achieving excellent training efficiency.
 
 
 <h2>Unprecedented model scale</h2>
