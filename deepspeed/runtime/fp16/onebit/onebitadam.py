@@ -94,7 +94,7 @@ class OnebitAdam(torch.optim.Optimizer):
             assert TORCH_MAJOR >= 1 and TORCH_MINOR >= 8, "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
-            self.comm_backend_handle = NcclBackend()
+            self.comm_backend_handle = NcclBackend(self.deepspeed.mpu)
 
         elif self.comm_backend_name == 'mpi':
             from deepspeed.runtime.comm.mpi import MpiBackend
@@ -250,6 +250,7 @@ class OnebitAdam(torch.optim.Optimizer):
                 print('Starting compressed communication')
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
+                self.deepspeed.pipeline_enable_backward_allreduce = False
 
         return loss
 
@@ -276,6 +277,8 @@ class OnebitAdam(torch.optim.Optimizer):
             if self.adam_freeze_key is True:
                 self.adam_freeze_key = False
                 self.deepspeed.enable_backward_allreduce = True
+                self.deepspeed.pipeline_enable_backward_allreduce = True
+
             for group in self.param_groups:
                 for p in group['params']:
                     self.state[p].pop('worker_error')
