@@ -233,6 +233,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
+            # s_note: 把所有参数打平成1d的tensor，并按sub-partition做对齐
             flat_aligned_params = flatten_dense_tensors_sub_partition_aligned(
                 tensor_list=self.fp16_groups[i],
                 dp=dist.get_world_size(group=self.dp_process_group),
@@ -242,14 +243,25 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # TODO: I don't think this does anything?
             # set model fp16 weight to slices of flattened buffer
+            # s_note: 按照fp16_groups的size来创建对fp16_groups_flat的view
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
                                                       self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
+                # s_note: p这个parameter or variable的tensor（.data获取的）被替换为q的tensor
+                # .data接口：https://stackoverflow.com/questions/51743214/is-data-still-useful-in-pytorch
+                # 把fp16参数tensor映射到flat数据上
                 p.data = q.data
 
             # divide the flat weights into near equal partition equal to the data parallel degree
             # each process will compute on a different part of the partition
             # RS: split into two layer list -> [comm-id] -> [sub-partitions per rank]
+            # s_note: 对每个parameter，先按单次通信最大size切，然后按world_size再切，二维切分
+            # comm_id代表通信的编号，rank代表进程编号，sub_partition代表一次通信中对应进程数量个分片中的一片
+            # comm_partitions, [comm_id] -> List[sub_partition]，一次通信对应的多个分片
+            # dp_sub_partitions, [rank] -> List[sub_partition]，一个进程多次通信，每次要reduce的分片
+            # element_intervals, [rank] -> [(start_idx, end_idx), (start_idx, end_idx), ...]，对应dp_sub_partitions在flat数据中的index
+            # sub_partition_size，一个子partition的大小
+            # num_comm_intervals，通信次数
             comm_partitions, dp_sub_partitions, element_intervals, sub_partition_size, num_comm_intervals = \
                 self.get_data_parallel_sub_partitions(
                     tensor=self.fp16_groups_flat[i],
@@ -269,12 +281,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # a partition of the fp32 master weights that will be updated by this process
             # RS: store/detach/cast our local sub-partitions
+            # s_note: 本进程需要reduce的参数分片
             local_sub_partitions = []
             for sub_partition in self.parallel_sub_partitioned_fp16_groups[i][
                     local_rank]:
+                # 创建了fp16分片对应的fp32分片，用于update
                 fp32_sub_partition = sub_partition.clone().float().detach()
                 fp32_sub_partition.requires_grad = True
                 local_sub_partitions.append(fp32_sub_partition)
+            # s_notes: 记录本进程需要更新的参数分片
             self.local_sub_partitions_of_fp32_groups.append(local_sub_partitions)
 
             # Compute sub_partition paddings
@@ -285,11 +300,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             self.group_paddings.append(sub_partition_paddings)
 
             # modify optimizer of have flat master weight
-            # self.single_partition_of_fp32_groups[i].requires_grad = True # keep this in case internal optimizer uses it
+            # self.local_partition_of_fp32_groups[i].requires_grad = True # keep this in case internal optimizer uses it
+            # s_note: 这里应该是self.local_sub_partitions_of_fp32_groups[i].requires_grad = True # keep this in case internal optimizer uses it
+            # 这里让optimizer的 params 指向本进程要更新的fp32参数分片
             param_group['params'] = self.local_sub_partitions_of_fp32_groups[i]
 
             # RS: divide up the sub-partitions and keep track of offsets for each param
             # partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(group=self.dp_process_group)
+            # 记录每个parameter的sub_partition和offset
             params_in_rank_sub_partition, params_in_rank_sub_partitions_offsets, params_not_local = self.get_all_sub_partition_info(
                 tensor_list=self.fp16_groups[i],
                 all_element_intervals=element_intervals,
