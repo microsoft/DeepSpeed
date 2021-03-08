@@ -30,7 +30,7 @@ def get_group_alignment_padding(tensor_list, sub_partition_size, sub_partition_c
 
 
 def flatten_dense_tensors_sub_partition_aligned(tensor_list,
-                                                dp,
+                                                dp, # s_note: 数据并行进程数
                                                 max_elements_per_comm,
                                                 pg):
     assert max_elements_per_comm >= dp, f"max_elements_per_comm {max_elements_per_comm} < dp {dp}"
@@ -47,6 +47,7 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
     # Compute aligned partition size based on communication size
     aligned_comm_partition_size = int(max_elements_per_comm // dp)
 
+    # s_note: 这里的子分区还要明确具体作用, 有最大通信量( max_elements_per_comm )的限制,
     if aligned_param_partition_size <= aligned_comm_partition_size:
         sub_partition_count = 1
         sub_partition_size = aligned_param_partition_size
@@ -73,7 +74,7 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                  dtype=tensor_list[0].dtype)
         aligned_tensor_list = tensor_list + [pad_tensor]
 
-    flat_tensors = _flatten_dense_tensors(aligned_tensor_list)
+    flat_tensors = _flatten_dense_tensors(aligned_tensor_list) # s_note: 把所有参数都reshape成一维, 然后conate在一起, 变成一个一维数组
     return flat_tensors
 
 
@@ -232,6 +233,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # TODO: I don't think this does anything?
             # set model fp16 weight to slices of flattened buffer
+            # s_note: 这里把flatten成一维的参数又根据 self.fp16_groups[i] 里面的参数信息,
+            #         恢复成原来的张量大小, 感觉操作是多余的, 他们自己的注释也说了
             updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
                                                       self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
@@ -331,7 +334,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 sub_partition_param.grad = None
 
     @staticmethod
-    def best_max_elems_per_comm(num_elements, max_elements_per_comm, dp):
+    def best_max_elems_per_comm(num_elements, # s_note: 模型总参数量大小, 指元素个数不是字节数
+                                max_elements_per_comm, # s_note: 默认值 5e8, 5千万
+                                dp # s_note: 数据并行进程数
+                                ): 
         # if we use max-elems-per-comm as is, how many comm intervals will there be
         max_comm_intervals = math.ceil(num_elements / max_elements_per_comm)
         padding_for_max_comm = (max_elements_per_comm *
