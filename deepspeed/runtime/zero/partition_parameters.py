@@ -155,10 +155,6 @@ class InsertPostInitMethodToModuleSubClasses(object):
     def __enter__(self):
         if not self.enabled:
             return
-        # torch.Tensor.__new_original__ = torch.Tensor.__new__
-        # torch.old_empty = torch.empty
-        # torch.Tensor.__new__ = new_gpu_tensor
-        # torch.empty = empty_gpu_tensor
 
         def partition_after(f):
             @functools.wraps(f)
@@ -599,44 +595,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _allgather_param(self, param, async_op=False, hierarchy=0):
 
-        #self._param_status(param)
-        #partition_size = param.data.numel()
         partition_size = param.ds_tensor.numel()
 
         tensor_size = partition_size * self.world_size
-        #if torch.distributed.get_rank() == 0:
-        #    print(f"Allgather tensor of size {tensor_size}")
         aligned_param_size = self._aligned_size(param)
         assert tensor_size == aligned_param_size, f'param id {param.ds_id} aligned size {aligned_param_size} does not match tensor size {tensor_size}'
-
-        #global empty_buffers, reuse_buffers, temp_contiguous_tensor
-
-        # buffer_key = None
-        # # if reuse_buffers and False:
-        #     # print(f"{empty_buffers}")
-        #     for key, t in empty_buffers.items():
-        #         if t.numel() == param.ds_numel:
-        #             flat_tensor = t.view(-1)
-        #             buffer_key = key
-        #             print_rank_0(
-        #                 f"Buffer reused for allgather of param {param.ds_id} with {param.ds_numel} elements",
-        #                 force=False)
-        # if buffer_key:
-        #     empty_buffers.pop(buffer_key)
-        #     assert buffer_key not in empty_buffers, "Empty buffers contains the tensor after removing"
 
         print_rank_0(
             f"{'--'* hierarchy}---- Before allocating Allgather param with id {param.ds_id} and status {param.ds_status} Partition Size {partition_size} and data shape {param.ds_shape}"
         )
-        # if flat_tensor is None:
-        #     #TODO fix this, later just testing out the lack of contiguous memory theory
-        # if temp_contiguous_tensor is None:
-        #     temp_contiguous_tensor = torch.zeros(1500000000,
-        #                           dtype=param.dtype,
-        #                           device=param.device).view(-1)
-
-        # flat_tensor = temp_contiguous_tensor.narrow(0,0,aligned_param_size).view(-1)
-
         flat_tensor = torch.zeros(aligned_param_size,
                                   dtype=param.dtype,
                                   device=param.device).view(-1)
@@ -657,21 +624,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             partitions.append(flat_tensor.narrow(0, partition_size * i, partition_size))
 
             if i == torch.distributed.get_rank(group=self.ds_process_group):
-                #partitions[i].copy_(param.data)
                 partitions[i].data.copy_(param.ds_tensor.data, non_blocking=True)
 
-                # TODO fix performance. Currently only 3 GB/s despite pinned memory
-                # src_tensor = torch.zeros(param.ds_tensor.numel(), dtype=param.dtype,device='cpu').pin_memory()
-                # torch.cuda.synchronize()
-                # start = time.time()
-                # src_tensor.data.copy_(param.ds_tensor.data)
-                # #partitions[i].data.copy_(param.ds_tensor.data)
-                # partitions[i].data.copy_(src_tensor.data)
-
-                # torch.cuda.synchronize()
-                # end = time.time()
-                # print(f"Bandwidth = {(param.ds_tensor.numel() * 2.0)/(1024*1024*1024*(end-start))}")
-        #print(f"Partitions {partitions} and partition {partitions[self.rank]}")
         handle = torch.distributed.all_gather(partitions,
                                               partitions[self.rank],
                                               group=self.ds_process_group,
@@ -682,15 +636,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return handle
 
     def _allgather_params(self, param_list, hierarchy=0):
-        # for param in param_list:
-        #     replicated_tensor = torch.empty(param.ds_shape, dtype=param.dtype, device=param.device)
-        #     param.data = replicated_tensor.data
-        # return None
-
         if len(param_list) == 0:
             return
 
-        #partition_size = sum([param.data.numel() for param in param_list])
         partition_size = sum([param.ds_tensor.numel() for param in param_list])
 
         tensor_size = partition_size * self.world_size
@@ -707,10 +655,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if i == self.rank:
                 offset = 0
                 for param in param_list:
-                    #param_numel = param.data.numel()
                     param_numel = param.ds_tensor.numel()
 
-                    #partitions[i].narrow(0, offset, param_numel).copy_(param.data)
                     partitions[i].narrow(0,
                                          offset,
                                          param_numel).copy_(param.ds_tensor.data)
@@ -725,7 +671,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         for param in param_list:
 
-            #param_partition_size = param.data.numel()
             param_partition_size = param.ds_tensor.numel()
 
             param_size = param.ds_numel
