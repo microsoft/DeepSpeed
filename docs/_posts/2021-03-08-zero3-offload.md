@@ -8,7 +8,7 @@ date: 2021-03-08 00:00:00
 ---
 Today we are announcing the release of ZeRO-3 Offload, a highly efficient and easy to use implementation of ZeRO Stage 3 and ZeRO Offload combined, geared towards our continued goal of democratizing AI by making efficient large-scale DL training available to everyone.  The key benefits of ZeRO-3 Offload are:
 
-* Unprecedented memory efficiency to run very large models on a limited number of GPU resources - e.g., fine-tune models with over 70B parameters on a single GPU and over 2 Trillion parameters on 512 GPUs!
+* Unprecedented memory efficiency to run very large models on a limited number of GPU resources - e.g., fine-tune models with over 40B parameters on a single GPU and over 2 Trillion parameters on 512 GPUs!
 * Extremely Easy to use:
     * Scale to over a trillion parameters without the need to combine multiple parallelism techniques in complicated ways.
     * For existing DeepSpeed users, turn on ZeRO-3 Offload with just a few flags in DeepSpeed Config file.
@@ -44,7 +44,7 @@ With today’s release of ZeRO-3 Offload, we are adding support for partitioning
 <h2>Unprecedented model scale</h2>
 Unlike ZeRO-2 and ZeRO-Offload where the parameters have to fit in the memory of a single GPU, ZeRO-3 Offload can partition the parameters across GPUs, and offload them to CPU, supporting model sizes that are much larger than the memory on a single GPU. Furthermore, ZeRO-3 Offload goes beyond the state-of-the-art hybrid 3D-parallelism (data, model and pipeline parallelism combined). While 3D Parallelism is limited by the aggregate GPU memory, ZeRO-3 Offload can exploit both GPU and CPU memory, the latter of which is much larger and cheaper compared to GPU memory. This allows ZeRO-3 Offload to train larger model sizes with the given GPU and CPU resources than any other currently available technology.
 
-<i>Model Scale on Single GPU</i>: ZeRO-3 Offload can train models with over 70B+ parameters efficiently on a single GPU (e.g., 32GB V100 GPU + 1.5TB CPU memory). This is 5x larger than what is possible with ZeRO-2 Offload, the current state-of-the art. 
+<i>Model Scale on Single GPU</i>: ZeRO-3 Offload can train models with over 40B parameters efficiently on a single GPU (e.g., 32GB V100 GPU + 1.5TB CPU memory). This is 5x larger than what is possible with ZeRO-2 Offload, the current state-of-the art. 
 
 <i>Model Scale on Multi-GPUs</i>: With ZeRO-3 Offload you can train a trillion and two trillion parameter models on NVIDIA 32GB V100 DGX-2 cluster with 256 GPUs and 512 GPUs, respectively. In contrast, the state-of-art 3D Parallelism requires 800 GPUs, and 1600 GPUs, respectively, to fit the same sized models. This represents a 3x reduction in GPUs required to fit models with over a trillion parameters.
 
@@ -70,27 +70,19 @@ Figure 2. ZeRO-3 Offload: Multi-billion and trillion parameter model throughput 
 ZeRO-3 Offload obtains high efficiency despite the 50% communication overhead of ZeRO Stage 3 compared to standard data parallel training for a fixed batch size. This is made possible through a communication overlap centric design and implementation, which allows ZeRO-3 Offload to hide nearly all of the communication volume with computation, while taking advantage of a larger batch size for improved efficiency resulting from better GPU memory efficiency.
 
 
-<i>Efficient multi-billion parameter training on a single node</i>: ZeRO-Offload also empowers 
-
-<a href="/assets/images/zero3-offload-16-v100.png">
-<img src="/assets/images/zero3-offload-16-v100.png">
-</a>
-Figure 3. Multi-billion parameter model training on 16 V100 GPUs
-
-
-<i>Efficient multi-billion parameter training on a single GPU</i>:
+<i>Efficient multi-billion parameter model training on a single GPU</i>: ZeRO-3 Offload further democratizes AI by enabling efficient training of multi-billion parameter models on a single GPU. For single GPU training, ZeRO-3 Offload provides benefits over ZeRO-2 Offload along two dimensions. First, ZeRO-3 Offload increases the size of models trainable on a single V100 from 13B to 40B. Second, for ZeRO-3 Offload provides speedups (e.g., 2.3X for 13B) compared to ZeRO-2 Offload for model sizes trainable by both solutions. These results are summarized in Figure 3.      
 
 <a href="/assets/images/zero3-offload-1-v100.png">
 <img src="/assets/images/zero3-offload-1-v100.png">
 </a>
-Figure 4. Multi-billion parameter model training on one V100 GPU
+Figure 3. Multi-billion parameter model training on one V100 GPU
 
-<i>Super-Linear scalability across GPUs</i>: Additionally, ZeRO-3 Offload also preserves the super-linear scalability characteristics that we have demonstrated with all our previous ZeRO technologies (ZeRO Stage 1, ZeRO Stage 2 and ZeRO Offload). ZeRO-3 Offload can exploit the aggregate PCI-E bandwidth between GPU and CPU across all the GPUs in multi-GPU training configuration, and at the same time, it can also exploit the aggregate CPU compute across all the nodes. As a result, the CPU-GPU-CPU communication time as well as the optimizer update time decreases linearly with number of GPUs and nodes, respectively, allowing ZeRO-3 Offload to exhibit super-linear scaling (see Figure 3).
+<i>Super-Linear scalability across GPUs</i>: Additionally, ZeRO-3 Offload also preserves the super-linear scalability characteristics that we have demonstrated with all our previous ZeRO technologies (ZeRO Stage 1, ZeRO Stage 2 and ZeRO Offload). ZeRO-3 Offload can exploit the aggregate PCI-E bandwidth between GPU and CPU across all the GPUs in multi-GPU training configuration, and at the same time, it can also exploit the aggregate CPU compute across all the nodes. As a result, the CPU-GPU-CPU communication time as well as the optimizer update time decreases linearly with number of GPUs and nodes, respectively, allowing ZeRO-3 Offload to exhibit super-linear scaling (see Figure 4).
 
 <a href="/assets/images/zero3-offload-200B-scalability.png">
 <img src="/assets/images/zero3-offload-200B-scalability.png">
 </a>
-Figure 5. ZeRO-3 Offload Superlinear Scalability for a 200B parameter model.
+Figure 4. ZeRO-3 Offload Superlinear Scalability for a 200B parameter model.
 
 <h2>How to use ZeRO-3 Offload</h2>
 As with many other existing DeepSpeed features, once the user model has been converted to use DeepSpeed, enabling ZeRO-3 Offload is as easy as turning on a couple of flags in DeepSpeed Config file. Supporting advanced features like weight sharing, or enabling extremely large models that requires to be partitioned across GPUs/nodes to fit in GPU/CPU memory, can be done with just a couple of additional lines of code change using the ZeRO-3 Offload API. 
