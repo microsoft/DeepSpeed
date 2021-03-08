@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 import numpy as np
 import deepspeed
-from deepspeed.runtime.fp16.onebit.onebitadam import OnebitAdam
+from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
