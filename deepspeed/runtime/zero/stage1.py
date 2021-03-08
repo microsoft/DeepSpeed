@@ -47,7 +47,7 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
     # Compute aligned partition size based on communication size
     aligned_comm_partition_size = int(max_elements_per_comm // dp)
 
-    # s_note: 这里的子分区还要明确具体作用, 有最大通信量( max_elements_per_comm )的限制,
+    # s_note: 这里的子分区还要明确具体作用, 有最大总通信量( max_elements_per_comm )的限制,
     if aligned_param_partition_size <= aligned_comm_partition_size:
         sub_partition_count = 1
         sub_partition_size = aligned_param_partition_size
@@ -212,7 +212,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             #         p 是optimizer关联的parameter tensor
             #         p.grad 是其梯度tensor
             # push this group to list before modify
-            # s_note: fp16_groups中有完整的parameters
+            # s_note: fp16_groups 中有完整的 parameters
             self.fp16_groups.append(param_group['params'])
 
             # calculate best max elements per comm based to minimize padding
@@ -265,6 +265,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             local_sub_partitions = []
             for sub_partition in self.parallel_sub_partitioned_fp16_groups[i][
                     local_rank]:
+                # s_note: 这里把分片参数转换为 fp32
                 fp32_sub_partition = sub_partition.clone().float().detach()
                 fp32_sub_partition.requires_grad = True
                 local_sub_partitions.append(fp32_sub_partition)
@@ -279,6 +280,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # modify optimizer of have flat master weight
             # self.single_partition_of_fp32_groups[i].requires_grad = True # keep this in case internal optimizer uses it
+            # s_note: 这里 self.optimizer.param_groups 中的 params 被本地的fp32分片替换了
+            #         而 self.fp16_groups 中保存着原来 self.optimizer 中的 fp16 param_group['params']
             param_group['params'] = self.local_sub_partitions_of_fp32_groups[i]
 
             # RS: divide up the sub-partitions and keep track of offsets for each param
@@ -327,6 +330,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                                                  dtype=sub_partition_param.dtype).cuda()
                 sub_partition_param.grad = sub_partition_grad
 
+        # s_note: 这里调用到最底层的 adam 优化器, 会根据 optimizer 中 group['params'] 
+        #         的参数大小对应初始化 m 和 v, 这里也就完成了 m 和 v 的分片
         self.optimizer.step()
 
         for group in self.local_sub_partitions_of_fp32_groups:
@@ -372,10 +377,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         total_num_elements = tensor.numel()
 
         # if total elements is less than our max, revert to splitting into dp partitions
+
         max_elements_per_comm = min(total_num_elements, max_elements_per_comm)
         sub_partition_size = int(max_elements_per_comm // world_size)
 
         # Ensure partition alignment was done correctly
+        # s_note: 按照这里的逻辑, num_sub_partitions 是有可能大于数据并行进程数也就是设备数的
+        #         因为如果 total_num_elements > max_elements_per_comm, 
+        #         那么  sub_partition_size < int(total_num_elements // world_size)
+        #         则 num_sub_partitions > (total_num_elements / int(total_num_elements // world_size)) = world_size
         num_sub_partitions = int(total_num_elements // sub_partition_size)
         assert total_num_elements % sub_partition_size == 0, "{} % {} != 0".format(total_num_elements, sub_partition_size)
 
@@ -402,6 +412,25 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         comm_id = 0
         element_intervals = defaultdict(
             list)  # [rank] -> [(start,end), (start,end), ...]
+
+        # s_note: 
+        #
+        # 首先让 n + 1 表示进程数也就是 world_size, sps 表示 sub_partition_size:
+        #
+        # element_intervals = {
+        #   rank_0 : [(0, sps), (sps * (n + 1), sps * (n + 2)), ...],
+        #   rank_1 : [(sps, sps * 2), (sps * (n + 2), sps * (n + 3)), ...],
+        #    .....
+        #   rank_n : [(sps * n, sps * (n + 1)), (sps * (n + n + 1), sps * (n + n + 2)), ...]
+        # }
+        #
+        #
+        # comm_partitions = [
+        #   comm_id_0 -> [tensor(0, sps), tensor(sps, sps * 2), ..., tensor(sps * n, sps * (n + 1))],
+        #   comm_id_1 -> [tensor(sps * (n + 1), sps * (n + 2)), tensor(sps * (n + 2), sps * (n + 3)), ..., tensor(sps * (n + n + 1), sps * (n + n + 2))],
+        #   ......
+        # ]
+        #
         for idx in range(num_sub_partitions):
             rank_id = idx % world_size
             sub_partition = tensor.narrow(0, start, sub_partition_size).detach()
@@ -415,6 +444,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         sub_partitions = []
         for _ in range(world_size):
             sub_partitions.append([])
+
+        # s_note:
+        # sub_partitions = {
+        #   rank_0 -> [tensor(0, sps), tensor(sps * (n + 1), sps * (n + 2)), ...],
+        #   rank_1 -> [tensor(sps, sps * 2), tensor(sps * (n + 2), sps * (n + 3)), ...],
+        #    .....
+        #   rank_n -> [tensor(sps * n, sps * (n + 1)), tensor(sps * (n + n + 1), sps * (n + n + 2)), ...]
+        # }
         for comm_id, partitions in enumerate(comm_partitions):
             for rank_id, partition in enumerate(partitions):
                 sub_partitions[rank_id].append(partition)
@@ -423,7 +460,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
     @staticmethod
     def get_all_sub_partition_info(tensor_list,
-                                   all_element_intervals,
+                                   all_element_intervals, # s_note: 从 self.get_data_parallel_sub_partitions 函数返回
                                    local_rank,
                                    world_size):
         params_not_local = []
@@ -601,6 +638,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             all_sub_partitions = []
             for rank in range(world_size):
                 # gsp is list of partitions indexed by comm_idx
+                # s_note: 获取本地对应 fp16 梯度分片
                 grad_sub_partitions = self.get_flat_sub_partitions(
                     comm_tensor_list=self.params_in_rank_sub_partitions[i][rank],
                     comm_param_offsets=self.params_in_rank_sub_partitions_offsets[i]
@@ -636,7 +674,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 else:
                     for partition in single_comm_all_partitions:
                         partition.div_(world_size)
-
+                    # s_note: reduce_scatter 全局同步分发  fp16 梯度 
                     dist.reduce_scatter(output=single_comm_all_partitions[local_rank],
                                         input_list=single_comm_all_partitions,
                                         group=self.dp_process_group)
@@ -666,6 +704,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             #RS: update free grads w.r.t. sub partitions
             #free gradients for all the parameters that are not updated by this process
+            # s_note: 这里释放了 fp16 的梯度? 这应该是 stege2 才要做的事情?
             self.free_grad_in_param_list(self.params_not_local[i])
 
             # create flat gradient partitions for parameters updated by this process
@@ -683,7 +722,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 sub_partition_param.grad = local_grad_sub_partitions[idx]
 
             #RS: update free grads for sub-partitions
-            #release all the gradient since we have already created a necessary copy in dp_grad_partition
+            # release all the gradient since we have already created a necessary copy in dp_grad_partition
+            # s_note: 这里释放了 fp16 的梯度? 这应该是 stege2 才要做的事情? 还有上面 dp_grad_partition 指什么?
             self.free_grad_in_param_list(
                 self.params_in_rank_sub_partitions[i][partition_id])
 
@@ -696,6 +736,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         #RS: clear our sub partition grads
         #get rid of the fp32 gradients. Not needed anymore
+        # s_note: 释放本地分片对应的 fp32 梯度
         for group in self.local_sub_partitions_of_fp32_groups:
             for idx, sub_partition_param in enumerate(group):
                 sub_partition_param.grad = None
@@ -711,6 +752,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         #RS: all_gather/broadcast sub-partitions in separate comm calls
         #gather the updated weights from everyone
+        # s_note: all_gather 获取全局更新之后的 fp16 梯度
         for fp16_all_sub_partitions in self.parallel_comm_sub_partitioned_fp16_groups:
             for comm_id, sub_partitions in enumerate(fp16_all_sub_partitions):
                 dist.all_gather(sub_partitions,
