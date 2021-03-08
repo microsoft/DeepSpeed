@@ -160,6 +160,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.first_output_send = True
         self.first_gradient_send = True
+        self.timer_values = None
 
         # stores the loss for the current micro batch being processed
         self.loss = torch.tensor(0.0).to(self.device)
@@ -319,10 +320,13 @@ class PipelineEngine(DeepSpeedEngine):
                 pct_optimizer_step = self.timers('step').elapsed(reset=False) / elapsed * 100
                 pct_fwd = self.timers('forward').elapsed(reset=False) / elapsed * 100
                 pct_backward = self.timers('backward').elapsed(reset=False) / elapsed * 100
+                timer_values = {'pct_comms': pct_comms, 'pct_optimizer_step': pct_optimizer_step,
+                              'pct_fwd': pct_fwd, 'pct_backward': pct_backward}
                 print_rank_0(
                     f'%comms: {pct_comms} \n %optimizer_step {pct_optimizer_step} \n %forward: {pct_fwd} \n %backward: {pct_backward}')
                 names = list(self.timers.timers.keys())
-                self.timers.log(names)
+                timer_values.update(self.timers.log(names))
+                self.timer_values = timer_values
 
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
