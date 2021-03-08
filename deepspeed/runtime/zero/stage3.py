@@ -1288,7 +1288,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.cpu_offload:
             for i, sub_group in enumerate(self.fp16_groups):
-                self.averaged_gradients[i] = [torch.zeros_like(param.ds_tensor) if param.grad is None else param.grad.data.narrow(0,0,param.ds_tensor.numel()) for param in sub_group] 
+                self.averaged_gradients[i] = [
+                    torch.zeros_like(param.ds_tensor) if param.grad is None else
+                    param.grad.data.narrow(0,
+                                           0,
+                                           param.ds_tensor.numel())
+                    for param in sub_group
+                ]
                 # self.averaged_gradients[i] = self.get_flat_partition(
                 #     self.fp16_groups[i],
                 #     0,
