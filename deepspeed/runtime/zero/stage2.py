@@ -592,7 +592,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param, i)
-
+                        # s_note: 给 grad accumulate 注册 hook, 
+                        #         在反向过程中, 当参数的梯度计算完成之后, 做reduce操作同步全局梯度, 
+                        #         然后释放不属于本地参数分片的梯度, 来实现 gradient sharding
                         grad_acc.register_hook(reduce_partition_and_remove_grads)
                         self.grad_accs.append(grad_acc)
 
@@ -614,6 +616,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.elements_in_ipg_bucket + param.numel() > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
                                          param.numel())
+            # s_note: 全局同步梯度, 然后释放非本地分片的梯度
             self.reduce_ipg_grads()
             if self.contiguous_gradients and self.overlap_comm:
                 # Swap ipg_index between 0 and 1
@@ -946,6 +949,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             stream = torch.cuda.current_stream()
 
         if self.contiguous_gradients:
+            # s_note: 进行同步 reduce 操作
             self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
             self.buffered_reduce_fallback(
@@ -962,7 +966,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     Multiple gradient reduction is currently not supported"
 
                 self.params_already_reduced[param_id] = True
-
+                # s_note: 释放非本地分片的梯度
                 if not self.is_param_in_current_partition[param_id]:
                     if self.overlap_comm and self.contiguous_gradients is False:
                         # Clear the previous grads during the next reduction
