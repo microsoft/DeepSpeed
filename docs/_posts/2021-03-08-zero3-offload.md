@@ -12,7 +12,9 @@ Today we are announcing the release of ZeRO-3 Offload, a highly efficient and ea
 * Extremely Easy to use:
     * Scale to over a trillion parameters without the need to combine multiple parallelism techniques in complicated ways.
     * For existing DeepSpeed users, turn on ZeRO-3 Offload with just a few flags in DeepSpeed Config file.
-* High-performance per-GPU throughput and super-linear scalability across GPUs for distributed training.  With 1 Trillion parameters, ZeRO-3 Offload sustains 25 PetaFlops in compute performance on 512 NVIDIA V100 GPUs, achieving 49 TFlops/GPU.
+* High-performance per-GPU throughput and super-linear scalability across GPUs for distributed training.  
+    * With 1 Trillion parameters, ZeRO-3 Offload sustains 25 PetaFlops in compute performance on 512 NVIDIA V100 GPUs, achieving 49 TFlops/GPU.
+    * Up to 2x improvement in throughput compared to ZeRO- 2 Offload on single GPU
 
 
 <h2> Overview of ZeRO family of technology </h2>
