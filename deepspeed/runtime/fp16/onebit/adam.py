@@ -217,6 +217,12 @@ class OnebitAdam(torch.optim.Optimizer):
                                     state['worker_error'],
                                     state['server_error'],
                                     self.deepspeed.local_rank))
+                        # Because 1-bit compression cannot represent exact zero, it is required to
+                        # provide a momentum mask for those params that have constant exact zeros in their
+                        # momentums, otherwise the compression error would keep accumulating.
+                        # For example, for bert pre-training seq 128, bert.embeddings.position_embeddings.weight
+                        # always have exact zeros in its momentum for row 129 to 512, because it only
+                        # learns up to seq length 128 while the model supports up to 512 seq length.
                         if 'exp_avg_mask' in group:
                             if exp_avg.device != group['exp_avg_mask'].device:
                                 group['exp_avg_mask'] = group['exp_avg_mask'].to(
