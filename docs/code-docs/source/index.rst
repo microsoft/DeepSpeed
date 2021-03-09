@@ -33,7 +33,6 @@ ZeRO API
    :maxdepth: 2
 
    zero3
-   cpu-adam
 
 
 
