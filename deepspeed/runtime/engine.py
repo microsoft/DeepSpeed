@@ -22,7 +22,7 @@ from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
     ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
-    TORCH_ADAM_PARAM
+    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
@@ -640,10 +640,10 @@ class DeepSpeedEngine(Module):
 
         if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
-            adam_w_mode = self.optimizer_name() == ADAMW_OPTIMIZER
+            adam_w_mode = optimizer_parameters.get(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
             # zero-offload  torch-adam  adam_w_mode optimizer
             # T|F           T           T           torch.optim.AdamW
-            # T|F           T           F           torch.optim.Adam
+            # T|F           T           T           torch.optim.Adam
             # T             F           T|F         DeepSpeedCPUAdam(adam_w_mode)
             # F             F           T|F         FusedAdam(adam_w_mode)
             if torch_adam:
@@ -658,7 +658,7 @@ class DeepSpeedEngine(Module):
                                              **optimizer_parameters,
                                              adamw_mode=adam_w_mode)
             else:
-                optimizer_parameters['adam_w_mode'] = adam_w_mode
+                optimizer_parameters[ADAM_W_MODE] = adam_w_mode
                 optimizer = FusedAdam(model_parameters, **optimizer_parameters)
 
         elif self.optimizer_name() == LAMB_OPTIMIZER:
