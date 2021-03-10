@@ -220,9 +220,9 @@ class FP16_Optimizer(object):
             if hasattr(self.optimizer.comm_backend_handle,
                        "mpu") and self.optimizer.comm_backend_handle.mpu is not None:
                 if self.overflow:
-                    bool_tensor = torch.zeros(1)
+                    bool_tensor = torch.zeros(1).cuda()
                 else:
-                    bool_tensor = torch.ones(1)
+                    bool_tensor = torch.ones(1).cuda()
                 dist.all_reduce(bool_tensor, op=dist.ReduceOp.PRODUCT)
                 if not any(bool_tensor):
                     self.overflow = True
