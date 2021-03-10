@@ -2044,13 +2044,22 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.local_overflow = False
 
     def log_timers(self, timer_names):
+        if self.timers is None:
+            return
+
         self.timers.log(names=list(timer_names))
 
     def start_timers(self, timer_names):
+        if self.timers is None:
+            return
+
         for name in timer_names:
             self.timers(name).start()
 
     def stop_timers(self, timer_names):
+        if self.timers is None:
+            return
+
         for name in timer_names:
             self.timers(name).stop()
 
@@ -2342,7 +2351,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         norm_groups = self._get_norm_groups()
 
-        timers = self.timers
         timer_names = set()
 
         timer_names.add('optimizer_step')
