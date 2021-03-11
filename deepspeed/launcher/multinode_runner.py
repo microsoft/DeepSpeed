@@ -70,6 +70,8 @@ class PDSHRunner(MultiNodeRunner):
             "--master_addr={}".format(self.args.master_addr),
             "--master_port={}".format(self.args.master_port)
         ]
+        if self.args.detect_nvlink_pairs:
+            deepspeed_launch += ["--detect_nvlink_pairs"]
 
         return pdsh_cmd_args + deepspeed_launch + [self.user_script
                                                    ] + self.user_arguments
@@ -89,6 +91,7 @@ class OpenMPIRunner(MultiNodeRunner):
         #TODO: Allow for include/exclude at node-level but not gpu-level
         assert self.args.include == "" and self.args.exclude == "", 'openmpi backend does not support worker include/exclusion'
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'openmpi backend does not support limiting num nodes/gpus'
+        assert not self.args.detect_nvlink_pairs, "openmpi backend does not support remapping visible devices"
         total_process_count = sum(self.resource_pool.values())
         allow_run_as_root = os.environ.get('RUN_MPI_AS_ROOT', False)
         mpirun_cmd = [
@@ -162,6 +165,8 @@ class MVAPICHRunner(MultiNodeRunner):
         #TODO: Allow for include/exclude at node-level but not gpu-level
         assert self.args.include == "" and self.args.exclude == "", 'mvapich backend does not support worker include/exclusion'
         assert self.args.num_nodes == -1 and self.args.num_gpus == -1, 'mvapich backend does not support limiting num nodes/gpus'
+        assert not self.args.detect_nvlink_pairs, "openmpi backend does not support remapping visible devices"
+
         devices_per_node = self.resource_pool.values()
         total_process_count = sum(devices_per_node)
         process_per_node = list(devices_per_node)[0]

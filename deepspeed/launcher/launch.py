@@ -20,7 +20,7 @@ from argparse import ArgumentParser, REMAINDER
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
-
+from deepspeed.launcher.gpu_topology import detect_nvlink_pairs_and_map_visible_devices
 
 def parse_args():
     parser = ArgumentParser(description="DeepSpeed distributed training launch"
@@ -50,6 +50,8 @@ def parse_args():
                         default="None",
                         type=str,
                         help="world info base64 encoded dictionary")
+    parser.add_argument("--detect_nvlink_pairs", action="store_true",
+                        help="autodetects nvlink pairs and remaps CUDA_VISIBLE_DEVICES along the fastest connections")
 
     # positional
     parser.add_argument("training_script",
@@ -100,7 +102,11 @@ def main():
             curr_global_rank += 1
     logger.info("global_rank_mapping={}".format(global_rank_mapping))
     logger.info("dist_world_size={}".format(dist_world_size))
-    current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
+    if args.detect_nvlink_pairs:
+        logger.info("Autodetecting nvlink pairs...")
+        current_env["CUDA_VISIBLE_DEVICES"] = detect_nvlink_pairs_and_map_visible_devices(args.node_rank, local_gpu_ids)
+    else:
+        current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
     logger.info("Setting CUDA_VISIBLE_DEVICES={}".format(
         current_env["CUDA_VISIBLE_DEVICES"]))
     exclusion_counts_per_node = None
