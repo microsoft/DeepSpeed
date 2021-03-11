@@ -961,10 +961,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                     #create flat buffer in CPU and move to GPU
                     self.fp16_partitioned_groups_flat.append(
-                        flatten_dense_tensors_aligned(
-                            self.fp16_partitioned_groups[i],
-                            dist.get_world_size(group=self.dp_process_group)).cuda(
-                                torch.cuda.current_device()))
+                        flatten_dense_tensors_aligned(self.fp16_partitioned_groups[i],
+                                                      1).cuda(
+                                                          torch.cuda.current_device()))
                     see_memory_usage(
                         f"After flattening and moving param group {i} to GPU",
                         force=False)
