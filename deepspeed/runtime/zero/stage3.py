@@ -1035,6 +1035,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.hierarchy = 0
         self._register_hooks_recursively(self.module)
 
+        #reset step if in inference mode
+        def _end_of_forward_hook(module, *args):
+
+            if not torch._C.is_grad_enabled():
+                self.param_coordinator.reset_step()
+                print_rank_0(f"In inference mode", force=True)
+            else:
+                print_rank_0(f"Not in inference mode", force=True)
+
+        self.module.register_forward_hook(_end_of_forward_hook)
+
     def persistent_parameters(self):
         persistent_params = []
         total_persistent_parameters = 0
