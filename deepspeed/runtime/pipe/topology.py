@@ -426,6 +426,12 @@ class PipelineParallelGrid:
         """ The number of pipelines. """
         return self.data_parallel_size
 
+    def get_data_parallel_src_rank(self):
+        """Calculate the global rank corresponding to a local rank zero
+        in the data parallel group."""
+        global_rank = dist.get_rank()
+        return (global_rank // self.data_parallel_size) * self.data_parallel_size
+
     def get_data_parallel_group(self):
         """ The group of ranks within the same stage of all pipelines. """
         return self.dp_proc_group

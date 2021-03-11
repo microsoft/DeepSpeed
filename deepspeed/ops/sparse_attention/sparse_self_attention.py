@@ -24,7 +24,8 @@ class SparseSelfAttention(nn.Module):
         sparsity_config=SparsityConfig(num_heads=4),
         key_padding_mask_mode='add',
         attn_mask_mode='mul',
-        max_seq_length=2048):
+        max_seq_length=2048,
+        mpu=None):
         """Initialize the sparse self attention layer.
         Arguments:
             sparsity_config: optional: this parameter determins sparsity pattern configuration; it is based on SparsityConfig class.
@@ -45,13 +46,21 @@ class SparseSelfAttention(nn.Module):
         # mask modes
         self.key_padding_mask_mode = key_padding_mask_mode
         self.attn_mask_mode = attn_mask_mode
+        self.mpu = mpu
 
     ops = dict()
 
     def get_layout(self, L):
         # if layout is never synchronized across GPUs, broadcast the layout from global rank 0
         if self._need_layout_synchronization and dist.is_initialized():
-            dist.broadcast(self.master_layout, src=0)
+            if self.mpu is not None:
+                data_parallel_group = self.mpu.get_data_parallel_group()
+                src_rank = self.mpu.get_data_parallel_src_rank()
+            else:
+                src_rank = 0
+                data_parallel_group = None
+            dist.broadcast(self.master_layout, src=src_rank,
+                           group=data_parallel_group)
             self._need_layout_synchronization = False
 
         if (L % self.sparsity_config.block != 0):
