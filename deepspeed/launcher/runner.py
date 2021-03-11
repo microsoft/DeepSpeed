@@ -104,6 +104,10 @@ def parse_args(args=None):
                         help="(optional) pass launcher specific arguments as a "
                         "single quoted argument.")
 
+    parser.add_argument("--detect_nvlink_pairs", action="store_true",
+                        help="(optional) autodetects nvlink pairs and remaps CUDA_VISIBLE_DEVICES along the "
+                             "fastest connections")
+
     parser.add_argument("user_script",
                         type=str,
                         help="User script to launch, followed by any required "
@@ -304,7 +308,7 @@ def main(args=None):
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
-    multi_node_exec = len(active_resources) > 1
+    multi_node_exec = True  # len(active_resources) > 1
 
     if multi_node_exec and not shutil.which('pdsh'):
         raise RuntimeError("pdsh is not installed, unable to proceed")
@@ -319,6 +323,8 @@ def main(args=None):
             "--master_addr={}".format(args.master_addr),
             "--master_port={}".format(args.master_port)
         ]
+        if args.detect_nvlink_pairs:
+            deepspeed_launch += ["--detect_nvlink_pairs"]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
