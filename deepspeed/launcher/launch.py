@@ -102,11 +102,13 @@ def main():
             curr_global_rank += 1
     logger.info("global_rank_mapping={}".format(global_rank_mapping))
     logger.info("dist_world_size={}".format(dist_world_size))
+    CUDA_VISIBLE_DEVICES = None
     if args.detect_nvlink_pairs:
         logger.info("Autodetecting nvlink pairs...")
-        current_env["CUDA_VISIBLE_DEVICES"] = detect_nvlink_pairs_and_map_visible_devices(args.node_rank, local_gpu_ids)
-    else:
-        current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
+        CUDA_VISIBLE_DEVICES = detect_nvlink_pairs_and_map_visible_devices(args.node_rank, local_gpu_ids)
+    if CUDA_VISIBLE_DEVICES is None:
+        CUDA_VISIBLE_DEVICES = ",".join(map(str, local_gpu_ids))
+    current_env["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
     logger.info("Setting CUDA_VISIBLE_DEVICES={}".format(
         current_env["CUDA_VISIBLE_DEVICES"]))
     exclusion_counts_per_node = None
