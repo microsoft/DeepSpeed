@@ -655,10 +655,12 @@ class DeepSpeedEngine(Module):
                                                   **optimizer_parameters)
             else:
                 if self.zero_cpu_offload():
-                    optimizer = DeepCPUAdam(model_parameters,
-                                            **optimizer_parameters,
-                                            adamw_mode=effective_adam_w_mode)
+                    from deepspeed.ops.adam import DeepSpeedCPUAdam
+                    optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                 **optimizer_parameters,
+                                                 adamw_mode=effective_adam_w_mode)
                 else:
+                    from deepspeed.ops.adam import FusedAdam
                     optimizer = FusedAdam(model_parameters,
                                           **optimizer_parameters,
                                           adam_w_mode=effective_adam_w_mode)
