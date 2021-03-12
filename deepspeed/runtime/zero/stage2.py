@@ -407,8 +407,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.grads_in_partition = None
             self.grads_in_partition_offset = 0
 
-        self.previous_reduced_grads = None
-
     def initialize_optimizer_states(self):
 
         for i, group in enumerate(self.fp16_groups):
