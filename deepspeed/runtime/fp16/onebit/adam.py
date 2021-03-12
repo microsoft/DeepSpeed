@@ -264,7 +264,7 @@ class OnebitAdam(torch.optim.Optimizer):
         Overrides load_state_dict() to add special handling when loading checkpoints
         """
         # Because at different stage exp_avg_mask may change (e.g.,
-        # BERT pre-training seqlen 128 and 512 ), we don't save the exp_avg_mask
+        # BERT pre-training seqlen 128 and 512 ), we don't use the exp_avg_mask
         # in checkpoints but always use the one user provided in training script.
         # (See example in DeepSpeedExamples/bing_bert/deepspeed_train.py.)
         # Thus here we keep the exp_avg_mask unchanged when loading checkpoint
