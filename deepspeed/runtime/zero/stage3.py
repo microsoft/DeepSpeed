@@ -1040,7 +1040,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             if not torch._C.is_grad_enabled():
                 self.param_coordinator.reset_step()
-            
+
         self.module.register_forward_hook(_end_of_forward_hook)
 
     def persistent_parameters(self):
