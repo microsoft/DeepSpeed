@@ -132,7 +132,7 @@ net = PipelineModule(layers=net.to_layers(), num_stages=2)
 ```
 
 **Note:**
-the `lamda` in the middle of `layers` above is not a `torch.nn.Module`
+the `lambda` in the middle of `layers` above is not a `torch.nn.Module`
 type. Any object that implements `__call__()` can be a layer in a
 `PipelineModule`: this allows for convenient data transformations in the
 pipeline.
@@ -230,7 +230,7 @@ pipeline. Each worker should load micro-batches of size
 a total of `engine.gradient_accumulation_steps()` times per `train_batch()`.
 
 **Watch out!**
-The pipeline engine *pulls* data from an iteratior instead of iterating over
+The pipeline engine *pulls* data from an iterator instead of iterating over
 it. It's critical that the data stream does not empty in the middle of a
 training batch. Each invocation of `train_batch()` will pull
 a total of `engine.gradient_accumulation_steps()` micro-batches of data from
