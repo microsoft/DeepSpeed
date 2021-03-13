@@ -975,9 +975,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                   flat_offset,
                                   total_elements)
                     self.fp16_partitioned_groups_flat.append(fp16_partitioned_group_flat)
-                    self._move_to_flat_buffer(self.fp16_partitioned_groups[i],
-                                              self.fp16_partitioned_groups_flat[i])
                     flat_offset += total_elements
+
+                # move param to flat buffer for both param offload on/off
+                self._move_to_flat_buffer(self.fp16_partitioned_groups[i],
+                                          self.fp16_partitioned_groups_flat[i])
 
                 see_memory_usage(f"After Flattening param group {i}", force=False)
 
