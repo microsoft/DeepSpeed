@@ -11,7 +11,7 @@ usage() {
   echo """
 Usage: install.sh [options...]
 
-By default will install deepspeed and all third party dependecies accross all machines listed in
+By default will install deepspeed and all third party dependencies across all machines listed in
 hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install locally
 
 [optional]
@@ -21,30 +21,32 @@ hostfile (hostfile: /job/hostfile). If no hostfile exists, will only install loc
     -n, --no_clean          Do not clean prior build state, by default prior build files are removed before building wheels
     -m, --pip_mirror        Use the specified pip mirror (default: the default pip mirror)
     -H, --hostfile          Path to MPI-style hostfile (default: /job/hostfile)
+    -e, --examples          Checkout deepspeed example submodule (no install)
     -v, --verbose           Verbose logging
     -h, --help              This help text
   """
 }
 
 ds_only=0
-tp_only=0
-deepspeed_install=1
-third_party_install=1
 local_only=0
 pip_sudo=0
 entire_dlts_job=1
 hostfile=/job/hostfile
 pip_mirror=""
-apex_commit=""
 skip_requirements=0
 allow_sudo=0
 no_clean=0
 verbose=0
+examples=0
 
 while [[ $# -gt 0 ]]
 do
 key="$1"
 case $key in
+    -l|--local_only)
+    local_only=1;
+    shift
+    ;;
     -s|--pip_sudo)
     pip_sudo=1;
     shift
@@ -69,10 +71,14 @@ case $key in
     -H|--hostfile)
     hostfile=$2
     if [ ! -f $2 ]; then
-        echo "User provided hostfile does not exist at $hostfile, exiting"
+        echo "User-provided hostfile does not exist at $hostfile, exiting"
         exit 1
     fi
     shift
+    shift
+    ;;
+    -e|--examples)
+    examples=1
     shift
     ;;
     -h|--help)
@@ -80,7 +86,7 @@ case $key in
     exit 0
     ;;
     *)
-    echo "Unkown argument(s)"
+    echo "Unknown argument(s)"
     usage
     exit 1
     shift
@@ -97,16 +103,17 @@ if [ "$allow_sudo" == "0" ]; then
     fi
 fi
 
-if [ "$ds_only" == "1" ] && [ "$tp_only" == "1" ]; then
-    echo "-d and -t are mutually exclusive, only choose one or none"
-    usage
-    exit 1
+if [ "$examples" == "1" ]; then
+    git submodule update --init --recursive
+    exit 0
 fi
 
 if [ "$verbose" == "1" ]; then
     VERBOSE="-v"
+    PIP_VERBOSE=""
 else
     VERBOSE=""
+    PIP_VERBOSE="--disable-pip-version-check"
 fi
 
 rm_if_exist() {
@@ -133,9 +140,9 @@ else
 fi
 
 if [ "$pip_mirror" != "" ]; then
-    PIP_INSTALL="pip install $VERBOSE -i $pip_mirror"
+    PIP_INSTALL="pip install $VERBOSE $PIP_VERBOSE -i $pip_mirror"
 else
-    PIP_INSTALL="pip install $VERBOSE"
+    PIP_INSTALL="pip install $VERBOSE $PIP_VERBOSE"
 fi
 
 
@@ -163,7 +170,7 @@ else
     export PDSH_RCMD_TYPE=ssh
     tmp_wheel_path="/tmp/deepspeed_wheels"
 
-    pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*.whl; else mkdir -pv $tmp_wheel_path; fi"
+    pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*; else mkdir -pv $tmp_wheel_path; fi"
     pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
 
     echo "Installing deepspeed"

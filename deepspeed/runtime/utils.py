@@ -7,6 +7,7 @@ Helper functions and classes from multiple sources.
 '''
 
 import os
+import psutil
 from math import ceil
 from math import floor
 from bisect import bisect_left, bisect_right
@@ -38,6 +39,28 @@ def set_random_seed(seed):
     torch.manual_seed(seed)
 
 
+def move_to_device(item, device):
+    """
+    Move tensor onto device. Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+    Parameters:
+        item: tensor to move or (possibly nested) container of tensors to move.
+        device: target device
+
+    Returns:
+        None
+    """
+    if torch.is_tensor(item):
+        return item.to(device)
+    elif isinstance(item, list):
+        return [move_to_device(v, device) for v in item]
+    elif isinstance(item, tuple):
+        return tuple([move_to_device(v, device) for v in item])
+    elif isinstance(item, dict):
+        return {k: move_to_device(v, device) for k, v in item.items()}
+    else:
+        return item
+
+
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
     def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False):
@@ -50,7 +73,7 @@ class CheckOverflow(object):
                     self.params.append(param)
 
     def check_using_norm(self, norm_group, reduce_overflow=True):
-        #TODO: I don't think reduce_overflow is needed if mpu is None
+        # TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
 
         if self.mpu is not None:
@@ -93,7 +116,7 @@ class CheckOverflow(object):
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = torch.cuda.ByteTensor([overflow])
-        #torch.distributed.all_reduce(overflow_gpu,
+        # torch.distributed.all_reduce(overflow_gpu,
         #                             op=torch.distributed.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
         if self.zero_reduce_scatter:
@@ -522,8 +545,9 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     )
 
 
-def see_memory_usage(message):
-    return
+def see_memory_usage(message, force=False):
+    if not force:
+        return
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
         return
 
@@ -534,6 +558,11 @@ def see_memory_usage(message):
         Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB ")
+
+    vm_stats = psutil.virtual_memory()
+    used_GB = round(((vm_stats.total - vm_stats.available) / (1024**3)), 2)
+    logger.info(
+        f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
 
 
 def call_to_str(base, *args, **kwargs):

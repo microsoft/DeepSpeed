@@ -206,6 +206,16 @@ class PipelineEngine(DeepSpeedEngine):
         self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
+        # We need to run this first to write to self.averaged_gradients;
+        # since this class turns `enable_backward_allreduce` off,
+        # `self.overlapping_partition_gradients_reduce_epilogue()` defined in the DeepSpeedEngine
+        # never actually runs. I suspect this is because of efficiency problems; get_flat_partition in
+        # stage2.py might do something expensive; someone will have to look into that later. But
+        # in the meantime, this fixes ZeRO2 + Pipelining enough to run a demo. Further profiling
+        # needed to decide if it actually breaks everything.
+        # (see https://github.com/EleutherAI/gpt-neox/issues/62#issuecomment-761471944)
+        if self.zero_optimization_partition_gradients():
+            self.optimizer.overlapping_partition_gradients_reduce_epilogue()
         self.module.allreduce_tied_weight_gradients()
 
     def _exec_reduce_grads(self):
@@ -467,17 +477,6 @@ class PipelineEngine(DeepSpeedEngine):
         # All MP ranks participate in batch_fn, where they might broadcast the data.
         if self.batch_fn:
             batch = self.batch_fn(batch)
-
-        # Sanity check dimensions.
-        # XXX: the last minibatch with size < micro_batch_size kills us
-        if torch.is_tensor(batch[0]):
-            if batch[0].size(0) != self.micro_batch_size:
-                print(f'size mismatch: {batch[0].size(0)} mb: {self.micro_batch_size}')
-                return self._next_batch()
-        else:
-            assert torch.is_tensor(batch[0][0])
-            if batch[0][0].size(0) != self.micro_batch_size:
-                return self._next_batch()
 
         return batch
 
@@ -1160,3 +1159,11 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
+
+    def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
+        self.batch_fn = fn

@@ -31,9 +31,10 @@ size_t get_workspace_size(int maxBatchSize,
     if (training) {
         workSpacesize += ((std::max)((size_t(maxBatchSize) * seq_len * intermediate_size),
                                      2 * (size_t(maxBatchSize) * heads * seq_len * seq_len)));
-        if (gelu_checkpoint) workSpacesize += 2 * (size_t(maxBatchSize) * seq_len * hidden_size);
+        if (gelu_checkpoint)
+            workSpacesize += 2 * (size_t(maxBatchSize) * seq_len * intermediate_size);
     }
-    return workSpacesize * sizeof(T);
+    return workSpacesize;  // * sizeof(T);
 }
 
 // NOTE: AT_ASSERT has become AT_CHECK on master after 0.4.
@@ -52,6 +53,7 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
                                               int seq_length,
                                               float attn_prob_dropout_ratio,
                                               float hidden_output_dropout_ratio,
+                                              float layer_norm_eps,
                                               bool pre_or_postLayerNorm,
                                               const std::vector<std::array<int, 3>>& gemm_algos,
                                               bool attn_dropout_checkpoint,
@@ -83,11 +85,13 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
       _attn_layer_norm(typename Normalize_Layer<T>::Config(batch_size,
                                                            seq_length,
                                                            hidden_size,
+                                                           layer_norm_eps,
                                                            true,
                                                            !normalize_invertible)),
       _layer_norm(typename Normalize_Layer<T>::Config(batch_size,
                                                       seq_length,
                                                       hidden_size,
+                                                      layer_norm_eps,
                                                       true,
                                                       !normalize_invertible)),
       _ff1(typename FeedForward<T>::Config(batch_size * seq_length,
@@ -123,7 +127,6 @@ BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
                                                          gemm_algos[4]))
 {
     assert(_hidden_size % _heads == 0);
-    assert(_seq_length <= 1024);
 
     Initialize();
 }
@@ -136,14 +139,6 @@ BertTransformerLayer<T>::~BertTransformerLayer()
 template <typename T>
 void BertTransformerLayer<T>::Initialize()
 {
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(_batch_size,
-                                                           _seq_length,
-                                                           _hidden_size,
-                                                           _intermediate_size,
-                                                           _heads,
-                                                           _training,
-                                                           _gelu_checkpoint));
-
     if (std::is_same<T, __half>::value) cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
 }
 
@@ -184,9 +179,17 @@ void BertTransformerLayer<T>::Forward(int bsz,
     size_t small_buf_size = bsz * _seq_length * _hidden_size;
     T* buf_0 = workspace;
     T* buf_1 = buf_0 + small_buf_size;
+    T* buf_2 = buf_1;
 
-    if (_normalize_invertible) add_res_ptr = buf_1 + 3 * small_buf_size;
-    if (_attn_dropout_checkpoint) ctx_bufB_ptr = buf_1 + 4 * small_buf_size;
+    if (_normalize_invertible) {
+        add_res_ptr = buf_1 + 3 * small_buf_size;
+        buf_2 = add_res_ptr;
+    }
+    if (_gelu_checkpoint) buf_2 += small_buf_size;
+    if (_attn_dropout_checkpoint)
+        ctx_bufB_ptr =
+            (_gelu_checkpoint ? (buf_2 + (_intermediate_size / _hidden_size) * small_buf_size)
+                              : (buf_1 + 4 * small_buf_size));
 
     int bsz_seq = bsz * _seq_length;
 
@@ -263,14 +266,11 @@ void BertTransformerLayer<T>::Forward(int bsz,
     _gelu.ForwardWithBiasAdd(bsz_seq,
                              (_gelu_checkpoint ? ff2_inp_ptr : gelu_inp_ptr),
                              inter_b_ptr,
-                             (_gelu_checkpoint ? ctx_bufB_ptr : ff2_inp_ptr),
+                             (_gelu_checkpoint ? buf_2 : ff2_inp_ptr),
                              _stream);
 
-    _ff2.Forward(bsz_seq,
-                 (_gelu_checkpoint ? ctx_bufB_ptr : ff2_inp_ptr),
-                 output_w_ptr,
-                 out_ptr,
-                 _cublasHandle);
+    _ff2.Forward(
+        bsz_seq, (_gelu_checkpoint ? buf_2 : ff2_inp_ptr), output_w_ptr, out_ptr, _cublasHandle);
 
     // layer output dropout.
     if (_pre_or_postLayerNorm)
@@ -342,7 +342,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
     T* buf_2 = buf_1 + small_buf_size;
     T* buf_3 = buf_2 + small_buf_size;
 
-    T* ff2_buf = (_gelu_checkpoint ? buf_2 + (bsz * _seq_length * _intermediate_size)
+    T* ff2_buf = (_gelu_checkpoint ? buf_3 + (bsz * _seq_length * _intermediate_size)
                                    : buf_3 + small_buf_size);
     T* ctx_bufB_ptr_recomp = ff2_buf + (_seq_length * _seq_length * bsz * _heads);
 
@@ -574,7 +574,7 @@ void BertTransformerLayer<T>::SetIntermediateBuffers(uint8_t* attn_prob_dropout_
 }
 
 template <typename T>
-void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
+void BertTransformerLayer<T>::SetSeqLength(int seq_len)
 {
     _seq_length = seq_len;
 
@@ -582,9 +582,6 @@ void BertTransformerLayer<T>::SetSeqLength(int seq_len, int bsz)
     _attn_prob_dropout.SetDimension(_seq_length);
     _attn_scores.SetConfig(_seq_length, _seq_length, _hidden_size / _heads);
     _attn_context.SetConfig(_hidden_size / _heads, _seq_length, _seq_length);
-
-    Context::Instance().GenWorkSpace(get_workspace_size<T>(
-        bsz, _seq_length, _hidden_size, _intermediate_size, _heads, _training, _gelu_checkpoint));
 }
 
 template <typename T>
@@ -595,6 +592,7 @@ int create_transformer_layer(int layer_id,
                              int intermediate_size,
                              float attn_dropout_ratio,
                              float hidden_dropout_ratio,
+                             float layer_norm_eps,
                              int seed,
                              bool pre_or_postLayerNorm,
                              bool test_gemm,
@@ -615,6 +613,7 @@ int create_transformer_layer(int layer_id,
                                                            init_seq_length,
                                                            attn_dropout_ratio,
                                                            hidden_dropout_ratio,
+                                                           layer_norm_eps,
                                                            pre_or_postLayerNorm,
                                                            Context::Instance().GetGemmAlgos(),
                                                            attn_dropout_checkpoint,
@@ -707,8 +706,18 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     int seq_len = layer->GetSeqLength();
     if (input.size(1) != seq_len) {
         seq_len = input.size(1);
-        layer->SetSeqLength(seq_len, bsz);
+        layer->SetSeqLength(seq_len);
     }
+
+    auto workspace = torch::empty({get_workspace_size<T>(bsz,
+                                                         seq_len,
+                                                         layer->GetHiddenSize(),
+                                                         layer->GetIntermediateSize(),
+                                                         layer->GetNumHeads(),
+                                                         layer->IsTrainingMode(),
+                                                         layer->GeluCheckpoint())},
+                                  options);
+    Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto inp_norm = ((prelayernorm || !normalize_invertible) ? torch::empty_like(input) : output);
     auto add_res = (normalize_invertible ? inp_norm : torch::empty_like(input));
@@ -877,8 +886,22 @@ std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
     int seq_len = layer->GetSeqLength();
     if (g_output.size(1) != seq_len) {
         seq_len = g_output.size(1);
-        layer->SetSeqLength(seq_len, bsz);
+        layer->SetSeqLength(seq_len);
     }
+    auto options = torch::TensorOptions()
+                       .dtype(g_output.options().dtype())
+                       .layout(torch::kStrided)
+                       .device(torch::kCUDA)
+                       .requires_grad(true);
+    auto workspace = torch::empty({get_workspace_size<T>(bsz,
+                                                         seq_len,
+                                                         layer->GetHiddenSize(),
+                                                         layer->GetIntermediateSize(),
+                                                         layer->GetNumHeads(),
+                                                         layer->IsTrainingMode(),
+                                                         layer->GeluCheckpoint())},
+                                  options);
+    Context::Instance().SetWorkSpace((T*)workspace.data_ptr());
 
     auto grad_input = torch::empty_like(input);
     auto grad_attn_qkvw = torch::empty_like(attn_qkvw);
