@@ -881,7 +881,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 # as some model have trainable parameters but skipped in training,
                 # their backward hooks in self.create_reduce_and_remove_grad_hooks() will not run, 
                 # so they have no norm_for_param_grads
-                if param_id in self.norm_for_param_grads: 
+                if param_id in self.norm_for_param_grads:
                     param_norm = self.norm_for_param_grads[param_id]
                     total_norm += param_norm.item()**2
 
