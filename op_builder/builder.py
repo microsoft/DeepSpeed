@@ -1,3 +1,6 @@
+"""
+Copyright 2020 The Microsoft DeepSpeed Team
+"""
 import os
 import time
 import torch
@@ -33,8 +36,14 @@ def installed_cuda_version():
 
 def get_default_compute_capatabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
-    if installed_cuda_version()[0] >= 11:
-        compute_caps += ";8.0;8.6"
+    import torch.utils.cpp_extension
+    if torch.utils.cpp_extension.CUDA_HOME is not None and installed_cuda_version(
+    )[0] >= 11:
+        if installed_cuda_version()[0] == 11 and installed_cuda_version()[1] == 0:
+            # Special treatment of CUDA 11.0 because compute_86 is not supported.
+            compute_caps += ";8.0"
+        else:
+            compute_caps += ";8.0;8.6"
     return compute_caps
 
 
@@ -113,6 +122,37 @@ class OpBuilder(ABC):
         '''
         return True
 
+    def extra_ldflags(self):
+        return []
+
+    def libraries_installed(self, libraries):
+        valid = False
+        check_cmd = 'dpkg -l'
+        for lib in libraries:
+            result = subprocess.Popen(f'dpkg -l {lib}',
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE,
+                                      shell=True)
+            valid = valid or result.wait() == 0
+        return valid
+
+    def simd_width(self):
+        if not self.command_exists('lscpu'):
+            self.warning(
+                f"{self.name} is attempted to query 'lscpu' to detect the existence "
+                "of AVX instructions. However, 'lscpu' does not appear to exist on "
+                "your system, will fall back to non-vectorized execution.")
+            return ''
+
+        result = subprocess.check_output('lscpu', shell=True)
+        result = result.decode('utf-8').strip().lower()
+        if 'genuineintel' in result:
+            if 'avx512' in result:
+                return '-D__AVX512__'
+            elif 'avx2' in result:
+                return '-D__AVX256__'
+        return ''
+
     def python_requirements(self):
         '''
         Override if op wants to define special dependencies, otherwise will
@@ -159,7 +199,8 @@ class OpBuilder(ABC):
         return CppExtension(name=self.absolute_name(),
                             sources=self.sources(),
                             include_dirs=self.include_paths(),
-                            extra_compile_args={'cxx': self.cxx_args()})
+                            extra_compile_args={'cxx': self.cxx_args()},
+                            extra_link_args=self.extra_ldflags())
 
     def load(self, verbose=True):
         from ...git_version_info import installed_ops, torch_info
@@ -207,6 +248,7 @@ class OpBuilder(ABC):
             ],
             extra_cflags=self.cxx_args(),
             extra_cuda_cflags=self.nvcc_args(),
+            extra_ldflags=self.extra_ldflags(),
             verbose=verbose)
         build_duration = time.time() - start_build
         if verbose:
@@ -221,7 +263,7 @@ class CUDAOpBuilder(OpBuilder):
 
         1. `TORCH_CUDA_ARCH_LIST` takes priority over `cross_compile_archs`.
         2. If neither is set default compute capabilities will be used
-        3. Under `jit_mode` compute capabilities of all visible cards will be used.
+        3. Under `jit_mode` compute capabilities of all visible cards will be used plus PTX
 
         Format:
 
@@ -243,6 +285,7 @@ class CUDAOpBuilder(OpBuilder):
                 if cc not in ccs:
                     ccs.append(cc)
             ccs = sorted(ccs)
+            ccs[-1] += '+PTX'
         else:
             # Cross-compile mode, compile for various architectures
             # env override takes priority
@@ -260,8 +303,10 @@ class CUDAOpBuilder(OpBuilder):
 
         args = []
         for cc in ccs:
-            cc = cc.replace('.', '')
-            args.append(f'-gencode=arch=compute_{cc},code=compute_{cc}')
+            num = cc[0] + cc[2]
+            args.append(f'-gencode=arch=compute_{num},code=sm_{num}')
+            if cc.endswith('+PTX'):
+                args.append(f'-gencode=arch=compute_{num},code=compute_{num}')
 
         return args
 

@@ -19,8 +19,8 @@ from copy import deepcopy
 import torch.cuda
 
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
-from .constants import TORCH_DISTRIBUTED_DEFAULT_PORT, \
-    PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
+from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
 DLTS_HOSTFILE = "/job/hostfile"
@@ -120,9 +120,12 @@ def fetch_hostfile(hostfile_path):
 
     # e.g., worker-0 slots=16
     with open(hostfile_path, 'r') as fd:
-
         resource_pool = collections.OrderedDict()
         for line in fd.readlines():
+            line = line.strip()
+            if line == '':
+                # skip empty lines
+                continue
             try:
                 hostname, slots = line.split()
                 _, slot_count = slots.split("=")

@@ -31,6 +31,22 @@ construct and manage the training optimizer, data loader, and the learning rate
 scheduler based on the parameters passed to `deepspeed.initialize` and the
 DeepSpeed [configuration file](#deepspeed-configuration).
 
+If you already have a distributed environment setup, you'd need to replace:
+
+```python
+torch.distributed.init_process_group(...)
+```
+
+with:
+
+```python
+deepspeed.init_distributed()
+```
+
+The default is to use the NCCL backend, which DeepSpeed has been thoroughly tested with, but you can also [override the default](https://deepspeed.readthedocs.io/en/latest/initialize.html#distributed-initialization).
+
+But if you don't need the distributed environment setup until after `deepspeed.initialize()` you don't have to use this function, as DeepSpeed will automatically initialize the distributed environment during its `initialize`. Regardless, you will need to remove `torch.distributed.init_process_group` if you already had it in place.
+
 
 ### Training
 
@@ -111,6 +127,9 @@ accepts a client state dictionary `client_sd` for saving. These items can be
 retrieved from `load_checkpoint` as a return argument. In the example above,
 the `step` value is stored as part of the `client_sd`.
 
+Important: all processes must call this method and not just the process with rank 0. It is because
+each process needs to save its master weights and scheduler+optimizer states. This method will hang
+waiting to synchronize with other processes if it's called just for the process with rank 0.
 
 ## DeepSpeed Configuration
 DeepSpeed features can be enabled, disabled, or configured using a config JSON
@@ -216,25 +235,27 @@ DeepSpeed will then make sure that these environment variables are set when
 launching each process on every node across their training job.
 
 
-### MPI Compatibility
+### MPI and AzureML Compatibility
 As described above, DeepSpeed provides its own parallel launcher to help launch
 multi-node/multi-gpu training jobs. If you prefer to launch your training job
 using MPI (e.g., mpirun), we provide support for this. It should be noted that
 DeepSpeed will still use the torch distributed NCCL backend and *not* the MPI
-backend. To launch your training job with mpirun + DeepSpeed you simply pass us
-an additional flag `--deepspeed_mpi`. DeepSpeed will then use
-[mpi4py](https://pypi.org/project/mpi4py/) to discover the MPI environment (e.g.,
-rank, world size) and properly initialize torch distributed for training. In this
-case you will explicitly invoke `python` to launch your model script instead of using
-the `deepspeed` launcher, here is an example:
-```bash
-mpirun <mpi-args> python \
-	<client_entry.py> <client args> \
-	--deepspeed_mpi --deepspeed --deepspeed_config ds_config.json
-```
+backend.
 
-If you want to use this feature of DeepSpeed, please ensure that mpi4py is
-installed via `pip install mpi4py`.
+To launch your training job with mpirun + DeepSpeed or with AzureML (which uses
+mpirun as a launcher backend) you simply need to install the
+[mpi4py](https://pypi.org/project/mpi4py/) python package.  DeepSpeed will use
+this to discover the MPI environment and pass the necessary state (e.g., world
+size, rank) to the torch distributed backend.
+
+If you are using model parallelism, pipeline parallelism, or otherwise require
+torch.distributed calls before calling `deepspeed.initialize(..)` we provide
+the same MPI support with an additional DeepSpeed API call. Replace your initial
+`torch.distributed.init_process_group(..)` call with:
+
+```python
+deepspeed.init_distributed()
+```
 
 ## Resource Configuration (single-node)
 In the case that we are only running on a single node (with one or more GPUs)

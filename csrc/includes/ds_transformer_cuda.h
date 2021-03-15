@@ -42,6 +42,7 @@ public:
                          int seq_length,
                          float attn_dropout_ratio,
                          float hidden_output_dropout_ratio,
+                         float layer_norm_eps,
                          bool pre_or_postLayerNorm,
                          const std::vector<std::array<int, 3>>& gemm_algos,
                          bool attn_dropout_checkpoint,
@@ -130,10 +131,13 @@ public:
     inline int GetBatchSize() const { return _batch_size; }
     inline int GetNumHeads() const { return _heads; }
     inline int GetSeqLength() const { return _seq_length; }
+    inline int GetIntermediateSize() const { return _intermediate_size; }
 
-    void SetSeqLength(int seq_len, int bsz);
+    void SetSeqLength(int seq_len);
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
+    inline bool IsTrainingMode() const { return _training; }
+    inline bool GeluCheckpoint() const { return _gelu_checkpoint; }
 
 private:
     void Initialize();
