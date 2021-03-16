@@ -6,6 +6,7 @@ import pytest
 import json
 import os
 import numpy as np
+import time
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
 
@@ -14,13 +15,6 @@ TORCH_MINOR = int(torch.__version__.split('.')[1])
 if TORCH_MAJOR < 1 or TORCH_MINOR < 8:
     pytest.skip("NCCL-based 1-bit compression requires torch 1.8 or higher",
                 allow_module_level=True)
-
-try:
-    from apex import amp
-    _amp_available = True
-except ImportError:
-    _amp_available = False
-amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
 
 
 def test_onebitadam_fp16_basic(tmpdir):
@@ -249,6 +243,7 @@ def test_onebitadam_checkpointing(tmpdir):
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
         # optimizer_1.optimizer.gather_compression_errors()
         model_1.save_checkpoint(save_folder, tag=None)
+        time.sleep(5)
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
