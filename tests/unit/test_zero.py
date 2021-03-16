@@ -29,7 +29,7 @@ def run_unbalanced_gradients(model, data_loader):
         enable_grads(model)
 
 
-@pytest.mark.parametrize('zero_stage', [1, 2, 3])
+@pytest.mark.parametrize('zero_stage', [1, 2])
 def test_zero_unbalanced_gradients(tmpdir, zero_stage):
     config_dict = {
         "train_micro_batch_size_per_gpu": 2,
@@ -90,10 +90,9 @@ def test_zero3_dynamic_tracing():
         }
     }
 
-    hidden_dim = 4
-
     @distributed_test(world_size=[1])
-    def _helper(hidden_dim, config_dict):
+    def _helper(config_dict):
+        hidden_dim = 4
         with deepspeed.zero.Init():
             model = DynamicModel(hidden_dim)
 
@@ -112,4 +111,4 @@ def test_zero3_dynamic_tracing():
             model.backward(loss)
             model.step()
 
-    _helper(hidden_dim, config_dict)
+    _helper(config_dict)

@@ -196,10 +196,9 @@ class PrefetchCoordinator(object):
             self.id_to_sub_module_map[sub_module.id] = sub_module
 
     def print_trace(self, force=False):
-        pass
-        #print_rank_0(
-        #    f"The module trace is : {[self.id_to_sub_module_map[module_id].id for module_id in self.sub_module_trace]}", force=force
-        #)
+        print_rank_0(
+            f"The module trace is : {[self.id_to_sub_module_map[module_id].id for module_id in self.sub_module_trace]}",
+            force=force)
 
     def increment_step(self, sub_module):
         self.most_recent_sub_module_step[sub_module.id] = self.step_id
@@ -258,7 +257,6 @@ class PrefetchCoordinator(object):
         params_to_prefetch = []
         total_numel_to_prefetch = 0
 
-        #for i in range(self.step_id, len(self.sub_module_trace)):
         for i in range(self.step_id, len(self.curr_module_trace)):
             module_id = self.curr_module_trace[i]
             if isinstance(module_id, TraceSplit):
@@ -293,8 +291,8 @@ class PrefetchCoordinator(object):
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != trace[sub_module_step_id]:
             print_rank_0(
-                f"Tracing failed. Cannot tell if the sub_module: {sub_module.id} is reused",
-                force=True)
+                f"Tracing failed. Cannot tell if the sub_module: {sub_module.id} is reused"
+            )
             return reuse_distance_in_numel
 
         # return cached value
