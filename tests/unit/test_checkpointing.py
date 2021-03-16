@@ -338,7 +338,7 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                                         hidden_dim,
                                         load_optimizer_states):
         if zero_stage == 3:
-            with deepspeed.zero.Init(): 
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
