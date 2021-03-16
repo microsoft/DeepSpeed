@@ -13,8 +13,8 @@ from deepspeed.utils.logging import logger
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
-    For usage example please see, https://www.deepspeed.ai/tutorials/onebit-adam/
-    It has been proposed in APMSqueeze (https://arxiv.org/abs/2008.11343)
+    For usage example please see https://www.deepspeed.ai/tutorials/onebit-adam/
+    For technical details please read https://arxiv.org/abs/2102.02888
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
