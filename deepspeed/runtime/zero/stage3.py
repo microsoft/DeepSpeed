@@ -2258,9 +2258,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.averaged_gradients[sub_group_id]).to(
                 self.fp32_partitioned_groups_flat[sub_group_id].dtype)
 
+        print(f'rank = {dist.get_rank()} sub_group_id = {sub_group_id}')
+        print(f'rank = {dist.get_rank()} partition_id = {partition_id}')
+        print(f'rank = {dist.get_rank()} len(self.averaged_gradients = len(self.averaged_gradients)')
+        print(f'rank = {dist.get_rank()} self.averaged_gradients[sub_group_id] = {self.averaged_gradients[sub_group_id]}')
+        print(f'rank = {dist.get_rank()} partition_size = {len(self.partition_size)}')
+        print(f'rank = {dist.get_rank()} single_grad_partition.numel() == {single_grad_partition.numel()}')
+        print(f'rank = {dist.get_rank()} len(self.fp32_partitioned_groups_flat) = {len(self.fp32_partitioned_groups_flat)}')
+        print(f'rank = {dist.get_rank()} self.fp32_partitioned_groups_flat[sub_group_id].numel() = {self.fp32_partitioned_groups_flat[sub_group_id].numel()}')
+        print(f'rank = {dist.get_rank()} single_grad_partition == {single_grad_partition}')
+        print(f'rank = {dist.get_rank()} self.fp32_partitioned_groups_flat[sub_group_id] = {self.fp32_partitioned_groups_flat[sub_group_id]}')
+
         assert single_grad_partition.numel() == self.fp32_partitioned_groups_flat[sub_group_id].numel(), \
             "averaged gradients have different number of elements that partition size {} {} {} {}".format(
-                single_grad_partition.numel(), self.partition_size[sub_group_id], sub_group_id, partition_id)
+                single_grad_partition.numel(), self.fp32_partitioned_groups_flat[sub_group_id].numel(), sub_group_id, partition_id)
 
         self.fp32_partitioned_groups_flat[sub_group_id].grad = single_grad_partition
 
