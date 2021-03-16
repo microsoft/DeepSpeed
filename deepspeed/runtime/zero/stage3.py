@@ -197,7 +197,7 @@ class PrefetchCoordinator(object):
 
     def print_trace(self, force=False):
         print_rank_0(
-            f"The module trace is : {[self.id_to_sub_module_map[module_id].id for module_id in self.sub_module_trace]}",
+            f"full trace: {self.sub_module_trace}, current trace: {self.curr_module_trace}",
             force=force)
 
     def increment_step(self, sub_module):
@@ -245,7 +245,7 @@ class PrefetchCoordinator(object):
     def get_params_to_prefetch(self, sub_module, numel=2000000):
         print_rank_0(
             f"get_params_to_prefetch {sub_module.id}, self.sub_module_trace={self.sub_module_trace}, step={self.step_id}, curr={self.curr_module_trace}",
-            force=False)
+            force=True)
         # are we on the correct sub trace?
         if sub_module.id != self.curr_module_trace[self.step_id]:
             # can we switch to any other traces that match?

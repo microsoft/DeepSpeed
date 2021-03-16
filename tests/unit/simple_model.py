@@ -46,7 +46,7 @@ class DynamicModel(torch.nn.Module):
     def forward(self, i, x, y):
         hidden_dim = x
         hidden_dim = self.linear(hidden_dim)
-        if i > 2:
+        if i % 3:
             hidden_dim = self.slayer(hidden_dim)
         if i > 4:
             hidden_dim = self.slayer2(hidden_dim)
