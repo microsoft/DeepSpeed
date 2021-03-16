@@ -47,10 +47,6 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
     if FP16_DeepSpeedZeroOptimizer_Stage3 is not None and isinstance(
             saved_model.optimizer,
             FP16_DeepSpeedZeroOptimizer_Stage3):
-
-        print(f'rank {dist.get_rank()} saved fp32_partitioned_groups_flat = {saved_model.optimizer.fp32_partitioned_groups_flat}')
-        print(f'rank {dist.get_rank()} loaded fp32_partitioned_groups_flat = {loaded_model.optimizer.fp32_partitioned_groups_flat}')
-
         for p0, p1 in zip(saved_model.optimizer.fp32_partitioned_groups_flat, loaded_model.optimizer.fp32_partitioned_groups_flat):
             assert torch.allclose(p0, p1, atol=1e-07), f"Fp32 model states {p0} is not equal to {p1}"
 
@@ -309,13 +305,11 @@ def test_checkpoint_fused_optimizer(tmpdir):
                            False,
                            'Adam'),
                           (3,
-                           False,
+                           True,
                            'deepspeed_adam')])
 def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
-    #if zero_stage == 3:
-    #    pytest.skip('Skip checkpointing tests for ZeRO3')
 
     config_dict = {
         "train_batch_size": 2,
@@ -349,8 +343,6 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                                         hidden_dim,
                                         load_optimizer_states):
         if zero_stage == 3:
-            global FP16_DeepSpeedZeroOptimizer_Stage3
-            from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
             with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
         else:
@@ -380,15 +372,16 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
                            'deepspeed_adam'),
                           (3,
                            False,
-                           'Adam')])
+                           'Adam'),
+                          (3,
+                           True,
+                           'deepspeed_adam')])
 def test_checkpoint_zero_no_optimizer(tmpdir,
                                       zero_stage,
                                       use_cpu_offload,
                                       adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
-    #if zero_stage == 3:
-    #    pytest.skip('Skip checkpointing tests for ZeRO3')
 
     config_dict = {
         "train_batch_size": 2,
@@ -454,12 +447,13 @@ def test_checkpoint_zero_no_optimizer(tmpdir,
                            'deepspeed_adam'),
                           (3,
                            False,
-                           'Adam')])
+                           'Adam'),
+                          (3,
+                           True,
+                           'deepspeed_adam')])
 def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
-    #if zero_stage == 3:
-    #    pytest.skip('Skip checkpointing tests for ZeRO3')
 
     config_dict = {
         "train_batch_size": 2,
@@ -536,13 +530,14 @@ def test_checkpoint_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optim
                            True,
                            'deepspeed_adam'),
                           (3,
+                           False,
+                           'Adam'),
+                          (3,
                            True,
-                           'Adam')])
+                           'deepspeed_adam')])
 def test_checkpoint_no_lr_scheduler(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
-    #if zero_stage == 3:
-    #    pytest.skip('Skip checkpointing tests for ZeRO3')
 
     config_dict = {
         "train_batch_size": 2,

@@ -961,10 +961,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                     #create flat buffer in CPU and move to GPU
                     self.fp16_partitioned_groups_flat.append(
-                        flatten_dense_tensors_aligned(
-                            self.fp16_partitioned_groups[i],
-                            dist.get_world_size(group=self.dp_process_group)).cuda(
-                                torch.cuda.current_device()))
+                        flatten_dense_tensors_aligned(self.fp16_partitioned_groups[i],
+                                                      1).cuda(
+                                                          torch.cuda.current_device()))
                     see_memory_usage(
                         f"After flattening and moving param group {i} to GPU",
                         force=False)
@@ -976,9 +975,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                   flat_offset,
                                   total_elements)
                     self.fp16_partitioned_groups_flat.append(fp16_partitioned_group_flat)
-                    self._move_to_flat_buffer(self.fp16_partitioned_groups[i],
-                                              self.fp16_partitioned_groups_flat[i])
                     flat_offset += total_elements
+
+                # move param to flat buffer for both param offload on/off
+                self._move_to_flat_buffer(self.fp16_partitioned_groups[i],
+                                          self.fp16_partitioned_groups_flat[i])
 
                 see_memory_usage(f"After Flattening param group {i}", force=False)
 
@@ -1035,6 +1036,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
         self._register_hooks_recursively(self.module)
+
+        #reset step if in inference mode
+        def _end_of_forward_hook(module, *args):
+
+            if not torch._C.is_grad_enabled():
+                self.param_coordinator.reset_step()
+
+        self.module.register_forward_hook(_end_of_forward_hook)
 
     def persistent_parameters(self):
         persistent_params = []
@@ -2257,17 +2266,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         single_grad_partition = _flatten_dense_tensors(
             self.averaged_gradients[sub_group_id]).to(
                 self.fp32_partitioned_groups_flat[sub_group_id].dtype)
-
-        print(f'rank = {dist.get_rank()} sub_group_id = {sub_group_id}')
-        print(f'rank = {dist.get_rank()} partition_id = {partition_id}')
-        print(f'rank = {dist.get_rank()} len(self.averaged_gradients = len(self.averaged_gradients)')
-        print(f'rank = {dist.get_rank()} self.averaged_gradients[sub_group_id] = {self.averaged_gradients[sub_group_id]}')
-        print(f'rank = {dist.get_rank()} partition_size = {len(self.partition_size)}')
-        print(f'rank = {dist.get_rank()} single_grad_partition.numel() == {single_grad_partition.numel()}')
-        print(f'rank = {dist.get_rank()} len(self.fp32_partitioned_groups_flat) = {len(self.fp32_partitioned_groups_flat)}')
-        print(f'rank = {dist.get_rank()} self.fp32_partitioned_groups_flat[sub_group_id].numel() = {self.fp32_partitioned_groups_flat[sub_group_id].numel()}')
-        print(f'rank = {dist.get_rank()} single_grad_partition == {single_grad_partition}')
-        print(f'rank = {dist.get_rank()} self.fp32_partitioned_groups_flat[sub_group_id] = {self.fp32_partitioned_groups_flat[sub_group_id]}')
 
         assert single_grad_partition.numel() == self.fp32_partitioned_groups_flat[sub_group_id].numel(), \
             "averaged gradients have different number of elements that partition size {} {} {} {}".format(
