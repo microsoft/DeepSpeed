@@ -244,7 +244,7 @@ class PrefetchCoordinator(object):
     # returns the next numel parameters that will be used next but are not available or inflight
     def get_params_to_prefetch(self, sub_module, numel=2000000):
         print_rank_0(
-            f"get_params_to_prefetch {sub_module.id=}, self.sub_module_trace={self.sub_module_trace}, {self.step_id=}, {self.curr_module_trace=}",
+            f"get_params_to_prefetch {sub_module.id}, self.sub_module_trace={self.sub_module_trace}, step={self.step_id}, curr={self.curr_module_trace}",
             force=False)
         # are we on the correct sub trace?
         if sub_module.id != self.curr_module_trace[self.step_id]:
