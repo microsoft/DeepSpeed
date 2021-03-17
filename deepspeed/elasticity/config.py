@@ -37,6 +37,7 @@ class ElasticityConfig:
 
     {
         "enabled": true,
+        "auto" : true,
         "max_train_batch_size": 2000,
         "micro_batch_sizes": [2,4,6],
         "min_gpus": 1,
@@ -48,6 +49,7 @@ class ElasticityConfig:
     """
     def __init__(self, param_dict):
         self.enabled = param_dict.get(ENABLED, ENABLED_DEFAULT)
+        self.auto = param_dict.get(AUTO, AUTO_DEFAULT)
         if self.enabled:
             if MAX_ACCEPTABLE_BATCH_SIZE in param_dict:
                 self.max_acceptable_batch_size = param_dict[MAX_ACCEPTABLE_BATCH_SIZE]

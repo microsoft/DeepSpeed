@@ -13,6 +13,7 @@ from torch.distributed.distributed_c10d import _get_global_rank
 from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.elasticity.auto import start_watching
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -148,6 +149,8 @@ class DeepSpeedEngine(Module):
         if mpu is not None:
             assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
                 " with model parallelism."
+            assert not self.auto_elasticity_enabled(), "Auto Elasticity is not currently supported" \
+                " with model parallelism."
 
         self._set_distributed_vars()
 
@@ -160,6 +163,11 @@ class DeepSpeedEngine(Module):
         self._configure_distributed_model(model)
 
         see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
+
+        # Configure auto elasticity processes/threads
+        if self.auto_elasticity_enabled():
+            self.auto_state = {'scale_up': False, 'scale_down': False}
+            start_watching(self.auto_state)
 
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
@@ -231,6 +239,9 @@ class DeepSpeedEngine(Module):
 
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
+
+    def auto_elasticity_enabled(self):
+        return self._config.auto_enabled
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -1081,6 +1092,18 @@ class DeepSpeedEngine(Module):
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
+    def check_states():
+        # check if a scale up or scale down event has come and act accordingly
+        if self.auto_state['scale_up']:
+            print(f"scaling up to x nodes, checkpointing, and restarting")
+            # wher to get the save_dir?
+            self.save_checkpoint(save_dir)
+            # relaunch and exit()?
+
+        if self.auto_state['scale_down']:
+            print(f"scaling down to x nodes and restarting")
+            # relaunch and exit()?
+            
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
@@ -1166,6 +1189,8 @@ class DeepSpeedEngine(Module):
                     'step'
                 ])
 
+        # check states for automatic elasticity feature
+        self.check_states()
         self.micro_steps += 1
 
     def _get_optimizer_param(self, param_name):
