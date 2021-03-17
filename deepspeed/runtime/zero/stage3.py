@@ -24,6 +24,8 @@ import itertools
 # with gradient partitioning and without
 pg_correctness_test = False
 
+DEBUG_TRACE = False
+
 try:
     from apex_C import flatten
     from apex_C import unflatten
@@ -198,7 +200,7 @@ class PrefetchCoordinator(object):
     def print_trace(self, force=False):
         print_rank_0(
             f"full trace: {self.sub_module_trace}, current trace: {self.curr_module_trace}",
-            force=force)
+            force=force or DEBUG_TRACE)
 
     def increment_step(self, sub_module):
         self.most_recent_sub_module_step[sub_module.id] = self.step_id
@@ -211,24 +213,29 @@ class PrefetchCoordinator(object):
 
     def split_trace(self, step_id, new_module):
         # save upcoming steps
-        if isinstance(self.sub_module_trace[step_id], TraceSplit):
+        if isinstance(self.curr_module_trace[step_id], TraceSplit):
             # add to existing split
-            self.curr_module_trace = self.sub_module_trace[step_id].new_sub_trace(
+            self.curr_module_trace = self.curr_module_trace[step_id].new_sub_trace(
                 new_module)
         else:
-            # create new split
-            sub_trace = self.sub_module_trace[step_id:]
-            self.sub_module_trace = self.sub_module_trace[:step_id] + [
-                TraceSplit(sub_trace=sub_trace)
+            sub_trace = self.curr_module_trace[step_id:]
+            self.curr_module_trace[step_id] = TraceSplit(sub_trace=sub_trace)
+
+            # must edit existing list to preserve pointer to original trace
+            # remove extra elements past new split
+            [
+                self.curr_module_trace.pop()
+                for _ in range(len(self.curr_module_trace) - step_id - 1)
             ]
-            self.curr_module_trace = self.sub_module_trace[step_id].new_sub_trace(
+
+            self.curr_module_trace = self.curr_module_trace[step_id].new_sub_trace(
                 new_module)
         self.reset_step(reset_curr=False)
         self.trace_completed = False
 
     def switch_trace(self, curr_module_id):
-        if isinstance(self.sub_module_trace[self.step_id], TraceSplit):
-            self.curr_module_trace = self.sub_module_trace[self.step_id].find_sub_trace(
+        if isinstance(self.curr_module_trace[self.step_id], TraceSplit):
+            self.curr_module_trace = self.curr_module_trace[self.step_id].find_sub_trace(
                 curr_module_id)
             # successfully find a trace?
             if self.curr_module_trace:
@@ -237,7 +244,7 @@ class PrefetchCoordinator(object):
         # unable to find trace, must split
         print_rank_0(
             f"Tracing failed. Prefetching is disabled at sub-module: {curr_module_id}, step_id={self.step_id}, we traced {self.sub_module_trace[self.step_id]} here",
-            force=False)
+            force=DEBUG_TRACE)
         self.split_trace(step_id=self.step_id, new_module=curr_module_id)
         return False
 
@@ -245,7 +252,7 @@ class PrefetchCoordinator(object):
     def get_params_to_prefetch(self, sub_module, numel=2000000):
         print_rank_0(
             f"get_params_to_prefetch {sub_module.id}, self.sub_module_trace={self.sub_module_trace}, step={self.step_id}, curr={self.curr_module_trace}",
-            force=True)
+            force=DEBUG_TRACE)
         # are we on the correct sub trace?
         if sub_module.id != self.curr_module_trace[self.step_id]:
             # can we switch to any other traces that match?
@@ -262,7 +269,7 @@ class PrefetchCoordinator(object):
             if isinstance(module_id, TraceSplit):
                 print_rank_0(
                     f"Unable to pre-fetch past split, fetched {total_numel_to_prefetch} params",
-                    force=False)
+                    force=DEBUG_TRACE)
                 return params_to_prefetch
             for _, param in get_all_parameters(self.id_to_sub_module_map[module_id]):
                 if param.ds_status is ZeroParamStatus.NOT_AVAILABLE and (
@@ -291,8 +298,8 @@ class PrefetchCoordinator(object):
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != trace[sub_module_step_id]:
             print_rank_0(
-                f"Tracing failed. Cannot tell if the sub_module: {sub_module.id} is reused"
-            )
+                f"Tracing failed. Cannot tell if the sub_module: {sub_module.id} is reused",
+                force=DEBUG_TRACE)
             return reuse_distance_in_numel
 
         # return cached value
