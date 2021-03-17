@@ -17,6 +17,7 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..git_version_info import version as __version__
 from ..utils import logger
 
+from ..elasticity.auto import auto_enabled
 from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config
 from ..elasticity.config import ElasticityConfigError
 from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
@@ -538,6 +539,8 @@ class DeepSpeedConfig(object):
             self.global_rank = 0
             self.world_size = 1
 
+        print(f"param dict to auto = {self._param_dict}")
+        self.auto_enabled = auto_enabled(self._param_dict)
         # If elastic-mode enabled, update compute + update _param_dict
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
         if self.elasticity_enabled:

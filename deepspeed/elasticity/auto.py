@@ -8,10 +8,13 @@ import time
 import inotify
 import inotify.adapters
 import re
+import os
+
+from .constants import AUTO, AUTO_DEFAULT
 
 def auto_enabled(ds_config: dict):
     if AUTO not in ds_config:
-        return False
+        return True
     return ds_config[AUTO].get(AUTO, AUTO_DEFAULT)
 
 def handle_scaling_event(state, old_hosts, config_file):
@@ -42,7 +45,7 @@ def listen_for_changes(state):
 
     i = inotify.adapters.Inotify()
 
-    ssh_config_path = '/root/.ssh/'
+    ssh_config_path = os.environ['HOME'] + '/.ssh/'
 
     # Watch both directories
     i.add_watch('/job/')

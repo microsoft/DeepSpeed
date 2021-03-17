@@ -320,6 +320,8 @@ def main(args=None):
             "--master_port={}".format(args.master_port)
         ]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
+        encoded_cmd = encode_world_info(cmd)
+        cmd = deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
         if args.launcher == PDSH_LAUNCHER:

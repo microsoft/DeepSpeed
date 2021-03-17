@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
-
 class MultiNodeRunner(ABC):
     def __init__(self, args, world_info_base64):
         self.args = args
@@ -44,6 +43,11 @@ class PDSHRunner(MultiNodeRunner):
             map(lambda x: x if x.startswith("-") else "'{}'".format(x),
                 self.args.user_args))
 
+    def encode_cmd(self, cmd):
+        cmd_json = json.dumps(cmd).encode('utf-8')
+        cmd_base64 = base64.urlsafe_b64encode(cmd_json).decode('utf-8')
+        return cmd_base64
+
     def get_cmd(self, environment, active_resources):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
 
@@ -71,8 +75,12 @@ class PDSHRunner(MultiNodeRunner):
             "--master_port={}".format(self.args.master_port)
         ]
 
-        return pdsh_cmd_args + deepspeed_launch + [self.user_script
-                                                   ] + self.user_arguments
+        cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script] + self.user_arguments
+        # add deepspeed command to the cmd 
+        encoded_cmd = self.encode_cmd(cmd)
+        print(f"encoded cmd = {encoded_cmd}")
+
+        return pdsh_cmd_args + deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [self.user_script] + self.user_arguments
 
 
 class OpenMPIRunner(MultiNodeRunner):

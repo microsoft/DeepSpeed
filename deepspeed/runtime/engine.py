@@ -3,6 +3,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import os
+import subprocess
 import torch
 import warnings
 import hashlib
@@ -131,6 +132,7 @@ class DeepSpeedEngine(Module):
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+        self.auto_save_dir = "/tmp"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -166,7 +168,8 @@ class DeepSpeedEngine(Module):
 
         # Configure auto elasticity processes/threads
         if self.auto_elasticity_enabled():
-            self.auto_state = {'scale_up': False, 'scale_down': False}
+            logger.info("DeepSpeed Automatic Elasticity support is enabled.")
+            self.auto_state = {'scale_up': False, 'scale_down': False, "config_changed": False, "hostfile_changed": False}
             start_watching(self.auto_state)
 
         # Configure wall clock timer
@@ -1092,17 +1095,25 @@ class DeepSpeedEngine(Module):
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
-    def check_states():
+    def relaunch(self):
+        cmd = os.environ['--ds_command']
+        print(f"deepspeed relaunching with cmd = {cmd}")
+        results = subprocess.Popen(cmd)
+        exit(0)
+    
+    def check_states(self):
         # check if a scale up or scale down event has come and act accordingly
         if self.auto_state['scale_up']:
             print(f"scaling up to x nodes, checkpointing, and restarting")
-            # wher to get the save_dir?
-            self.save_checkpoint(save_dir)
-            # relaunch and exit()?
-
+            if self.auto_save_dir == "/tmp":
+                logger.warning("Please specify a directory to save checkpoint. Using /tmp")
+            #self.save_checkpoint(self.auto_save_dir)
+            logger.info("checkpoint saved, relaunching now")
+            self.relaunch()
+            
         if self.auto_state['scale_down']:
             print(f"scaling down to x nodes and restarting")
-            # relaunch and exit()?
+            self.relaunch()
             
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
@@ -1418,6 +1429,7 @@ class DeepSpeedEngine(Module):
 
             *``client_state``: State dictionary used for loading required training states in the client code.
         """
+        self.auto_save_dir = load_dir
 
         if tag is None:
             latest_path = os.path.join(load_dir, 'latest')

@@ -50,7 +50,10 @@ def parse_args():
                         default="None",
                         type=str,
                         help="world info base64 encoded dictionary")
-
+    parser.add_argument("--ds_command",
+                        default="None",
+                        type=str,
+                        help="deepspeed run command base64 encoded dictionary")
     # positional
     parser.add_argument("training_script",
                         type=str,
