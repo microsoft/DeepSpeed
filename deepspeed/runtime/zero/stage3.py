@@ -197,10 +197,28 @@ class PrefetchCoordinator(object):
             self.curr_module_trace.append(sub_module.id)
             self.id_to_sub_module_map[sub_module.id] = sub_module
 
+    def mod_str(self, mod):
+        mstr = ""
+        if isinstance(mod, TraceSplit):
+            mstr += "TS: ["
+            for split in mod.splits:
+                mstr += "["
+                for mid in split:
+                    mstr += self.mod_str(mid)
+                mstr += "]"
+            return mstr + "]"
+        else:
+            return mstr + f"{self.id_to_sub_module_map[mod]._get_name()} "
+
     def print_trace(self, force=False):
         print_rank_0(
             f"full trace: {self.sub_module_trace}, current trace: {self.curr_module_trace}",
             force=force or DEBUG_TRACE)
+        trace_str = "["
+        for mid in self.sub_module_trace:
+            trace_str += self.mod_str(mid)
+        trace_str += "]"
+        print_rank_0(trace_str, force=force or DEBUG_TRACE)
 
     def increment_step(self, sub_module):
         self.most_recent_sub_module_step[sub_module.id] = self.step_id
@@ -235,10 +253,11 @@ class PrefetchCoordinator(object):
 
     def switch_trace(self, curr_module_id):
         if isinstance(self.curr_module_trace[self.step_id], TraceSplit):
-            self.curr_module_trace = self.curr_module_trace[self.step_id].find_sub_trace(
+            curr_module_trace = self.curr_module_trace[self.step_id].find_sub_trace(
                 curr_module_id)
             # successfully find a trace?
-            if self.curr_module_trace:
+            if curr_module_trace:
+                self.curr_module_trace = curr_module_trace
                 self.reset_step(reset_curr=False)
                 return True
         # unable to find trace, must split
@@ -276,7 +295,9 @@ class PrefetchCoordinator(object):
                         param.ds_id not in [p.ds_id for p in params_to_prefetch]):
                     params_to_prefetch.append(param)
                     total_numel_to_prefetch += param.ds_numel
-                    #print_rank_0(f"Total numel to prefetch: {total_numel_to_prefetch}. Param: {param.ds_shape} and numel {param.ds_numel}, numel limit {numel}")
+                    print_rank_0(
+                        f"Total numel to prefetch: {total_numel_to_prefetch}. Param: {param.ds_shape} and numel {param.ds_numel}, numel limit {numel}",
+                        force=DEBUG_TRACE)
                     if total_numel_to_prefetch >= numel:  # and total_numel_to_prefetch > (numel_in_sub_module // 2):
                         return params_to_prefetch
 
