@@ -99,7 +99,7 @@ def move_to_cpu(tensor_list):
 
 
 def get_all_parameters(sub_module, recurse=False):
-    return itertools.chain(sub_module.named_parameters(recurse=False),
+    return itertools.chain(sub_module.named_parameters(recurse=recurse),
                            sub_module.ds_external_parameters())
 
 
@@ -1066,10 +1066,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #print(f"{module.__class__} : {module.id}")
 
         for child in module.children():
-            if len(self._get_all_parameters(child, recurse=True)) > 0:
-                continue
-            count[0] = count[0] + 1
-            self._register_hooks_recursively(child, count=count)
+            if len(list(get_all_parameters(child, recurse=True))) > 0:
+                count[0] = count[0] + 1
+                self._register_hooks_recursively(child, count=count)
 
         def _pre_forward_module_hook(module, *args):
             self.pre_sub_module_forward_function(module)
