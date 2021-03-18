@@ -320,7 +320,7 @@ def main(args=None):
             #TODO: set active_resources to the full pool?
 
     if auto_elasticity_enabled:    
-        relaunch_cmd = ["deepspeed"] + [args.user_script] + args.user_args
+        relaunch_cmd = ["deepspeed"] + ["--master_port={}".format(args.master_port+1)] + [args.user_script] + args.user_args
         encoded_cmd = encode_world_info(relaunch_cmd)
 
     if multi_node_exec and not shutil.which('pdsh'):
