@@ -40,6 +40,10 @@ DEEPSPEED_OPTIMIZERS = [
 # extra optimizer parameters for adam/adamw
 TORCH_ADAM_PARAM = "torch_adam"
 
+# default to adamw logic for adam/adamw optimizers unless user explictly opts out
+ADAM_W_MODE = "adam_w_mode"
+ADAM_W_MODE_DEFAULT = True
+
 
 class DeepSpeedConfigError(Exception):
     pass
@@ -752,9 +756,9 @@ class DeepSpeedConfig(object):
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
-            if self.zero_config.cpu_offload is True:
-                assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
-                #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
+            #if self.zero_config.cpu_offload is True:
+            #    assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
+            #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled

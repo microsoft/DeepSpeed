@@ -38,9 +38,10 @@ collections:
       - bert-finetuning.md
       - transformer_kernel.md
       - megatron.md
-      - 1Cycle.md
+      - one-cycle.md
       - lrrt.md
       - zero.md
+      - flops-profiler.md
 
 defaults:
   - scope:

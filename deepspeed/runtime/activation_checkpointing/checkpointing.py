@@ -18,26 +18,28 @@ import torch
 import contextlib
 import torch.distributed as dist
 
+import mmap
 from torch import _C
 from torch.cuda import _lazy_call, device as device_ctx_manager
 
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.utils import logger
+from deepspeed.runtime.utils import move_to_device
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers
 
-#DeepSpeed Checkpointing Enabled or Disabled
+# DeepSpeed Checkpointing Enabled or Disabled
 deepspeed_checkpointing_enabled = False
 
-#MP parameters
+# MP parameters
 mpu = None
 mp_rank = None
 mp_size = None
 mp_group = None
 
-#Model Parameters
+# Model Parameters
 num_layers = None
 
-#Checkpointing buffers
+# Checkpointing buffers
 contiguous_data_buffers = []
 data_offsets = []
 
@@ -46,7 +48,7 @@ size_offsets = []
 
 timers = None
 
-#optimization flags
+# optimization flags
 PARTITION_ACTIVATIONS = False
 PA_TO_CPU = False
 CONTIGUOUS_CHECKPOINTING = False
@@ -55,10 +57,10 @@ PROFILE_TIME = False
 
 
 def see_memory_usage(message, force=False):
-    #return
+    # return
     if not force:
         return
-    #dist.barrier()
+    # dist.barrier()
     if dist.get_rank() == 0:
         logger.info(message)
         logger.info(
@@ -77,6 +79,7 @@ def see_memory_usage(message, force=False):
             "Max cache Allocated %s GigaBytes",
             torch.cuda.max_memory_cached() / (1024 * 1024 * 1024),
         )
+        logger.info("")
         #input("Press Any Key To Continue ..")
 
 
@@ -311,6 +314,68 @@ def get_full_inputs(tensors, device=None):
     return tuple(inputs)
 
 
+def extract_tensors(all_objects):
+    """
+    Separate objects in list/tuple into tensors and non-tensors and create a mapping to enable re-aggregation.
+    The order of tensors and non-tensors is preserved in their respective output groups.
+
+    Parameters:
+        all_objects (list/tuple): Objects containing tensors and non-tensors to be split.
+
+    Returns:
+        tuple: Containing tensors, non-tensors, and bools of whether each position in original list/tuple was a tensor.
+
+    """
+    tensor_objects = [v for v in all_objects if torch.is_tensor(v)]
+    non_tensor_objects = [v for v in all_objects if not torch.is_tensor(v)]
+    tensor_flags = [torch.is_tensor(v) for v in all_objects]
+    if type(all_objects) is tuple:
+        return tuple(tensor_objects), tuple(non_tensor_objects), tuple(tensor_flags)
+    return tensor_objects, non_tensor_objects, tensor_flags
+
+
+def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
+    """
+    Merge two lists (or tuples) of tensors and non-tensors using a mapping of positions in merged list (or tuple).
+
+    Parameters:
+        tensor_objects (list/tuple): Tensors to merge.
+        non_tensor_objects (list/tuple): Non-tensors to merge.
+        tensor_flags (list/tuple): Indicates whether each position in output is a tensor.
+
+    Returns:
+        tuple: Merge of tensors and non-tensors
+    """
+    merged_objects = []
+    tensor_idx = 0
+    non_tensor_idx = 0
+
+    real_tensor_flags = None
+
+    #remove the flags that are assigned to the size of the flattened tensors
+    if PARTITION_ACTIVATIONS:
+        real_tensor_flags = []
+        previous_flag = False
+        for flag in tensor_flags:
+            if previous_flag:
+                previous_flag = False
+                continue
+            previous_flag = flag
+            real_tensor_flags.append(flag)
+    else:
+        real_tensor_flags = tensor_flags
+
+    for is_tensor in real_tensor_flags:
+        if is_tensor:
+            merged_objects.append(tensor_objects[tensor_idx])
+            tensor_idx += 1
+        else:
+            merged_objects.append(non_tensor_objects[non_tensor_idx])
+            non_tensor_idx += 1
+
+    return tuple(merged_objects)
+
+
 class CheckpointFunction(torch.autograd.Function):
     """This function is adapted from torch.utils.checkpoint with
        two main changes:
@@ -322,8 +387,14 @@ class CheckpointFunction(torch.autograd.Function):
            5) Profile forward and backward functions
     """
     @staticmethod
-    def forward(ctx, run_function, *args):
+    def forward(ctx, run_function, all_outputs, *args):
         global mpu, timers, SYNCHRONIZE, PROFILE_TIME
+
+        def save_args_for_backward(*all_args):
+            tensor_args, non_tensor_args, tensor_flags = extract_tensors(all_objects=all_args)
+            ctx.save_for_backward(*tensor_args)
+            ctx.non_tensor_args = non_tensor_args
+            ctx.tensor_flags = tensor_flags
 
         if SYNCHRONIZE:
             torch.cuda.synchronize()
@@ -352,7 +423,7 @@ class CheckpointFunction(torch.autograd.Function):
         global cuda_device, transport_stream, PARTITION_ACTIVATIONS, buffer_0, buffer_1, buffer_0_offset, buffer_1_offset
 
         if cuda_device is None:
-            see_memory_usage("First Forward Begining", force=True)
+            see_memory_usage("First Forward Begining", force=False)
             if dist.get_rank() == 0:
                 logger.info(f"Activation Checkpointing Information")
                 logger.info(
@@ -369,7 +440,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         if PARTITION_ACTIVATIONS:
             #inputs = [item.detach().contiguous().view(-1).narrow(0, get_partition_start(item), get_partition_size(item)).clone() for item in args[:-1]]
-            #inputs.append(args[-1])
+            # inputs.append(args[-1])
 
             inputs = []
             for i, item in enumerate(args[:-1]):
@@ -406,6 +477,19 @@ class CheckpointFunction(torch.autograd.Function):
                         contiguous_data_buffers[i] = tensor_list
                         data_offsets[i] = 0
 
+                    # Because the 'new_empty' returns uninitialized pages,
+                    # the pages need to be populated during the cudaMemcpy time
+                    # which increases the data copy time. To avoid this, we
+                    # pre-populate these pages by simply writing 0 ahead of
+                    # the actual cudaMemcpy operation time. Due to the
+                    # previously launched GPU kernels, there is a small
+                    # window of time here for CPUs to populate pages asynchronously.
+                    contiguous_data_buffers[i][data_offsets[i]].data[range(
+                        0,
+                        contiguous_data_buffers[i][data_offsets[i]].data.shape[0],
+                        int(mmap.PAGESIZE / contiguous_data_buffers[i][
+                            data_offsets[i]].data.element_size()))] = 0
+
                     contiguous_partition = contiguous_data_buffers[i][
                         data_offsets[i]].data.copy_(partition.data)
                     data_offsets[i] = data_offsets[i] + 1
@@ -417,26 +501,23 @@ class CheckpointFunction(torch.autograd.Function):
             inputs.append(args[-1])
 
         #just in case something funky is happening such as reuse of inputs
-        inputs_cuda = []
-        for item in args:
-            if torch.is_tensor(item):
-                inputs_cuda.append(item.to(cuda_device))
-            else:
-                inputs_cuda.append(item)
+        inputs_cuda = move_to_device(args, cuda_device)
 
         # Copy the rng states.
         ctx.fwd_cpu_rng_state = torch.get_rng_state()
         ctx.fwd_cuda_rng_state = torch.cuda.get_rng_state()
         ctx.fwd_cuda_rng_state_tracker = get_cuda_rng_tracker().get_states()
 
-        #ctx.save_for_backward(*args)
+        see_memory_usage("Before running forward on the layer", force=False)
+        # ctx.save_for_backward(*args)
         with torch.no_grad():
             outputs = run_function(*inputs_cuda)
 
+        see_memory_usage("After running forward on the layer", force=False)
         del inputs_cuda
 
-        #with torch.cuda.stream(transport_stream):
-        #if PARTITION_ACTIVATIONS:
+        # with torch.cuda.stream(transport_stream):
+        # if PARTITION_ACTIVATIONS:
         #    new_args = []
         #    for arg, inp in zip(args,inputs):
         #        size= torch.tensor(arg.size())
@@ -482,12 +563,13 @@ class CheckpointFunction(torch.autograd.Function):
                     new_args.append(contiguous_size)
                 else:
                     new_args.append(size)
-                #if dist.get_rank() == 0:
+                # if dist.get_rank() == 0:
                 #    logger.info(f"The stored tensor is {contiguous_size} and orginal one is {size} ")
 
-            ctx.save_for_backward(*new_args)
+            save_args_for_backward(*new_args)
         else:
-            ctx.save_for_backward(*args)
+            save_args_for_backward(*args)
+
         if PROFILE_TIME:
             timers('forward').stop()
             timers.log(['forward'])
@@ -498,17 +580,26 @@ class CheckpointFunction(torch.autograd.Function):
         if torch.is_tensor(outputs):
             non_grad_outputs = [outputs] if not outputs.is_floating_point() else []
         else:
-            non_grad_outputs = [o for o in outputs if not o.is_floating_point()]
+            non_grad_outputs = [
+                o for o in outputs if torch.is_tensor(o) and not o.is_floating_point()
+            ]
         ctx.mark_non_differentiable(*non_grad_outputs)
-        return outputs
+
+        if torch.is_tensor(outputs):
+            all_outputs += [outputs]
+            return outputs
+        else:
+            all_outputs += outputs
+            outputs, _, _ = extract_tensors(all_objects=outputs)
+            return tuple(outputs)
 
     @staticmethod
     def backward(ctx, *grads):
         global timers
-        #see_memory_usage("In backward", force=True)
-        #removing pointers to the contiguous buffer memory
-        #so that they can be garbage collected once the checkpoints
-        #have been used
+        see_memory_usage("In backward", force=False)
+        # removing pointers to the contiguous buffer memory
+        # so that they can be garbage collected once the checkpoints
+        # have been used
         if SYNCHRONIZE:
             torch.cuda.synchronize()
         if PROFILE_TIME:
@@ -521,14 +612,14 @@ class CheckpointFunction(torch.autograd.Function):
             for buffers in contiguous_data_buffers:
                 buffers = []
 
-            #frees up all the pointers to the checkpoints except for the ones
-            #stored by save for backward
+            # frees up all the pointers to the checkpoints except for the ones
+            # stored by save for backward
             contiguous_data_buffers = []
             contiguous_size_buffers = []
             data_offsets = []
             size_offsets = []
 
-        #see_memory_usage("In backward checkpointing code", force=True)
+        see_memory_usage("In backward checkpointing code", force=False)
         if not torch.autograd._is_checkpoint_valid():
             raise RuntimeError("Checkpointing is not compatible with .grad(), "
                                "please use .backward() if possible")
@@ -536,13 +627,18 @@ class CheckpointFunction(torch.autograd.Function):
         global cuda_device, transport_stream, PARTITION_ACTIVATIONS
 
         if PARTITION_ACTIVATIONS:
-            #with torch.cuda.stream(transport_stream):
+            # with torch.cuda.stream(transport_stream):
             inputs = get_full_inputs(ctx.saved_tensors,
                                      device=cuda_device if PA_TO_CPU else None)
             detached_inputs = detach_variable(inputs)
         else:
             inputs = ctx.saved_tensors
             detached_inputs = detach_variable(inputs)
+
+        # Add non tensor input args
+        detached_inputs = merge_tensors(tensor_objects=detached_inputs,
+                                        non_tensor_objects=ctx.non_tensor_args,
+                                        tensor_flags=ctx.tensor_flags)
 
         # Store the current states.
         bwd_cpu_rng_state = torch.get_rng_state()
@@ -558,9 +654,12 @@ class CheckpointFunction(torch.autograd.Function):
         #     current_stream=torch.cuda.current_stream()
         #     current_stream.wait_stream(transport_stream)
 
+        see_memory_usage("In backward checkpointing code before forward", force=False)
+
         with torch.enable_grad():
             outputs = ctx.run_function(*detached_inputs)
 
+        see_memory_usage("In backward checkpointing code after forward", force=False)
         # Set the states back to what it was at the start of this function.
         torch.set_rng_state(bwd_cpu_rng_state)
         _set_cuda_rng_state(bwd_cuda_rng_state)
@@ -568,6 +667,9 @@ class CheckpointFunction(torch.autograd.Function):
 
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs, )
+
+        # Filter out non tensor outputs
+        outputs, _, _ = extract_tensors(all_objects=outputs)
 
         # Construct arguments to autograd.backward().
         # This is usually just outputs and grads, but forward() can return tensors that
@@ -579,14 +681,19 @@ class CheckpointFunction(torch.autograd.Function):
                 output_tensors.append(out)
                 grad_tensors.append(grad)
 
+        see_memory_usage("In backward checkpointing code before backward", force=False)
+
         torch.autograd.backward(output_tensors, grad_tensors)
+
+        see_memory_usage("After backward checkpointing code before backward",
+                         force=False)
 
         if PROFILE_TIME:
             timers('backward').stop()
             timers.log(['backward'])
         if SYNCHRONIZE:
             torch.cuda.synchronize()
-        ret_list = [None]  # first None for ctx
+        ret_list = [None, None]  # first None for ctx
         for inp in detached_inputs:
             if torch.is_tensor(inp):
                 ret_list.append(inp.grad)
@@ -599,7 +706,13 @@ class CheckpointFunction(torch.autograd.Function):
 def checkpoint(function, *args):
     """Checkpoint a model or part of the model.
     This has been directly copied from torch.utils.checkpoint. """
-    return CheckpointFunction.apply(function, *args)
+
+    all_outputs = []
+    CheckpointFunction.apply(function, all_outputs, *args)
+    if len(all_outputs) == 1:
+        return all_outputs[0]
+    else:
+        return tuple(all_outputs)
 
 
 def partition_activations_in_checkpoint(partition_activation):
@@ -633,8 +746,8 @@ def reset():
         for buffers in contiguous_data_buffers:
             buffers = []
 
-        #frees up all the pointers to the checkpoints except for the ones
-        #stored by save for backward
+        # frees up all the pointers to the checkpoints except for the ones
+        # stored by save for backward
         contiguous_data_buffers = []
         contiguous_size_buffers = []
         data_offsets = []
@@ -643,10 +756,11 @@ def reset():
 
 def _configure_using_config_file(deepspeed_config, mpu=None):
     global num_layers, PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
-            PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
+        PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
     config = DeepSpeedConfig(deepspeed_config, mpu=mpu).activation_checkpointing_config
-    logger.info(config.repr())
+    if dist.get_rank() == 0:
+        logger.info(config.repr())
     PARTITION_ACTIVATIONS = config.partition_activations
     CONTIGUOUS_CHECKPOINTING = config.contiguous_memory_optimization
     num_layers = config.number_checkpoints
@@ -660,7 +774,7 @@ def _configure_defaults():
     global mpu, num_layers, deepspeed_checkpointing_enabled
 
     global PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
-            PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
+        PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
     PARTITION_ACTIVATIONS = False
     CONTIGUOUS_CHECKPOINTING = False
@@ -719,7 +833,7 @@ def configure(
     global mpu, num_layers, deepspeed_checkpointing_enabled
 
     global PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
-            PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
+        PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
     _configure_defaults()
 

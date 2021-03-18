@@ -477,6 +477,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.overlap_comm:
             torch.cuda.synchronize()
+            # It is safe to clear previously reduced grads of other partitions
+            self._clear_previous_reduced_grads()
 
         if self.cpu_offload is False:
             for i, _ in enumerate(self.fp16_groups):
@@ -638,6 +640,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             param.grad.data = new_grad_tensor.data.view_as(param.grad)
 
         self.elements_in_ipg_bucket += param.numel()
+
+        assert param.grad is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
+
         self.grads_in_ipg_bucket.append(param.grad)
         self.params_in_ipg_bucket.append((i, param, param_id))
 
@@ -965,7 +970,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                 if not self.is_param_in_current_partition[param_id]:
                     if self.overlap_comm and self.contiguous_gradients is False:
-                        # Clear the previous grads during the next reduction
+                        # Clear grads of other partitions during the next reduction
                         # to avoid clearing them before the reduction is complete.
                         if self.previous_reduced_grads is None:
                             self.previous_reduced_grads = []
@@ -1078,16 +1083,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         return tensor
 
+    def _clear_previous_reduced_grads(self):
+        if self.previous_reduced_grads is not None:
+            for param in self.previous_reduced_grads:
+                param.grad = None
+            self.previous_reduced_grads = None
+
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
         if self.overlap_comm:
             torch.cuda.synchronize()
-            if self.previous_reduced_grads is not None:
-                # previous_reduced_grads has the previous reduced grads,
-                # now it is safe to clear.
-                for param in self.previous_reduced_grads:
-                    param.grad = None
-                self.previous_reduced_grads = None
+            # It is safe to clear the previously reduced grads of other partitions
+            self._clear_previous_reduced_grads()
             stream = self.reduction_stream
         else:
             stream = torch.cuda.current_stream()
@@ -1326,6 +1333,26 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.norm_for_param_grads = {}
         self.local_overflow = False
 
+    def log_timers(self, timer_names):
+        if self.timers is None:
+            return
+
+        self.timers.log(names=list(timer_names))
+
+    def start_timers(self, timer_names):
+        if self.timers is None:
+            return
+
+        for name in timer_names:
+            self.timers(name).start()
+
+    def stop_timers(self, timer_names):
+        if self.timers is None:
+            return
+
+        for name in timer_names:
+            self.timers(name).stop()
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1340,7 +1367,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # First compute norm for all group so we know if there is overflow
         self.check_overflow()
 
-        timers = self.timers
+        OPTIMIZER_ALLGATHER = 'optimizer_allgather'
+        OPTIMIZER_GRADIENTS = 'optimizer_gradients'
+        OPTIMIZER_STEP = 'optimizer_step'
+        timer_names = [OPTIMIZER_ALLGATHER, OPTIMIZER_GRADIENTS, OPTIMIZER_STEP]
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
@@ -1355,19 +1385,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
             see_memory_usage('After overflow after clearing gradients')
 
             logger.info(
-                "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
                                         prev_scale,
                                         self.loss_scale))
-            timers('optimizer_gradients').start()
-            timers('optimizer_gradients').stop()
-            timers('optimizer_step').start()
-            timers('optimizer_step').stop()
-            timers('optimizer_allgather').start()
-            timers('optimizer_allgather').stop()
+            self.start_timers(timer_names)
+            self.stop_timers(timer_names)
             return
 
-        timers('optimizer_gradients').start()
+        self.start_timers([OPTIMIZER_GRADIENTS])
         norm_groups = []
         single_partition_grad_groups = []
         skip = False
@@ -1409,10 +1435,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             single_partition_grad_groups.append(single_grad_partition)
 
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
-        timers('optimizer_gradients').stop()
+        self.stop_timers([OPTIMIZER_GRADIENTS])
 
-        #torch.set_num_threads(12)
-        timers('optimizer_step').start()
+        self.start_timers([OPTIMIZER_STEP])
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             if type(self.optimizer) == DeepSpeedCPUAdam:
@@ -1436,12 +1461,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                 fp16_partitions[partition_id].data.copy_(fp32_partition.data)
 
-        timers('optimizer_step').stop()
+        self.stop_timers([OPTIMIZER_STEP])
 
         if self.cpu_offload:
             self.reset_cpu_buffers()
 
-        timers('optimizer_allgather').start()
+        self.start_timers([OPTIMIZER_ALLGATHER])
         #gather the updated weights from everyone
         for group_id, partitioned_params in enumerate(self.parallel_partitioned_fp16_groups):
 
@@ -1474,7 +1499,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 dist.all_gather(shard_list,
                                 shard_list[partition_id],
                                 group=self.dp_process_group)
-        timers('optimizer_allgather').stop()
+        self.stop_timers([OPTIMIZER_ALLGATHER])
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
@@ -1483,11 +1508,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
-        timers.log(
-            names=['optimizer_gradients',
-                   'optimizer_step',
-                   'optimizer_allgather'])
+        self.log_timers(timer_names)
         see_memory_usage('After zero_optimizer step')
+
         return
 
     def unscale_and_clip_grads(self, grad_groups_flat, norm_groups):
