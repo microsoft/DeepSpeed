@@ -304,7 +304,15 @@ def main(args=None):
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
+    #TODO: get the path of deepspeed executable? 
+    # If I set the multi_node_exec to True, relaunch failed with
+    # deepspeed, no such file or directory error
     multi_node_exec = len(active_resources) > 1
+    #multi_node_exec = True
+    
+    # This will work for the deepspeed launcher only
+    relaunch_cmd = ["deepspeed"] + [args.user_script] + args.user_args
+    encoded_cmd = encode_world_info(relaunch_cmd)
 
     if multi_node_exec and not shutil.which('pdsh'):
         raise RuntimeError("pdsh is not installed, unable to proceed")
@@ -317,11 +325,10 @@ def main(args=None):
             "deepspeed.launcher.launch",
             "--world_info={}".format(world_info_base64),
             "--master_addr={}".format(args.master_addr),
-            "--master_port={}".format(args.master_port)
+            "--master_port={}".format(args.master_port),
+            "--ds_command={}".format(encoded_cmd)
         ]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
-        encoded_cmd = encode_world_info(cmd)
-        cmd = deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
         if args.launcher == PDSH_LAUNCHER:
@@ -356,8 +363,9 @@ def main(args=None):
                         runner.add_export(key, val)
 
         cmd = runner.get_cmd(env, active_resources)
-
+    
     logger.info("cmd = {}".format(' '.join(cmd)))
+    
     result = subprocess.Popen(cmd, env=env)
     result.wait()
 

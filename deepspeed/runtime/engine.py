@@ -4,6 +4,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 
 import os
 import subprocess
+import base64
 import torch
 import warnings
 import hashlib
@@ -132,7 +133,7 @@ class DeepSpeedEngine(Module):
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
-        self.auto_save_dir = "/tmp"
+        self.auto_save_dir = "/tmp/ds-checkpoint"
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -1096,17 +1097,38 @@ class DeepSpeedEngine(Module):
         self.global_samples += self.train_batch_size()
 
     def relaunch(self):
-        cmd = os.environ['--ds_command']
-        print(f"deepspeed relaunching with cmd = {cmd}")
-        results = subprocess.Popen(cmd)
+        # TODO: fix ranks for relaunch
+        if self.global_rank == 0:
+            cmd = os.environ['DS_CMD']
+            cmd = base64.urlsafe_b64decode(cmd)
+            import json
+            cmd = json.loads(cmd)
+            logger.info(f"deepspeed relaunching with cmd = {cmd}")
+
+            #new_port = "--master_port=29501"
+
+            #TODO: Construct the world_info 
+            # Scale-up: 1. take the exisiting world_info and add new workers here 
+            # Scale-down: 1. remove the workers that we lost
+
+            #print (f"changing port from {cmd[6]} to {new_port}")
+            #cmd[6] = new_port 
+            # TODO: + --ds_command=encode(cmd)
+            #print(f"deepspeed relaunching with cmd = {cmd}")
+            results = subprocess.Popen(cmd)
+            import time
+            time.sleep(2)
+        
+        logger.info(f"at rank:{self.global_rank}, sleeping..")
+        #time.sleep(2)
         exit(0)
-    
+
     def check_states(self):
         # check if a scale up or scale down event has come and act accordingly
         if self.auto_state['scale_up']:
-            print(f"scaling up to x nodes, checkpointing, and restarting")
-            if self.auto_save_dir == "/tmp":
-                logger.warning("Please specify a directory to save checkpoint. Using /tmp")
+            logger.info(f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting")
+            if self.auto_save_dir == "/tmp/ds-checkpoint":
+                logger.warning("Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint")
             #self.save_checkpoint(self.auto_save_dir)
             logger.info("checkpoint saved, relaunching now")
             self.relaunch()

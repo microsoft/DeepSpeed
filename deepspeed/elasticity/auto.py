@@ -34,6 +34,8 @@ def handle_scaling_event(state, old_hosts, config_file):
             if len(new_hosts) > len(old_hosts):
                 state['scale_up'] = True
             elif len(new_hosts) < len(old_hosts):
+                #TODO: scale down should call relaunch from here directly
+                #TODO: get the rank for the relauncher
                 state['scale_down'] = True
                 
 def listen_for_changes(state):

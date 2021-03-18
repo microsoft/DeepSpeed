@@ -2,7 +2,9 @@ import os
 import sys
 import shutil
 import subprocess
+import base64
 import warnings
+import json
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -72,12 +74,14 @@ class PDSHRunner(MultiNodeRunner):
             '--world_info={}'.format(self.world_info_base64),
             "--node_rank=%n",
             "--master_addr={}".format(self.args.master_addr),
-            "--master_port={}".format(self.args.master_port)
+            "--master_port={}".format(self.args.master_port),
         ]
 
         cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script] + self.user_arguments
-        # add deepspeed command to the cmd 
-        encoded_cmd = self.encode_cmd(cmd)
+        # add deepspeed relaunch command to the cmd
+        relaunch_cmd = ["deepspeed"] + [self.user_script] + self.user_arguments
+        encoded_cmd = self.encode_cmd(relaunch_cmd)
+        
         print(f"encoded cmd = {encoded_cmd}")
 
         return pdsh_cmd_args + deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [self.user_script] + self.user_arguments
