@@ -1120,22 +1120,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                           PostBackwardFunction,
                                           _run_after_backward_function,
                                           inputs)
-        if hasattr(module, 'ds_hooks_added'):
-            module.pre_forward.remove()
-            module.post_forward.remove()
-            module.pre_backward.remove()
-            module.post_backward.remove()
-        module.ds_hooks_added = True
+
+        # Store handles for removing later if necessary
+        ds_hook_handles = module.ds_hook_handles if hasattr(module, 'ds_hook_handles') else {}
+
         # Pre forward hook
-        module.pre_forward = module.register_forward_pre_hook(_pre_forward_module_hook)
+        ds_hook_handles['pre_forward_module_hook'] = module.register_forward_pre_hook(_pre_forward_module_hook)
         # Post forward hook
-        module.post_forward = module.register_forward_hook(_post_forward_module_hook)
-
+        ds_hook_handles['post_forward_module_hook'] = module.register_forward_hook(_post_forward_module_hook)
         # Pre backward hook
-        module.pre_backward = module.register_forward_hook(_pre_backward_module_hook)
-
+        ds_hook_handles['pre_backward_module_hook'] = module.register_forward_hook(_pre_backward_module_hook)
         # post backward hook
-        module.post_backward = module.register_forward_pre_hook(_post_backward_module_hook)
+        ds_hook_handles['post_backward_module_hook'] = module.register_forward_pre_hook(_post_backward_module_hook)
+
+        module.ds_hook_handles = ds_hook_handles
 
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}",
@@ -2850,3 +2848,17 @@ def _handle_overflow(cpu_sum, x, i):
         logger.info(
             f"rank {rank} detected overflow {cpu_sum} in tensor {i}:{t_i} shape {x.shape}"
         )
+
+
+def remove_module_hooks(module, hook_location='ds_hook_handles', recurse=True):
+    """
+    Function to remove all module forward/backward hooks. This is useful in cases
+    where the model may be wrapped more than once and the module hooks should
+    be removed first.
+    """
+    if hasattr(module, hook_location):
+        for k, v in getattr(module, hook_location).items():
+            v.remove()
+    if recurse:
+        for child in module.children():
+            remove_module_hooks(child, hook_location, recurse)
