@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import subprocess
 import base64
+import time
 import torch
 import warnings
 import hashlib
@@ -16,6 +17,7 @@ from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.elasticity.auto import start_watching
+from deepspeed.elasticity.auto import relaunch
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -170,7 +172,7 @@ class DeepSpeedEngine(Module):
         # Configure auto elasticity processes/threads
         if self.auto_elasticity_enabled():
             logger.info("DeepSpeed Automatic Elasticity support is enabled.")
-            self.auto_state = {'scale_up': False, 'scale_down': False, "config_changed": False, "hostfile_changed": False}
+            self.auto_state = {'scale_up': False, 'scale_down': False, "config_changed": False, "hostfile_changed": False, "relaunch_rank": -1}
             start_watching(self.auto_state)
 
         # Configure wall clock timer
@@ -1096,33 +1098,6 @@ class DeepSpeedEngine(Module):
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
-    def relaunch(self):
-        # TODO: fix ranks for relaunch
-        if self.global_rank == 0:
-            cmd = os.environ['DS_CMD']
-            cmd = base64.urlsafe_b64decode(cmd)
-            import json
-            cmd = json.loads(cmd)
-            logger.info(f"deepspeed relaunching with cmd = {cmd}")
-
-            #new_port = "--master_port=29501"
-
-            #TODO: Construct the world_info 
-            # Scale-up: 1. take the exisiting world_info and add new workers here 
-            # Scale-down: 1. remove the workers that we lost
-
-            #print (f"changing port from {cmd[6]} to {new_port}")
-            #cmd[6] = new_port 
-            # TODO: + --ds_command=encode(cmd)
-            #print(f"deepspeed relaunching with cmd = {cmd}")
-            results = subprocess.Popen(cmd)
-            import time
-            time.sleep(2)
-        
-        logger.info(f"at rank:{self.global_rank}, sleeping..")
-        #time.sleep(2)
-        exit(0)
-
     def check_states(self):
         # check if a scale up or scale down event has come and act accordingly
         if self.auto_state['scale_up']:
@@ -1131,11 +1106,9 @@ class DeepSpeedEngine(Module):
                 logger.warning("Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint")
             #self.save_checkpoint(self.auto_save_dir)
             logger.info("checkpoint saved, relaunching now")
-            self.relaunch()
-            
-        if self.auto_state['scale_down']:
-            print(f"scaling down to x nodes and restarting")
-            self.relaunch()
+            print("\n\n\n\n\n\n\n_______________________________________________________")
+            time.sleep(2)
+            relaunch(self.auto_state)
             
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation

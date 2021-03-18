@@ -50,7 +50,7 @@ class PDSHRunner(MultiNodeRunner):
         cmd_base64 = base64.urlsafe_b64encode(cmd_json).decode('utf-8')
         return cmd_base64
 
-    def get_cmd(self, environment, active_resources):
+    def get_cmd(self, environment, active_resources, auto_elasticity_enabled=None, encoded_cmd=None):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
 
         active_workers = ",".join(active_resources.keys())
@@ -77,15 +77,13 @@ class PDSHRunner(MultiNodeRunner):
             "--master_port={}".format(self.args.master_port),
         ]
 
-        cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script] + self.user_arguments
-        # add deepspeed relaunch command to the cmd
-        relaunch_cmd = ["deepspeed"] + [self.user_script] + self.user_arguments
-        encoded_cmd = self.encode_cmd(relaunch_cmd)
-        
-        print(f"encoded cmd = {encoded_cmd}")
+        if auto_elasticity_enabled is not None:
+            # add deepspeed relaunch command to the cmd
+            cmd = pdsh_cmd_args + deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [self.user_script] + self.user_arguments
+        else:
+            cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script] + self.user_arguments
 
-        return pdsh_cmd_args + deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [self.user_script] + self.user_arguments
-
+        return cmd 
 
 class OpenMPIRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):

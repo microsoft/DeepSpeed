@@ -9,6 +9,14 @@ import inotify
 import inotify.adapters
 import re
 import os
+import json
+import time
+import base64
+import sys
+import subprocess
+import torch.distributed as dist
+
+from ..utils import logger
 
 from .constants import AUTO, AUTO_DEFAULT
 
@@ -17,6 +25,22 @@ def auto_enabled(ds_config: dict):
         return True
     return ds_config[AUTO].get(AUTO, AUTO_DEFAULT)
 
+def relaunch(state):
+    relaunch_rank = state['relaunch_rank']
+    
+    if dist.get_rank() == relaunch_rank:
+        cmd = os.environ['DS_CMD']
+        cmd = base64.urlsafe_b64decode(cmd)
+        cmd = json.loads(cmd)
+        logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
+        results = subprocess.Popen(cmd)
+        logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
+        #time.sleep(2)
+    
+    #time.sleep(2)
+    logger.info(f"at rank:{dist.get_rank()}, sleeping..")
+    sys.exit(0)
+
 def handle_scaling_event(state, old_hosts, config_file):
     new_hostfile = open('/job/hostfile').read()
     new_hosts = set(re.findall("(worker-[0-9]+)", new_hostfile))
@@ -24,26 +48,31 @@ def handle_scaling_event(state, old_hosts, config_file):
     config = open(config_file).read()
     config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
 
-    print(f"config_hosts={config_hosts}")
-    print(f"new_hosts={new_hosts}")
-    print(f"old_hosts={old_hosts}")
+    #print(f"config_hosts={config_hosts}")
+    #print(f"new_hosts={new_hosts}")
+    #print(f"old_hosts={old_hosts}")
     
     if config_hosts == new_hosts:
-        print("sanity passed")
+        #print("sanity passed")
         if not len(new_hosts) == len(old_hosts):
+            sorted_hosts = list(new_hosts)
+            sorted_hosts.sort()
+            state['relaunch_rank'] = int(sorted_hosts[0].split("-")[1])
+            logger.info(f"Relaunch rank = {state['relaunch_rank']}")
+            time.sleep(1)
             if len(new_hosts) > len(old_hosts):
                 state['scale_up'] = True
+                # DeepSpeedEngine will read this and call relaunch
             elif len(new_hosts) < len(old_hosts):
-                #TODO: scale down should call relaunch from here directly
-                #TODO: get the rank for the relauncher
                 state['scale_down'] = True
+                relaunch(state)
                 
 def listen_for_changes(state):
     original_hostfile = open('/job/hostfile').read()
     original_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
 
-    print(f"Running on {len(original_hosts)} nodes")
-    print("Original hostfile =", original_hostfile)
+    #print(f"Running on {len(original_hosts)} nodes")
+    #print("Original hostfile =", original_hostfile)
 
     i = inotify.adapters.Inotify()
 
@@ -57,14 +86,14 @@ def listen_for_changes(state):
         (_, type_names, path, filename) = event
             
         if filename == 'config' and type_names[0] == 'IN_MODIFY':
-            print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
+            #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
             state['config_changed'] = True
 
             if state['config_changed'] and state['hostfile_changed']:
                 handle_scaling_event(state, original_hosts, ssh_config_path + 'config')
 
         if filename == 'hostfile' and type_names[0] == 'IN_MODIFY':
-            print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
+            #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
             state['hostfile_changed'] = True
 
             if state['hostfile_changed'] and state['config_changed']:

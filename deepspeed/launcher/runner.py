@@ -309,10 +309,19 @@ def main(args=None):
     # deepspeed, no such file or directory error
     multi_node_exec = len(active_resources) > 1
     #multi_node_exec = True
-    
-    # This will work for the deepspeed launcher only
-    relaunch_cmd = ["deepspeed"] + [args.user_script] + args.user_args
-    encoded_cmd = encode_world_info(relaunch_cmd)
+
+    auto_elasticity_enabled = False
+
+    # This auto support will work for the deepspeed launcher only
+    if 'IS_ELASTIC_TRAINING_JOB' in os.environ:
+        if os.environ['IS_ELASTIC_TRAINING_JOB'] == 'True':
+            auto_elasticity_enabled = True
+            logger.info("DeepSpeed Auto Elasticity Enabled. Ignoring all arguments to deepspeed launcher.")
+            #TODO: set active_resources to the full pool?
+
+    if auto_elasticity_enabled:    
+        relaunch_cmd = ["deepspeed"] + [args.user_script] + args.user_args
+        encoded_cmd = encode_world_info(relaunch_cmd)
 
     if multi_node_exec and not shutil.which('pdsh'):
         raise RuntimeError("pdsh is not installed, unable to proceed")
@@ -326,9 +335,11 @@ def main(args=None):
             "--world_info={}".format(world_info_base64),
             "--master_addr={}".format(args.master_addr),
             "--master_port={}".format(args.master_port),
-            "--ds_command={}".format(encoded_cmd)
         ]
-        cmd = deepspeed_launch + [args.user_script] + args.user_args
+        if auto_elasticity_enabled:
+            cmd = deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [args.user_script] + args.user_args
+        else:
+            cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
         if args.launcher == PDSH_LAUNCHER:
@@ -361,10 +372,16 @@ def main(args=None):
                     for var in fd.readlines():
                         key, val = var.split('=')
                         runner.add_export(key, val)
+        
+        if auto_elasticity_enabled:
+            cmd = runner.get_cmd(env, active_resources, auto_elasticity_enabled, encoded_cmd)
+        else:
+            cmd = runner.get_cmd(env, active_resources)
 
-        cmd = runner.get_cmd(env, active_resources)
-    
-    logger.info("cmd = {}".format(' '.join(cmd)))
+    if auto_elasticity_enabled:
+        logger.info("Auto elasticity enabled, cmd used for relaunching will be = {}".format(' '.join(json.loads(base64.urlsafe_b64decode(encoded_cmd)))))
+        
+    logger.info("Launch cmd = {}".format(' '.join(cmd)))
     
     result = subprocess.Popen(cmd, env=env)
     result.wait()
