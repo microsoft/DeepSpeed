@@ -1120,17 +1120,22 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                           PostBackwardFunction,
                                           _run_after_backward_function,
                                           inputs)
-
+        if hasattr(module, 'ds_hooks_added'):
+            module.pre_forward.remove()
+            module.post_forward.remove()
+            module.pre_backward.remove()
+            module.post_backward.remove()
+        module.ds_hooks_added = True
         # Pre forward hook
-        module.register_forward_pre_hook(_pre_forward_module_hook)
+        module.pre_forward = module.register_forward_pre_hook(_pre_forward_module_hook)
         # Post forward hook
-        module.register_forward_hook(_post_forward_module_hook)
+        module.post_forward = module.register_forward_hook(_post_forward_module_hook)
 
         # Pre backward hook
-        module.register_forward_hook(_pre_backward_module_hook)
+        module.pre_backward = module.register_forward_hook(_pre_backward_module_hook)
 
         # post backward hook
-        module.register_forward_pre_hook(_post_backward_module_hook)
+        module.post_backward = module.register_forward_pre_hook(_post_backward_module_hook)
 
     def pre_sub_module_forward_function(self, sub_module):
         see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}",
