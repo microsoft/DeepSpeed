@@ -41,6 +41,14 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
         assert id(p0) != id(p1), f'Comparing fp16 model state tensor against itself : {id(p0)} <====> {id(p1)}'
         assert torch.allclose(p0, p1, atol=1e-07), f"FP16 model state {p0} is not equal to {p1}"
 
+    # Compare ds_tensor values for ZeRO stage3
+    for p0, p1 in zip(saved_model.module.parameters(), loaded_model.module.parameters()):
+        p0_has_ds_tensor = hasattr(p0, 'ds_tensor')
+        p1_has_ds_tensor = hasattr(p1, 'ds_tensor')
+        assert p0_has_ds_tensor == p1_has_ds_tensor, f'Mismatch has ds_tensor attribute p0:{p0_has_ds_tensor}, p1:{p1_has_ds_tensor}'
+        if p0_has_ds_tensor:
+            assert torch.allclose(p0, p1, atol=1e-07), f'FP16 model state {p0} is not equal to {p1}'
+
     if not compare_optimizer:
         return
 

@@ -1342,10 +1342,15 @@ class DeepSpeedEngine(Module):
 
     def module_state_dict(self, destination=None, prefix='', keep_vars=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
+        if self.zero_optimization_partition_weights():
+            sd = self.optimizer.save_partitioned_weights(sd)
         return sd
 
     def load_module_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        if self.zero_optimization_partition_weights():
+            self.optimizer.load_partitioned_weights(state_dict)
+        else:
+            self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
         filename = 'zero_pp_rank_{}'.format(dp_rank)
@@ -1445,6 +1450,7 @@ class DeepSpeedEngine(Module):
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
+
         if self.optimizer is not None and not self.zero_optimization():
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(

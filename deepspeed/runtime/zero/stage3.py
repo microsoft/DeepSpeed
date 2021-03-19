@@ -2832,6 +2832,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def save_checkpoint_epilogue(self):
         self.persistent_parameters[0].all_gather(self.persistent_parameters)
 
+    def save_partitioned_weights(self, state_dict):
+        for name, param in self.module.named_parameters():
+            if name in state_dict.keys():
+                state_dict[name] = param.ds_tensor
+        return state_dict
+
+    def load_partitioned_weights(self, state_dict):
+        for name, param in self.module.named_parameters():
+            if name in state_dict.keys():
+                param.ds_tensor.copy_(state_dict[name])
+
 
 def _handle_overflow(cpu_sum, x, i):
     import math
