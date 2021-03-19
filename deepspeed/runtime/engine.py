@@ -151,11 +151,7 @@ class DeepSpeedEngine(Module):
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
 
-        if mpu is not None:
-            assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
-                " with model parallelism."
-            assert not self.auto_elasticity_enabled(), "Auto Elasticity is not currently supported" \
-                " with model parallelism."
+
 
         self._set_distributed_vars()
 
@@ -168,6 +164,12 @@ class DeepSpeedEngine(Module):
         self._configure_distributed_model(model)
 
         see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
+        
+        if mpu is not None and self.mp_world_size > 1:
+            assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+                " with model parallelism."
+            assert not self.auto_elasticity_enabled(), "Auto Elasticity is not currently supported" \
+                " with model parallelism."
 
         # Configure auto elasticity processes/threads
         if self.auto_elasticity_enabled():
