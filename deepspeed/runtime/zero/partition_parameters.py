@@ -278,6 +278,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         allows for a linear increase in model size with the aggregate system memory.
         For example, if a node has 1TB of memory and 8 GPUs, we could fit a trillion
         parameter model with 4 nodes and 32 GPUs.
+        
+        Important: If the fp16 weights of the model can't fit onto the gpu memory this 
+        feature must be used.
 
         .. note::
             Initializes ``torch.distributed`` if it has not already been done so.
