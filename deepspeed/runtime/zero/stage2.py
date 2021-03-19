@@ -144,6 +144,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.optimizer = init_optimizer
 
         self.timers = timers
+        self.timer_names = set()
 
         self.reduce_scatter = reduce_scatter
 
@@ -282,8 +283,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
         self.reduction_stream = torch.cuda.Stream()
-        self.cpu_computation_stream = torch.cuda.Stream()
-        self.migration_stream = torch.cuda.Stream()
         self.callback_queued = False
 
         self.param_dict = {}
@@ -903,7 +902,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def copy_grads_in_partition(self, param):
         if self.cpu_offload:
-
+            GRAD_OFFLOAD_TIMER = 'cpu_offload_grads'
+            self.timer_names.add(GRAD_OFFLOAD_TIMER)
+            self.start_timers([GRAD_OFFLOAD_TIMER])
             if self.gradient_accumulation_steps > 1:
                 self.async_accumulate_grad_in_cpu_via_gpu(param)
 
@@ -913,6 +914,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.update_overflow_tracker_for_param_grad(param)
 
                 self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(param)
+            self.stop_timers([GRAD_OFFLOAD_TIMER])
 
             return
         #print(f"ID {self.get_param_id(param)} grad norm {param.grad.norm()}")
@@ -1352,9 +1354,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         self.micro_step_id = -1
 
-        if self.cpu_offload:
-            torch.cuda.current_stream().wait_stream(self.migration_stream)
-
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow
@@ -1364,6 +1363,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         OPTIMIZER_GRADIENTS = 'optimizer_gradients'
         OPTIMIZER_STEP = 'optimizer_step'
         timer_names = [OPTIMIZER_ALLGATHER, OPTIMIZER_GRADIENTS, OPTIMIZER_STEP]
+        self.timer_names.update(timer_names)
 
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
@@ -1384,6 +1384,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                         self.loss_scale))
             self.start_timers(timer_names)
             self.stop_timers(timer_names)
+            self.log_timers(self.timer_names)
             return
 
         self.start_timers([OPTIMIZER_GRADIENTS])
@@ -1501,7 +1502,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
-        self.log_timers(timer_names)
+        self.log_timers(self.timer_names)
         see_memory_usage('After zero_optimizer step')
 
         return
@@ -1603,8 +1604,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         self.micro_step_id += 1
-        if self.cpu_offload:
-            torch.cuda.current_stream().wait_stream(self.migration_stream)
 
         #TODO: we need to revist this and remove the magic 4.5x multiplier here
         if self.contiguous_gradients:
