@@ -47,7 +47,7 @@ def compare_model_states(saved_model, loaded_model, compare_optimizer=True):
         p1_has_ds_tensor = hasattr(p1, 'ds_tensor')
         assert p0_has_ds_tensor == p1_has_ds_tensor, f'Mismatch has ds_tensor attribute p0:{p0_has_ds_tensor}, p1:{p1_has_ds_tensor}'
         if p0_has_ds_tensor:
-            assert torch.allclose(p0, p1, atol=1e-07), f'FP16 model state {p0} is not equal to {p1}'
+            assert torch.allclose(p0.ds_tensor, p1.ds_tensor, atol=1e-07), f'FP16 model state {p0} is not equal to {p1}'
 
     if not compare_optimizer:
         return
