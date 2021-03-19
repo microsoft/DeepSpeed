@@ -495,9 +495,10 @@ class DeepSpeedEngine(Module):
         # After the distributed backend is initialized we are guaranteed the LOCAL_RANK
         # environment variable is set. We must align args.local_rank to this value for
         # backwards compatability with scripts relying on [args|self].local_rank containing
-        # the correct local rank info.
-        args.local_rank = int(os.environ['LOCAL_RANK'])
-        self.local_rank = args.local_rank
+        # the correct local rank info. _do_args_sanity_check will ensure this is the case.
+        self.local_rank = int(os.environ['LOCAL_RANK'])
+        if hasattr(args, 'local_rank'):
+            args.local_rank = self.local_rank
 
         config_file = args.deepspeed_config if hasattr(args,
                                                        'deepspeed_config') else None
@@ -513,15 +514,14 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        local_rank_err = "DeepSpeed requires a command line parameter of --local_rank [int] and/or setting the LOCAL_RANK environment variable."
-        if hasattr(args, 'local_rank'):
-            assert type(args.local_rank) == int, local_rank_err
-            if "LOCAL_RANK" in os.environ and args.local_rank >= 0:
-                env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+        assert "LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment variable, it is set by the deepspeed launcher, " \
+            "deepspeed.init_distributed, or the torch.distributed launcher. If using a different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
+        if hasattr(args, 'local_rank') and args.local_rank != None:
+            assert isinstance(args.local_rank, int), f"args.local_rank of {args.local_rank} is an unknown type {type(args.local_rank)}"
+            if args.local_rank >= 0:
+                env_local_rank = int(os.environ.get("LOCAL_RANK"))
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
-        else:
-            assert "LOCAL_RANK" in os.environ, local_rank_err
 
         if self.config_params is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
@@ -675,8 +675,12 @@ class DeepSpeedEngine(Module):
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
-            from deepspeed.runtime.fp16.onebit_adam import OnebitAdam
+            from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
+            if not self.fp16_enabled():
+                logger.warning(
+                    f'Currently the convergence of 1-bit Adam is only verified under FP16'
+                )
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -1348,7 +1352,7 @@ class DeepSpeedEngine(Module):
         zero_ckpt_name = os.path.join(
             checkpoints_path,
             str(tag),
-            filename + '_mp_rank_{:02d}'.format(mp_rank) + 'optim_states.pt')
+            filename + '_mp_rank_{:02d}'.format(mp_rank) + '_optim_states.pt')
         return zero_ckpt_name
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
@@ -1525,13 +1529,20 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size)
         invalid_zero_ckpt_paths = []
-        for ckpt_name in zero_ckpt_names:
+        for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
+                # transparently handle the old file pattern for optim_states
+                if 'optim_states.pt' in ckpt_name:
+                    ckpt_name_try = ckpt_name.replace("_optim_states.pt",
+                                                      "optim_states.pt")
+                    if os.path.exists(ckpt_name_try):
+                        zero_ckpt_names[i] = ckpt_name_try
+                        continue
                 invalid_zero_ckpt_paths.append(ckpt_name)
 
         if len(invalid_zero_ckpt_paths) > 0:
             logger.warn(
-                f"Client provided zero checkpoint load paths: {invalid_zero_ckpt_paths} does not exist"
+                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
             )
             return None
 
