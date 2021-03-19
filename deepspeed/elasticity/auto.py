@@ -38,7 +38,7 @@ def relaunch(state):
         #time.sleep(2)
     
     #time.sleep(2)
-    logger.info(f"at rank:{dist.get_rank()}, sleeping..")
+    logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
     sys.exit(0)
 
 def handle_scaling_event(state, old_hosts, config_file):
@@ -65,6 +65,8 @@ def handle_scaling_event(state, old_hosts, config_file):
                 # DeepSpeedEngine will read this and call relaunch
             elif len(new_hosts) < len(old_hosts):
                 state['scale_down'] = True
+                print("\n_______________________________________________________\n")
+                time.sleep(2)
                 relaunch(state)
                 
 def listen_for_changes(state):

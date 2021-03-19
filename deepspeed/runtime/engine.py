@@ -1106,9 +1106,9 @@ class DeepSpeedEngine(Module):
             logger.info(f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting")
             if self.auto_save_dir == "/tmp/ds-checkpoint":
                 logger.warning("Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint")
-            #self.save_checkpoint(self.auto_save_dir)
+            self.save_checkpoint(self.auto_save_dir, self.global_steps)
             logger.info("checkpoint saved, relaunching now")
-            print("\n\n\n\n\n\n\n_______________________________________________________")
+            print("\n_______________________________________________________\n")
             time.sleep(2)
             relaunch(self.auto_state)
             
