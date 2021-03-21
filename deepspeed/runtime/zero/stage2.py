@@ -145,6 +145,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.timers = timers
         self.timer_names = set()
+        self.backward_timer_names = set()
 
         self.reduce_scatter = reduce_scatter
 
@@ -283,7 +284,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
         self.reduction_stream = torch.cuda.Stream()
+        self._reduction_stream = torch.cuda.Stream(
+        ) if self.overlap_comm else torch.cuda.current_stream()
         self.callback_queued = False
+        self.copy_grad_stream = torch.cuda.Stream()
 
         self.param_dict = {}
 
@@ -683,6 +687,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         else:
             stream = torch.cuda.current_stream()
 
+        AVG_TENSOR_PREP = 'avg_tensor_prep'
+        AVG_TENSOR_REDUCE = 'avg_tensor_reduce'
+        AVG_TENSOR_WAIT = 'avg_tensor_wait'
+        AVG_TENSOR_DIV = 'avg_tensor_div'
+        AVG_TENSOR_NAMES = [AVG_TENSOR_PREP, AVG_TENSOR_REDUCE, AVG_TENSOR_WAIT, AVG_TENSOR_DIV]
+        self.backward_timer_names.update(AVG_TENSOR_NAMES)
         with torch.cuda.stream(stream):
             if not self.reduce_scatter:
                 self.gradient_reduction_w_predivide(tensor)
@@ -695,6 +705,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             rank_and_offsets = []
             curr_size = 0
             prev_id = -1
+            self.start_timers([AVG_TENSOR_PREP])
             for i, param, param_id in self.params_in_ipg_bucket:
                 partition_ids = self.param_to_partition_ids[i][param_id]
                 partition_size = self.partition_size[i]
@@ -726,20 +737,31 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                     curr_size += numel
                     prev_id = partition_id
+            self.stop_timers([AVG_TENSOR_PREP])
+
+            self.start_timers([AVG_TENSOR_DIV])
             tensor.div_(dist.get_world_size(group=self.dp_process_group))
+            self.stop_timers([AVG_TENSOR_DIV])
 
             async_handles = []
             for dst, bucket_offset, numel in rank_and_offsets:
                 grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
                 dst_rank = _get_global_rank(self.dp_process_group, dst)
+                self.start_timers([AVG_TENSOR_REDUCE])
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=self.dp_process_group,
                                            async_op=True)
+                self.stop_timers([AVG_TENSOR_REDUCE])
                 async_handles.append(async_handle)
 
+            self.print_rank_0(f'average_tensor on {tensor.device} waiting for {len(async_handles)} handles')
+            self.start_timers([AVG_TENSOR_WAIT])
             for handle in async_handles:
                 handle.wait()
+
+            self.stop_timers([AVG_TENSOR_WAIT])
+
 
     ##############################################################################
     ############################# CPU Offload Methods#############################
@@ -876,6 +898,23 @@ class FP16_DeepSpeedZeroOptimizer(object):
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None
 
+
+    def _async_inplace_copy_grad_to_fp32_buffer_from_gpu(self, param):
+        with torch.cuda.stream(self.copy_grad_stream):
+            param_id = self.get_param_id(param)
+
+            [i, source_offset, dest_offset, num_elements] = self.grad_position[param_id]
+
+            dest_tensor = self.single_partition_of_fp32_groups[i].grad.view(-1).narrow(
+                0,
+                dest_offset,
+                num_elements)
+
+            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements).float()
+            dest_tensor.copy_(src_tensor, non_blocking=True)
+            param.grad = None
+
+
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
         norm_type = 2.0
@@ -907,9 +946,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def copy_grads_in_partition(self, param):
         if self.cpu_offload:
-            GRAD_OFFLOAD_TIMER = 'cpu_offload_grads'
-            self.timer_names.add(GRAD_OFFLOAD_TIMER)
-            self.start_timers([GRAD_OFFLOAD_TIMER])
             if self.gradient_accumulation_steps > 1:
                 self.async_accumulate_grad_in_cpu_via_gpu(param)
 
@@ -919,7 +955,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.update_overflow_tracker_for_param_grad(param)
 
                 self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(param)
-            self.stop_timers([GRAD_OFFLOAD_TIMER])
 
             return
         #print(f"ID {self.get_param_id(param)} grad norm {param.grad.norm()}")
@@ -946,11 +981,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #print(f"Grad norm after copy to contiguous_buffer {param.grad.data.norm()}")
         self.grads_in_partition_offset += param.numel()
 
-    def reduce_ipg_grads(self):
+
+    def _handle_previous_reduced_grads(self):
+        pass
+
+
+    def _reduce_ipg_grads(self):
         if self.overlap_comm:
-            stream = self.reduction_stream
-        else:
-            stream = torch.cuda.current_stream()
+            self.reduction_stream.synchronize()
 
         if self.contiguous_gradients:
             self.average_tensor(self.ipg_buffer[self.ipg_index])
@@ -960,6 +998,37 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.grads_in_ipg_bucket,
                 elements_per_buffer=self.elements_in_ipg_bucket)
 
+        with torch.cuda.stream(self.reduction_stream):
+            self._handle_previous_reduced_grads()
+
+        self.grads_in_ipg_bucket = []
+        self.params_in_ipg_bucket = []
+        self.elements_in_ipg_bucket = 0
+
+
+    def reduce_ipg_grads(self):
+        if self.overlap_comm:
+            stream = self.reduction_stream
+        else:
+            stream = torch.cuda.current_stream()
+
+        REDUCE_GRADS_TIMER = 'reduce_ready_grads'
+        self.backward_timer_names.add(REDUCE_GRADS_TIMER)
+        self.start_timers([REDUCE_GRADS_TIMER])
+
+        if self.contiguous_gradients:
+            self.average_tensor(self.ipg_buffer[self.ipg_index])
+        else:
+            self.buffered_reduce_fallback(
+                None,
+                self.grads_in_ipg_bucket,
+                elements_per_buffer=self.elements_in_ipg_bucket)
+
+        self.stop_timers([REDUCE_GRADS_TIMER])
+
+        HANDLE_REDUCED_GRADS_TIMER = 'handle_reduced_grads'
+        self.backward_timer_names.add(HANDLE_REDUCED_GRADS_TIMER)
+        self.start_timers([HANDLE_REDUCED_GRADS_TIMER])
         with torch.cuda.stream(stream):
             for _, param, param_id in self.params_in_ipg_bucket:
 
@@ -981,6 +1050,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         param.grad = None
                 elif self.contiguous_gradients:
                     self.copy_grads_in_partition(param)
+        self.stop_timers([HANDLE_REDUCED_GRADS_TIMER])
 
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
@@ -1090,6 +1160,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for param in self.previous_reduced_grads:
                 param.grad = None
             self.previous_reduced_grads = None
+
+    #if rank is specified do a reduction instead of an allreduce
+    def _allreduce_and_copy(self, small_bucket, rank=None, log=None):
+        with torch.cuda.stream(self.reduction_stream):
+            self._clear_previous_reduced_grads()
+            allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
+            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
+                for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
+                    buf.copy_(synced)
+
 
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
@@ -1611,6 +1691,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         self.micro_step_id += 1
+        self.backward_timer_names = set()
 
         #TODO: we need to revist this and remove the magic 4.5x multiplier here
         if self.contiguous_gradients:
@@ -1629,6 +1710,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.ipg_index = 0
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        self.log_timers(self.backward_timer_names)
+
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
