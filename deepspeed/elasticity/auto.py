@@ -5,8 +5,6 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import logging
 import threading
 import time
-import inotify
-import inotify.adapters
 import re
 import os
 import json
@@ -36,15 +34,52 @@ def relaunch(state):
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
         results = subprocess.Popen(cmd)
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
-        #time.sleep(2)
     
-    #time.sleep(2)
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
-
     os.kill(os.getpid(), signal.SIGTERM)
     # does not work with threads
     #sys.exit(0)
+                
+def listen_for_changes(state):
+    original_hostfile = open('/job/hostfile').read()
+    original_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
 
+    #print(f"Running on {len(original_hosts)} nodes")
+    #print("Original hostfile =", original_hostfile)
+    ssh_config_file = os.environ['HOME'] + '/.ssh/config'
+
+    interval = 5
+
+    while True:
+        # wait for some time
+        sleep(interval)
+        
+        # read the file and check changes
+        new_hostfile = open('/job/hostfile').read()
+        new_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
+
+        config = open(ssh_config_file).read()
+        config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
+
+        if config_hosts == new_hosts:
+            if not len(new_hosts) == len(old_hosts):
+                sorted_hosts = list(new_hosts)
+                sorted_hosts.sort()
+                state['relaunch_rank'] = int(sorted_hosts[0].split("-")[1])
+                logger.info(f"Relaunch rank = {state['relaunch_rank']}")
+                #time.sleep(1)
+                if len(new_hosts) > len(old_hosts):
+                    state['scale_up'] = True
+                    # DeepSpeedEngine will read this and call relaunch
+                    exit(0)
+                elif len(new_hosts) < len(old_hosts):
+                    state['scale_down'] = True
+                    #print("\n_______________________________________________________\n")
+                    #time.sleep(2)
+                    relaunch(state)
+
+        
+# Unused but keeping it for now
 def handle_scaling_event(state, old_hosts, config_file):
     new_hostfile = open('/job/hostfile').read()
     new_hosts = set(re.findall("(worker-[0-9]+)", new_hostfile))
@@ -72,8 +107,10 @@ def handle_scaling_event(state, old_hosts, config_file):
                 print("\n_______________________________________________________\n")
                 time.sleep(2)
                 relaunch(state)
-                
-def listen_for_changes(state):
+
+def listen_for_changes_with_inotify(state):
+    import inotify
+    import inotify.adapters
     original_hostfile = open('/job/hostfile').read()
     original_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
 
@@ -90,7 +127,7 @@ def listen_for_changes(state):
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
-            
+        print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
         if filename == 'config' and type_names[0] == 'IN_MODIFY':
             #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
             state['config_changed'] = True
