@@ -61,7 +61,7 @@ def listen_for_changes(state):
         config = open(ssh_config_file).read()
         config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
 
-        logger.info(f"config_hosts={config_hosts} and new_hosts={new_hosts}" and old_hosts={old_hosts}")
+        logger.info(f"config_hosts={config_hosts} and new_hosts={new_hosts} and old_hosts={original_hosts}")
 
         if config_hosts == new_hosts and new_hosts != original_hosts:
             if not len(new_hosts) == len(original_hosts):
