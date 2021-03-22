@@ -290,6 +290,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.copy_grad_stream = torch.cuda.Stream()
 
         self.param_dict = {}
+        self.param_group_index_dict = {}
 
         #map between param_id and bool to specify if a param is in this partition
         self.is_param_in_current_partition = {}
@@ -302,6 +303,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.params_already_reduced = []
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
+        self.params_prepared_to_reduce = []
 
         #simplified param id
         self.param_id = {}
@@ -313,10 +315,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 unique_id = id(param)
                 self.param_id[unique_id] = count
                 self.param_dict[count] = param
+                self.param_group_index_dict[count] = i
                 self.params_already_reduced.append(False)
+                self.params_prepared_to_reduce.append(False)
                 if param.numel() > largest_param_numel:
                     largest_param_numel = param.numel()
                 count = count + 1
+
+        self.maximum_param_id = count
+        self.last_param_id_prepared_to_reduce = self.maximum_param_id
 
         for param_group in self.params_in_partition:
             for param in param_group:
@@ -468,6 +475,22 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         param_group,
                         partition_id)
 
+    def flush_unreduced_gradients(self):
+        if not self.params_already_reduced[0]:
+            param = self.param_dict[0]
+            group_index = self.param_group_index_dict[0]
+            if param.grad is None:
+                param.grad = torch.zeros_like(param)
+            self.reduce_ready_partitions_and_remove_grads(param, group_index)
+
+    def dump_param_reduction_stats(self, message):
+        return
+        num_reduced = sum(1 for r in self.params_already_reduced if r)
+        num_unreduced = len(self.params_already_reduced) - num_reduced
+        logger.info(
+            f'In {message} param reduction stats: rank {dist.get_rank()} all {len(self.params_already_reduced)} reduced {num_reduced} unreduced {num_unreduced}'
+        )
+
     def independent_gradient_partition_epilogue(self):
         self.report_ipg_memory_usage(f"In ipg_epilogue before reduce_ipg_grads", 0)
         self.reduce_ipg_grads()
@@ -475,8 +498,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #if dist.get_rank() == 0:
         #    logger.info("Params already reduced %s", self.params_already_reduced)
+
+        #        self.dump_param_reduction_stats("In ipg_epilogue")
+
+        self.flush_unreduced_gradients()
+
+        self.reduce_ipg_grads()
+
+        #        self.dump_param_reduction_stats("After flush_unreduced_gradients")
+
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
+            self.params_prepared_to_reduce[i] = False
 
         if self.overlap_comm:
             torch.cuda.synchronize()
@@ -649,6 +682,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.grads_in_ipg_bucket.append(param.grad)
         self.params_in_ipg_bucket.append((i, param, param_id))
 
+        self.params_prepared_to_reduce[param_id] = True
+        self.last_param_id_prepared_to_reduce = param_id
+
         self.report_ipg_memory_usage("End ipg_remove_grads", 0)
 
     def print_rank_0(self, message):
@@ -691,7 +727,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         AVG_TENSOR_REDUCE = 'avg_tensor_reduce'
         AVG_TENSOR_WAIT = 'avg_tensor_wait'
         AVG_TENSOR_DIV = 'avg_tensor_div'
-        AVG_TENSOR_NAMES = [AVG_TENSOR_PREP, AVG_TENSOR_REDUCE, AVG_TENSOR_WAIT, AVG_TENSOR_DIV]
+        AVG_TENSOR_NAMES = [
+            AVG_TENSOR_PREP,
+            AVG_TENSOR_REDUCE,
+            AVG_TENSOR_WAIT,
+            AVG_TENSOR_DIV
+        ]
         self.backward_timer_names.update(AVG_TENSOR_NAMES)
         with torch.cuda.stream(stream):
             if not self.reduce_scatter:
@@ -755,13 +796,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.stop_timers([AVG_TENSOR_REDUCE])
                 async_handles.append(async_handle)
 
-            self.print_rank_0(f'average_tensor on {tensor.device} waiting for {len(async_handles)} handles')
+            self.print_rank_0(
+                f'average_tensor on {tensor.device} waiting for {len(async_handles)} handles'
+            )
             self.start_timers([AVG_TENSOR_WAIT])
             for handle in async_handles:
                 handle.wait()
 
             self.stop_timers([AVG_TENSOR_WAIT])
-
 
     ##############################################################################
     ############################# CPU Offload Methods#############################
@@ -898,7 +940,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         dest_tensor.copy_(src_tensor, non_blocking=True)
         param.grad = None
 
-
     def _async_inplace_copy_grad_to_fp32_buffer_from_gpu(self, param):
         with torch.cuda.stream(self.copy_grad_stream):
             param_id = self.get_param_id(param)
@@ -910,10 +951,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 dest_offset,
                 num_elements)
 
-            src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements).float()
+            src_tensor = param.grad.view(-1).narrow(0,
+                                                    source_offset,
+                                                    num_elements).float()
             dest_tensor.copy_(src_tensor, non_blocking=True)
             param.grad = None
-
 
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
@@ -981,10 +1023,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #print(f"Grad norm after copy to contiguous_buffer {param.grad.data.norm()}")
         self.grads_in_partition_offset += param.numel()
 
-
     def _handle_previous_reduced_grads(self):
         pass
-
 
     def _reduce_ipg_grads(self):
         if self.overlap_comm:
@@ -1004,7 +1044,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
         self.elements_in_ipg_bucket = 0
-
 
     def reduce_ipg_grads(self):
         if self.overlap_comm:
@@ -1057,7 +1096,31 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.elements_in_ipg_bucket = 0
         #####################################################################
 
+    def flush_unprepared_gradients(self, current_param_id):
+        last_prepared_param_id = self.last_param_id_prepared_to_reduce
+        if last_prepared_param_id == current_param_id + 1:
+            return
+
+        start_param_id_to_prepare = last_prepared_param_id - 1
+        #logger.info(f'rank {dist.get_rank()}: current {current_param_id} flush_range {start_param_id_to_prepare} ... {current_param_id + 1}')
+        for param_id in range(start_param_id_to_prepare, current_param_id, -1):
+            assert self.params_prepared_to_reduce[param_id] == False, \
+                f"Reducing {current_param_id} fails because {param_id} gradient is already prepared \
+                for reduction. Multiple preparation for reduction of gradient is not currently supported."
+
+            param = self.param_dict[param_id]
+            group_index = self.param_group_index_dict[param_id]
+            if param.grad is None:
+                param.grad = torch.zeros_like(param)
+            self.reduce_independent_p_g_buckets_and_remove_grads(param, group_index)
+
     def reduce_ready_partitions_and_remove_grads(self, param, i):
+        param_id = self.get_param_id(param)
+        if self.params_prepared_to_reduce[param_id]:
+            return
+
+        self.flush_unprepared_gradients(param_id)
+
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
@@ -1169,7 +1232,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
                 for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
                     buf.copy_(synced)
-
 
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
@@ -1691,6 +1753,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         self.micro_step_id += 1
+        self.last_param_id_prepared_to_reduce = self.maximum_param_id
+
         self.backward_timer_names = set()
 
         #TODO: we need to revist this and remove the magic 4.5x multiplier here
@@ -1711,7 +1775,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
         self.log_timers(self.backward_timer_names)
-
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
