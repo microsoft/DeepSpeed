@@ -15,15 +15,16 @@ import base64
 import sys
 import subprocess
 import torch.distributed as dist
+import signal
+import os
 
 from ..utils import logger
 
-from .constants import AUTO, AUTO_DEFAULT
-
 def auto_enabled(ds_config: dict):
-    if AUTO not in ds_config:
-        return True
-    return ds_config[AUTO].get(AUTO, AUTO_DEFAULT)
+    if 'IS_ELASTIC_TRAINING_JOB' in os.environ:
+        if os.environ['IS_ELASTIC_TRAINING_JOB'].lower() == 'true':
+            return True
+    return False
 
 def relaunch(state):
     relaunch_rank = state['relaunch_rank']
@@ -39,7 +40,10 @@ def relaunch(state):
     
     #time.sleep(2)
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
-    sys.exit(0)
+
+    os.kill(os.getpid(), signal.SIGTERM)
+    # does not work with threads
+    #sys.exit(0)
 
 def handle_scaling_event(state, old_hosts, config_file):
     new_hostfile = open('/job/hostfile').read()

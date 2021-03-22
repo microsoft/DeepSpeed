@@ -78,6 +78,7 @@ def main():
     world_info = None
     assert args.world_info != "None", "must provide world info dict"
     world_info = base64.urlsafe_b64decode(args.world_info)
+    #TODO: world_info = base64.urlsafe_b64decode(args.world_info.encode('utf-8'))
     world_info = json.loads(world_info)
 
     logger.info("WORLD INFO DICT: {}".format(world_info))

@@ -314,7 +314,7 @@ def main(args=None):
 
     # This auto support will work for the deepspeed launcher only
     if 'IS_ELASTIC_TRAINING_JOB' in os.environ:
-        if os.environ['IS_ELASTIC_TRAINING_JOB'] == 'True':
+        if os.environ['IS_ELASTIC_TRAINING_JOB'].lower() == 'true':
             auto_elasticity_enabled = True
             logger.info("DeepSpeed Auto Elasticity Enabled. Ignoring all arguments to deepspeed launcher.")
             #TODO: set active_resources to the full pool?
