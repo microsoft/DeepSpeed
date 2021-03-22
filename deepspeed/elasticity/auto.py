@@ -52,7 +52,7 @@ def listen_for_changes(state):
 
     while True:
         # wait for some time
-        sleep(interval)
+        time.sleep(interval)
         
         # read the file and check changes
         new_hostfile = open('/job/hostfile').read()
@@ -62,17 +62,17 @@ def listen_for_changes(state):
         config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
 
         if config_hosts == new_hosts:
-            if not len(new_hosts) == len(old_hosts):
+            if not len(new_hosts) == len(original_hosts):
                 sorted_hosts = list(new_hosts)
                 sorted_hosts.sort()
                 state['relaunch_rank'] = int(sorted_hosts[0].split("-")[1])
                 logger.info(f"Relaunch rank = {state['relaunch_rank']}")
                 #time.sleep(1)
-                if len(new_hosts) > len(old_hosts):
+                if len(new_hosts) > len(original_hosts):
                     state['scale_up'] = True
                     # DeepSpeedEngine will read this and call relaunch
                     exit(0)
-                elif len(new_hosts) < len(old_hosts):
+                elif len(new_hosts) < len(original_hosts):
                     state['scale_down'] = True
                     #print("\n_______________________________________________________\n")
                     #time.sleep(2)
