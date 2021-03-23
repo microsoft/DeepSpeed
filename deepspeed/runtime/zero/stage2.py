@@ -484,7 +484,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.reduce_ready_partitions_and_remove_grads(param, group_index)
 
     def dump_param_reduction_stats(self, message):
-        return
         num_reduced = sum(1 for r in self.params_already_reduced if r)
         num_unreduced = len(self.params_already_reduced) - num_reduced
         logger.info(
@@ -499,13 +498,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #if dist.get_rank() == 0:
         #    logger.info("Params already reduced %s", self.params_already_reduced)
 
-        #        self.dump_param_reduction_stats("In ipg_epilogue")
+        self.dump_param_reduction_stats("In ipg_epilogue")
 
         self.flush_unreduced_gradients()
 
         self.reduce_ipg_grads()
 
-        #        self.dump_param_reduction_stats("After flush_unreduced_gradients")
+        self.dump_param_reduction_stats("After flush_unreduced_gradients")
 
         for i in range(len(self.params_already_reduced)):
             self.params_already_reduced[i] = False
@@ -1102,7 +1101,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             return
 
         start_param_id_to_prepare = last_prepared_param_id - 1
-        #logger.info(f'rank {dist.get_rank()}: current {current_param_id} flush_range {start_param_id_to_prepare} ... {current_param_id + 1}')
+        logger.info(
+            f'rank {dist.get_rank()}: current {current_param_id} flush_range {start_param_id_to_prepare} ... {current_param_id + 1}'
+        )
         for param_id in range(start_param_id_to_prepare, current_param_id, -1):
             assert self.params_prepared_to_reduce[param_id] == False, \
                 f"Reducing {current_param_id} fails because {param_id} gradient is already prepared \
