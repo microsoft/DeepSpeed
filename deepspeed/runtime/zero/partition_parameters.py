@@ -851,18 +851,19 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
 class GatheredParameters:
     def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
-        """A context that collects a parameter that was partitioned via a
-        :class:`deepspeed.zero.Init` context. The parameter is partitioned
+        """A context that collects parameters that were partitioned via a
+        :class:`deepspeed.zero.Init` context. The parameters are partitioned
         again upon exit.
 
         Args:
-            params (``torch.nn.Parameter``): The parameter to collect.
+            params (``torch.nn.Parameter``): A single parameter or a list of parameters to collect.
+                It's assumed that all parameters are zero params.
             modifier_rank (int, optional): If specified, this rank's parameter will be
-                broadcasted after the context. This argument is required if ``param`` is
-                modified all processes should have a consistent view of the data. Defaults
+                broadcasted on exit from the context. This argument is required if ``params`` are
+                modified, so that all processes have a consistent view of the data. Defaults
                 to ``None``.
-            fwd_module (``torch.nn.Module``, optional): If specified, ``param`` will be
-                registered as an external parameter of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
+            fwd_module (``torch.nn.Module``, optional): If specified, ``params`` will be
+                registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
         Examples
@@ -897,6 +898,33 @@ class GatheredParameters:
                                                            fwd_module=self):
                         y = self.layer2(x, self.layer1.weight)
                     return y
+
+
+        #. Pretrained model loading
+
+            .. code-block:: python
+
+                with deepspeed.zero.Init():
+                    model = MyModel()
+
+                state_dict = torch.load(model_path, map_location="cpu")
+
+                def load(module: nn.Module, prefix=""):
+                    # because zero3 puts placeholders in model params, this context
+                    # manager gathers (unpartitions) the params of the current layer, then loads from
+                    # the state dict and then re-partitions them again
+                    with deepspeed.zero.GatheredParameters(list(module.parameters(recurse=False)), modifier_rank=0):
+                        if torch.distributed.get_rank() == 0:
+                            module._load_from_state_dict(state_dict, prefix)
+
+                    for name, child in module._modules.items():
+                        if child is not None:
+                            load(child, prefix + name + ".")
+
+                load(model, prefix="")
+
+        If this approach is not used, then the full model will first get copied to each GPU. For models
+        bigger than the memory of a single gpu this method is required.
         """
 
         self.enabled = enabled
@@ -918,7 +946,6 @@ class GatheredParameters:
                 self.src_rank = modifier_rank
             else:
                 # A group was specified; convert DP rank to global rank
-                # XXX: is it safe to use 0th param?
                 self.src_rank = _get_global_rank(self.params[0].ds_process_group,
                                                  modifier_rank)
         self.fwd_module = fwd_module
