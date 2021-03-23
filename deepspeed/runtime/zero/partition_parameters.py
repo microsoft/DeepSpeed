@@ -966,11 +966,11 @@ class GatheredParameters:
             return
 
         handles = [
-            torch.distributeds.broadcast(p,
+            torch.distributed.broadcast(p,
                                          self.src_rank,
                                          group=p.ds_process_group,
                                          async_op=True) for p in self.params
         ]
         for h in handles:
             h.wait()
-        self.params[0].partition(has_been_updated=True)
+        self.params[0].partition(param_list=self.params, has_been_updated=True)
