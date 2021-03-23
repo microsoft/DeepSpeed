@@ -962,13 +962,15 @@ class GatheredParameters:
     def __exit__(self, *exc):
         if not self.enabled:
             return
-        if self.src_rank is not None:
-            handles = [
-                torch.distributed.broadcast(p,
-                                            self.src_rank,
-                                            group=p.ds_process_group,
-                                            async_op=True) for p in self.params
-            ]
-            for h in handles:
-                h.wait()
-            self.params[0].partition(has_been_updated=True)
+        if self.src_rank is None:
+            return
+
+        handles = [
+            torch.distributeds.broadcast(p,
+                                         self.src_rank,
+                                         group=p.ds_process_group,
+                                         async_op=True) for p in self.params
+        ]
+        for h in handles:
+            h.wait()
+        self.params[0].partition(has_been_updated=True)
