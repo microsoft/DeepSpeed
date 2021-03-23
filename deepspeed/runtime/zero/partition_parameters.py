@@ -850,13 +850,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
 
 class GatheredParameters:
-    def __init__(self, param, modifier_rank=None, fwd_module=None, enabled=True):
+    def __init__(self, params, modifier_rank=None, fwd_module=None, enabled=True):
         """A context that collects a parameter that was partitioned via a
         :class:`deepspeed.zero.Init` context. The parameter is partitioned
         again upon exit.
 
         Args:
-            param (``torch.nn.Parameter``): The parameter to collect.
+            params (``torch.nn.Parameter``): The parameter to collect.
             modifier_rank (int, optional): If specified, this rank's parameter will be
                 broadcasted after the context. This argument is required if ``param`` is
                 modified all processes should have a consistent view of the data. Defaults
@@ -903,35 +903,43 @@ class GatheredParameters:
         if not enabled:
             return
 
-        # This is a no-op, just return.
-        if not is_zero_param(param):
+        if not isinstance(params, list):
+            params = [params]
+
+        # enable if at least one is zero-param, otherwise a noop
+        if not any(is_zero_param(p) for p in params):
             self.enabled = False
             return
 
-        self.param = param
+        self.params = params
         self.src_rank = None
         if modifier_rank is not None:
             if self.param.ds_process_group == torch.distributed.group.WORLD:
                 self.src_rank = modifier_rank
             else:
                 # A group was specified; convert DP rank to global rank
-                self.src_rank = _get_global_rank(self.param.ds_process_group,
+                # XXX: is it safe to use 0th param?
+                self.src_rank = _get_global_rank(self.params[0].ds_process_group,
                                                  modifier_rank)
         self.fwd_module = fwd_module
         if self.fwd_module is not None:
             # is a no-op if already registered
-            register_external_parameter(self.fwd_module, self.param)
+            for p in self.params:
+                register_external_parameter(self.fwd_module, p)
 
     def __enter__(self):
         if not self.enabled:
             return
-        self.param.all_gather()
+        for p in self.params:
+            p.all_gather()
 
     def __exit__(self, *exc):
         if not self.enabled:
             return
-        if self.src_rank is not None:
-            torch.distributed.broadcast(self.param,
-                                        self.src_rank,
-                                        group=self.param.ds_process_group)
-        self.param.partition(has_been_updated=self.src_rank is not None)
+        for p in self.params:
+            # XXX: can this be done on the list?
+            if self.src_rank is not None:
+                torch.distributed.broadcast(p,
+                                            self.src_rank,
+                                            group=self.param.ds_process_group)
+            p.partition(has_been_updated=self.src_rank is not None)
