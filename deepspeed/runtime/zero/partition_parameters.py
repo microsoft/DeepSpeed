@@ -914,7 +914,7 @@ class GatheredParameters:
         self.params = params
         self.src_rank = None
         if modifier_rank is not None:
-            if self.param.ds_process_group == torch.distributed.group.WORLD:
+            if self.params[0].ds_process_group == torch.distributed.group.WORLD:
                 self.src_rank = modifier_rank
             else:
                 # A group was specified; convert DP rank to global rank
@@ -941,5 +941,5 @@ class GatheredParameters:
             if self.src_rank is not None:
                 torch.distributed.broadcast(p,
                                             self.src_rank,
-                                            group=self.param.ds_process_group)
+                                            group=self.params[0].ds_process_group)
             p.partition(has_been_updated=self.src_rank is not None)
