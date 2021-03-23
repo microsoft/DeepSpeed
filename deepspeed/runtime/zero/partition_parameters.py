@@ -967,9 +967,9 @@ class GatheredParameters:
 
         handles = [
             torch.distributed.broadcast(p,
-                                         self.src_rank,
-                                         group=p.ds_process_group,
-                                         async_op=True) for p in self.params
+                                        self.src_rank,
+                                        group=p.ds_process_group,
+                                        async_op=True) for p in self.params
         ]
         for h in handles:
             h.wait()
