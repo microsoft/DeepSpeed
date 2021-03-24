@@ -8,6 +8,7 @@ Helper functions and classes from multiple sources.
 
 import os
 import psutil
+import gc
 from math import ceil
 from math import floor
 from bisect import bisect_left, bisect_right
@@ -563,6 +564,12 @@ def see_memory_usage(message, force=False):
     used_GB = round(((vm_stats.total - vm_stats.available) / (1024**3)), 2)
     logger.info(
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
+
+    # reset for the next call
+    # 1. get the peak memory to report correct data
+    torch.cuda.reset_peak_memory_stats()
+    # 2. python doesn't do real-time garbage collection so do it explicitly
+    gc.collect()
 
 
 def call_to_str(base, *args, **kwargs):
