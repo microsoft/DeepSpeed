@@ -545,10 +545,12 @@ class DeepSpeedConfig(object):
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
         if self.elasticity_enabled:
             logger.info("DeepSpeed elasticity support enabled")
-            final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
+            final_batch_size, valid_gpus, micro_batch_size, final_world_size = compute_elastic_config(
                 ds_config=self._param_dict,
                 target_deepspeed_version=__version__,
                 world_size=self.world_size)
+
+            assert final_world_size == self.world_size, f"Not running elastic training with expected world size {self.world_size} != {final_world_size}"
 
             elastic_dict = self._param_dict[ELASTICITY]
 

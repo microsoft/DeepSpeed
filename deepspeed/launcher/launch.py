@@ -113,8 +113,11 @@ def main():
     current_env["MASTER_ADDR"] = args.master_addr
     current_env["MASTER_PORT"] = str(args.master_port)
     current_env["WORLD_SIZE"] = str(dist_world_size)
-    current_env["DS_CMD"] = str(args.ds_command)
-    
+
+    if os.environ.get('IS_ELASTIC_TRAINING_JOB', 'false').lower() == 'true':
+        current_env["DS_CMD"] = str(args.ds_command)
+        current_env["DS_RANK_MAPPING"] = json.dumps(global_rank_mapping)
+
     processes = []
     for local_rank in range(0, num_local_procs):
         # each process's rank

@@ -317,8 +317,12 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
 
     if world_size > 0:
         if world_size not in valid_gpus:
-            raise ElasticityIncompatibleWorldSize(f"World size ({world_size}) is not valid " \
-        f"with the current list of valid GPU counts: {valid_gpus}")
+            logger.warning(f"Given world size ({world_size}) is not perfectly valid " \
+                f"with the current list of valid GPU counts: {valid_gpus}. Will use the largest world size that's still valid.")
+            # Pick largest world size possible within valid gpu counts
+            filtered_valid_gpus = list(filter(lambda t: t <= world_size, valid_gpus))
+            assert len(filtered_valid_gpus) > 0, "Unable to find any valid gpus within world size"
+            world_size = filtered_valid_gpus[-1]
 
         # Pick largest valid micro batch size
         micro_batch_size = None
@@ -329,6 +333,6 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
         assert micro_batch_size is not None, "Unable to find divisible micro batch size" \
             f" world_size={world_size}, final_batch_size={final_batch_size}, and " \
             f" micro_batches={elastic_config.micro_batches}."
-        return final_batch_size, valid_gpus, micro_batch_size
+        return final_batch_size, valid_gpus, micro_batch_size, world_size
 
     return final_batch_size, valid_gpus

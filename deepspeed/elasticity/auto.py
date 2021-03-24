@@ -16,7 +16,8 @@ import torch.distributed as dist
 import signal
 import os
 
-from ..utils import logger
+from deepspeed.utils import logger
+
 
 def auto_enabled(ds_config: dict):
     if 'IS_ELASTIC_TRAINING_JOB' in os.environ:
@@ -24,9 +25,10 @@ def auto_enabled(ds_config: dict):
             return True
     return False
 
+
 def relaunch(state):
     relaunch_rank = state['relaunch_rank']
-    
+
     if dist.get_rank() == relaunch_rank:
         cmd = os.environ['DS_CMD']
         cmd = base64.urlsafe_b64decode(cmd)
@@ -34,12 +36,11 @@ def relaunch(state):
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
         results = subprocess.Popen(cmd)
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
-    
+
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
     os.kill(os.getpid(), signal.SIGTERM)
-    # does not work with threads
-    #sys.exit(0)
-                
+
+
 def listen_for_changes(state):
     original_hostfile = open('/job/hostfile').read()
     original_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
@@ -53,15 +54,17 @@ def listen_for_changes(state):
     while True:
         # wait for some time
         time.sleep(interval)
-        
+
         # read the file and check changes
         new_hostfile = open('/job/hostfile').read()
-        new_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
+        new_hosts = set(re.findall("(worker-[0-9]+)", new_hostfile))
 
         config = open(ssh_config_file).read()
         config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
 
-        logger.info(f"config_hosts={config_hosts} and new_hosts={new_hosts} and old_hosts={original_hosts}")
+        logger.info(
+            f"config_hosts={config_hosts} and new_hosts={new_hosts} and old_hosts={original_hosts}"
+        )
 
         if config_hosts == new_hosts and new_hosts != original_hosts:
             if not len(new_hosts) == len(original_hosts):
@@ -80,9 +83,43 @@ def listen_for_changes(state):
                     #time.sleep(2)
                     relaunch(state)
 
-        
+
+def get_relaunch_rank(new_hostset, old_hostset):
+    # get list of hosts valid on both old and new, this ensures we are re-launched
+    # on a node that is still alive and not new
+    host_list = list(new_hostset.intersection(old_hostset))
+    host_list.sort()
+    first_host = host_list[0]
+
+    assert 'DS_RANK_MAPPING' in os.environ, "Missing DS_RANK_MAPPING variable, unable to proceed with relaunch"
+    rank_mapping = json.loads(os.environ['DS_RANK_MAPPING'])
+    logger.info("Global rank mapping={rank_mapping}")
+
+    # relaunch rank is first rank on first host
+    relaunch_rank = rank_mapping[first_host][0]
+    return int(relaunch_rank)
+
+
+def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
+    assert len(new_hosts) == len(new_config_hosts), "new hosts and new config hosts don't align, {new_hosts} != {new_config_hosts}"
+
+    state['relaunch_rank'] = get_relaunch_rank(new_hosts, old_hosts)
+
+    logger.info(f"Relaunch rank = {state['relaunch_rank']}")
+    #time.sleep(1)
+    assert len(new_hosts) != len(old_hosts)
+    if len(new_hosts) > len(old_hosts):
+        state['scale_up'] = True
+        # DeepSpeedEngine will read this and call relaunch
+    elif len(new_hosts) < len(old_hosts):
+        state['scale_down'] = True
+        print("\n_______________________________________________________\n")
+        #time.sleep(2)
+        relaunch(state)
+
+
 # Unused but keeping it for now
-def handle_scaling_event(state, old_hosts, config_file):
+def old_handle_scaling_event(state, old_hosts, config_file):
     new_hostfile = open('/job/hostfile').read()
     new_hosts = set(re.findall("(worker-[0-9]+)", new_hostfile))
 
@@ -92,7 +129,7 @@ def handle_scaling_event(state, old_hosts, config_file):
     #print(f"config_hosts={config_hosts}")
     #print(f"new_hosts={new_hosts}")
     #print(f"old_hosts={old_hosts}")
-    
+
     if config_hosts == new_hosts:
         #print("sanity passed")
         if not len(new_hosts) == len(old_hosts):
@@ -110,50 +147,98 @@ def handle_scaling_event(state, old_hosts, config_file):
                 time.sleep(2)
                 relaunch(state)
 
+
+def get_host_set(hostfile_path):
+    #TODO: support host parsing for non worker-[0-9]+ pattern
+    hostfile = open(hostfile_path, 'r').read()
+    hostset = set(re.findall("(worker-[0-9]+)", hostfile))
+    assert len(hostset) > 0, f"Unable to find any hosts in hostfile={hostfile}"
+    return hostset
+
+
+def get_config_host_set(ssh_config_path):
+    #TODO: support host parsing for non worker-[0-9]+ pattern
+    config = open(ssh_config_path, 'r').read()
+    config_hostset = set(re.findall("Host (worker-[0-9]+)", config))
+    assert len(config_hostset) > 0, f"Unable to find any hosts in config={config}"
+    return config_hostset
+
+
+def wait_on_hostfile_changes(original_hosts, new_config_hosts):
+    # shouldn't take more than 5min for hostfile to change once ssh config has changed
+    max_wait_time = 300
+    sleep_time = 2
+    max_loops = max_wait_time / sleep_time
+    loops = 0
+    while True:
+        new_hosts = get_host_set('/job/hostfile')
+        if new_hosts != original_hosts:
+            # hostfile has changed, does it align with ssh config changes?
+            assert new_hosts == new_config_hosts, \
+                f"unable to handle scaling event, /job/hostfile ({new_hosts}) and .ssh/config ({new_config_hosts}) hosts do not max"
+            return new_hosts
+
+        # Still waiting for hostfile to change
+        time.sleep(sleep_time)
+        loops += 1
+        assert loops < max_loops, "waited {max_wait_time/60} minutes for hostfile to change after .ssh/config changed, unable to handle scaling event"
+        logger.info("waiting for hostfile to change...")
+
+
 def listen_for_changes_with_inotify(state):
     import inotify
     import inotify.adapters
-    original_hostfile = open('/job/hostfile').read()
-    original_hosts = set(re.findall("(worker-[0-9]+)", original_hostfile))
+    hostfile_path = state['hostfile_path']
+    ssh_config_path = state['ssh_config_path']
 
-    #print(f"Running on {len(original_hosts)} nodes")
-    #print("Original hostfile =", original_hostfile)
+    logger.info(
+        "Auto elasticity is waiting for scaling event, listening changes at {hostfile_path} and {ssh_config_path}"
+    )
+
+    original_hosts = get_host_set(hostfile_path)
 
     i = inotify.adapters.Inotify()
 
-    ssh_config_path = os.environ['HOME'] + '/.ssh/'
+    # Watch for modifications to ~/.ssh/, config changes signal a scaling event
+    ssh_path = os.path.dirname(ssh_config_path)
+    i.add_watch(ssh_path)
 
-    # Watch both directories
-    i.add_watch('/job/')
-    i.add_watch(ssh_config_path)
+    ssh_config_path = os.path.join(ssh_path, "config")
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
-        print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
+        print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path,
+                                                              filename,
+                                                              type_names))
         if filename == 'config' and type_names[0] == 'IN_MODIFY':
             #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
             state['config_changed'] = True
-
-            if state['config_changed'] and state['hostfile_changed']:
-                handle_scaling_event(state, original_hosts, ssh_config_path + 'config')
-
-        if filename == 'hostfile' and type_names[0] == 'IN_MODIFY':
-            #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
+            logger.info("detected ssh config changed due to scaling event")
+            new_config_hosts = get_config_host_set(ssh_config_path)
+            new_hosts = wait_on_hostfile_changes(original_hosts, new_config_hosts)
             state['hostfile_changed'] = True
 
-            if state['hostfile_changed'] and state['config_changed']:
-                handle_scaling_event(state, original_hosts, ssh_config_path + 'config')
+            handle_scaling_event(state,
+                                 new_hosts,
+                                 original_hosts,
+                                 new_config_hosts)  #original_hosts, ssh_config_path)
+
 
 def start_watching(state):
-    x = threading.Thread(target=listen_for_changes, args=(state,), daemon=True)
+    x = threading.Thread(target=listen_for_changes_with_inotify,
+                         args=(state,
+                               ),
+                         daemon=True)
     x.start()
+
 
 # just for debugging -- deepspeed engine will do this
 keep_training = True
 step = 0
 
+
 def train(state):
-    global step    
+    global step
     global keep_training
 
     print("Training ... step:", step)
@@ -171,8 +256,17 @@ def train(state):
         print(f"scaling down nodes and restarting")
         keep_training = False
 
+
 if __name__ == "__main__":
-    auto_state = {'scale_up': False, 'scale_down': False, 'config_changed': False, 'hostfile_changed': False}
+    auto_state = {
+        'scale_up': False,
+        'scale_down': False,
+        'config_changed': False,
+        'hostfile_changed': False,
+        "hostfile_path": "/job/hostfile",
+        "ssh_config_path": os.path.join(os.environ["HOME"],
+                                        '.ssh/config')
+    }
     start_watching(auto_state)
 
     while keep_training:

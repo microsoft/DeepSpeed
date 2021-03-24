@@ -151,8 +151,6 @@ class DeepSpeedEngine(Module):
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
 
-
-
         self._set_distributed_vars()
 
         if self.tensorboard_enabled() and self.global_rank == 0:
@@ -164,7 +162,7 @@ class DeepSpeedEngine(Module):
         self._configure_distributed_model(model)
 
         see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
-        
+
         if mpu is not None and self.mp_world_size > 1:
             assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
                 " with model parallelism."
@@ -174,7 +172,18 @@ class DeepSpeedEngine(Module):
         # Configure auto elasticity processes/threads
         if self.auto_elasticity_enabled():
             logger.info("DeepSpeed Automatic Elasticity support is enabled.")
-            self.auto_state = {'scale_up': False, 'scale_down': False, "config_changed": False, "hostfile_changed": False, "relaunch_rank": -1}
+            self.auto_state = {
+                'scale_up': False,
+                'scale_down': False,
+                "config_changed": False,
+                "hostfile_changed": False,
+                "relaunch_rank": -1
+            }
+            #TODO: allow elasticity config to override these paths
+            self.auto_state['hostfile_path'] = "/job/hostfile"
+            self.auto_state['ssh_config_path'] = os.path.join(os.path.expanduser("~"),
+                                                              '.ssh',
+                                                              'config')
             start_watching(self.auto_state)
 
         # Configure wall clock timer
@@ -1102,16 +1111,20 @@ class DeepSpeedEngine(Module):
 
     def check_states(self):
         # check if a scale up or scale down event has come and act accordingly
-        if self.auto_state['scale_up']:
-            logger.info(f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting")
+        if self.auto_elasticity_enabled() and self.auto_state['scale_up']:
+            logger.info(
+                f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting"
+            )
             if self.auto_save_dir == "/tmp/ds-checkpoint":
-                logger.warning("Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint")
+                logger.warning(
+                    "Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint"
+                )
             self.save_checkpoint(self.auto_save_dir, self.global_steps)
             logger.info("checkpoint saved, relaunching now")
             print("\n_______________________________________________________\n")
             time.sleep(2)
             relaunch(self.auto_state)
-            
+
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
@@ -1491,6 +1504,7 @@ class DeepSpeedEngine(Module):
         self.global_samples = checkpoint.get('global_samples',
                                              self.global_steps * self.train_batch_size())
         self.skipped_steps = checkpoint['skipped_steps']
+        self.tput_timer.restore_steps(self.global_steps)
         self.loaded_checkpoint_mp_world_size = checkpoint['mp_world_size']
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
         deepspeed_states = [

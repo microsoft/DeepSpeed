@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from ..utils import logger
 from .constants import PDSH_MAX_FAN_OUT, MVAPICH_TMP_HOSTFILE
 
+
 class MultiNodeRunner(ABC):
     def __init__(self, args, world_info_base64):
         self.args = args
@@ -50,7 +51,11 @@ class PDSHRunner(MultiNodeRunner):
         cmd_base64 = base64.urlsafe_b64encode(cmd_json).decode('utf-8')
         return cmd_base64
 
-    def get_cmd(self, environment, active_resources, auto_elasticity_enabled=None, encoded_cmd=None):
+    def get_cmd(self,
+                environment,
+                active_resources,
+                auto_elasticity_enabled=None,
+                encoded_cmd=None):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
 
         active_workers = ",".join(active_resources.keys())
@@ -79,11 +84,15 @@ class PDSHRunner(MultiNodeRunner):
 
         if auto_elasticity_enabled is not None:
             # add deepspeed relaunch command to the cmd
-            cmd = pdsh_cmd_args + deepspeed_launch + ["--ds_command={}".format(encoded_cmd)] + [self.user_script] + self.user_arguments
+            cmd = pdsh_cmd_args + deepspeed_launch + [
+                "--ds_command={}".format(encoded_cmd)
+            ] + [self.user_script] + self.user_arguments
         else:
-            cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script] + self.user_arguments
+            cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script
+                                                      ] + self.user_arguments
 
-        return cmd 
+        return cmd
+
 
 class OpenMPIRunner(MultiNodeRunner):
     def __init__(self, args, world_info_base64, resource_pool):
