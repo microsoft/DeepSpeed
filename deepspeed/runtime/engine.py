@@ -1643,7 +1643,9 @@ class DeepSpeedEngine(Module):
         tag = str(tag)
 
         # Ensure checkpoint tag is consistent across ranks
+        print('pre tag valid')
         self._checkpoint_tag_validation(tag)
+        print('post tag valid')
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)

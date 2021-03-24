@@ -207,11 +207,14 @@ def listen_for_changes_with_inotify(state):
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
-        print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path,
-                                                              filename,
-                                                              type_names))
+        #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path,
+        #                                                     filename,
+        #                                                     type_names))
         if filename == 'config' and type_names[0] == 'IN_MODIFY':
-            #print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(path, filename, type_names))
+            print("PATH=[{}] FILENAME=[{}] EVENT_TYPES={}".format(
+                path,
+                filename,
+                type_names))
             state['config_changed'] = True
             logger.info("detected ssh config changed due to scaling event")
             new_config_hosts = get_config_host_set(ssh_config_path)
@@ -225,6 +228,12 @@ def listen_for_changes_with_inotify(state):
 
 
 def start_watching(state):
+    try:
+        import inotify
+    except ImportError as err:
+        logging.error("Please pip install inotify to use automatic elasticity")
+        raise err
+
     x = threading.Thread(target=listen_for_changes_with_inotify,
                          args=(state,
                                ),

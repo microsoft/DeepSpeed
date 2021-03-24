@@ -76,3 +76,6 @@ MINIMUM_DEEPSPEED_VERSION = "0.3.8"
 
 # Environment variable storing elastic config from resource scheduler
 DEEPSPEED_ELASTICITY_CONFIG = "DEEPSPEED_ELASTICITY_CONFIG"
+
+DIVISIBLE_BY = "divisible_by"
+DIVISIBLE_BY_DEFAULT = 1

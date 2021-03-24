@@ -41,9 +41,10 @@ class ElasticityConfig:
         "max_train_batch_size": 2000,
         "micro_batch_sizes": [2,4,6],
         "min_gpus": 1,
-        "max_gpus" : 10000
-        "min_time": 20
-        "ignore_non_elastic_batch_info": false
+        "max_gpus" : 10000,
+        "min_time": 20,
+        "divisible_by": 1,
+        "ignore_non_elastic_batch_info": false,
         "version": 0.1
     }
     """
@@ -97,6 +98,8 @@ class ElasticityConfig:
         if self.min_time < 0:
             raise ElasticityConfigError(
                 f"Elasticity min time needs to be >= 0: given {self.min_time}")
+
+        self.divisible_by = param_dict.get(DIVISIBLE_BY, DIVISIBLE_BY_DEFAULT)
 
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,

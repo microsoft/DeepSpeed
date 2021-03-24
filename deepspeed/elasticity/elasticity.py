@@ -73,18 +73,22 @@ def get_candidate_batch_sizes(base_list, max_acceptable_batch_size):
     return list(set(candidate_batch_size))
 
 
-def get_valid_gpus(batch_size, micro_batches, min_valid_gpus, max_valid_gpus):
+def get_valid_gpus(batch_size,
+                   micro_batches,
+                   min_valid_gpus,
+                   max_valid_gpus,
+                   divisible_by=1):
     valid_gpus = []
     for micro_batch in micro_batches:
         if batch_size % micro_batch == 0:
 
             max_gpus = batch_size // micro_batch
-            if max_gpus >= min_valid_gpus and max_gpus <= max_valid_gpus:
+            if max_gpus >= min_valid_gpus and max_gpus <= max_valid_gpus and max_gpus % divisible_by == 0:
                 valid_gpus.append(max_gpus)
 
             for i in range(1, max_gpus // 2 + 1):
                 if max_gpus % i == 0:
-                    if i >= min_valid_gpus and i <= max_valid_gpus:
+                    if i >= min_valid_gpus and i <= max_valid_gpus and i % divisible_by == 0:
                         valid_gpus.append(i)
     valid_gpus = set(valid_gpus)
     valid_gpus = sorted(list(valid_gpus))
@@ -95,7 +99,8 @@ def get_best_candidates(candidate_batch_sizes,
                         micro_batches,
                         min_gpus,
                         max_gpus,
-                        prefer_larger):
+                        prefer_larger,
+                        divisible_by=1):
 
     max_valid_gpus = 0
     valid_gpus = None
@@ -106,7 +111,8 @@ def get_best_candidates(candidate_batch_sizes,
         current_valid_gpus = get_valid_gpus(batch_size,
                                             micro_batches,
                                             min_gpus,
-                                            max_gpus)
+                                            max_gpus,
+                                            divisible_by)
 
         if (len(current_valid_gpus) > max_valid_gpus
                 or (len(current_valid_gpus) == max_valid_gpus and
@@ -123,7 +129,8 @@ def _get_compatible_gpus_v01(micro_batches,
                              max_acceptable_batch_size,
                              min_gpus=None,
                              max_gpus=None,
-                             prefer_larger=True):
+                             prefer_larger=True,
+                             divisible_by=1):
     '''We use two heuristics to compute the batch size
         1. We use the Lowest Common Multiple of the micro-batches
     as the base batch size and scale it by a HCN such that the result is
@@ -166,7 +173,8 @@ def _get_compatible_gpus_v01(micro_batches,
         micro_batches,
         min_gpus,
         max_gpus,
-        prefer_larger)
+        prefer_larger,
+        divisible_by)
 
     return final_batch_size, valid_gpus
 
@@ -211,6 +219,11 @@ def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
     if DEEPSPEED_ELASTICITY_CONFIG in os.environ:
         scheduler_elastic_config_dict = json.loads(
             os.environ[DEEPSPEED_ELASTICITY_CONFIG])
+
+        # remove outer config ELASTICITY key if exists
+        if ELASTICITY in scheduler_elastic_config_dict:
+            scheduler_elastic_config_dict = scheduler_elastic_config_dict[ELASTICITY]
+
         scheduler_elastic_config = ElasticityConfig(scheduler_elastic_config_dict)
         runtime_elastic_config = ElasticityConfig(runtime_elastic_config_dict)
         err_str = "Elastic config '{}={}' seen by resource scheduler does not match config passed to runtime {}={}"
@@ -308,7 +321,8 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
             min_gpus=elastic_config.min_gpus,
             max_gpus=elastic_config.max_gpus,
-            prefer_larger=elastic_config.prefer_larger_batch_size)
+            prefer_larger=elastic_config.prefer_larger_batch_size,
+            divisible_by=elastic_config.divisible_by)
         # ensure batch size is int dtype
         final_batch_size = int(final_batch_size)
     else:
