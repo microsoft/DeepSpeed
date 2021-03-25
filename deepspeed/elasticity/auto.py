@@ -17,6 +17,9 @@ import signal
 import os
 
 from deepspeed.utils import logger
+from .constants import DETECTION_MODE_POLL, DETECTION_MODE_INOTIFY
+
+POLLING_INTERVAL = 5
 
 
 def auto_enabled(ds_config: dict):
@@ -164,18 +167,18 @@ def get_config_host_set(ssh_config_path):
     return config_hostset
 
 
-def wait_on_hostfile_changes(original_hosts, new_config_hosts):
+def wait_on_hostfile_changes(hostfile_path, original_hosts, new_config_hosts):
     # shouldn't take more than 5min for hostfile to change once ssh config has changed
     max_wait_time = 300
     sleep_time = 2
     max_loops = max_wait_time / sleep_time
     loops = 0
     while True:
-        new_hosts = get_host_set('/job/hostfile')
+        new_hosts = get_host_set(hostfile_path)
         if new_hosts != original_hosts:
             # hostfile has changed, does it align with ssh config changes?
             assert new_hosts == new_config_hosts, \
-                f"unable to handle scaling event, /job/hostfile ({new_hosts}) and .ssh/config ({new_config_hosts}) hosts do not max"
+                f"unable to handle scaling event, {hostfile_path} ({new_hosts}) and .ssh/config ({new_config_hosts}) hosts do not match"
             return new_hosts
 
         # Still waiting for hostfile to change
@@ -183,6 +186,30 @@ def wait_on_hostfile_changes(original_hosts, new_config_hosts):
         loops += 1
         assert loops < max_loops, "waited {max_wait_time/60} minutes for hostfile to change after .ssh/config changed, unable to handle scaling event"
         logger.info("waiting for hostfile to change...")
+
+
+def listen_for_changes_polling(state):
+    hostfile_path = state['hostfile_path']
+    ssh_config_path = state['ssh_config_path']
+
+    logger.info(
+        "Auto elasticity is waiting for scaling event, listening changes at {hostfile_path} and {ssh_config_path}"
+    )
+
+    original_hosts = get_host_set(hostfile_path)
+    original_config_hosts = get_config_host_set(ssh_config_path)
+
+    while True:
+        new_config_hosts = get_config_host_set(ssh_config_path)
+        if new_config_hosts != original_config_hosts:
+            logger.info("detected ssh config changed due to scaling event")
+            new_hosts = wait_on_hostfile_changes(hostfile_path,
+                                                 original_hosts,
+                                                 new_config_hosts)
+            state['hostfile_changed'] = True
+
+            handle_scaling_event(state, new_hosts, original_hosts, new_config_hosts)
+        time.sleep(POLLING_INTERVAL)
 
 
 def listen_for_changes_with_inotify(state):
@@ -196,14 +223,13 @@ def listen_for_changes_with_inotify(state):
     )
 
     original_hosts = get_host_set(hostfile_path)
+    original_config_hosts = get_config_host_set(ssh_config_path)
 
     i = inotify.adapters.Inotify()
 
     # Watch for modifications to ~/.ssh/, config changes signal a scaling event
     ssh_path = os.path.dirname(ssh_config_path)
     i.add_watch(ssh_path)
-
-    ssh_config_path = os.path.join(ssh_path, "config")
 
     for event in i.event_gen(yield_nones=False):
         (_, type_names, path, filename) = event
@@ -215,30 +241,43 @@ def listen_for_changes_with_inotify(state):
                 path,
                 filename,
                 type_names))
+            new_config_hosts = get_config_host_set(ssh_config_path)
+            if original_config_hosts == new_config_hosts:
+                logger.info(
+                    "Detected ssh changes but the file is unchanged, will not trigger scale event"
+                )
+                continue
             state['config_changed'] = True
             logger.info("detected ssh config changed due to scaling event")
-            new_config_hosts = get_config_host_set(ssh_config_path)
-            new_hosts = wait_on_hostfile_changes(original_hosts, new_config_hosts)
+
+            new_hosts = wait_on_hostfile_changes(hostfile_path,
+                                                 original_hosts,
+                                                 new_config_hosts)
             state['hostfile_changed'] = True
 
-            handle_scaling_event(state,
-                                 new_hosts,
-                                 original_hosts,
-                                 new_config_hosts)  #original_hosts, ssh_config_path)
+            handle_scaling_event(state, new_hosts, original_hosts, new_config_hosts)
 
 
-def start_watching(state):
-    try:
-        import inotify
-    except ImportError as err:
-        logging.error("Please pip install inotify to use automatic elasticity")
-        raise err
+def start_watching(state, detection_method=DETECTION_MODE_POLL):
+    if detection_method == DETECTION_MODE_INOTIFY:
+        try:
+            import inotify
+        except ImportError as err:
+            logging.error("Please pip install inotify to use automatic elasticity")
+            raise err
+        thread = threading.Thread(target=listen_for_changes_with_inotify,
+                                  args=(state,
+                                        ),
+                                  daemon=True)
+    elif detection_method == DETECTION_MODE_POLL:
+        thread = threading.Thread(target=listen_for_changes_polling,
+                                  args=(state,
+                                        ),
+                                  daemon=True)
+    else:
+        raise ValueError(f"Detection method of {detection_method} is unknown!")
 
-    x = threading.Thread(target=listen_for_changes_with_inotify,
-                         args=(state,
-                               ),
-                         daemon=True)
-    x.start()
+    thread.start()
 
 
 # just for debugging -- deepspeed engine will do this

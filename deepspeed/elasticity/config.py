@@ -100,6 +100,8 @@ class ElasticityConfig:
                 f"Elasticity min time needs to be >= 0: given {self.min_time}")
 
         self.divisible_by = param_dict.get(DIVISIBLE_BY, DIVISIBLE_BY_DEFAULT)
+        self.detection_mode = param_dict.get(DETECTION_MODE,
+                                             DETECTION_MODE_DEFAULT).lower()
 
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,

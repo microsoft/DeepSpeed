@@ -10,7 +10,8 @@ from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
     ElasticityIncompatibleWorldSize
 from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
     MINIMUM_DEEPSPEED_VERSION, IGNORE_NON_ELASTIC_BATCH_INFO, \
-    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG, \
+    DETECTION_MODE, DETECTION_MODE_DEFAULT
 from ..git_version_info import version as __version__
 from ..utils import logger
 
@@ -210,6 +211,12 @@ def elasticity_enabled(ds_config: dict):
     if ELASTICITY not in ds_config:
         return False
     return ds_config[ELASTICITY].get(ENABLED, ENABLED_DEFAULT)
+
+
+def detection_method(ds_config: dict):
+    if ELASTICITY not in ds_config:
+        return None
+    return ds_config[ELASTICITY].get(DETECTION_MODE, DETECTION_MODE_DEFAULT)
 
 
 def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):

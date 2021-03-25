@@ -18,7 +18,7 @@ from ..git_version_info import version as __version__
 from ..utils import logger
 
 from ..elasticity.auto import auto_enabled
-from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config
+from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config, detection_method
 from ..elasticity.config import ElasticityConfigError
 from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
@@ -543,6 +543,7 @@ class DeepSpeedConfig(object):
         self.auto_enabled = auto_enabled(self._param_dict)
         # If elastic-mode enabled, update compute + update _param_dict
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
+        self.elasticity_detection_method = detection_method(self._param_dict)
         if self.elasticity_enabled:
             logger.info("DeepSpeed elasticity support enabled")
             final_batch_size, valid_gpus, micro_batch_size, final_world_size = compute_elastic_config(

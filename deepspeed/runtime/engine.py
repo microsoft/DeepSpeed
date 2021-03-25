@@ -184,7 +184,8 @@ class DeepSpeedEngine(Module):
             self.auto_state['ssh_config_path'] = os.path.join(os.path.expanduser("~"),
                                                               '.ssh',
                                                               'config')
-            start_watching(self.auto_state)
+            start_watching(state=self.auto_state,
+                           detection_method=self.elasticity_detection_method())
 
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
@@ -259,6 +260,9 @@ class DeepSpeedEngine(Module):
 
     def auto_elasticity_enabled(self):
         return self._config.auto_enabled
+
+    def elasticity_detection_method(self):
+        return self._config.elasticity_detection_method
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -1643,9 +1647,7 @@ class DeepSpeedEngine(Module):
         tag = str(tag)
 
         # Ensure checkpoint tag is consistent across ranks
-        print('pre tag valid')
         self._checkpoint_tag_validation(tag)
-        print('post tag valid')
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
