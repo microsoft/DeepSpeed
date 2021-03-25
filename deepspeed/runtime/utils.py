@@ -560,17 +560,17 @@ def see_memory_usage(message, force=False):
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB ")
 
+    # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
+    gc.collect()
+
     vm_stats = psutil.virtual_memory()
     used_GB = round(((vm_stats.total - vm_stats.available) / (1024**3)), 2)
     logger.info(
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
 
-    # reset for the next call
-    # 1. get the peak memory to report correct data
+    # get the peak memory to report correct data, so reset the counter for the next call
     if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats()
-    # 2. python doesn't do real-time garbage collection so do it explicitly
-    gc.collect()
 
 
 def call_to_str(base, *args, **kwargs):
