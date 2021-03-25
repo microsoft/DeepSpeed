@@ -567,7 +567,8 @@ def see_memory_usage(message, force=False):
 
     # reset for the next call
     # 1. get the peak memory to report correct data
-    torch.cuda.reset_peak_memory_stats()
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
+        torch.cuda.reset_peak_memory_stats()
     # 2. python doesn't do real-time garbage collection so do it explicitly
     gc.collect()
 
