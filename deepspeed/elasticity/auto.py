@@ -193,7 +193,7 @@ def listen_for_changes_polling(state):
     ssh_config_path = state['ssh_config_path']
 
     logger.info(
-        "Auto elasticity is waiting for scaling event, listening changes at {hostfile_path} and {ssh_config_path}"
+        f"Auto elasticity is waiting for scaling event, listening changes at {hostfile_path} and {ssh_config_path}"
     )
 
     original_hosts = get_host_set(hostfile_path)
@@ -277,6 +277,7 @@ def start_watching(state, detection_method=DETECTION_MODE_POLL):
     else:
         raise ValueError(f"Detection method of {detection_method} is unknown!")
 
+    logger.info(f"watching for elastic scaling events with {detection_method}")
     thread.start()
 
 
