@@ -552,6 +552,9 @@ def see_memory_usage(message, force=False):
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
         return
 
+    # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
+    gc.collect()
+
     # Print message except when distributed but not rank 0
     logger.info(message)
     logger.info(
@@ -559,9 +562,6 @@ def see_memory_usage(message, force=False):
         Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
         CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB ")
-
-    # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
-    gc.collect()
 
     vm_stats = psutil.virtual_memory()
     used_GB = round(((vm_stats.total - vm_stats.available) / (1024**3)), 2)
