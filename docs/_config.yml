@@ -30,6 +30,7 @@ collections:
     output: true
     permalink: /:collection/:path/
     order:
+      - advanced-install.md
       - getting-started.md
       - azure.md
       - cifar-10.md
@@ -37,9 +38,10 @@ collections:
       - bert-finetuning.md
       - transformer_kernel.md
       - megatron.md
-      - 1Cycle.md
+      - one-cycle.md
       - lrrt.md
       - zero.md
+      - flops-profiler.md
 
 defaults:
   - scope:

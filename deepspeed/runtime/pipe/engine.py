@@ -52,6 +52,11 @@ class PipelineEngine(DeepSpeedEngine):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
+        # We schedule the all-reduces, so disable it in super().backward()
+        self.enable_backward_allreduce = False
+        assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
+            " with pipeline parallelism."
+
         # pipeline step for logging
         self.log_batch_step_id = -1
 
@@ -201,6 +206,16 @@ class PipelineEngine(DeepSpeedEngine):
         self.set_dataloader(pipe_dataloader)
 
     def _exec_reduce_tied_grads(self):
+        # We need to run this first to write to self.averaged_gradients;
+        # since this class turns `enable_backward_allreduce` off,
+        # `self.overlapping_partition_gradients_reduce_epilogue()` defined in the DeepSpeedEngine
+        # never actually runs. I suspect this is because of efficiency problems; get_flat_partition in
+        # stage2.py might do something expensive; someone will have to look into that later. But
+        # in the meantime, this fixes ZeRO2 + Pipelining enough to run a demo. Further profiling
+        # needed to decide if it actually breaks everything.
+        # (see https://github.com/EleutherAI/gpt-neox/issues/62#issuecomment-761471944)
+        if self.zero_optimization_partition_gradients():
+            self.optimizer.overlapping_partition_gradients_reduce_epilogue()
         self.module.allreduce_tied_weight_gradients()
 
     def _exec_reduce_grads(self):
@@ -463,17 +478,6 @@ class PipelineEngine(DeepSpeedEngine):
         if self.batch_fn:
             batch = self.batch_fn(batch)
 
-        # Sanity check dimensions.
-        # XXX: the last minibatch with size < micro_batch_size kills us
-        if torch.is_tensor(batch[0]):
-            if batch[0].size(0) != self.micro_batch_size:
-                print(f'size mismatch: {batch[0].size(0)} mb: {self.micro_batch_size}')
-                return self._next_batch()
-        else:
-            assert torch.is_tensor(batch[0][0])
-            if batch[0][0].size(0) != self.micro_batch_size:
-                return self._next_batch()
-
         return batch
 
     def _exec_forward_pass(self, buffer_id):
@@ -546,7 +550,7 @@ class PipelineEngine(DeepSpeedEngine):
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
         if self.is_last_stage():
-            super().backward(self.loss, allreduce_gradients=False)
+            super().backward(self.loss)
             self.mem_status('AFTER BWD')
             return
 
@@ -937,14 +941,14 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
 
-    def _exec_optimizer_step(self):
+    def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
             self.timers('step').start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
         self._force_grad_boundary = True
-        self._take_model_step()
+        self._take_model_step(lr_kwargs)
         self._force_grad_boundary = False
 
         self.mem_status('AFTER STEP')
@@ -1100,31 +1104,31 @@ class PipelineEngine(DeepSpeedEngine):
         is ``save_state_dict()``.
 
         Returns:
-            str: The directory path where the checkpoint was saved.
+            None
         """
         assert isinstance(self.module, PipelineModule)
-        assert self._curr_save_path is not None, \
+        assert self._curr_ckpt_path is not None, \
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
-        self.module.save_state_dict(self._curr_save_path)
-        return self._curr_save_path
+        self.module.save_state_dict(self._curr_ckpt_path)
+        return None
 
     def load_module_state_dict(self, state_dict, strict=True):
         """Override hack to instead use a directory path.
 
         This is important because pipeline models checkpoint by layer instead of rank.
 
-        If ``state_dict`` is not a ``str``, we revert to ``super()`` expecting a ``dict``.
+        If ``state_dict`` is not ``None`` or a ``str``, we revert to ``super()`` expecting a ``dict``.
 
         Args:
-            state_dict (str): Path to the directory for checkpoint.
+            state_dict (str, None): unused
             strict (bool, optional): Strict state loading. Defaults to True.
         """
-        if not isinstance(state_dict, str):
+        if (state_dict is not None) and (not isinstance(state_dict, str)):
             super().load_module_state_dict(state_dict, strict)
             return
 
-        self.module.load_state_dir(state_dict, strict=strict)
+        self.module.load_state_dir(load_dir=self._curr_ckpt_path, strict=strict)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the
     # kwargs provided to the PipeInstruction from the scheduler.
@@ -1155,3 +1159,11 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
+
+    def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
+        self.batch_fn = fn

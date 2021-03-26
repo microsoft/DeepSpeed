@@ -27,6 +27,15 @@ Checkpointing API
    activation-checkpointing
 
 
+ZeRO API
+--------
+.. toctree::
+   :maxdepth: 2
+
+   zero3
+
+
+
 Transformer Kernel API
 ----------------------
 .. toctree::
@@ -41,6 +50,26 @@ Pipeline Parallelism
 
    pipeline
 
+Optimizers
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   optimizers
+
+Learning Rate Schedulers
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   schedulers
+
+Flops Profiler
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   flops-profiler
 
 Indices and tables
 ------------------

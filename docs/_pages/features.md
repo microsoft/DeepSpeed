@@ -28,7 +28,8 @@ deepspeed --hostfile=<hostfile> \
 	<client_entry.py> <client args> \
 	--deepspeed --deepspeed_config ds_config.json
 ```
-The script `<client_entry.py>` will execute on the resources specified in `<hostfile>`.
+The script `<client_entry.py>` will execute on the resources specified in
+[`<hostfile>`](/getting-started/#resource-configuration-multi-node).
 
 ## Pipeline Parallelism
 DeepSpeed provides [pipeline parallelism](/tutorials/pipeline/) for memory-
@@ -36,7 +37,7 @@ and communication- efficient training. DeepSpeed supports a hybrid
 combination of data, model, and pipeline parallelism and has scaled to over
 [one trillion parameters using 3D parallelism]({{ site.press_release_v3 }}).
 Pipeline parallelism can also improve communication efficiency and has
-accelerated training by up to 7x on low-banwdith clusters.
+accelerated training by up to 7x on low-bandwidth clusters.
 
 
 ## Model Parallelism
@@ -78,7 +79,7 @@ DeepSpeed.
 
 ### Optimizer State and Gradient Partitioning
 Optimizer State and Gradient Partitioning in ZeRO reduces the memory consumption of the
-model states (optimizer states, gradients and parmaeters) by 8x compared to standard
+model states (optimizer states, gradients and parameters) by 8x compared to standard
 data parallelism by partitioning these states across data parallel process instead of
 replicating them.
 
@@ -112,7 +113,7 @@ to contiguous buffers preventing memory fragmentation.
 
 ## ZeRO-Offload
 
-ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.  
+ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.
 
 For more details see the [ZeRO-Offload release blog]( https://www.microsoft.com/en-us/research/?p=689370&secret=iSlooB), and [tutorial](/tutorials/zero-offload/) on integration with DeepSpeed.
 
@@ -132,7 +133,7 @@ micro-batch, specially when the number of micro-batches per effective batch is l
 During back propagation, DeepSpeed can overlap the communication required for averaging
 parameter gradients that have already been computed with the ongoing gradient computation.
 This computation-communication overlap allows DeepSpeed to achieve higher throughput even
-at modest batch sizes.  
+at modest batch sizes.
 
 ## Training Features
 
@@ -149,8 +150,8 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 
 ### Activation Checkpointing API
 
-DeepSpeed's Activation Checkpoinitng API supports activation checkpoint partitioning,
-cpu checkpoiniting, and contiguous memory optimizations, while also allowing layerwise
+DeepSpeed's Activation Checkpointing API supports activation checkpoint partitioning,
+cpu checkpointing, and contiguous memory optimizations, while also allowing layerwise
 profiling. Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
 
 
@@ -189,7 +190,7 @@ NVIDIA, or any training optimizer that extends torch's `torch.optim.Optimizer` c
 We introduce an efficient implementation of Adam optimizer on CPU that improves the parameter-update
 performance by nearly an order of magnitude. We use the AVX SIMD instructions on Intel-x86 architecture
 for the CPU-Adam implementation. We support both AVX-512 and AVX-2 instruction sets. DeepSpeed uses
-AVX-2 by defualt which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
+AVX-2 by default which can be switched to AVX-512 by setting the build flag, `DS_BUILD_AVX512` to 1 when
 installing DeepSpeed. Using AVX-512, we observe 5.1x to 6.5x speedups considering the model-size between
 1 to 10 billion parameters with respect to torch-adam.
 
@@ -239,19 +240,53 @@ comes to data loading. Users simply provide a PyTorch dataset, and DeepSpeed dat
 can automatically handle batch creation appropriately.
 
 ## Performance Analysis and Debugging
-For performance debugging, DeepSpeed can give you a detailed breakdown of the time spent
-in different parts of the training by simply enabling it in the `deepspeed_config`
-file.
-Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
+
+DeepSpeed provides a set of tools for performance analysis and debugging.
+
+### Wall Clock Breakdown
+
+DeepSpeed provides a detailed breakdown of the time spent
+in different parts of the training.
+This can be enabled by setting the following in the `deepspeed_config` file.
+
 ```json
 {
   "wall_clock_breakdown": true,
+}
 
+```
+
+###  Timing Activation Checkpoint Functions
+
+When activation checkpointing is enabled, profiling the forward and backward time of each checkpoint function can be enabled in the `deepspeed_config` file.
+
+```json
+{
   "activation_checkpointing": {
     "profile": true
   }
 }
+
 ```
+
+### Flops Profiler
+
+The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorch model and shows which modules or layers are the bottleneck. When used with the DeepSpeed runtime, the flops profiler can be configured in the `deepspeed_config` file as follows:
+
+```json
+{
+  "flops_profiler": {
+    "enabled": true,
+    "profile_step": 1,
+    "module_depth": -1,
+    "top_modules": 3,
+    "detailed": true,
+    }
+}
+
+```
+The flops profiler can also be used as a standalone package. Please refer to the [Flops Profiler](/tutorials/flops-profiler) tutorial for more details.
+
 ## Sparse Attention
 DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
 

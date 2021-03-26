@@ -3,13 +3,14 @@
 *~
 *.swp
 *.log
-deepspeed/git_version_info.py
+deepspeed/git_version_info_installed.py
 
 # Build + installation data
 build/
 dist/
 *.so
 deepspeed.egg-info/
+build.txt
 
 # Website
 docs/_site/
@@ -23,3 +24,7 @@ docs/code-docs/build
 
 # Testing data
 tests/unit/saved_checkpoint/
+
+# Dev/IDE data
+.vscode
+.theia

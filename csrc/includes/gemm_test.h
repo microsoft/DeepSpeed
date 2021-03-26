@@ -111,7 +111,7 @@ public:
     template <typename Func>
     int Run(int loops, Func f)
     {
-        float fast_latency = std::numeric_limits<float>::max();
+        float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
 #ifdef __HIP_PLATFORM_HCC__
@@ -283,7 +283,7 @@ public:
     template <typename Func>
     int Run(int loops, Func f)
     {
-        float fast_latency = std::numeric_limits<float>::max();
+        float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
 #ifdef __HIP_PLATFORM_HCC__
