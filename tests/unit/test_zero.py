@@ -67,3 +67,65 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
         run_unbalanced_gradients(model, data_loader)
 
     _test_zero_unbalanced_gradients(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_multiple_initialize_in_one_session_stage_3(tmpdir):
+    deepspeed.utils.logging.logger.setLevel('WARN')
+
+    @distributed_test(world_size=[1])
+    def test():
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 2,
+            "gradient_accumulation_steps": 1,
+            "steps_per_print": 1,
+            "zero_optimization": {
+                "stage": 3
+            },
+            "fp16": {
+                "enabled": True,
+                "initial_scale_power": 8
+            }
+        }
+        args = args_from_dict(tmpdir, config_dict)
+        hidden_dim = 4
+
+        model = SimpleModel(hidden_dim=hidden_dim)
+
+        model, _, _, _ = deepspeed.initialize(
+            args=args,
+            model=model,
+            optimizer=torch.optim.Adam(model.parameters()),
+            model_parameters=model.parameters()
+        )
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=10,
+            hidden_dim=hidden_dim,
+            device=model.device
+        )
+
+        for i, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+        model = model.module
+
+        model, _, _, _ = deepspeed.initialize(
+            args=args,
+            optimizer=torch.optim.Adam(model.parameters()),
+            model=model,
+            model_parameters=[]
+        )
+        data_loader = random_dataloader(
+            model=model,
+            total_samples=10,
+            hidden_dim=hidden_dim,
+            device=model.device
+        )
+
+        for i, batch in enumerate(data_loader):
+            with torch.no_grad():
+                model(batch[0], batch[1])
+
+    test()
