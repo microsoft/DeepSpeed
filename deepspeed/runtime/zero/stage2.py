@@ -284,6 +284,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduction_stream = torch.cuda.Stream()
         self.cpu_computation_stream = torch.cuda.Stream()
         self.migration_stream = torch.cuda.Stream()
+        self.copy_grad_stream = torch.cuda.Stream()
         self.callback_queued = False
 
         self.param_dict = {}
@@ -947,6 +948,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def reduce_ipg_grads(self):
         if self.overlap_comm:
             stream = self.reduction_stream
+        elif self.cpu_offload:
+            stream = self.copy_grad_stream
         else:
             stream = torch.cuda.current_stream()
 
