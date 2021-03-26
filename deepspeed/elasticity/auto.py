@@ -211,6 +211,9 @@ def listen_for_changes_polling(state):
             handle_scaling_event(state, new_hosts, original_hosts, new_config_hosts)
         time.sleep(POLLING_INTERVAL)
 
+    while not os.path.isfile('/dlts-runtime/status/READY'):
+        time.sleep(POLLING_INTERVAL)
+
 
 def listen_for_changes_with_inotify(state):
     import inotify
