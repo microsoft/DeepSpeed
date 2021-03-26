@@ -18,6 +18,7 @@ import signal
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
+from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
@@ -78,8 +79,11 @@ def main():
     world_info = None
     assert args.world_info != "None", "must provide world info dict"
     world_info = base64.urlsafe_b64decode(args.world_info)
-    #TODO: world_info = base64.urlsafe_b64decode(args.world_info.encode('utf-8'))
     world_info = json.loads(world_info)
+
+    if DEEPSPEED_ELASTICITY_CONFIG in current_env:
+        current_env[DEEPSPEED_ELASTICITY_CONFIG] = base64.urlsafe_b64decode(
+            current_env[DEEPSPEED_ELASTICITY_CONFIG])
 
     logger.info("WORLD INFO DICT: {}".format(world_info))
     node_list = list(world_info.keys())

@@ -41,6 +41,8 @@ def relaunch(state):
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
 
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
+    if 'parent-pid' in state:
+        os.kill(state['parent-pid'], signal.SIGTERM)
     os.kill(os.getpid(), signal.SIGTERM)
 
 
@@ -96,7 +98,7 @@ def get_relaunch_rank(new_hostset, old_hostset):
 
     assert 'DS_RANK_MAPPING' in os.environ, "Missing DS_RANK_MAPPING variable, unable to proceed with relaunch"
     rank_mapping = json.loads(os.environ['DS_RANK_MAPPING'])
-    logger.info("Global rank mapping={rank_mapping}")
+    logger.info(f"Global rank mapping={rank_mapping}")
 
     # relaunch rank is first rank on first host
     relaunch_rank = rank_mapping[first_host][0]
@@ -143,6 +145,7 @@ def old_handle_scaling_event(state, old_hosts, config_file):
             time.sleep(1)
             if len(new_hosts) > len(old_hosts):
                 state['scale_up'] = True
+                logger.info('waiting for relaunch from training process')
                 # DeepSpeedEngine will read this and call relaunch
             elif len(new_hosts) < len(old_hosts):
                 state['scale_down'] = True
@@ -212,6 +215,7 @@ def listen_for_changes_polling(state):
         time.sleep(POLLING_INTERVAL)
 
     while not os.path.isfile('/dlts-runtime/status/READY'):
+        logger.info('waiting for /dlts-runtime/status/READY')
         time.sleep(POLLING_INTERVAL)
 
 
@@ -272,16 +276,25 @@ def start_watching(state, detection_method=DETECTION_MODE_POLL):
                                   args=(state,
                                         ),
                                   daemon=True)
+        logger.info('detection method via inotify')
     elif detection_method == DETECTION_MODE_POLL:
         thread = threading.Thread(target=listen_for_changes_polling,
                                   args=(state,
                                         ),
                                   daemon=True)
+        logger.info('detection method via polling')
+    elif detection_method == "subprocess":
+        from multiprocessing import Process
+        state['parent-pid'] = os.getpid()
+        state = multiprocessing.Manager().dict(state)
+        thread = Process(target=listen_for_changes_polling, args=(state, ))
+        logger.info('detection method via subprocess')
     else:
         raise ValueError(f"Detection method of {detection_method} is unknown!")
 
     logger.info(f"watching for elastic scaling events with {detection_method}")
     thread.start()
+    return state
 
 
 # just for debugging -- deepspeed engine will do this

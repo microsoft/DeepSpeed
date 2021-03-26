@@ -22,6 +22,7 @@ from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
+from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
@@ -31,7 +32,6 @@ PDSH_MAX_FAN_OUT = 1024
 
 ELASTIC_TRAINING = 'IS_ELASTIC_TRAINING_JOB'
 ELASTIC_TRAINING_DEFAULT = 'false'
-DEEPSPEED_ELASTICITY_CONFIG = "DEEPSPEED_ELASTICITY_CONFIG"
 
 
 def parse_args(args=None):
@@ -328,9 +328,12 @@ def main(args=None):
                     key, val = var.split('=')
                     env_file[key] = val.strip()
 
-    if DEEPSPEED_ELASTICITY_CONFIG in env or DEEPSPEED_ELASTICITY_CONFIG in env_file:
+    if DEEPSPEED_ELASTICITY_CONFIG in env:
         elastic_config = get_env(DEEPSPEED_ELASTICITY_CONFIG, [env, env_file])
         elastic_config_json = json.loads(elastic_config)
+
+        assert DEEPSPEED_ELASTICITY_CONFIG not in env_file
+        env_file[DEEPSPEED_ELASTICITY_CONFIG] = encode_world_info(elastic_config)
 
         from ..elasticity import compute_elastic_config
         from .. import __version__
@@ -365,6 +368,9 @@ def main(args=None):
             logger.info(
                 "DeepSpeed Auto Elasticity Enabled. Ignoring all arguments to deepspeed launcher."
             )
+        # add ELASTIC_TRAINING to environment file if it's not there already
+        if ELASTIC_TRAINING in env and ELASTIC_TRAINING not in env_file:
+            env_file[ELASTIC_TRAINING] = is_elastic_training.lower()
 
     if auto_elasticity_enabled:
         relaunch_cmd = ["deepspeed"] + ["--master_port={}".format(args.master_port)

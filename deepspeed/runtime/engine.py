@@ -184,8 +184,9 @@ class DeepSpeedEngine(Module):
             self.auto_state['ssh_config_path'] = os.path.join(os.path.expanduser("~"),
                                                               '.ssh',
                                                               'config')
-            start_watching(state=self.auto_state,
-                           detection_method=self.elasticity_detection_method())
+            self.auto_state = start_watching(
+                state=self.auto_state,
+                detection_method=self.elasticity_detection_method())
 
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
@@ -1115,6 +1116,7 @@ class DeepSpeedEngine(Module):
 
     def check_states(self):
         # check if a scale up or scale down event has come and act accordingly
+        logger.info(f"checking scale-up: {self.auto_state['scale_up']}")
         if self.auto_elasticity_enabled() and self.auto_state['scale_up']:
             logger.info(
                 f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting"
