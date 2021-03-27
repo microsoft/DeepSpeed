@@ -148,7 +148,7 @@ RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
 # https://stackoverflow.com/a/53926898
 ##############################################################################
 RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
-    rm -rf /usr/lib/python3/dist-packages/PyYAML-*
+        rm -rf /usr/lib/python3/dist-packages/PyYAML-*
 
 ##############################################################################
 ## Add deepspeed user
@@ -166,9 +166,8 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 ##############################################################################
 RUN git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
 RUN cd ${STAGE_DIR}/DeepSpeed && \
-    git checkout . && \
-    git checkout master && \
-    ./install.sh --third_party_only --allow_sudo && \
-    DS_BUILD_CUDA=0 DS_BUILD_LAMB=1 ./install.sh --allow_sudo
+        git checkout . && \
+        git checkout master && \
+        DS_BUILD_FUSED_ADAM=1 DS_BUILD_FUSED_LAMB=1 DS_BUILD_CPU_ADAM=1 DS_BUILD_UTILS=1 ./install.sh --allow_sudo
 RUN rm -rf ${STAGE_DIR}/DeepSpeed
 RUN cd ~ && python -c "import deepspeed; print(deepspeed.__version__)"
