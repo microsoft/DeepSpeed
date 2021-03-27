@@ -2,16 +2,16 @@
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 
 import warnings
-try:
-    import triton
-except ImportError:
-    warnings.warn("Unable to import triton, sparse attention will not be accessible")
+import importlib
 import torch
 import math
-from deepspeed.ops.sparse_attention.trsrc import softmax_fwd, softmax_bwd
+from .trsrc import softmax_fwd, softmax_bwd
 
 fwd_kernels = dict()
 bwd_kernels = dict()
+
+# Delay importing triton unless we need it
+triton = None
 
 
 class _sparse_softmax(torch.autograd.Function):
@@ -52,6 +52,10 @@ class _sparse_softmax(torch.autograd.Function):
                     apply_attn_mask,
                     kp_mask_mode,
                     attn_mask_mode):
+        global triton
+        if triton is None:
+            triton = importlib.import_module('triton')
+
         if max_k >= 32768:
             raise NotImplementedError('Reductions larger than 32768 elements '\
                                       'are not yet implemented')
@@ -112,6 +116,10 @@ class _sparse_softmax(torch.autograd.Function):
                 maxlut,
                 bench,
                 time):
+        global triton
+        if triton is None:
+            triton = importlib.import_module('triton')
+
         apply_scale = False if scale == 1.0 else True
 
         # handle None rpe
@@ -180,6 +188,10 @@ class _sparse_softmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dx):
+        global triton
+        if triton is None:
+            triton = importlib.import_module('triton')
+
         # retrieve from context
         x, lut = ctx.saved_tensors
         # run kernel
@@ -212,8 +224,8 @@ class Softmax:
 
     For more details about sparsity config, please see `Generative Modeling with Sparse Transformers`: https://arxiv.org/abs/1904.10509
     """
-
-    sparse_softmax = _sparse_softmax.apply
+    def sparse_softmax(*args, **kwargs):
+        return _sparse_softmax.apply(*args, **kwargs)
 
     def make_lut(self, device):
         """Generates the sparsity layout used in block-sparse softmax

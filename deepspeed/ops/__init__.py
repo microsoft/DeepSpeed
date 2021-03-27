@@ -1,7 +1,9 @@
-from ..git_version_info import installed_ops as __installed_ops__
+from . import adam
 from . import lamb
+from . import sparse_attention
 from . import transformer
-if __installed_ops__['sparse-attn']:
-    from . import sparse_attention
-if __installed_ops__['cpu-adam']:
-    from . import adam
+
+from .transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .module_inject import replace_module
+
+from ..git_version_info import compatible_ops as __compatible_ops__

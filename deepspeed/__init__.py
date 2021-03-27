@@ -10,31 +10,29 @@ from .runtime.engine import DeepSpeedEngine
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.pipe.engine import PipelineEngine
 from .runtime.lr_schedules import add_tuning_arguments
-from .runtime.config import DeepSpeedConfig
+from .runtime.config import DeepSpeedConfig, DeepSpeedConfigError
 from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .utils import log_dist
+from .utils.distributed import init_distributed
+
+from .runtime import zero
 
 from .pipe import PipelineModule
 
-try:
-    from .git_version_info import version, git_hash, git_branch
-except ImportError:
-    version = "0.0.0+unknown"
-    git_hash = None
-    git_branch = None
+from .git_version_info import version, git_hash, git_branch
+
+
+def _parse_version(version_str):
+    '''Parse a version string and extract the major, minor, and patch versions.'''
+    import re
+    matched = re.search('^(\d+)\.(\d+)\.(\d+)', version_str)
+    return int(matched.group(1)), int(matched.group(2)), int(matched.group(3))
+
 
 # Export version information
-version, __version_tag__ = version.split('+')
-__version_major__ = int(version.split('.')[0])
-__version_minor__ = int(version.split('.')[1])
-__version_patch__ = int(version.split('.')[2])
-__version__ = '.'.join(
-    map(str,
-        [__version_major__,
-         __version_minor__,
-         __version_patch__]))
-__version__ = f"{__version__}+{__version_tag__}"
+__version__ = version
+__version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
@@ -47,10 +45,12 @@ sys.modules['deepspeed.pt'] = deepspeed.pt
 sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
 setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
 sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
+setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
+sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
 
 
-def initialize(args,
-               model,
+def initialize(args=None,
+               model=None,
                optimizer=None,
                model_parameters=None,
                training_data=None,
@@ -62,8 +62,7 @@ def initialize(args,
     """Initialize the DeepSpeed Engine.
 
     Arguments:
-        args: a dictionary containing local_rank and deepspeed_config
-            file location
+        args: an object containing local_rank and deepspeed_config fields. This is optional if `config_params` is passed.
 
         model: Required: nn.module class before apply any wrappers
 
@@ -88,6 +87,9 @@ def initialize(args,
             mini-batch of Tensor(s).  Used when using batched loading from a
             map-style dataset.
 
+        config_params: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+            as a dictionary instead.
+
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
 
@@ -107,6 +109,8 @@ def initialize(args,
         __git_hash__,
         __git_branch__),
              ranks=[0])
+
+    assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
         engine = DeepSpeedEngine(args=args,

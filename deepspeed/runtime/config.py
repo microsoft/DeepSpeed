@@ -6,28 +6,65 @@ Licensed under the MIT license.
 import torch
 import json
 import copy
-from deepspeed.runtime.constants import *
-from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
-from deepspeed.runtime.config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
-from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
-from deepspeed.runtime.zero.constants import *
-from deepspeed.runtime.activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
-from deepspeed.utils import logger
+
+from .constants import *
+from .fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
+from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
+from .zero.config import DeepSpeedZeroConfig
+from .zero.constants import *
+from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+
+from ..git_version_info import version as __version__
+from ..utils import logger
+
+from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config
+from ..elasticity.config import ElasticityConfigError
+from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
+
+from ..profiling.config import DeepSpeedFlopsProfilerConfig
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAM_OPTIMIZER = 'adam'
+ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
+    ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
 ]
 
-# extra optimizer parameters for adam
+# extra optimizer parameters for adam/adamw
 TORCH_ADAM_PARAM = "torch_adam"
-ADAM_W_MODE_PARAM = "adam_w_mode"
+
+# default to adamw logic for adam/adamw optimizers unless user explictly opts out
+ADAM_W_MODE = "adam_w_mode"
+ADAM_W_MODE_DEFAULT = True
+
+
+class DeepSpeedConfigError(Exception):
+    pass
+
+
+def get_pld_enabled(param_dict):
+    if PROGRESSIVE_LAYER_DROP in param_dict.keys():
+        return get_scalar_param(param_dict[PROGRESSIVE_LAYER_DROP],
+                                PLD_ENABLED,
+                                PLD_ENABLED_DEFAULT)
+    else:
+        return False
+
+
+def get_pld_params(param_dict):
+    if PROGRESSIVE_LAYER_DROP in param_dict.keys():
+        pld_params = copy.copy(param_dict[PROGRESSIVE_LAYER_DROP])
+        pld_params.pop(PLD_ENABLED)
+        return pld_params
+    else:
+        return False
 
 
 def get_amp_enabled(param_dict):
@@ -443,6 +480,21 @@ def get_tensorboard_job_name(param_dict):
         return TENSORBOARD_JOB_NAME_DEFAULT
 
 
+def get_checkpoint_params(param_dict):
+    return param_dict.get(CHECKPOINT, {})
+
+
+def get_checkpoint_tag_validation_mode(checkpoint_params):
+    tag_validation_mode = checkpoint_params.get(CHECKPOINT_TAG_VALIDATION,
+                                                CHECKPOINT_TAG_VALIDATION_DEFAULT)
+    tag_validation_mode = tag_validation_mode.upper()
+    if tag_validation_mode in CHECKPOINT_TAG_VALIDATION_MODES:
+        return tag_validation_mode
+    else:
+        raise DeepSpeedConfigError("Checkpoint config contains invalid tag_validation " \
+            f"value of {tag_validation_mode}, expecting one of {CHECKPOINT_TAG_VALIDATION_MODES}")
+
+
 '''Write deepspeed config files by modifying basic templates.
 Can be used for quicly changing parameters via command line parameters.'''
 
@@ -485,6 +537,59 @@ class DeepSpeedConfig(object):
         except:
             self.global_rank = 0
             self.world_size = 1
+
+        # If elastic-mode enabled, update compute + update _param_dict
+        self.elasticity_enabled = elasticity_enabled(self._param_dict)
+        if self.elasticity_enabled:
+            logger.info("DeepSpeed elasticity support enabled")
+            final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
+                ds_config=self._param_dict,
+                target_deepspeed_version=__version__,
+                world_size=self.world_size)
+
+            elastic_dict = self._param_dict[ELASTICITY]
+
+            # Ensure the resource scheduler saw the same elastic config we are using at runtime
+            ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
+
+            ignore_non_elastic_batch_info = elastic_dict.get(
+                IGNORE_NON_ELASTIC_BATCH_INFO,
+                IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
+
+            if not ignore_non_elastic_batch_info:
+                batch_params = [
+                    TRAIN_BATCH_SIZE,
+                    TRAIN_MICRO_BATCH_SIZE_PER_GPU,
+                    GRADIENT_ACCUMULATION_STEPS
+                ]
+                if any(map(lambda t: t in self._param_dict, batch_params)):
+                    raise ElasticityConfigError("One or more batch related parameters were found in your " \
+                        f"ds_config ({TRAIN_BATCH_SIZE}, {TRAIN_MICRO_BATCH_SIZE_PER_GPU}, and/or " \
+                        f"{GRADIENT_ACCUMULATION_STEPS}). These parameters *will not be used* since " \
+                        "elastic training is enabled, which takes control of these parameters. " \
+                        "If you want to supress this error (the parameters will be silently ignored) " \
+                        f"please set {IGNORE_NON_ELASTIC_BATCH_INFO}':true in your elasticity config.")
+
+            # micro_bsz * world_size * gas = total_batch_size
+            # gas = total_batch_size // (micro_bsz * world_size)
+            gradient_accu_steps = final_batch_size // (micro_batch_size *
+                                                       self.world_size)
+
+            if TRAIN_BATCH_SIZE in self._param_dict:
+                logger.warning("[Elasticity] overriding training_batch_size: " \
+                    f"{self._param_dict[TRAIN_BATCH_SIZE]} -> {final_batch_size}")
+            if TRAIN_MICRO_BATCH_SIZE_PER_GPU in self._param_dict:
+                logger.warning("[Elasticity] overriding train_micro_batch_size_per_gpu: " \
+                    f"{self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU]} -> {micro_batch_size}")
+            if GRADIENT_ACCUMULATION_STEPS in self._param_dict:
+                logger.warning("[Elasticity] overriding gradient_accumulation_steps: "\
+                    f"{self._param_dict[GRADIENT_ACCUMULATION_STEPS]} -> {gradient_accu_steps}")
+
+            logger.info(f"[Elasticity] valid GPU counts: {valid_gpus}")
+
+            self._param_dict[TRAIN_BATCH_SIZE] = final_batch_size
+            self._param_dict[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = micro_batch_size
+            self._param_dict[GRADIENT_ACCUMULATION_STEPS] = gradient_accu_steps
 
         self._initialize_params(self._param_dict)
         self._configure_train_batch_size()
@@ -534,6 +639,7 @@ class DeepSpeedConfig(object):
         self.scheduler_params = get_scheduler_params(param_dict)
 
         self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
+        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
@@ -541,6 +647,14 @@ class DeepSpeedConfig(object):
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)
+
+        self.pld_enabled = get_pld_enabled(param_dict)
+        self.pld_params = get_pld_params(param_dict)
+
+        checkpoint_params = get_checkpoint_params(param_dict)
+        validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
+        self.checkpoint_tag_validation_enabled = validation_mode != ValidationMode.IGNORE
+        self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
 
     def _batch_assertion(self):
 
@@ -642,9 +756,9 @@ class DeepSpeedConfig(object):
         if self.zero_enabled:
             assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
-            if self.zero_config.cpu_offload is True:
-                assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
-                #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
+            #if self.zero_config.cpu_offload is True:
+            #    assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
+            #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
