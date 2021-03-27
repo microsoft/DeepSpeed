@@ -182,7 +182,7 @@ setup(name='deepspeed',
       extras_require=extras_require,
       packages=find_packages(exclude=["docker",
                                       "third_party"]),
-      include_package_data=True,
+#      include_package_data=True, #FIXME
       scripts=[
           'bin/deepspeed',
           'bin/deepspeed.pt',

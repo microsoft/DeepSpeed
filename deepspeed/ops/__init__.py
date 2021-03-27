@@ -1,6 +1,8 @@
 from . import adam
 from . import lamb
-from . import sparse_attention
+from ..git_version_info_installed import installed_ops as __installed_ops__
+if __installed_ops__['sparse_attn']:
+    from . import sparse_attention
 from . import transformer
 
 from .transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
