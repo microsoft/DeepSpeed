@@ -85,6 +85,10 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                                      weight_decay,
                                      adamw_mode)
 
+    def __del__(self):
+        # need to destroy the C++ object explicitly avoid memory leak when deepspeed is re-used in the same process
+        self.ds_opt_adam.destroy_adam(self.opt_id)
+
     def __setstate__(self, state):
         super(DeepSpeedCPUAdam, self).__setstate__(state)
         for group in self.param_groups:
