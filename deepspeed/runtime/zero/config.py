@@ -34,6 +34,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.param_persistence_threshold = None
         self.max_live_parameters = None
         self.max_reuse_distance = None
+        self.gather_fp16_weights_on_model_save = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -144,3 +145,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT)
+
+        self.gather_fp16_weights_on_model_save = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE,
+            ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE_DEFAULT)
