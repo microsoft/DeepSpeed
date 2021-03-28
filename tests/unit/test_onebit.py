@@ -242,7 +242,6 @@ def test_onebitadam_checkpointing(tmpdir):
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Incorrect momentum mask"
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
         model_1.save_checkpoint(save_folder, tag=None)
-        time.sleep(5)
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
@@ -540,9 +539,12 @@ def test_onebitlamb_checkpointing(tmpdir):
         assert optimizer_1.optimizer.lamb_freeze_key is True
         mask1 = mask1.to(device=optimizer_1.param_groups[0]['exp_avg_mask'].device)
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Incorrect momentum mask"
+        scaling_coeff_1 = []
+        for v in optimizer_1.state.values():
+            assert 'scaling_coeff' in v, f"Incorrect scaling_coeff"
+            scaling_coeff_1.append(v['scaling_coeff'])
         save_folder = os.path.join(tmpdir, 'saved_checkpoint')
         model_1.save_checkpoint(save_folder, tag=None)
-        time.sleep(5)
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
@@ -561,7 +563,11 @@ def test_onebitlamb_checkpointing(tmpdir):
         assert len(optimizer_2.optimizer.worker_errors) == 0, f"Incorrect worker error"
         assert len(optimizer_2.optimizer.server_errors) == 0, f"Incorrect server error"
         # Test whether scaling_coeffs is loaded correctly
-        assert optimizer_2.optimizer.scaling_coeffs == optimizer_1.optimizer.scaling_coeffs, f"Incorrect scaling_coeffs"
+        scaling_coeff_2 = []
+        for v in optimizer_2.state.values():
+            assert 'scaling_coeff' in v, f"Incorrect scaling_coeff"
+            scaling_coeff_2.append(v['scaling_coeff'])
+        assert list(sorted(scaling_coeff_2)) == list(sorted(scaling_coeff_1)), f"Incorrect scaling_coeffs"
         assert optimizer_2.optimizer.lamb_freeze_key is True
 
         model_3, optimizer_3, _, _ = deepspeed.initialize(args=args,
@@ -588,10 +594,10 @@ def test_onebitlamb_checkpointing(tmpdir):
         assert len(optimizer_3.optimizer.worker_errors) == 0, f"Incorrect worker error"
         assert len(optimizer_3.optimizer.server_errors) == 0, f"Incorrect server error"
         # Test whether scaling_coeffs, lamb_coeff_freeze, last_factor are resetted
-        assert len(optimizer_3.optimizer.scaling_coeffs) == 0, f"Incorrect scaling_coeffs"
         for v in optimizer_3.state.values():
             assert v['lamb_coeff_freeze'] == 0.0, f"Incorrect lamb_coeff_freeze"
             assert v['last_factor'] == 1.0, f"Incorrect last_factor"
+            assert 'scaling_coeff' not in v, f"Incorrect scaling_coeff"
         assert optimizer_3.optimizer.lamb_freeze_key is False
 
     _test_onebitlamb_checkpointing(mask1,
@@ -599,6 +605,61 @@ def test_onebitlamb_checkpointing(tmpdir):
                                    args=args,
                                    model=model,
                                    hidden_dim=hidden_dim)
+
+
+def test_onebitlamb_checkpointing_overflow(tmpdir):
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "OneBitLamb",
+            "params": {
+                "lr": 0.00015,
+                "weight_decay": 0.01,
+                "max_coeff": 0.3,
+                "min_coeff": 0.01,
+                "freeze_step": 2,
+                "cuda_aware": False,
+                "comm_backend_name": "nccl",
+                "coeff_beta": 0.9,
+                "factor_max": 1.0,
+                "factor_min": 0.5,
+                "factor_threshold": 0.1
+            }
+        },
+        "gradient_clipping": 1.0,
+        "fp16": {
+            "enabled": True,
+            "loss_scale": 0,
+            "initial_scale_power": 16
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 10
+
+    model = SimpleModel(hidden_dim)
+
+    @distributed_test(world_size=[2])
+    def _test_onebitlamb_checkpointing_overflow(args, model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              model_parameters=model.parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=100,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        save_folder = os.path.join(tmpdir, 'saved_checkpoint')
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            if dist.get_rank() == 0 and n >= 10:
+                loss = loss * 1000000.0
+            model.backward(loss)
+            model.step()
+            model.save_checkpoint(save_folder, tag=None)
+
+    _test_onebitlamb_checkpointing_overflow(args=args,
+                                            model=model,
+                                            hidden_dim=hidden_dim)
 
 
 def test_compressed_allreduce_basic(tmpdir):
