@@ -128,7 +128,6 @@ class OnebitLamb(torch.optim.Optimizer):
         self.server_chunk_sizes = []
         self.worker_errors = []
         self.server_errors = []
-        self.scaling_coeffs = []
 
         self.lamb_coeffs = []
 
@@ -164,7 +163,7 @@ class OnebitLamb(torch.optim.Optimizer):
             for group in self.param_groups:
                 exp_avg_last_step.append(
                     [self.state[p]['exp_avg'].detach().clone() for p in group['params']])
-            if len(self.scaling_coeffs) == 0:
+            if 'scaling_coeff' not in self.state[self.param_groups[0]['params'][0]]:
                 # Compute the scaling_coeff for each momentum at the end of warmup stage.
                 # This is used to reduce compression error during compression stage.
                 momentum_scales = []
@@ -177,18 +176,17 @@ class OnebitLamb(torch.optim.Optimizer):
                 united_scale = sum([sum(x) for x in momentum_scales]) / sum(
                     [len(x) for x in momentum_scales])
                 for i, group in enumerate(self.param_groups):
-                    self.scaling_coeffs.append([
-                        united_scale / momentum_scales[i][j]
-                        for j in range(len(group['params']))
-                    ])
+                    for j, p in enumerate(group['params']):
+                        self.state[p][
+                            'scaling_coeff'] = united_scale / momentum_scales[i][j]
 
-        for i, (group, grads_this_group) in enumerate(zip(self.param_groups, grads_group)):
+        for group, grads_this_group in zip(self.param_groups, grads_group):
             if grads_this_group is None:
                 grads_this_group = [None] * len(group['params'])
 
             bias_correction = 1 if group['bias_correction'] else 0
 
-            for j, (p, grad) in enumerate(zip(group['params'], grads_this_group)):
+            for p, grad in zip(group['params'], grads_this_group):
                 if p.grad is None and grad is None:
                     continue
                 if grad is None:
@@ -199,7 +197,8 @@ class OnebitLamb(torch.optim.Optimizer):
                 state = self.state[p]
 
                 # State initialization
-                if len(state) == 0:
+                if len(state) == 0 or (len(state) == 1
+                                       and 'scaling_coeff' in state.keys()):
                     state['step'] = 0
                     state['lamb_coeff_freeze'] = 0.0
                     state['last_factor'] = 1.0
@@ -250,7 +249,7 @@ class OnebitLamb(torch.optim.Optimizer):
                     # communicate based on the compressed_allreduce below
                     if self.initialize:
                         exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                        exp_avg.mul_(self.scaling_coeffs[i][j])
+                        exp_avg.mul_(self.state[p]['scaling_coeff'])
                     grad = None
 
         # init fused momentum
@@ -331,7 +330,7 @@ class OnebitLamb(torch.optim.Optimizer):
                     state = self.state[p]
                     exp_avg, exp_avg_sq, exp_avg_sq_back = state['exp_avg'], state['exp_avg_sq'], state['exp_avg_sq_back']
                     beta1, beta2 = group['betas']
-                    exp_avg.div_(self.scaling_coeffs[i][j])
+                    exp_avg.div_(self.state[p]['scaling_coeff'])
                     # Because 1-bit compression cannot represent exact zero, it is required to
                     # provide a momentum mask for those params that have constant exact zeros in their
                     # momentums, otherwise the compression error would keep accumulating.
@@ -399,14 +398,6 @@ class OnebitLamb(torch.optim.Optimizer):
 
         return loss
 
-    def state_dict(self):
-        """
-        Overrides state_dict() to add special handling when saving checkpoints
-        """
-        original_dict = super().state_dict()
-        original_dict['scaling_coeffs'] = self.scaling_coeffs
-        return original_dict
-
     def load_state_dict(self, state_dict):
         """
         Overrides load_state_dict() to add special handling when loading checkpoints
@@ -434,11 +425,12 @@ class OnebitLamb(torch.optim.Optimizer):
             if self.lamb_freeze_key is True:
                 self.lamb_freeze_key = False
                 self.deepspeed.enable_backward_allreduce = True
-            del self.scaling_coeffs[:]
             for group in self.param_groups:
                 for p in group['params']:
                     self.state[p]['lamb_coeff_freeze'] = 0.0
                     self.state[p]['last_factor'] = 1.0
+                    if 'scaling_coeff' in self.state[p]:
+                        self.state[p].pop('scaling_coeff')
         else:
             if torch.distributed.get_rank() == 0:
                 print(
@@ -447,7 +439,6 @@ class OnebitLamb(torch.optim.Optimizer):
             if self.lamb_freeze_key is False:
                 self.lamb_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
-            self.scaling_coeffs = state_dict.pop('scaling_coeffs')
         # We reset the compression errors when loading checkpoints for 3 reasons:
         # 1) The worker and server error at each GPU are distinct, so in current implementation
         # only rank 0's errors are saved in the checkpoint. Thus we have to reset the errors.
