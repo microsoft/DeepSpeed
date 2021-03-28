@@ -96,7 +96,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
             group.setdefault('amsgrad', False)
 
     @torch.no_grad()
-    def step(self, optId=0, closure=None, fp16_param_groups=None):
+    def step(self, closure=None, fp16_param_groups=None):
         """Update the model parameters.
 
         .. note::
@@ -147,7 +147,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
                 if fp16_param_groups is not None:
                     self.ds_opt_adam.adam_update_copy(
-                        optId,
+                        self.opt_id,
                         state['step'],
                         group['lr'],
                         beta1,
@@ -161,7 +161,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                         state['exp_avg_sq'],
                         fp16_param_groups[group_id][param_id].data)
                 else:
-                    self.ds_opt_adam.adam_update(optId,
+                    self.ds_opt_adam.adam_update(self.opt_id,
                                                  state['step'],
                                                  group['lr'],
                                                  beta1,
