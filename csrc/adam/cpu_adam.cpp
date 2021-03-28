@@ -674,8 +674,6 @@ int ds_adam_step_plus_copy(int optimizer_id,
 
 int destroy_adam_optimizer(int optimizer_id)
 {
-    // std::cout << "Adam Optimizer #" << optimizer_id
-    //          << " is destroyed." << std::endl;
     s_optimizers.erase(optimizer_id);
 
     return 0;
