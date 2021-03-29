@@ -85,6 +85,8 @@ def debug_report():
          torch.__version__),
         ("torch cuda version",
          torch.version.cuda),
+        ("torch hip version",
+         torch.version.hip),
         ("nvcc version",
          nvcc_version()),
         ("deepspeed install path",
@@ -93,7 +95,7 @@ def debug_report():
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
         ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}"),
+         f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}, hip {torch_info['hip_version']}"),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:

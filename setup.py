@@ -149,9 +149,13 @@ else:
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
 # Set cuda_version to 0.0 if cpu-only
 cuda_version = "0.0"
+# Set hip_version to 0.0 if cpu-only
+hip_version = "0.0"
 if torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-torch_info = {"version": torch_version, "cuda_version": cuda_version}
+if torch.version.hip is not None:
+    hip_version = ".".join(torch.version.hip.split('.')[:2])
+torch_info = {"version": torch_version, "cuda_version": cuda_version, "hip_version": hip_version}
 
 print(f"version={version_str}, git_hash={git_hash}, git_branch={git_branch}")
 with open('deepspeed/git_version_info_installed.py', 'w') as fd:
