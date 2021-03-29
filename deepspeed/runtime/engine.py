@@ -180,6 +180,7 @@ class DeepSpeedEngine(Module):
                 "relaunch_rank": -1
             }
             #TODO: allow elasticity config to override these paths
+            self.auto_state['save_checkpoint'] = False
             self.auto_state['hostfile_path'] = "/job/hostfile"
             self.auto_state['ssh_config_path'] = os.path.join(os.path.expanduser("~"),
                                                               '.ssh',
@@ -1115,7 +1116,33 @@ class DeepSpeedEngine(Module):
         self.global_samples += self.train_batch_size()
 
     def check_states(self):
-        return
+        if self.auto_elasticity_enabled() and self.auto_state['save_checkpoint']:
+            logger.info("Save checkpoint feature enabled with Auto elasticity.")
+            check = torch.ones(1).to(self.local_rank)
+            
+            if self.auto_state['scale_up'] == True:
+                check[0] = 0
+                
+            dist.all_reduce(check, op=dist.reduce_op.SUM)
+                
+            if check == 0:
+                logger.info(
+                    f"at rank:{self.global_rank}, scaling up, checkpointing, and restarting"
+                )
+                if self.auto_save_dir == "/tmp/ds-checkpoint":
+                    logger.warning(
+                        "Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint"
+                    )
+                self.save_checkpoint(self.auto_save_dir, self.global_steps)
+                logger.info("checkpoint saved, relaunching now")
+                relaunch()
+            else:
+                pass
+        else:
+            if self.auto_state['scale_up']:
+                relaunch(self.auto_state)
+
+        
         ## check if a scale up or scale down event has come and act accordingly
         #logger.info(f"{self.global_rank} checking scale-up: {self.auto_state['scale_up']}")
         #assert self.auto_elasticity_enabled()
