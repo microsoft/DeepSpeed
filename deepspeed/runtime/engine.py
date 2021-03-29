@@ -1116,7 +1116,8 @@ class DeepSpeedEngine(Module):
         self.global_samples += self.train_batch_size()
 
     def check_states(self):
-        if self.auto_elasticity_enabled() and self.auto_state['save_checkpoint']:
+        if self.auto_state['save_checkpoint']:
+            # detect scale-up and do a global sync on all ranks for relaunch readiness
             logger.info("Save checkpoint feature enabled with Auto elasticity.")
             check = torch.ones(1).to(self.local_rank)
             
@@ -1137,6 +1138,7 @@ class DeepSpeedEngine(Module):
                 logger.info("checkpoint saved, relaunching now")
                 relaunch()
             else:
+                # Let the training proceed one more step for all ranks
                 pass
         else:
             if self.auto_state['scale_up']:
@@ -1249,7 +1251,8 @@ class DeepSpeedEngine(Module):
                 ])
 
         # check states for automatic elasticity feature
-        self.check_states()
+        if self.auto_elasticity_enabled():
+            self.check_states()
         self.micro_steps += 1
 
     def _get_optimizer_param(self, param_name):
