@@ -227,9 +227,6 @@ def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
         scheduler_elastic_config_dict = json.loads(
             os.environ[DEEPSPEED_ELASTICITY_CONFIG])
 
-        if isinstance(scheduler_elastic_config_dict, str):
-            scheduler_elastic_config_dict = json.loads(scheduler_elastic_config_dict)
-
         # remove outer config ELASTICITY key if exists
         if ELASTICITY in scheduler_elastic_config_dict:
             scheduler_elastic_config_dict = scheduler_elastic_config_dict[ELASTICITY]

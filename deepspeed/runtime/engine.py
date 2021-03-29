@@ -1115,21 +1115,26 @@ class DeepSpeedEngine(Module):
         self.global_samples += self.train_batch_size()
 
     def check_states(self):
-        # check if a scale up or scale down event has come and act accordingly
-        logger.info(f"checking scale-up: {self.auto_state['scale_up']}")
-        if self.auto_elasticity_enabled() and self.auto_state['scale_up']:
-            logger.info(
-                f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting"
-            )
-            if self.auto_save_dir == "/tmp/ds-checkpoint":
-                logger.warning(
-                    "Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint"
-                )
-            self.save_checkpoint(self.auto_save_dir, self.global_steps)
-            logger.info("checkpoint saved, relaunching now")
-            print("\n_______________________________________________________\n")
-            time.sleep(2)
-            relaunch(self.auto_state)
+        return
+        ## check if a scale up or scale down event has come and act accordingly
+        #logger.info(f"{self.global_rank} checking scale-up: {self.auto_state['scale_up']}")
+        #assert self.auto_elasticity_enabled()
+
+        ##FIXME: it's only safe to enter this branch if all ranks have also detected the scale-up event
+        ## we will hang if one rank doesn't (yet) detect the event and attempts to train another step
+        #if self.auto_elasticity_enabled() and self.auto_state['scale_up']:
+        #    logger.info(
+        #        f"at rank:{self.global_rank}, scaling up to x nodes, checkpointing, and restarting"
+        #    )
+        #    if self.auto_save_dir == "/tmp/ds-checkpoint":
+        #        logger.warning(
+        #            "Please specify a directory to save checkpoint. Using /tmp/ds-checkpoint"
+        #        )
+        #    self.save_checkpoint(self.auto_save_dir, self.global_steps)
+        #    logger.info("checkpoint saved, relaunching now")
+        #    print("\n_______________________________________________________\n")
+        #    time.sleep(2)
+        #    relaunch(self.auto_state)
 
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation

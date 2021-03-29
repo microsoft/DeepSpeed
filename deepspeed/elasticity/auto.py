@@ -36,13 +36,20 @@ def relaunch(state):
         cmd = os.environ['DS_CMD']
         cmd = base64.urlsafe_b64decode(cmd)
         cmd = json.loads(cmd)
-        logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
+        logger.info(
+            f"{dist.get_rank()} deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}"
+        )
         results = subprocess.Popen(cmd)
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
 
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
-    if 'parent-pid' in state:
-        os.kill(state['parent-pid'], signal.SIGTERM)
+    logger.info(f"relaunch, current processes: {os.getpid()}, {os.getppid()}")
+    if 'parent-pids' in state:
+        for pid in state['parent-pids']:
+            logger.info(f"killing parent process {pid}")
+            os.kill(pid, signal.SIGTERM)
+    logger.info(f"killing our process {os.getpid()}")
+    os.kill(os.getppid(), signal.SIGTERM)
     os.kill(os.getpid(), signal.SIGTERM)
 
 
@@ -116,42 +123,12 @@ def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
     if len(new_hosts) > len(old_hosts):
         state['scale_up'] = True
         # DeepSpeedEngine will read this and call relaunch
+        relaunch(state)
     elif len(new_hosts) < len(old_hosts):
         state['scale_down'] = True
         print("\n_______________________________________________________\n")
         #time.sleep(2)
         relaunch(state)
-
-
-# Unused but keeping it for now
-def old_handle_scaling_event(state, old_hosts, config_file):
-    new_hostfile = open('/job/hostfile').read()
-    new_hosts = set(re.findall("(worker-[0-9]+)", new_hostfile))
-
-    config = open(config_file).read()
-    config_hosts = set(re.findall("Host (worker-[0-9]+)", config))
-
-    #print(f"config_hosts={config_hosts}")
-    #print(f"new_hosts={new_hosts}")
-    #print(f"old_hosts={old_hosts}")
-
-    if config_hosts == new_hosts:
-        #print("sanity passed")
-        if not len(new_hosts) == len(old_hosts):
-            sorted_hosts = list(new_hosts)
-            sorted_hosts.sort()
-            state['relaunch_rank'] = int(sorted_hosts[0].split("-")[1])
-            logger.info(f"Relaunch rank = {state['relaunch_rank']}")
-            time.sleep(1)
-            if len(new_hosts) > len(old_hosts):
-                state['scale_up'] = True
-                logger.info('waiting for relaunch from training process')
-                # DeepSpeedEngine will read this and call relaunch
-            elif len(new_hosts) < len(old_hosts):
-                state['scale_down'] = True
-                print("\n_______________________________________________________\n")
-                time.sleep(2)
-                relaunch(state)
 
 
 def get_host_set(hostfile_path):
@@ -182,6 +159,7 @@ def wait_on_hostfile_changes(hostfile_path, original_hosts, new_config_hosts):
             # hostfile has changed, does it align with ssh config changes?
             assert new_hosts == new_config_hosts, \
                 f"unable to handle scaling event, {hostfile_path} ({new_hosts}) and .ssh/config ({new_config_hosts}) hosts do not match"
+            logging.info(f"detected new host file, new config and new hostfile matches")
             return new_hosts
 
         # Still waiting for hostfile to change
@@ -202,10 +180,11 @@ def listen_for_changes_polling(state):
     original_hosts = get_host_set(hostfile_path)
     original_config_hosts = get_config_host_set(ssh_config_path)
 
-    while True:
+    while not state['scale_up'] and not state['scale_down']:
         new_config_hosts = get_config_host_set(ssh_config_path)
         if new_config_hosts != original_config_hosts:
-            logger.info("detected ssh config changed due to scaling event")
+            logger.info(
+                "{dist.get_rank()} detected ssh config changed due to scaling event")
             new_hosts = wait_on_hostfile_changes(hostfile_path,
                                                  original_hosts,
                                                  new_config_hosts)
@@ -214,9 +193,7 @@ def listen_for_changes_polling(state):
             handle_scaling_event(state, new_hosts, original_hosts, new_config_hosts)
         time.sleep(POLLING_INTERVAL)
 
-    while not os.path.isfile('/dlts-runtime/status/READY'):
-        logger.info('waiting for /dlts-runtime/status/READY')
-        time.sleep(POLLING_INTERVAL)
+    logger.info(f"{dist.get_rank()} Scaling event already triggered, monitoring stopped")
 
 
 def listen_for_changes_with_inotify(state):
@@ -284,9 +261,10 @@ def start_watching(state, detection_method=DETECTION_MODE_POLL):
                                   daemon=True)
         logger.info('detection method via polling')
     elif detection_method == "subprocess":
-        from multiprocessing import Process
-        state['parent-pid'] = os.getpid()
-        state = multiprocessing.Manager().dict(state)
+        from multiprocessing import Process, Manager
+        state['parent-pids'] = [os.getpid(), os.getppid()]
+        logger.info(f"MAIN parent-pids: {state['parent-pids']}")
+        state = Manager().dict(state)
         thread = Process(target=listen_for_changes_polling, args=(state, ))
         logger.info('detection method via subprocess')
     else:

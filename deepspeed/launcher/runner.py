@@ -249,8 +249,11 @@ def parse_inclusion_exclusion(resource_pool, inclusion, exclusion):
                                  exclude_str=exclusion)
 
 
-def encode_world_info(world_info):
-    world_info_json = json.dumps(world_info).encode('utf-8')
+def encode64(world_info, json_dump=True):
+    if json_dump:
+        world_info_json = json.dumps(world_info).encode('utf-8')
+    else:
+        world_info_json = world_info.encode('utf-8')
     world_info_base64 = base64.urlsafe_b64encode(world_info_json).decode('utf-8')
     return world_info_base64
 
@@ -333,7 +336,7 @@ def main(args=None):
         elastic_config_json = json.loads(elastic_config)
 
         assert DEEPSPEED_ELASTICITY_CONFIG not in env_file
-        env_file[DEEPSPEED_ELASTICITY_CONFIG] = encode_world_info(elastic_config)
+        env_file[DEEPSPEED_ELASTICITY_CONFIG] = encode64(elastic_config, json_dump=False)
 
         from ..elasticity import compute_elastic_config
         from .. import __version__
@@ -375,12 +378,12 @@ def main(args=None):
     if auto_elasticity_enabled:
         relaunch_cmd = ["deepspeed"] + ["--master_port={}".format(args.master_port)
                                         ] + [args.user_script] + args.user_args
-        encoded_cmd = encode_world_info(relaunch_cmd)
+        encoded_cmd = encode64(relaunch_cmd)
         assert args.hostfile == DLTS_HOSTFILE, "auto elasticity doesn't support custom hostfile paths"
         assert args.include == "" and args.exclude == "" and args.num_nodes == -1 and args.num_gpus == -1, "auto elasticity doesn't support launching on subset of job"
 
     # encode world info as base64 to make it easier to pass via command line
-    world_info_base64 = encode_world_info(active_resources)
+    world_info_base64 = encode64(active_resources)
 
     if not multi_node_exec:
         deepspeed_launch = [
