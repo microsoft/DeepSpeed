@@ -218,6 +218,10 @@ def detection_method(ds_config: dict):
         return None
     return ds_config[ELASTICITY].get(DETECTION_MODE, DETECTION_MODE_DEFAULT)
 
+def auto_save_checkpoint(ds_config: dict):
+    if ELASTICITY not in ds_config:
+        return None
+    return ds_config[SAVE_CKPT].get(SAVE_CKPT, SAVE_CKPT_DEFAULT)
 
 def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
     """

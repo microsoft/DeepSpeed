@@ -1,1 +1,1 @@
-from .elasticity import compute_elastic_config, elasticity_enabled, ensure_immutable_elastic_config, detection_method
+from .elasticity import compute_elastic_config, elasticity_enabled, ensure_immutable_elastic_config, detection_method, auto_save_checkpoint

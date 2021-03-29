@@ -180,7 +180,6 @@ class DeepSpeedEngine(Module):
                 "relaunch_rank": -1
             }
             #TODO: allow elasticity config to override these paths
-            self.auto_state['save_checkpoint'] = False
             self.auto_state['hostfile_path'] = "/job/hostfile"
             self.auto_state['ssh_config_path'] = os.path.join(os.path.expanduser("~"),
                                                               '.ssh',
@@ -265,6 +264,9 @@ class DeepSpeedEngine(Module):
 
     def elasticity_detection_method(self):
         return self._config.elasticity_detection_method
+
+    def auto_save_checkpoint(self):
+        return self._config.auto_save_checkpoint
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -1116,7 +1118,7 @@ class DeepSpeedEngine(Module):
         self.global_samples += self.train_batch_size()
 
     def check_states(self):
-        if self.auto_state['save_checkpoint']:
+        if self.auto_save_checkpoint():
             # detect scale-up and do a global sync on all ranks for relaunch readiness
             logger.info("Save checkpoint feature enabled with Auto elasticity.")
             check = torch.ones(1).to(self.local_rank)

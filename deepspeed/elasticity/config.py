@@ -103,7 +103,7 @@ class ElasticityConfig:
         self.detection_mode = param_dict.get(DETECTION_MODE,
                                              DETECTION_MODE_DEFAULT).lower()
 
-        self.save_checkpoint = param_dict.get(SAVE_CKPT, SAVE_CKPT_DEFAULT)
+        self.auto_save_checkpoint = param_dict.get(SAVE_CKPT, SAVE_CKPT_DEFAULT)
 
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,
