@@ -97,6 +97,7 @@ def print_configuration(args, name):
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
+
     def __init__(self,
                  args,
                  model,
@@ -147,7 +148,7 @@ class DeepSpeedEngine(Module):
 
         if mpu is not None:
             assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
-                " with model parallelism."
+                                                  " with model parallelism."
 
         self._set_distributed_vars()
 
@@ -452,7 +453,7 @@ class DeepSpeedEngine(Module):
 
         # only the first data parallel process needs to store the model checkpoint
         self.save_non_zero_checkpoint = (
-            dp_rank == 0) or self.zero_optimization_partition_weights()
+                                                dp_rank == 0) or self.zero_optimization_partition_weights()
 
         if self.zero_optimization():
             param_rank = torch.distributed.get_rank(
@@ -532,7 +533,7 @@ class DeepSpeedEngine(Module):
 
     def _is_supported_optimizer(self, optimizer_name):
         return optimizer_name in DEEPSPEED_OPTIMIZERS or \
-            getattr(torch.optim, optimizer_name, None) is not None
+               getattr(torch.optim, optimizer_name, None) is not None
 
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
@@ -697,7 +698,7 @@ class DeepSpeedEngine(Module):
             else:
                 log_dist('Creating fp16 optimizer with static loss scale: {}'.format(
                     self.loss_scale()),
-                         ranks=[0])
+                    ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
                     static_loss_scale=self.loss_scale(),
@@ -926,11 +927,11 @@ class DeepSpeedEngine(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
-        #Zero stage 2 communicates during non gradient accumulation boundaries as well
+        # Zero stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
-        #Communicate only at gradient accumulation boundaries
+        # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 assert self.zero_reduce_scatter()
@@ -1031,7 +1032,7 @@ class DeepSpeedEngine(Module):
             bool: if the current step is a gradient accumulation boundary.
         """
         return (self.micro_steps + 1) % \
-            self.gradient_accumulation_steps() == 0
+               self.gradient_accumulation_steps() == 0
 
     def zero_grad(self):
         """
@@ -1065,8 +1066,8 @@ class DeepSpeedEngine(Module):
         self.timers('_step_step').stop()
 
         self.timers('_step_zero_grad').start()
-        #zero grad in basic optimizer could be unreliable and may not exhibit
-        #the behaviour that we want
+        # zero grad in basic optimizer could be unreliable and may not exhibit
+        # the behaviour that we want
         if not self.zero_optimization() and not self.fp16_enabled(
         ) and not self.amp_enabled():
             self.zero_grad()
@@ -1414,7 +1415,7 @@ class DeepSpeedEngine(Module):
                     tag = fd.read().strip()
             else:
                 logger.warning(f"Unable to find latest file at {latest_path}, if trying to load latest " \
-                "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint.")
+                               "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint.")
                 return None, None
 
         load_path, client_states = self._load_checkpoint(load_dir,
@@ -1442,7 +1443,7 @@ class DeepSpeedEngine(Module):
         if not os.path.exists(load_path):
             logger.warn(
                 'Client provided checkpoint load path: {} does not exist ... skip checkpoint load'
-                .format(load_path))
+                    .format(load_path))
             return None, None
 
         logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
@@ -1485,7 +1486,7 @@ class DeepSpeedEngine(Module):
         client_state = {
             key: value
             for key,
-            value in checkpoint.items() if not key in deepspeed_states
+                value in checkpoint.items() if not key in deepspeed_states
         }
 
         return load_path, client_state
@@ -1568,8 +1569,8 @@ class DeepSpeedEngine(Module):
             dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
             valid = all(min_bhash == bhash) and all(max_bhash == bhash)
             msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
-                "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
-                "restoring with different world sizes."
+                  "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
+                  "restoring with different world sizes."
             if self.checkpoint_tag_validation_fail():
                 assert valid, msg
             elif not valid:
@@ -1661,29 +1662,29 @@ class DeepSpeedEngine(Module):
 
         state = {
             'module':
-            self.module_state_dict(),
+                self.module_state_dict(),
             'optimizer':
-            self.optimizer.state_dict()
-            if self.optimizer and not self.zero_optimization() else None,
+                self.optimizer.state_dict()
+                if self.optimizer and not self.zero_optimization() else None,
             'lr_scheduler':
-            self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
+                self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
             'csr_tensor_module_names':
-            self.csr_tensor_module_names,
+                self.csr_tensor_module_names,
             'skipped_steps':
-            self.skipped_steps,
+                self.skipped_steps,
             'global_steps':
-            self.global_steps,
+                self.global_steps,
             'global_samples':
-            self.global_samples,
+                self.global_samples,
             'dp_world_size':
-            self.dp_world_size,
+                self.dp_world_size,
             'mp_world_size':
-            self.mp_world_size
+                self.mp_world_size
         }
         state.update(client_state)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
-        #logger.info('Saving model checkpoint: {}'.format(save_path))
+        # logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
         self._curr_save_path = None
 

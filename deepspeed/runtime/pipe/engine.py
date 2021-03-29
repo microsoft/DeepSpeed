@@ -594,14 +594,16 @@ class PipelineEngine(DeepSpeedEngine):
 
         grad_tensors = self.grad_layer
         if self.is_grad_partitioned:
-            # print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
+            # print(f'RANK={self.global_rank} BEFORE-BWD restoring grad={self.grad_layer[0].size()} {self.grad_layer[
+            # 1].size()}')
             part_grad = PartitionedTensor.from_meta(
                 meta=self.grad_layer[0],
                 local_part=self.grad_layer[1],
                 group=self.grid.get_slice_parallel_group())
             grad_tensors = tuple([part_grad.full(), self.grad_layer[2]])
             part_grad = None
-            # print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
+            # print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[
+            # 1].size()}')
 
         # This handles either a single tensor or tuple of tensors.
         if isinstance(outputs, tuple):

@@ -63,6 +63,7 @@ def move_to_device(item, device):
 
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
+
     def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False):
         self.mpu = mpu
         self.params = [] if param_groups else None
@@ -204,12 +205,12 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         for p in parameters:
             if mpu is not None:
                 if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
+                ) or is_model_parallel_parameter(p):
                     param_norm = p.grad.data.float().norm(norm_type)
-                    total_norm += param_norm.item()**norm_type
+                    total_norm += param_norm.item() ** norm_type
             else:
                 param_norm = p.grad.data.float().norm(norm_type)
-                total_norm += param_norm.item()**norm_type
+                total_norm += param_norm.item() ** norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -217,7 +218,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
                                          group=mpu.get_model_parallel_group())
-        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+        total_norm = total_norm_cuda[0].item() ** (1. / norm_type)
 
     if total_norm == float(
             'inf') or total_norm == -float('inf') or total_norm != total_norm:
@@ -261,21 +262,21 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         for p in parameters:
             if mpu is not None:
                 if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
+                ) or is_model_parallel_parameter(p):
                     try:
                         param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
                     except TypeError as err:
                         param_norm = float(torch.norm(p.float(), norm_type))
 
-                    #param_norm = p.data.float().norm(norm_type)
-                    total_norm += param_norm**norm_type
+                    # param_norm = p.data.float().norm(norm_type)
+                    total_norm += param_norm ** norm_type
             else:
                 try:
                     param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
                 except TypeError as err:
                     param_norm = float(torch.norm(p.float(), norm_type))
-                #param_norm = p.data.float().norm(norm_type)
-                total_norm += param_norm**norm_type
+                # param_norm = p.data.float().norm(norm_type)
+                total_norm += param_norm ** norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -283,7 +284,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
                                          group=mpu.get_model_parallel_group())
-        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+        total_norm = total_norm_cuda[0].item() ** (1. / norm_type)
 
     if total_norm == float(
             'inf') or total_norm == -float('inf') or total_norm != total_norm:
@@ -529,12 +530,12 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     max_cached = torch.cuda.max_memory_cached()
 
     # convert to GB for printing
-    new_alloced /= 1024**3
-    new_cached /= 1024**3
-    delta_alloced /= 1024**3
-    delta_cached /= 1024**3
-    max_alloced /= 1024**3
-    max_cached /= 1024**3
+    new_alloced /= 1024 ** 3
+    new_cached /= 1024 ** 3
+    delta_alloced /= 1024 ** 3
+    delta_cached /= 1024 ** 3
+    max_alloced /= 1024 ** 3
+    max_cached /= 1024 ** 3
 
     print(
         f'RANK={rank} MEMSTATS',
@@ -554,13 +555,13 @@ def see_memory_usage(message, force=False):
     # Print message except when distributed but not rank 0
     logger.info(message)
     logger.info(
-        f"MA {round(torch.cuda.memory_allocated() / (1024 * 1024 * 1024),2 )} GB \
-        Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
-        CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024),2)} GB \
+        f"MA {round(torch.cuda.memory_allocated() / (1024 * 1024 * 1024), 2)} GB \
+        Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024), 2)} GB \
+        CA {round(torch.cuda.memory_cached() / (1024 * 1024 * 1024), 2)} GB \
         Max_CA {round(torch.cuda.max_memory_cached() / (1024 * 1024 * 1024))} GB ")
 
     vm_stats = psutil.virtual_memory()
-    used_GB = round(((vm_stats.total - vm_stats.available) / (1024**3)), 2)
+    used_GB = round(((vm_stats.total - vm_stats.available) / (1024 ** 3)), 2)
     logger.info(
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
 
@@ -585,3 +586,62 @@ def call_to_str(base, *args, **kwargs):
         name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
+
+
+class GradientNoiseScale:
+
+    def __init__(self, model, batch_size_small, n_batches, beta):
+        self.batch_size_small, self.batch_size_large = batch_size_small, batch_size_small * n_batches
+        self.n_batches = n_batches
+        self.beta = beta
+        self.model = model
+        self.buffer = []
+        self.ema_scale = None
+        self.ema_noise = None
+        self.scale = None
+        self.noise = None
+        self.noise_scale = None
+        self.n_updates = 0
+
+    def ema(self, avg, yi, i):
+        if avg is None: avg = 0
+        avg = self.beta * avg + (1 - self.beta) * yi
+        return avg, avg / (1 - self.beta ** (i + 1))
+
+    def _flatten_grads(self):
+        grads = [param.grad.flatten().view(-1, 1) for param in self.model.parameters()]
+        grads = torch.cat(grads)
+        return grads
+
+    def _get_scale(self, grads_small, grads_big):
+        return (grads_small - grads_big) / ((1 / self.batch_size_small) - (1 / self.batch_size_large))
+
+    def _get_noise(self, grads_small, grads_big):
+        return (self.batch_size_large * grads_big - self.batch_size_small * grads_small) / (
+                self.batch_size_large - self.batch_size_small)
+
+    def update(self):
+
+        curr_grad = self._flatten_grads()
+        self.buffer.append(curr_grad)
+        if self.n_updates % self.n_batches == self.n_batches - 1:
+            # gather prev n batches and empty buffer
+            past_grads = torch.cat(self.buffer, dim=1)
+            self.buffer = []
+
+            past_grads = past_grads.mean(dim=1)
+
+            g_big = (past_grads ** 2).mean()
+            g_small = (curr_grad ** 2).mean()
+
+            noise = self._get_noise(g_small, g_big)
+            scale = self._get_scale(g_small, g_big)
+
+            self.ema_scale, scale = self.ema(self.ema_scale, scale, self.n_updates)
+            self.ema_noise, noise = self.ema(self.ema_noise, noise, self.n_updates)
+
+            self.scale = scale.item()
+            self.noise = noise.item()
+            self.noise_scale = scale / noise
+
+        self.n_updates += 1
