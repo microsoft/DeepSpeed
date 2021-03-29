@@ -69,17 +69,31 @@ def assert_no_cuda_mismatch():
 def assert_torch_info(torch_info):
     install_torch_version = torch_info['version']
     install_cuda_version = torch_info['cuda_version']
+    install_hip_version = torch_info['hip_version']
 
-    current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+    if not is_rocm_pytorch:
+        current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+    else:
+        current_hip_version = ".".join(torch.version.hip.split('.')[:2])
+
     current_torch_version = ".".join(torch.__version__.split('.')[:2])
 
-    if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
-        raise RuntimeError(
-            "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
-            "with a different version than what is being used at runtime. Please re-install "
-            f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-            f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
-            f"torch={current_torch_version}, cuda={current_cuda_version}")
+    if not is_rocm_pytorch:
+        if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
+            raise RuntimeError(
+                "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
+                "with a different version than what is being used at runtime. Please re-install "
+                f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
+                f"torch={current_torch_version}, cuda={current_cuda_version}")
+    else:
+        if install_hip_version != current_hip_version or install_torch_version != current_torch_version:
+            raise RuntimeError(
+                "PyTorch and HIP version mismatch! DeepSpeed ops were compiled and installed "
+                "with a different version than what is being used at runtime. Please re-install "
+                f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                f"torch={install_torch_version}, hip={install_hip_version}, runtime versions:"
+                f"torch={current_torch_version}, hip={current_hip_version}")
 
 
 class OpBuilder(ABC):
