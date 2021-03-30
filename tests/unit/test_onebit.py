@@ -336,7 +336,9 @@ def test_onebitadam_checkpointing_overflow(tmpdir):
             if dist.get_rank() == 0 and n >= 10:
                 loss = loss * 1000000.0
             model.backward(loss)
+            dist.barrier()
             model.step()
+            dist.barrier()
             model.save_checkpoint(save_folder, tag=None)
 
     _test_onebitadam_checkpointing_overflow(args=args,
@@ -703,7 +705,9 @@ def test_onebitlamb_checkpointing_overflow(tmpdir):
             if dist.get_rank() == 0 and n >= 10:
                 loss = loss * 1000000.0
             model.backward(loss)
+            dist.barrier()
             model.step()
+            dist.barrier()
             model.save_checkpoint(save_folder, tag=None)
 
     _test_onebitlamb_checkpointing_overflow(args=args,

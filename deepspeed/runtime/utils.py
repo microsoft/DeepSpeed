@@ -63,10 +63,15 @@ def move_to_device(item, device):
 
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
-    def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False):
+    def __init__(self,
+                 param_groups=None,
+                 mpu=None,
+                 zero_reduce_scatter=False,
+                 deepspeed=None):
         self.mpu = mpu
         self.params = [] if param_groups else None
         self.zero_reduce_scatter = zero_reduce_scatter
+        self.deepspeed = deepspeed
         if param_groups:
             for group in param_groups:
                 for param in group:
@@ -127,6 +132,10 @@ class CheckOverflow(object):
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
+        elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
+            torch.distributed.all_reduce(overflow_gpu,
+                                         op=torch.distributed.ReduceOp.MAX,
+                                         group=torch.distributed.group.WORLD)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)

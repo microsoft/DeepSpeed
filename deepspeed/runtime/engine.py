@@ -705,6 +705,7 @@ class DeepSpeedEngine(Module):
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     dynamic_loss_scale=True,
                     initial_dynamic_scale=initial_dynamic_scale,
                     dynamic_loss_args=dynamic_loss_args,
@@ -718,6 +719,7 @@ class DeepSpeedEngine(Module):
                          ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     static_loss_scale=self.loss_scale(),
                     mpu=self.mpu,
                     clip_grad=clip_grad,
@@ -727,6 +729,7 @@ class DeepSpeedEngine(Module):
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                deepspeed=self,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
