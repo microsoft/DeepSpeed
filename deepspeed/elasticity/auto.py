@@ -112,6 +112,22 @@ def get_relaunch_rank(new_hostset, old_hostset):
     return int(relaunch_rank)
 
 
+def wait_on_available_nodes(new_hosts):
+    available = False
+    while not available:
+        checks = []
+        for host in new_hosts:
+            checks.append(
+                subprocess.Popen(['ssh',
+                                  host,
+                                  "'hostname'"],
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE))
+        available = all([check.wait() == 0 for check in checks])
+        logger.info("waiting for scale up nodes to become available")
+        time.sleep(1)
+
+
 def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
     assert len(new_hosts) == len(new_config_hosts), "new hosts and new config hosts don't align, {new_hosts} != {new_config_hosts}"
 
@@ -123,6 +139,7 @@ def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
     if len(new_hosts) > len(old_hosts):
         state['scale_up'] = True
         # DeepSpeedEngine will read this and call relaunch
+        wait_on_available_nodes(new_hosts)
         relaunch(state)
     elif len(new_hosts) < len(old_hosts):
         state['scale_down'] = True
