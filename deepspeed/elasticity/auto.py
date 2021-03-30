@@ -17,7 +17,7 @@ import signal
 import os
 
 from deepspeed.utils import logger
-from .constants import DETECTION_MODE_POLL, DETECTION_MODE_INOTIFY
+from .constants import DETECTION_MODE_POLL, DETECTION_MODE_INOTIFY, RUNNER_PID_FILE
 
 POLLING_INTERVAL = 5
 
@@ -39,7 +39,9 @@ def relaunch(state):
         logger.info(
             f"{dist.get_rank()} deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}"
         )
-        results = subprocess.Popen(cmd)
+        #results = subprocess.Popen(cmd)
+        with open('/tmp/ds-requires-relaunch', 'w') as fd:
+            fd.write('')
         logger.info(f"deepspeed relaunching at rank:{relaunch_rank} with cmd = {cmd}")
 
     logger.info(f"at rank:{dist.get_rank()}, finishing the program..")
@@ -48,6 +50,17 @@ def relaunch(state):
         for pid in state['parent-pids']:
             logger.info(f"killing parent process {pid}")
             os.kill(pid, signal.SIGTERM)
+
+    #if os.path.isfile(RUNNER_PID_FILE):
+    #    with open(RUNNER_PID_FILE, 'r') as fd:
+    #        pid_dict = json.load(fd)
+    #    for key,pid in pid_dict.items():
+    #        try:
+    #            os.kill(pid, signal.SIGTERM)
+    #            logger.info(f'killed {key} pid: {pid}')
+    #        except ProcessLookupError:
+    #            pass
+
     logger.info(f"killing our process {os.getpid()}")
     os.kill(os.getppid(), signal.SIGTERM)
     os.kill(os.getpid(), signal.SIGTERM)

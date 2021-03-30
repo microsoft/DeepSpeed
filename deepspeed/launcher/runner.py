@@ -22,7 +22,7 @@ from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
-from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG
+from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG, RUNNER_PID_FILE
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
@@ -267,6 +267,15 @@ def get_env(name, env_list, default=None):
     return value
 
 
+def rescale_resources(args):
+    # after elastic scale up/down event re-read hostfile
+    resource_pool = fetch_hostfile(args.hostfile)
+    active_resources = parse_inclusion_exclusion(resource_pool,
+                                                 args.include,
+                                                 args.exclude)
+    return active_resources, encode64(active_resources)
+
+
 def main(args=None):
     args = parse_args(args)
 
@@ -442,11 +451,34 @@ def main(args=None):
         logger.info(
             "Auto elasticity enabled, cmd used for relaunching will be = {}".format(
                 ' '.join(json.loads(base64.urlsafe_b64decode(encoded_cmd)))))
+        # remove relaunch signal if exists
+        if os.path.isfile('/tmp/ds-requires-relaunch'):
+            os.remove('/tmp/ds-requires-relaunch')
 
     logger.info("Launch cmd = {}".format(' '.join(cmd)))
 
     result = subprocess.Popen(cmd, env=env)
+
+    #if auto_elasticity_enabled:
+    #    pid_dict = {'runner': os.getpid(), 'launcher': result.pid}
+    #    with open(RUNNER_PID_FILE, 'w') as fd:
+    #        json.dump(pid_dict, fd)
+    #    print(f'pid dict: {pid_dict}')
+
     result.wait()
+
+    if auto_elasticity_enabled:
+        while os.path.isfile('/tmp/ds-requires-relaunch'):
+            logger.info(f"relaunching with cmd: {cmd}")
+            os.remove('/tmp/ds-requires-relaunch')
+            new_resources, new_world_info = rescale_resources(args)
+            runner.world_info_base64 = new_world_info
+            cmd = runner.get_cmd(env,
+                                 new_resources,
+                                 auto_elasticity_enabled,
+                                 encoded_cmd)
+            result = subprocess.Popen(cmd, env=env)
+            result.wait()
 
     # In case of failure must propagate the error-condition back to the caller (usually shell). The
     # actual error and traceback should have been printed in the subprocess, so in order to avoid

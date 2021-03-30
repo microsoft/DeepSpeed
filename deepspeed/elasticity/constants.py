@@ -84,3 +84,5 @@ DETECTION_MODE = "detection_mode"
 DETECTION_MODE_POLL = "poll"
 DETECTION_MODE_INOTIFY = "inotify"
 DETECTION_MODE_DEFAULT = DETECTION_MODE_POLL
+
+RUNNER_PID_FILE = '/tmp/deepspeed_runner.pid'
