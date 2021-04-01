@@ -432,15 +432,13 @@ __global__ void transform4d_0213<float>(float* out,
     int cnt = blockIdx.z;
     int d3 = threadIdx.x;  // Values (groups of 8)
 
-    if (d2 < seq_length) {
-        const float4* in_vec = reinterpret_cast<const float4*>(in);
-        float4* out_vec = reinterpret_cast<float4*>(out);
+    const float4* in_vec = reinterpret_cast<const float4*>(in);
+    float4* out_vec = reinterpret_cast<float4*>(out);
 
-        float4 vals_vec = in_vec[cnt * d0_stride * gridDim.x + d0 * d0_stride + d1 * d1_stride +
-                                 d2 * d2_stride + d3];
-        out_vec[d0 * d0_out_stride * gridDim.z + cnt * d2_out_stride + d1 * d1_out_stride +
-                d2 * d2_out_stride * gridDim.z + d3] = vals_vec;
-    }
+    float4 vals_vec = in_vec[cnt * d0_stride * gridDim.x + d0 * d0_stride + d1 * d1_stride +
+                             d2 * d2_stride + d3];
+    out_vec[d0 * d0_out_stride * gridDim.z + cnt * d2_out_stride + d1 * d1_out_stride +
+            d2 * d2_out_stride * gridDim.z + d3] = vals_vec;
 }
 
 template <>
