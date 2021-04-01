@@ -3,7 +3,6 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed.distributed_c10d import _get_global_rank
 import torch.distributed as dist
 import math
@@ -23,6 +22,20 @@ from ...ops.op_builder import UtilsBuilder
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
 pg_correctness_test = False
+
+try:
+    from apex_C import flatten
+    from apex_C import unflatten
+except ImportError:
+    try:
+        _ = warned_flatten
+    except NameError:
+        logger.warning(
+            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+        )
+        warned_flatten = True
+    from torch._utils import _flatten_dense_tensors as flatten
+    from torch._utils import _unflatten_dense_tensors as unflatten
 
 
 def input(msg):
@@ -71,7 +84,7 @@ def flatten_dense_tensors_aligned(tensor_list, alignment):
     else:
         padded_tensor_list = tensor_list
 
-    return _flatten_dense_tensors(padded_tensor_list)
+    return flatten(padded_tensor_list)
 
 
 def get_alignment_padding(tensor_list, alignment):
@@ -247,8 +260,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     f"After Flattening and after emptying param group {i} cache")
 
             # set model fp16 weight to slices of flattened buffer
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
@@ -1004,7 +1016,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.param_dict[params_id].grad = None
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
-        flatten_tensor = _flatten_dense_tensors(tensors)
+        flatten_tensor = flatten(tensors)
 
         def print_func():
             logger.info(flatten_tensor.contiguous().view(-1).narrow(0, start, n))
@@ -1327,7 +1339,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if return_tensor_list:
             return flat_tensor_list
 
-        return _flatten_dense_tensors(flat_tensor_list)
+        return flatten(flat_tensor_list)
 
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
@@ -1424,9 +1436,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         int(self.partition_size[i])).to(
                             self.single_partition_of_fp32_groups[i].dtype)
                 else:
-                    single_grad_partition = _flatten_dense_tensors(
-                        self.averaged_gradients[i]).to(
-                            self.single_partition_of_fp32_groups[i].dtype)
+                    single_grad_partition = flatten(self.averaged_gradients[i]).to(
+                        self.single_partition_of_fp32_groups[i].dtype)
                 assert single_grad_partition.numel() == self.partition_size[i], \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
@@ -1507,8 +1518,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 

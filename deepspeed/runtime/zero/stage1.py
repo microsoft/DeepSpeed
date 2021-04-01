@@ -1,7 +1,6 @@
 import math
 import torch
 import torch.distributed as dist
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from collections import defaultdict
 
 from deepspeed.runtime.zero.utils import _initialize_parameter_parallel_groups
@@ -9,6 +8,20 @@ from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
+
+try:
+    from apex_C import flatten
+    from apex_C import unflatten
+except ImportError:
+    try:
+        _ = warned_flatten
+    except NameError:
+        logger.warning(
+            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
+        )
+        warned_flatten = True
+    from torch._utils import _flatten_dense_tensors as flatten
+    from torch._utils import _unflatten_dense_tensors as unflatten
 
 
 def get_alignment_padding(flattened_lean_size, sub_partition_id, sub_partition_size):
@@ -73,7 +86,7 @@ def flatten_dense_tensors_sub_partition_aligned(tensor_list,
                                  dtype=tensor_list[0].dtype)
         aligned_tensor_list = tensor_list + [pad_tensor]
 
-    flat_tensors = _flatten_dense_tensors(aligned_tensor_list)
+    flat_tensors = flatten(aligned_tensor_list)
     return flat_tensors
 
 
@@ -218,8 +231,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # TODO: I don't think this does anything?
             # set model fp16 weight to slices of flattened buffer
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
@@ -527,7 +539,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             partition_params.append(my_params)  #flat_tensor_list)
             final_param_offsets.append(my_offsets)
             assert len(flat_tensor_list) == len(my_offsets), "{} {}".format(len(flat_tensor_list), len(my_offsets))
-            flat_sub_partitions.append(_flatten_dense_tensors(flat_tensor_list))
+            flat_sub_partitions.append(flatten(flat_tensor_list))
         if num_comm_intervals is not None and len(
                 flat_sub_partitions) < num_comm_intervals:
             # logger.info("padding w. sub partitions to ensure uniform communication")
@@ -699,8 +711,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                      self.fp16_groups[i])
+            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 

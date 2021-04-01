@@ -6,7 +6,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 
 import torch
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed.distributed_c10d import _get_global_rank
 import torch.distributed as dist
 import math
@@ -90,7 +89,7 @@ def flatten_dense_tensors_aligned(tensor_list, alignment):
     else:
         padded_tensor_list = tensor_list
 
-    return _flatten_dense_tensors(padded_tensor_list)
+    return flatten(padded_tensor_list)
 
 
 def move_to_cpu(tensor_list):
@@ -893,9 +892,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 see_memory_usage(f"After Flattening param group {i}", force=False)
 
                 #set model fp16 weight to slices of flattened buffer
-                updated_params = _unflatten_dense_tensors(
-                    self.fp16_partitioned_groups_flat[i],
-                    self.fp16_partitioned_groups[i])
+                updated_params = unflatten(self.fp16_partitioned_groups_flat[i],
+                                           self.fp16_partitioned_groups[i])
 
                 for partitioned_param, q in zip(self.fp16_partitioned_groups[i], updated_params):
                     partitioned_param.data = q.data
@@ -1735,7 +1733,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.param_dict[params_id].grad = None
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
-        flatten_tensor = _flatten_dense_tensors(tensors)
+        flatten_tensor = flatten(tensors)
 
         def print_func():
             logger.info(flatten_tensor.contiguous().view(-1).narrow(0, start, n))
@@ -2042,7 +2040,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if return_tensor_list:
             return flat_tensor_list
 
-        return _flatten_dense_tensors(flat_tensor_list)
+        return flatten(flat_tensor_list)
 
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
@@ -2152,9 +2150,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # create a flat gradients for parameters updated by this process
 
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
-                single_grad_partition = _flatten_dense_tensors(
-                    self.averaged_gradients[i]).to(
-                        self.fp32_partitioned_groups_flat[i].dtype)
+                single_grad_partition = flatten(self.averaged_gradients[i]).to(
+                    self.fp32_partitioned_groups_flat[i].dtype)
 
                 assert single_grad_partition.numel() == self.fp32_partitioned_groups_flat[i].numel(), \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(
@@ -2168,11 +2165,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.averaged_gradients[i] = None
 
             single_partition_grad_groups.append(single_grad_partition)
-            debug_fp32_grads[i] = [
-                (t.clone().detach(),
-                 t) for t in _unflatten_dense_tensors(single_grad_partition,
-                                                      group)
-            ]
+            debug_fp32_grads[i] = [(t.clone().detach(),
+                                    t) for t in unflatten(single_grad_partition,
+                                                          group)]
 
         self.stop_timers([OPTIMIZER_FP32_GRADIENT])
 
@@ -2207,9 +2202,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             #for p in self.fp16_groups[i]:
             #    p.data=p.ds_tensor
 
-            updated_params = _unflatten_dense_tensors(
-                self.fp16_partitioned_groups_flat[i],
-                self.fp16_partitioned_groups[i])
+            updated_params = unflatten(self.fp16_partitioned_groups_flat[i],
+                                       self.fp16_partitioned_groups[i])
             for partitioned_param, q in zip(self.fp16_partitioned_groups[i], updated_params):
                 # print(f"Grad fn: {p.grad_fn}")
                 # p.data = torch.ones(1).half().cuda()
@@ -2263,9 +2257,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         partition_id = dist.get_rank(group=self.dp_process_group)
 
-        single_grad_partition = _flatten_dense_tensors(
-            self.averaged_gradients[sub_group_id]).to(
-                self.fp32_partitioned_groups_flat[sub_group_id].dtype)
+        single_grad_partition = flatten(self.averaged_gradients[sub_group_id]).to(
+            self.fp32_partitioned_groups_flat[sub_group_id].dtype)
 
         assert single_grad_partition.numel() == self.fp32_partitioned_groups_flat[sub_group_id].numel(), \
             "averaged gradients have different number of elements that partition size {} {} {} {}".format(
@@ -2297,9 +2290,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                          force=False)
 
     def _unflatten_partitioned_parameters(self, sub_group_id):
-        updated_params = _unflatten_dense_tensors(
-            self.fp16_partitioned_groups_flat[sub_group_id],
-            self.fp16_partitioned_groups[sub_group_id])
+        updated_params = unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
+                                   self.fp16_partitioned_groups[sub_group_id])
 
         for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
             partitioned_param.data = q.data
@@ -2405,10 +2397,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         for i, group in enumerate(self.fp16_groups):
             print(
                 f'Post-Step Dump Norms for Group {i} FP16P, FP16DS, FP16FLAT, FP32FLAT')
-            unflat_fp16 = _unflatten_dense_tensors(self.fp16_groups_flat[i],
-                                                   self.fp16_groups[i])
-            unflat_fp32 = _unflatten_dense_tensors(self.fp32_partitioned_groups_flat[i],
-                                                   self.fp16_groups[i])
+            unflat_fp16 = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
+            unflat_fp32 = unflatten(self.fp32_partitioned_groups_flat[i],
+                                    self.fp16_groups[i])
             for j, p in enumerate(self.fp16_groups[i]):
                 param_id = self.get_param_id(p)
                 param_norm = float(p.data.float().norm(2))
@@ -2593,8 +2584,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def _get_lean_tensors(self, padded_flattened_tensor, group_tensors, paddings):
         # Remove paddings from flattened tensor
-        individual_tensors = _unflatten_dense_tensors(padded_flattened_tensor,
-                                                      group_tensors)
+        individual_tensors = unflatten(padded_flattened_tensor, group_tensors)
         lean_lengths = [t.numel() - pad for t, pad in zip(group_tensors, paddings)]
         lean_tensors = [t[:len] for t, len in zip(individual_tensors, lean_lengths)]
         #logger.info(f'rank {dist.get_rank()}: lean_tensors = {[t.numel() for t in lean_tensors]}')
@@ -2777,9 +2767,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         # update fp16 unflattened params
         for sub_group_id in range(len(self.fp16_partitioned_groups_flat)):
-            updated_params = _unflatten_dense_tensors(
-                self.fp16_partitioned_groups_flat[sub_group_id],
-                self.fp16_partitioned_groups[sub_group_id])
+            updated_params = unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
+                                       self.fp16_partitioned_groups[sub_group_id])
 
             for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
                 partitioned_param.data = q.data
