@@ -22,11 +22,6 @@ from deepspeed.utils import logger
 #with gradient partitioning and without
 pg_correctness_test = False
 
-# Load pre-built or JIT compile (un)flatten ops
-util_ops = UtilsBuilder().load()
-flatten = util_ops.flatten
-unflatten = util_ops.unflatten
-
 
 def input(msg):
     return
@@ -53,28 +48,6 @@ def isclose(a, b, rtol=1e-09, atol=0.0):
 def lcm(x, y):
     from fractions import gcd  # or can import gcd from `math` in Python 3
     return x * y // gcd(x, y)
-
-
-# create a flat tensor aligned at the alignment boundary
-def flatten_dense_tensors_aligned(tensor_list, alignment):
-    num_elements = 0
-    for tensor in tensor_list:
-        num_elements = num_elements + tensor.numel()
-
-    remaining = num_elements % alignment
-
-    if remaining:
-        elements_to_add = alignment - remaining
-        pad_tensor = torch.zeros(elements_to_add,
-                                 device=tensor_list[0].device,
-                                 dtype=tensor_list[0].dtype)
-        padded_tensor_list = tensor_list + [pad_tensor]
-
-        num_elements = num_elements + elements_to_add
-    else:
-        padded_tensor_list = tensor_list
-
-    return flatten(padded_tensor_list)
 
 
 def get_alignment_padding(tensor_list, alignment):
@@ -140,6 +113,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
+
+        # Load pre-built or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
 
         self.timers = timers
 
@@ -234,7 +212,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             #create flat buffer in CPU and move to GPU
             self.fp16_groups_flat.append(
-                flatten_dense_tensors_aligned(
+                self.flatten_dense_tensors_aligned(
                     self.fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
@@ -245,7 +223,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     f"After Flattening and after emptying param group {i} cache")
 
             # set model fp16 weight to slices of flattened buffer
-            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
+            updated_params = self.unflatten(self.fp16_groups_flat[i],
+                                            self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
@@ -607,6 +586,27 @@ class FP16_DeepSpeedZeroOptimizer(object):
         see_memory_usage(
             f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}"
         )
+
+    # create a flat tensor aligned at the alignment boundary
+    def flatten_dense_tensors_aligned(self, tensor_list, alignment):
+        num_elements = 0
+        for tensor in tensor_list:
+            num_elements = num_elements + tensor.numel()
+
+        remaining = num_elements % alignment
+
+        if remaining:
+            elements_to_add = alignment - remaining
+            pad_tensor = torch.zeros(elements_to_add,
+                                     device=tensor_list[0].device,
+                                     dtype=tensor_list[0].dtype)
+            padded_tensor_list = tensor_list + [pad_tensor]
+
+            num_elements = num_elements + elements_to_add
+        else:
+            padded_tensor_list = tensor_list
+
+        return self.flatten(padded_tensor_list)
 
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
@@ -1001,7 +1001,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.param_dict[params_id].grad = None
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
-        flatten_tensor = flatten(tensors)
+        flatten_tensor = self.flatten(tensors)
 
         def print_func():
             logger.info(flatten_tensor.contiguous().view(-1).narrow(0, start, n))
@@ -1059,7 +1059,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
         rank = None
-        tensor = flatten(bucket)
+        tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
@@ -1103,7 +1103,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         with torch.cuda.stream(stream):
             allreduced = self.allreduce_bucket(small_bucket, rank=rank, log=log)
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                for buf, synced in zip(small_bucket, unflatten(allreduced, small_bucket)):
+                for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
                     buf.copy_(synced)
 
     def allreduce_no_retain(self,
@@ -1324,7 +1324,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if return_tensor_list:
             return flat_tensor_list
 
-        return flatten(flat_tensor_list)
+        return self.flatten(flat_tensor_list)
 
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
@@ -1416,12 +1416,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 #create a flat gradients for parameters updated by this process
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
                 if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
-                    single_grad_partition = flatten_dense_tensors_aligned(
+                    single_grad_partition = self.flatten_dense_tensors_aligned(
                         self.averaged_gradients[i],
                         int(self.partition_size[i])).to(
                             self.single_partition_of_fp32_groups[i].dtype)
                 else:
-                    single_grad_partition = flatten(self.averaged_gradients[i]).to(
+                    single_grad_partition = self.flatten(self.averaged_gradients[i]).to(
                         self.single_partition_of_fp32_groups[i].dtype)
                 assert single_grad_partition.numel() == self.partition_size[i], \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
@@ -1503,7 +1503,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = unflatten(self.fp16_groups_flat[i], self.fp16_groups[i])
+            updated_params = self.unflatten(self.fp16_groups_flat[i],
+                                            self.fp16_groups[i])
             for p, q in zip(self.fp16_groups[i], updated_params):
                 p.data = q.data
 
@@ -1744,7 +1745,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             merged_partitions = [
                 sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict
             ]
-            flat_merged_partitions = flatten_dense_tensors_aligned(
+            flat_merged_partitions = self.flatten_dense_tensors_aligned(
                 merged_partitions,
                 dist.get_world_size(group=self.dp_process_group))
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
@@ -1768,7 +1769,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)
         if torch.is_tensor(all_partition_states[0]):
-            flat_merged_partitions = flatten_dense_tensors_aligned(
+            flat_merged_partitions = self.flatten_dense_tensors_aligned(
                 all_partition_states,
                 alignment)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions)
