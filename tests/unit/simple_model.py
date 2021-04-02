@@ -24,6 +24,35 @@ class SimpleModel(torch.nn.Module):
         return self.cross_entropy_loss(hidden_dim, y)
 
 
+class SecondLayer(torch.nn.Module):
+    def __init__(self, hidden_dim):
+        super(SecondLayer, self).__init__()
+        self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+class DynamicModel(torch.nn.Module):
+    def __init__(self, hidden_dim, empty_grad=True):
+        super(DynamicModel, self).__init__()
+        self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+        if empty_grad:
+            self.layers2 = torch.nn.ModuleList([torch.nn.Linear(hidden_dim, hidden_dim)])
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+        self.slayer = SecondLayer(hidden_dim)
+        self.slayer2 = SecondLayer(hidden_dim)
+
+    def forward(self, i, x, y):
+        hidden_dim = x
+        hidden_dim = self.linear(hidden_dim)
+        if i % 3:
+            hidden_dim = self.slayer(hidden_dim)
+        if i > 4:
+            hidden_dim = self.slayer2(hidden_dim)
+        return self.cross_entropy_loss(hidden_dim, y)
+
+
 class LinearStack(torch.nn.Module):
     def __init__(self, input_dim=128, hidden_dim=128, output_dim=128, num_layers=4):
         super().__init__()

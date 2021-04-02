@@ -5,7 +5,8 @@ import argparse
 import os
 
 from common import distributed_test
-from simple_model import SimpleModel, random_dataloader, args_from_dict
+from simple_model import SimpleModel, random_dataloader, args_from_dict, DynamicModel
+from types import SimpleNamespace
 
 import deepspeed
 
@@ -67,3 +68,47 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
         run_unbalanced_gradients(model, data_loader)
 
     _test_zero_unbalanced_gradients(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_zero3_dynamic_tracing():
+    config_dict = {
+        "train_batch_size": 2,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015,
+            }
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 15
+        },
+        "zero_optimization": {
+            "stage": 3,
+            "stage3_max_reuse_distance": 10000
+        }
+    }
+
+    @distributed_test(world_size=[1])
+    def _helper(config_dict):
+        hidden_dim = 4
+        with deepspeed.zero.Init():
+            model = DynamicModel(hidden_dim)
+
+        model, _, _, _ = deepspeed.initialize(args=SimpleNamespace(local_rank=-1),
+                                              model=model,
+                                              model_parameters=model.parameters(),
+                                              config_params=config_dict)
+
+        data_loader = random_dataloader(model=model,
+                                        total_samples=16,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+
+        for n, batch in enumerate(data_loader):
+            loss = model(n, batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _helper(config_dict)
