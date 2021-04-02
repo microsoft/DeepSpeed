@@ -9,7 +9,7 @@ from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
 
-# Load pre-installed or JIT compile (un)flatten ops
+# Load pre-built or JIT compile (un)flatten ops
 util_ops = UtilsBuilder().load()
 flatten = util_ops.flatten
 unflatten = util_ops.unflatten

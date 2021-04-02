@@ -23,7 +23,7 @@ from ...ops.op_builder import UtilsBuilder
 #with gradient partitioning and without
 pg_correctness_test = False
 
-# Load pre-installed or JIT compile (un)flatten ops
+# Load pre-built or JIT compile (un)flatten ops
 util_ops = UtilsBuilder().load()
 flatten = util_ops.flatten
 unflatten = util_ops.unflatten
