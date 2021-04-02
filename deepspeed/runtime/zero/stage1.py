@@ -8,6 +8,7 @@ from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
+from deepspeed.ops.op_builder import UtilsBuilder
 
 # Load pre-built or JIT compile (un)flatten ops
 util_ops = UtilsBuilder().load()

@@ -17,6 +17,7 @@ from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_paramete
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, ZeroParamType, _init_external_params, Init, is_zero_param
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.ops.op_builder import UtilsBuilder
 
 import itertools
 # Toggle this to true to enable correctness test

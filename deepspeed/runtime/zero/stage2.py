@@ -15,9 +15,8 @@ from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
-
+from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
-from ...ops.op_builder import UtilsBuilder
 
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
