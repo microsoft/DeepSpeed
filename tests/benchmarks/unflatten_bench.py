@@ -22,7 +22,14 @@ unflatten = util_ops.unflatten
 
 torch.manual_seed(0)
 # emulate a small typical model weights
-x = [torch.rand((512,512)).cuda(), torch.rand((512,1024)).cuda(), torch.rand((512,30000)).cuda()]
+x = [
+    torch.rand((512,
+                512)).cuda(),
+    torch.rand((512,
+                1024)).cuda(),
+    torch.rand((512,
+                30000)).cuda()
+]
 unflat_t = x * 30
 
 # warm up and check that the same output is produced
@@ -35,20 +42,26 @@ assert torch.eq(flat_py, flat_apex).all(), "both produce the same tensor"
 
 flat_t = flat_py
 unflat_py = _unflatten_dense_tensors(flat_py, unflat_t)
-for i in range(len(unflat_t)): assert torch.eq(unflat_t[i], unflat_py[i]).all()
+for i in range(len(unflat_t)):
+    assert torch.eq(unflat_t[i], unflat_py[i]).all()
 unflat_cpp = _unflatten_dense_tensors(flat_cpp, unflat_t)
-for i in range(len(unflat_t)): assert torch.eq(unflat_t[i], unflat_cpp[i]).all()
+for i in range(len(unflat_t)):
+    assert torch.eq(unflat_t[i], unflat_cpp[i]).all()
 unflat_apex = _unflatten_dense_tensors(flat_apex, unflat_t)
-for i in range(len(unflat_t)): assert torch.eq(unflat_t[i], unflat_apex[i]).all()
+for i in range(len(unflat_t)):
+    assert torch.eq(unflat_t[i], unflat_apex[i]).all()
+
 
 # the programs being tested
 def py():
     for i in range(1000):
         unflat = _unflatten_dense_tensors(flat_t, unflat_t)
 
+
 def cpp():
     for i in range(1000):
         unflat = unflatten(flat_t, unflat_t)
+
 
 def apex():
     for i in range(1000):
@@ -59,47 +72,62 @@ def apex():
 
 import cProfile
 
+
 def cprofileme():
     print("--------------- cProfile -----------------")
     print("py")
     cProfile.run("py()", sort=-1)
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print("cpp")
     cProfile.run("cpp()", sort=-1)
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print("apex")
     cProfile.run("apex()", sort=-1)
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
+
 
 #### timeit ####
 
 import timeit
 
+
 def timeme():
     print("--------------- timeit -----------------")
     print(f'py  ={timeit.Timer("py()", globals=globals()).timeit(number=1)}')
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print(f'cpp ={timeit.Timer("cpp()", globals=globals()).timeit(number=1)}')
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print(f'apex={timeit.Timer("apex()", globals=globals()).timeit(number=1)}')
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
+
 
 #### line_profiler ####
 # this one requires a special way to be called
 # pip install line_profiler
 # kernprof -l unflatten_bench.py -l; python -m line_profiler unflatten_bench.py.lprof
 
+
 def line_profileme():
     print("--------------- line_profier -----------------")
     print("py")
     profile(py)()
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print("cpp")
     profile(cpp)()
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
     print("apex")
     profile(apex)()
-    gc.collect(); torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
