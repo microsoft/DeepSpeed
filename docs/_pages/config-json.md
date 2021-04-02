@@ -90,7 +90,7 @@ The 1-bit Adam optimizer supports the following three params keys/values in addi
 
 ### Scheduler Parameters
 
-DeepSpeed automatically updates the learning rate at every training step when `model_engine.step()` is executed.
+DeepSpeed calls the `step()` method of the scheduler at every training step when `model_engine.step()` is executed.
 
 ***scheduler***: [dictionary]
 

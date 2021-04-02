@@ -31,7 +31,7 @@ distributed data parallel or mixed precision training are done
 appropriately under the hood. In addition to wrapping the model, DeepSpeed can
 construct and manage the training optimizer, data loader, and the learning rate
 scheduler based on the parameters passed to `deepspeed.initialize` and the
-DeepSpeed [configuration file](#deepspeed-configuration). Note that DeepSpeed automatically updates the learning rate at every training step.
+DeepSpeed [configuration file](#deepspeed-configuration). Note that DeepSpeed automatically executes the learning rate schedule at every training step.
 
 If you already have a distributed environment setup, you'd need to replace:
 
@@ -79,9 +79,9 @@ pre-defined learning rate scheduler:
   engine automatically handles scaling the loss to avoid precision loss in the
   gradients.
 
-- **Learning Rate Scheduler**: when using a DeepSpeed's learning rate scheduler (specified in the `ds_config.json` file), DeepSpeed automatically updates the learning rate at every training step (when `model_engine.step()` is executed). When not using a DeepSpeed's learning rate scheduler:
-  - if the scheduler is supposed to be updated every training step, then the user can pass the scheduler to `deepspeed.initialize` when initializing the DeepSpeed engine and let DeepSpeed manage it for update or save/restore.
-  - if the scheduler is supposed to be updated every training epoch, then the user should NOT pass the scheduler to DeepSpeed during initialization and must manage it explicitly.
+- **Learning Rate Scheduler**: when using a DeepSpeed's learning rate scheduler (specified in the `ds_config.json` file), DeepSpeed calls the `step()` method of the scheduler at every training step (when `model_engine.step()` is executed). When not using a DeepSpeed's learning rate scheduler:
+  - if the schedule is supposed to execute at every training step, then the user can pass the scheduler to `deepspeed.initialize` when initializing the DeepSpeed engine and let DeepSpeed manage it for update or save/restore.
+  - if the schedule is supposed to execute at any other interval (e.g., training epochs), then the user should NOT pass the scheduler to DeepSpeed during initialization and must manage it explicitly.
 
 ### Model Checkpointing
 
