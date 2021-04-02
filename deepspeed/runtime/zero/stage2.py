@@ -28,6 +28,7 @@ util_ops = UtilsBuilder().load()
 flatten = util_ops.flatten
 unflatten = util_ops.unflatten
 
+
 def input(msg):
     return
 

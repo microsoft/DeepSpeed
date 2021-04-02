@@ -28,6 +28,7 @@ util_ops = UtilsBuilder().load()
 flatten = util_ops.flatten
 unflatten = util_ops.unflatten
 
+
 def print_rank_0(message, debug=False, force=False):
     if torch.distributed.get_rank() == 0 and (debug or force):
         logger.info(message)
