@@ -100,8 +100,8 @@ def move_to_cpu(tensor_list):
         tensor.data = tensor.data.cpu()
 
 
-def get_all_parameters(sub_module):
-    return itertools.chain(sub_module.named_parameters(recurse=False),
+def get_all_parameters(sub_module, recurse=False):
+    return itertools.chain(sub_module.named_parameters(recurse=recurse),
                            sub_module.ds_external_parameters())
 
 
@@ -1123,13 +1123,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.hierarchy = 0
         self._register_hooks_recursively(self.module)
 
+        #reset step at the beginning of forward
+        def _pre_forward_hook(module, *args):
+            self.param_coordinator.reset_step()
+
         #reset step if in inference mode
         def _end_of_forward_hook(module, *args):
 
             if not torch._C.is_grad_enabled():
                 self.param_coordinator.reset_step()
 
+        #likely one of them should be enough but just to be safe
         self.module.register_forward_hook(_end_of_forward_hook)
+        self.module.register_forward_pre_hook(_pre_forward_hook)
 
     def persistent_parameters(self):
         persistent_params = []
@@ -1152,8 +1158,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #print(f"{module.__class__} : {module.id}")
 
         for child in module.children():
-            count[0] = count[0] + 1
-            self._register_hooks_recursively(child, count=count)
+            if len(list(get_all_parameters(child, recurse=True))) > 0:
+                count[0] = count[0] + 1
+                self._register_hooks_recursively(child, count=count)
 
         def _pre_forward_module_hook(module, *args):
             self.pre_sub_module_forward_function(module)
