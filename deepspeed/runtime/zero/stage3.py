@@ -168,12 +168,13 @@ class TraceSplit(object):
         return self.__str__()
 
 
-# TODO Needs to be implemented
 class PrefetchCoordinator(object):
-    def __init__(self):
+    def __init__(self, dynamic_trace=True):
         # step_id keeps track of the number of sub-modules invoked so far
         # the step_id is tracking forward and backward sequence of sub-modules
         self.step_id = 0
+
+        self.dynamic_trace = dynamic_trace
 
         # stores the sequence of sub modules in forward+backward pass
         self.sub_module_trace = []
@@ -273,9 +274,14 @@ class PrefetchCoordinator(object):
             f"get_params_to_prefetch {sub_module.id}, self.sub_module_trace={self.sub_module_trace}, step={self.step_id}, curr={self.curr_module_trace}",
             force=DEBUG_TRACE)
         # are we on the correct sub trace?
-        if sub_module.id != self.curr_module_trace[self.step_id]:
-            # can we switch to any other traces that match?
-            switch_success = self.switch_trace(curr_module_id=sub_module.id)
+        if self.step_id >= len(
+                self.curr_module_trace) or sub_module.id != self.curr_module_trace[
+                    self.step_id]:
+            switch_success = False
+            if self.dynamic_trace:
+                # can we switch to any other traces that match?
+                switch_success = self.switch_trace(curr_module_id=sub_module.id)
+
             if not switch_success:
                 # we've split, tracing not complete. unable to prefetch anything
                 return []
@@ -361,13 +367,14 @@ class PartitionedParameterCoordinator(object):
     def __init__(self,
                  comm_stream=None,
                  max_reuse_distance_in_numel=500000000,
-                 max_available_parameters_in_numel=700000000):
+                 max_available_parameters_in_numel=700000000,
+                 dynamic_trace=True):
 
         self.in_flight_handles = []
         self.params_in_flight = []
         self.comm_stream = comm_stream if comm_stream is not None else torch.cuda.current_stream(
         )
-        self.prefetch_coordinator = PrefetchCoordinator()
+        self.prefetch_coordinator = PrefetchCoordinator(dynamic_trace=dynamic_trace)
         self.hierarchy = 0
 
         self.total_available_parameter_numel = 0
@@ -664,7 +671,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
-                 elastic_checkpoint=False):
+                 elastic_checkpoint=False,
+                 dynamic_trace=True):
 
         see_memory_usage("Stage 3 intialize beginning", force=True)
 
@@ -696,6 +704,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.module = module
         self.elastic_checkpoint = elastic_checkpoint
         self.overlap_comm = overlap_comm
+        self.dynamic_trace = dynamic_trace
 
         if self.overlap_comm:
             self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
@@ -720,7 +729,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.param_coordinator = PartitionedParameterCoordinator(
             comm_stream=fetch_stream,
             max_reuse_distance_in_numel=int(max_reuse_distance),
-            max_available_parameters_in_numel=int(max_live_parameters))
+            max_available_parameters_in_numel=int(max_live_parameters),
+            dynamic_trace=self.dynamic_trace)
 
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 

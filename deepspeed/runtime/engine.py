@@ -391,6 +391,9 @@ class DeepSpeedEngine(Module):
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
+    def zero_dynamic_trace(self):
+        return self._config.zero_config.dynamic_trace
+
     def fp16_enabled(self):
         return self._config.fp16_enabled
 
@@ -800,7 +803,8 @@ class DeepSpeedEngine(Module):
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                dynamic_trace=self.zero_dynamic_trace())
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
