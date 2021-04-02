@@ -9,19 +9,10 @@ from deepspeed.runtime.utils import get_grad_norm, CheckOverflow
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.utils import logger, log_dist
 
-try:
-    from apex_C import flatten
-    from apex_C import unflatten
-except ImportError:
-    try:
-        _ = warned_flatten
-    except NameError:
-        logger.warning(
-            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
-        warned_flatten = True
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
+# Load pre-installed or JIT compile (un)flatten ops
+util_ops = UtilsBuilder().load()
+flatten = util_ops.flatten
+unflatten = util_ops.unflatten
 
 
 def get_alignment_padding(flattened_lean_size, sub_partition_id, sub_partition_size):

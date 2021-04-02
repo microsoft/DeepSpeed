@@ -23,20 +23,10 @@ import itertools
 # with gradient partitioning and without
 pg_correctness_test = False
 
-try:
-    from apex_C import flatten
-    from apex_C import unflatten
-except ImportError:
-    try:
-        _ = warned_flatten
-    except NameError:
-        logger.warning(
-            "apex was installed without --cpp_ext.  Falling back to Python flatten and unflatten."
-        )
-        warned_flatten = True
-    from torch._utils import _flatten_dense_tensors as flatten
-    from torch._utils import _unflatten_dense_tensors as unflatten
-
+# Load pre-installed or JIT compile (un)flatten ops
+util_ops = UtilsBuilder().load()
+flatten = util_ops.flatten
+unflatten = util_ops.unflatten
 
 def print_rank_0(message, debug=False, force=False):
     if torch.distributed.get_rank() == 0 and (debug or force):
