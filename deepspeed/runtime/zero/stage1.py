@@ -166,7 +166,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
             # flattens all tensors into single 1d tensor aligned with sub-partition size for later dividing
             # RS: create aligned sub-partitions
-            flat_aligned_params = flatten_dense_tensors_sub_partition_aligned(
+            flat_aligned_params = self.flatten_dense_tensors_sub_partition_aligned(
                 tensor_list=self.fp16_groups[i],
                 dp=dist.get_world_size(group=self.dp_process_group),
                 max_elements_per_comm=self.max_elems_per_comm[i],
@@ -412,8 +412,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return params_in_rank_sub_partition, params_in_rank_sub_partitions_offsets, params_not_local
 
-    @staticmethod
-    def get_flat_sub_partitions(comm_tensor_list,
+    def get_flat_sub_partitions(self,
+                                comm_tensor_list,
                                 comm_param_offsets,
                                 sub_partition_size,
                                 dtype,
@@ -909,7 +909,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
                 sub_partition_idx = (comm_idx * num_partitions) + rank
                 all_sub_partition_weights[sub_partition_idx] = sub_partition_weights
 
-        flat_merged_weights = flatten_dense_tensors_sub_partition_aligned(
+        flat_merged_weights = self.flatten_dense_tensors_sub_partition_aligned(
             tensor_list=all_sub_partition_weights,
             dp=dist.get_world_size(group=self.dp_process_group),
             max_elements_per_comm=max_elems_per_comm,
@@ -957,7 +957,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
             return all_partition_states[0]
 
         alignment = dist.get_world_size(group=self.dp_process_group)
-        flat_merged_partitions = flatten_dense_tensors_sub_partition_aligned(
+        flat_merged_partitions = self.flatten_dense_tensors_sub_partition_aligned(
             tensor_list=all_partition_states,
             dp=dist.get_world_size(group=self.dp_process_group),
             max_elements_per_comm=max_elems_per_comm,

@@ -841,7 +841,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                     #create flat buffer in CPU and move to GPU
                     self.fp16_partitioned_groups_flat.append(
-                        flatten_dense_tensors_aligned(
+                        self.flatten_dense_tensors_aligned(
                             self.fp16_partitioned_groups[i],
                             dist.get_world_size(group=self.dp_process_group)).cuda(
                                 torch.cuda.current_device()))
@@ -852,7 +852,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     #Without the detach, seems like the flattening becomes part of the
                     #model graph causing errors downstream
                     self.fp16_partitioned_groups_flat.append(
-                        flatten_dense_tensors_aligned(
+                        self.flatten_dense_tensors_aligned(
                             self.fp16_partitioned_groups[i],
                             dist.get_world_size(
                                 group=self.dp_process_group)).detach().pin_memory())
@@ -929,9 +929,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                     #create flat buffer in CPU and move to GPU
                     self.fp16_partitioned_groups_flat.append(
-                        flatten_dense_tensors_aligned(self.fp16_partitioned_groups[i],
-                                                      1).cuda(
-                                                          torch.cuda.current_device()))
+                        self.flatten_dense_tensors_aligned(
+                            self.fp16_partitioned_groups[i],
+                            1).cuda(torch.cuda.current_device()))
                     see_memory_usage(
                         f"After flattening and moving param group {i} to GPU",
                         force=False)
@@ -2697,14 +2697,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         local_state_partitions = []
         for param_index, param_slices in enumerate(param_partitions):
-            flattened_merged_tensor = flatten_dense_tensors_aligned(
+            flattened_merged_tensor = self.flatten_dense_tensors_aligned(
                 param_slices,
                 alignment)
             new_partitions = self.get_data_parallel_partitions(flattened_merged_tensor)
             local_state_partitions.append(new_partitions[partition_id])
 
         if torch.is_tensor(local_state_partitions[0]):
-            return flatten_dense_tensors_aligned(local_state_partitions, alignment)
+            return self.flatten_dense_tensors_aligned(local_state_partitions, alignment)
 
         # Assume non-tensor states are not partitioned and equal across ranks, so return first one
         return local_state_partitions[0]
