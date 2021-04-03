@@ -1,8 +1,6 @@
-# tests directory-specific settings - this file is run automatically
-# by pytest before any tests are run
+# tests directory-specific settings - this file is run automatically by pytest before any tests are run
 
 import sys
-import warnings
 from os.path import abspath, dirname, join
 
 # allow having multiple repository checkouts and not needing to remember to rerun
