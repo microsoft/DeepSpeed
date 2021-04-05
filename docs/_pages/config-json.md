@@ -88,6 +88,40 @@ The 1-bit Adam optimizer supports the following three params keys/values in addi
 | cuda\_aware | To indicate that the underlying MPI library supports CUDA-Aware communication         | false    |
 | comm\_backend\_name | To indicate which backend implementation to use                               | "nccl"   |
 
+Another example of ***optimizer*** with 1-bit Lamb
+
+```json
+"optimizer": {
+    "type": "OneBitLamb",
+    "params": {
+      "lr": 11e-3,
+      "weight_decay": 0.01,
+      "bias_correction": false,
+      "max_coeff": 0.3,
+      "min_coeff": 0.01,
+      "freeze_step": 1000,
+      "cuda_aware": false,
+      "comm_backend_name": "nccl",
+      "coeff_beta": 0.9,
+      "factor_max": 4.0,
+      "factor_min": 0.5,
+      "factor_threshold": 0.1
+    }
+  }
+```
+
+The 1-bit Lamb optimizer supports the following params keys/values in addition to the standard Lamb (learn more in our [tutorial](/tutorials/onebit-lamb/)):
+
+| "params" key  | Description                                                                 | Default |
+| ------------- | --------------------------------------------------------------------------- | ------- |
+| freeze\_step   | Number of warm up steps before 1-bit compression gets applied to the communication   | 100000   |
+| cuda\_aware | To indicate that the underlying MPI library supports CUDA-Aware communication           | false    |
+| comm\_backend\_name | To indicate which backend implementation to use                                 | "nccl"   |
+| coeff\_beta | Coefficient used for computing running averages of lamb coefficient                     | 0.9      |
+| factor\_max | Maximum value of scaling factor to the frozen lamb coefficient during compression stage | 4.0      |
+| factor\_min | Minimum value of scaling factor to the frozen lamb coefficient during compression stage | 0.5      |
+| factor\_threshold | Threshold of how much the scaling factor can fluctuate between steps              | 0.1      |
+
 ### Scheduler Parameters
 
 ***scheduler***: [dictionary]

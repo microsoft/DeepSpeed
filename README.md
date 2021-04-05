@@ -15,7 +15,7 @@ DeepSpeed delivers extreme-scale model training for everyone, from data scientis
 * Extreme scale: Using current generation of GPU clusters with hundreds of devices,  3D parallelism of DeepSpeed can efficiently train deep learning models with trillions of parameters.  
 * Extremely memory efficient: With just a single GPU, ZeRO-Offload of DeepSpeed can train models with over 10B parameters, 10x bigger than the state of arts, democratizing multi-billion-parameter model training such that many deep learning scientists can explore bigger and better models.
 * Extremely long sequence length: Sparse attention of DeepSpeed powers an order-of-magnitude longer input sequence and obtains up to 6x faster execution comparing with dense transformers.  
-* Extremely communication efficient: 3D parallelism improves communication efficiency allows users to train multi-billion-parameter models 2–7x faster on clusters with limited network bandwidth.  1-bit Adam reduces communication volume by up to 5x while achieving similar convergence efficiency to Adam, allowing for scaling to different types of GPU clusters and networks.
+* Extremely communication efficient: 3D parallelism improves communication efficiency allows users to train multi-billion-parameter models 2–7x faster on clusters with limited network bandwidth.  1-bit Adam/1-bit Lamb reduce communication volume by up to 5x while achieving similar convergence efficiency to Adam/Lamb, allowing for scaling to different types of GPU clusters and networks.
 
 Early adopters of DeepSpeed have already produced
 a language model (LM) with over 17B parameters called
@@ -31,6 +31,7 @@ information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)
 
 
 # News
+* [2021/04/05] [1-bit Lamb: up to 4.6x less communication and 2.8x faster training, together with Lamb's convergence speed at large batch sizes](https://www.deepspeed.ai/tutorials/onebit-lamb/)
 * [2021/03/16] [1-bit Adam v2: NCCL-based implementation and more](https://www.deepspeed.ai/tutorials/onebit-adam/)
 * [2021/03/08] [ZeRO-3 Offload: Scale your models to trillion parameters without code changes while leveraging both CPUs & GPUs](https://www.deepspeed.ai/news/2021/03/07/zero3-offload.html)
 * [2020/11/12] [Simplified install, JIT compiled ops, PyPI releases, and reduced dependencies](#installation)
@@ -117,7 +118,7 @@ overview](https://www.deepspeed.ai/features/) for descriptions and usage.
   * Memory- and compute-efficient sparse kernels
   * Support 10x longer sequences than dense
   * Flexible support to different sparse structures
-* [1-bit Adam](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html)
+* [1-bit Adam](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html) and [1-bit Lamb](https://www.deepspeed.ai/tutorials/onebit-lamb/)
   * Custom communication collective
   * Up to 5x communication volume saving
 * [Additional Memory and Bandwidth Optimizations](https://www.deepspeed.ai/features/#additional-memory-and-bandwidth-optimizations)
