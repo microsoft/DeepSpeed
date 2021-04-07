@@ -592,7 +592,7 @@ template void launch_attn_softmax_backward_v2<float>(float* out_grad,
 
 template <int tbSize, int tbSeq>
 __global__ void attn_softmax_v2(__half* vals,
-                                __half* mask,
+                                const __half* mask,
                                 bool triangular,
                                 int total_count,
                                 int heads,
@@ -702,11 +702,11 @@ __global__ void attn_softmax_v2(__half* vals,
 
 template <int tbSize, int tbSeq>
 __global__ void attn_softmax_v2(float* vals,
-                                float* attn_mask,
+                                const float* attn_mask,
                                 bool triangular,
                                 int total_count,
                                 int heads,
-                                int seq_length,
+                                int sequence_length,
                                 int num_seq,
                                 float scale)
 {
@@ -803,7 +803,7 @@ __global__ void attn_softmax_v2(float* vals,
 
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
-                            T* mask,
+                            const T* mask,
                             bool triangular,
                             int batch_size,
                             int heads,
@@ -838,12 +838,10 @@ void launch_attn_softmax_v2(T* vals,
         throw std::runtime_error(
             "Unsupport Seq_Length! Check the restriction of the max_threads and "
             "max_thread_iterations!");
-
-    CUDA_CHECK_ERROR();
 }
 
 template void launch_attn_softmax_v2(float* vals,
-                                     float* mask,
+                                     const float* mask,
                                      bool triangular,
                                      int batch_size,
                                      int heads,
@@ -852,7 +850,7 @@ template void launch_attn_softmax_v2(float* vals,
                                      float scale,
                                      cudaStream_t stream);
 template void launch_attn_softmax_v2(__half* vals,
-                                     __half* mask,
+                                     const __half* mask,
                                      bool triangular,
                                      int batch_size,
                                      int heads,

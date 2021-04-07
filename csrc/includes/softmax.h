@@ -39,17 +39,17 @@ public:
     void Forward(int bsz, T* vals, const T* attn_mask, cudaStream_t& stream)
     {
         if (config_.triangular)
-            launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+            launch_attn_softmax_v2<T>(vals,
+                                      attn_mask,
+                                      (config_.seq_length == config_.prob_depth),
+                                      bsz,
+                                      config_.heads,
+                                      config_.seq_length,
+                                      config_.prob_depth,
+                                      1.0,
+                                      stream);
         else
-            launch_attn_softmax_v2(vals,
-                                   attn_mask,
-                                   (config_.seq_length == config_.prob_length),
-                                   bsz,
-                                   config_.heads,
-                                   config_.seq_length,
-                                   config_.prob_length,
-                                   1.0,
-                                   stream);
+            launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
     }
 
     void Backward(int bsz, T* out_grad, const T* soft_out, cudaStream_t stream)

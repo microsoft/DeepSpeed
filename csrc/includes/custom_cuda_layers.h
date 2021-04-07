@@ -258,11 +258,11 @@ void launch_param_update(const float* input, __half* output, int size, cudaStrea
 
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
-                            T* mask,
+                            const T* mask,
                             bool triangular,
                             int batch_size,
                             int heads,
                             int num_seq,
                             int sequence_length,
                             float scale,
-                            cudaStream_t stream)
+                            cudaStream_t stream);

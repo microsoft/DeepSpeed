@@ -713,7 +713,7 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
     if (mask_size[mask_dim - 2] > 1 ||
         mask_size[mask_dim - 2] ==
             mask_size[mask_dim - 1])  // Detecting triangular mask; TODO: check for other cases
-       layer->SetTriangularMode((mask_size[mask_dim - 2], (mask_size[mask_dim - 1]);
+        layer->SetTriangularMode(mask_size[mask_dim - 2], mask_size[mask_dim - 1]);
 
     auto workspace = torch::empty({get_workspace_size<T>(bsz,
                                                          seq_len,
