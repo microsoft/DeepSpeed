@@ -3,10 +3,13 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import os
+import stat
 import torch
 import warnings
 import hashlib
 import torch.distributed as dist
+from collections import OrderedDict
+from shutil import copyfile
 
 from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -384,6 +387,9 @@ class DeepSpeedEngine(Module):
 
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
+
+    def zero_gather_fp16_weights_on_model_save(self):
+        return self._config.zero_config.gather_fp16_weights_on_model_save
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -949,7 +955,7 @@ class DeepSpeedEngine(Module):
 
         Arguments:
             loss: Torch tensor on which to execute backward propagation
-            allreduce_gradients: If this is False, then gradient averaging will be skipped. Default is True.
+            allreduce_gradients: is deprecated, ignored, and will soon be removed'
         """
 
         if not allreduce_gradients:
@@ -1352,7 +1358,7 @@ class DeepSpeedEngine(Module):
         zero_ckpt_name = os.path.join(
             checkpoints_path,
             str(tag),
-            filename + '_mp_rank_{:02d}'.format(mp_rank) + 'optim_states.pt')
+            filename + '_mp_rank_{:02d}'.format(mp_rank) + '_optim_states.pt')
         return zero_ckpt_name
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
@@ -1529,13 +1535,20 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size)
         invalid_zero_ckpt_paths = []
-        for ckpt_name in zero_ckpt_names:
+        for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
+                # transparently handle the old file pattern for optim_states
+                if 'optim_states.pt' in ckpt_name:
+                    ckpt_name_try = ckpt_name.replace("_optim_states.pt",
+                                                      "optim_states.pt")
+                    if os.path.exists(ckpt_name_try):
+                        zero_ckpt_names[i] = ckpt_name_try
+                        continue
                 invalid_zero_ckpt_paths.append(ckpt_name)
 
         if len(invalid_zero_ckpt_paths) > 0:
             logger.warn(
-                f"Client provided zero checkpoint load paths: {invalid_zero_ckpt_paths} does not exist"
+                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
             )
             return None
 
@@ -1649,27 +1662,19 @@ class DeepSpeedEngine(Module):
         # then instead just returns None.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
-        state = {
-            'module':
-            self.module_state_dict(),
-            'optimizer':
-            self.optimizer.state_dict()
+        state = dict(
+            module=self.module_state_dict(),
+            optimizer=self.optimizer.state_dict()
             if self.optimizer and not self.zero_optimization() else None,
-            'lr_scheduler':
-            self.lr_scheduler.state_dict() if self.lr_scheduler is not None else None,
-            'csr_tensor_module_names':
-            self.csr_tensor_module_names,
-            'skipped_steps':
-            self.skipped_steps,
-            'global_steps':
-            self.global_steps,
-            'global_samples':
-            self.global_samples,
-            'dp_world_size':
-            self.dp_world_size,
-            'mp_world_size':
-            self.mp_world_size
-        }
+            lr_scheduler=self.lr_scheduler.state_dict()
+            if self.lr_scheduler is not None else None,
+            csr_tensor_module_names=self.csr_tensor_module_names,
+            skipped_steps=self.skipped_steps,
+            global_steps=self.global_steps,
+            global_samples=self.global_samples,
+            dp_world_size=self.dp_world_size,
+            mp_world_size=self.mp_world_size,
+        )
         state.update(client_state)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
@@ -1677,8 +1682,125 @@ class DeepSpeedEngine(Module):
         torch.save(state, save_path)
         self._curr_save_path = None
 
+    def _get_param_shapes(self):
+        param_shapes = OrderedDict()
+        for name, param in self.module.named_parameters():
+            param_shapes[name] = param.ds_shape if hasattr(param,
+                                                           "ds_shape") else param.shape
+            # print(f"saving param {name} {param_shapes[name]}")
+        return param_shapes
+
+    def _copy_recovery_script(self, save_path):
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        script = "zero_to_fp32.py"
+        src = os.path.join(base_dir, "utils", script)
+        dst = os.path.join(save_path, script)
+        logger.info(f"creating recovery script {dst}")
+        copyfile(src, dst)
+        # make executable
+        os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
-        zero_sd = {'optimizer_state_dict': self.optimizer.state_dict()}
+        zero_sd = dict(
+            optimizer_state_dict=self.optimizer.state_dict(),
+            param_shapes=self._get_param_shapes(),
+        )
         torch.save(zero_sd, zero_checkpoint_name)
+        self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
+
+    def _zero3_consolidated_fp16_state_dict(self):
+        """
+
+        Get a full non-partitioned state_dict with fp16 weights on cpu.
+
+        This is similar to nn.Module.state_dict (modelled after _save_to_state_dict), but:
+
+        1. consolidates the weights from different partitions on gpu0
+        2. works on one layer at a time to require as little gpu0 memory as possible, by
+        moving the already consolidated weights to cpu
+        3. takes care to keep the shared params shared when gradually copying the params to cpu
+
+        Returns:
+            a consolidated fp16 ``state_dict`` on cpu on rank 0, ``None`` on other ranks
+
+        """
+        import deepspeed
+
+        if not self.zero_optimization_partition_weights():
+            raise ValueError("this function requires ZeRO-3 mode")
+
+        state_dict = OrderedDict() if torch.distributed.get_rank() == 0 else None
+        shared_weights = {}
+
+        def get_layer_state_dict(module, prefix=""):
+            # gather one layer at a time to be memory-efficient
+            with deepspeed.zero.GatheredParameters(list(
+                    module.parameters(recurse=False))):
+                if torch.distributed.get_rank() == 0:
+                    for name, param in module.named_parameters(recurse=False):
+                        if param is None:
+                            continue
+                        key = prefix + name
+                        # for shared weights we want to make sure not to unshare them when copying to cpu
+                        data_ptr_id = param.storage().data_ptr()
+                        if data_ptr_id in shared_weights:
+                            # shared weights
+                            # print(f"`{key}` is shared with `{shared_weights[data_ptr_id]}`")
+                            state_dict[key] = state_dict[shared_weights[data_ptr_id]]
+                        else:
+                            state_dict[key] = param.detach().cpu()
+                            shared_weights[data_ptr_id] = key
+                        #print(f"param {name} {param.shape}")
+                        #print(f"param {key} {param.shape} {state_dict[key].storage().data_ptr()}")
+
+                    # now buffers - not sure if need to take care of potentially shared weights here
+                    for name, buf in module.named_buffers(recurse=False):
+                        if buf is not None and name not in module._non_persistent_buffers_set:
+                            state_dict[prefix + name] = buf.detach().cpu()
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_state_dict(child, prefix + name + ".")
+
+        see_memory_usage("before get_layer_state_dict", force=False)
+        get_layer_state_dict(self.module, prefix="")
+        see_memory_usage("after get_layer_state_dict", force=False)
+
+        return state_dict
+
+    def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
+        r"""Save fp16 model weights
+
+        This method saves the fp16 model weights at the desired destination.
+
+        Arguments:
+            save_dir: Required. Directory for saving the model
+            save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
+
+        Important: all processes must call this method and not just the process with rank 0. It is
+        because the processes need to work in sync to gather the weights. This method will hang
+        waiting to synchronize with other processes if it's called just for the process with rank 0.
+
+        """
+
+        path = os.path.join(save_dir, save_filename)
+
+        if self.zero_optimization_partition_weights():
+            if self.zero_gather_fp16_weights_on_model_save():
+                # consolidation is expensive in time and memory and therefore isn't a default
+                state_dict = self._zero3_consolidated_fp16_state_dict()
+            else:
+                # the model will be bogus if not consolidated so don't confuse the user by saving it
+                logger.info(
+                    f"Did not save the model {path} because `stage3_gather_fp16_weights_on_model_save` is False"
+                )
+                return
+        else:
+            state_dict = self.module.state_dict()
+
+        if torch.distributed.get_rank() == 0:
+            os.makedirs(save_dir, exist_ok=True)
+            logger.info(f"Saving model weights to {path}")
+            torch.save(state_dict, path)
