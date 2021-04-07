@@ -255,3 +255,14 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
                                        cudaStream_t stream);
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
+
+template <typename T>
+void launch_attn_softmax_v2(T* vals,
+                            T* mask,
+                            bool triangular,
+                            int batch_size,
+                            int heads,
+                            int num_seq,
+                            int sequence_length,
+                            float scale,
+                            cudaStream_t stream)

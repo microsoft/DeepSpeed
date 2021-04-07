@@ -19,13 +19,15 @@ public:
         size_t prob_depth;
         float temprature;
         bool mem_alloc;
+        bool triangular;
         Config(size_t batch, size_t h, size_t seq, int prob_size = 0, bool mem_alloc = false)
             : batchSize(batch),
               heads(h),
               seq_length(seq),
               prob_depth(prob_size),
               temprature(1.0),
-              mem_alloc(mem_alloc)
+              mem_alloc(mem_alloc),
+              triangular(false)
         {
         }
     };
@@ -36,7 +38,18 @@ public:
 
     void Forward(int bsz, T* vals, const T* attn_mask, cudaStream_t& stream)
     {
-        launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+        if (config_.triangular)
+            launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
+        else
+            launch_attn_softmax_v2(vals,
+                                   attn_mask,
+                                   (config_.seq_length == config_.prob_length),
+                                   bsz,
+                                   config_.heads,
+                                   config_.seq_length,
+                                   config_.prob_length,
+                                   1.0,
+                                   stream);
     }
 
     void Backward(int bsz, T* out_grad, const T* soft_out, cudaStream_t stream)
@@ -52,7 +65,12 @@ public:
     inline size_t GetNumHeads() const { return config_.heads; }
 
     inline size_t GetSeqLength() const { return config_.seq_length; }
-
+    inline void SetTriangularMode(size_t prob_length, size_t seq)
+    {
+        config_.prob_depth = prob_length;
+        config_.seq_length = seq;
+        config_.triangular = true;
+    }
     inline void SetSeqLength(size_t seq_len) { config_.seq_length = seq_len; }
 
 private:

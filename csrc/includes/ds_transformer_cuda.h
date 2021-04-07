@@ -134,6 +134,10 @@ public:
     inline int GetIntermediateSize() const { return _intermediate_size; }
 
     void SetSeqLength(int seq_len);
+    inline void SetTriangularMode(unsigned seq, unsigned prob)
+    {
+        _softmax.SetTriangularMode(prob, seq);
+    }
     inline int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
     inline bool IsTrainingMode() const { return _training; }
