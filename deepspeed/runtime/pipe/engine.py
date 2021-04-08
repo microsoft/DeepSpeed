@@ -917,6 +917,7 @@ class PipelineEngine(DeepSpeedEngine):
         print(f'send 2 -> {self.local_rank}', flush=True)
 
         if self.first_output_send:
+            print(f'SEND FIRST OUTPUT (RANK: {self.local_rank})')
             self.first_output_send = False
             self._send_tensor_meta(outputs, self.next_stage)
         print(f'send 3 -> {self.local_rank}', flush=True)
