@@ -392,9 +392,7 @@ class PipelineEngine(DeepSpeedEngine):
         return self.agg_eval_loss
 
     def inference_batch(self, data_iter):
-        """Inference the pipeline on a batch of data from ``data_iter``. The
-        engine will evaluate ``self.train_batch_size()`` total samples
-        collectively across all workers.
+        """Inference the pipeline on a single batch of data from ``data_iter``.
 
         This method is equivalent to:
 
@@ -405,24 +403,29 @@ class PipelineEngine(DeepSpeedEngine):
                 output = module(batch)
 
         .. warning::
-            A total of ``self.gradient_accumulation_steps()`` entries will be pulled
-            from ``data_iter`` by each pipeline. There must be sufficient
-            data left in ``data_iter`` or else a ``StopIteration`` will halt training.
-
-            DeepSpeed provides a convenience class :class:`deepspeed.utils.RepeatingLoader`
-            that wraps data loaders to automatically restart upon a ``StopIteration``.
+            we're assuming that in inference we a) don't want to calculate loss and b) gradient_accum_steps = 0
 
         Args:
             data_iter (Iterator): Iterator of data to evaluate.
+            data_iter should have dummy labels as deepspeed expects it this way
 
         Returns:
-            The arithmetic mean of the losses computed this batch.
+            logits, presents (NB this is not a general purpose function, it's designed specifically to run with
+            gpt-neox, which will return logits + presents in inference. This is a massive hack.)
         """
         self.module.eval()
         self.total_loss = None
         if self.micro_batches > 1:
             print_rank_0('WARNING: setting g.a.s to 1 in inference')
             self.micro_batches = 1
+        train_batch_fn = self.batch_fn
+        self.set_batch_fn(lambda x: x) # we just want to return `data_iter` as is
+        # deepspeed sends metadata across pipeline stages only once in the first step, then assumes it will stay
+        # constant in inference, the metadata of the tensors being sent across pipe stages may change we need to set
+        # these two flags in order for deepspeed to send the metadata every step, otherwise torch.distributed hangs
+        # silently.
+        self.first_output_send = True
+        self.pipe_recv_buf = None
         if self.is_data_parallel:
             raise NotImplementedError('Inference not yet implemented for pipeline + data parellel')
 
@@ -499,8 +502,9 @@ class PipelineEngine(DeepSpeedEngine):
                     self.summary_writer.add_scalar(event[0], event[1], event[2])
                 self.summary_writer.flush()
 
-        # Restore the training iterator
+        # Restore the training iterator & batch_fn
         self.set_dataiterator(train_iterator)
+        self.set_batch_fn(train_batch_fn)
 
         return logits, presents
 
