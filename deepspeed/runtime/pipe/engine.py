@@ -904,7 +904,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').start()
             self.timers('comms').start()
-        print('send 1')
+        print(f'send 1 -> {self.local_rank}')
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
@@ -914,12 +914,12 @@ class PipelineEngine(DeepSpeedEngine):
             outputs = list(outputs)
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
-        print('send 2')
+        print(f'send 2 -> {self.local_rank}')
 
         if self.first_output_send:
             self.first_output_send = False
             self._send_tensor_meta(outputs, self.next_stage)
-        print('send 3')
+        print(f'send 3 -> {self.local_rank}')
 
         if isinstance(outputs, torch.Tensor):
             p2p.send(outputs, self.next_stage)
@@ -929,19 +929,19 @@ class PipelineEngine(DeepSpeedEngine):
         else:
             raise NotImplementedError('Could not send output of type '
                                       f'{type(outputs)}')
-        print('send 4')
+        print(f'send 4 -> {self.local_rank}')
 
         # Restore the boolean tensor
         if self.module.__class__.__name__ == 'GPT2ModelPipe':
             outputs = list(outputs)
             outputs[-1] = outputs[-1].bool()
             outputs = tuple(outputs)
-        print('send 5')
+        print(f'send 5 -> {self.local_rank}')
 
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').stop()
             self.timers('comms').stop()
-        print('send done')
+        print(f'send done -> {self.local_rank}')
 
     def _exec_send_grads(self, buffer_id):
         if self.wall_clock_breakdown():
