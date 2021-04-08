@@ -418,7 +418,7 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             The arithmetic mean of the losses computed this batch.
         """
-        print('ENTERING')
+        print(f'ENTERING, rank: {self.local_rank}', flush=True)
         self.module.eval()
         self.total_loss = None
 
@@ -427,7 +427,7 @@ class PipelineEngine(DeepSpeedEngine):
         self.set_dataiterator(data_iter)
 
         # Do the work
-        print('DOING SCHED')
+        print(f'DOING SCHED, rank: {self.local_rank}', flush=True)
         sched = schedule.InferenceSchedule(micro_batches=self.micro_batches,
                                            stages=self.num_stages,
                                            stage_id=self.stage_id)
@@ -904,7 +904,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').start()
             self.timers('comms').start()
-        print(f'send 1 -> {self.local_rank}')
+        print(f'send 1 -> {self.local_rank}', flush=True)
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
@@ -914,12 +914,12 @@ class PipelineEngine(DeepSpeedEngine):
             outputs = list(outputs)
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
-        print(f'send 2 -> {self.local_rank}')
+        print(f'send 2 -> {self.local_rank}', flush=True)
 
         if self.first_output_send:
             self.first_output_send = False
             self._send_tensor_meta(outputs, self.next_stage)
-        print(f'send 3 -> {self.local_rank}')
+        print(f'send 3 -> {self.local_rank}', flush=True)
 
         if isinstance(outputs, torch.Tensor):
             p2p.send(outputs, self.next_stage)
@@ -929,19 +929,19 @@ class PipelineEngine(DeepSpeedEngine):
         else:
             raise NotImplementedError('Could not send output of type '
                                       f'{type(outputs)}')
-        print(f'send 4 -> {self.local_rank}')
+        print(f'send 4 -> {self.local_rank}', flush=True)
 
         # Restore the boolean tensor
         if self.module.__class__.__name__ == 'GPT2ModelPipe':
             outputs = list(outputs)
             outputs[-1] = outputs[-1].bool()
             outputs = tuple(outputs)
-        print(f'send 5 -> {self.local_rank}')
+        print(f'send 5 -> {self.local_rank}', flush=True)
 
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').stop()
             self.timers('comms').stop()
-        print(f'send done -> {self.local_rank}')
+        print(f'send done -> {self.local_rank}', flush=True)
 
     def _exec_send_grads(self, buffer_id):
         if self.wall_clock_breakdown():
@@ -1000,11 +1000,11 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('pipe_recv_input').start()
 
         recvd = None
-        print('1')
+        print(f'1 rank: {self.local_rank}', flush=True)
         # Allocate the buffer if necessary
         if self.pipe_recv_buf is None:
             self.pipe_recv_buf = self._recv_tensor_meta(self.prev_stage)
-        print('2')
+        print(f'2 rank: {self.local_rank}', flush=True)
 
         if isinstance(self.pipe_recv_buf, torch.Tensor):
             p2p.recv(self.pipe_recv_buf, self.prev_stage)
@@ -1035,14 +1035,14 @@ class PipelineEngine(DeepSpeedEngine):
 
             for buffer in recvd:
                 buffer.requires_grad = buffer.is_floating_point()
-        print('3')
+        print(f'3 rank: {self.local_rank}', flush=True)
 
         self.pipe_buffers['inputs'][buffer_id] = recvd
-        print('3.1')
+        print(f'3.1 rank: {self.local_rank}', flush=True)
 
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_input').stop()
-        print('DONE RECV ACTIVATION')
+        print(f'DONE RECV ACTIVATION rank: {self.local_rank}', flush=True)
 
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
