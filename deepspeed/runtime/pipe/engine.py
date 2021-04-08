@@ -392,7 +392,7 @@ class PipelineEngine(DeepSpeedEngine):
         return self.agg_eval_loss
 
     def inference_batch(self, data_iter):
-        """Evaluate the pipeline on a batch of data from ``data_iter``. The
+        """Inference the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
 
@@ -418,85 +418,76 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             The arithmetic mean of the losses computed this batch.
         """
-        print(f'ENTERING, rank: {self.local_rank}', flush=True)
         self.module.eval()
         self.total_loss = None
+        if self.micro_batches > 1:
+            print_rank_0('WARNING: setting g.a.s to 1 in inference')
+            self.micro_batches = 1
+        if self.is_data_parallel:
+            raise NotImplementedError('Inference not yet implemented for pipeline + data parellel')
 
         # Use the provided data iterator
         train_iterator = self.data_iterator
         self.set_dataiterator(data_iter)
 
         # Do the work
-        print(f'DOING SCHED, rank: {self.local_rank}', flush=True)
         sched = schedule.InferenceSchedule(micro_batches=self.micro_batches,
                                            stages=self.num_stages,
                                            stage_id=self.stage_id)
         with torch.no_grad():
             self._exec_schedule(sched)
-        print(f'DONE SCHED {self.global_rank}')
 
         # the shapes are variable so we need to first broadcast the shapes, then the tensors themselves
-
-        if not self.is_last_stage():
-            # print(f'1. SENDING FROM SRC RANK: {self.global_rank}')
-            logits, presents = None, None
-        else:
+        if self.is_last_stage():
             logits, presents = self.total_loss
+            logits = logits.clone().detach()
+            presents = presents.clone().detach()
+            logits_shape = list(logits.shape)
+            presents_shape = list(presents.shape)
 
-        #     src_rank = self.grid.stage_to_global(self.num_stages - 1)
-        #     print(f'1. RECVING FROM SRC RANK: {src_rank}')
-        #     print(f'1. CONSTRUCTING TENSORS')
-        #     a = 1
-        #     print(f'1. CONSTRUCTED A')
-        #
-        #     misc = torch.LongTensor([0]).to(self.device)
-        #     print(f'1. CONSTRUCTED MISC')
-        #
-        #     logits_shape_tensor = torch.LongTensor([0] * 3).to(self.device)
-        #     print(f'1. CONSTRUCTED LOGITS')
-        #
-        #     presents_shape_tensor = torch.LongTensor([0] * 6).to(self.device)
-        #     print(f'1. DONE CONSTRUCTING TENSORS')
-        #
-        #
-        #     dist.broadcast(tensor=logits_shape_tensor,
-        #                     src=src_rank)
-        #     dist.broadcast(tensor=presents_shape_tensor,
-        #                     src=src_rank)
-        #     print(f'1. DONE RECVING FROM SRC RANK: {src_rank}')
-        #     logits_shape_tensor = logits_shape_tensor.clone().detach()
-        #     presents_shape_tensor = presents_shape_tensor.clone().detach()
-        #
-        # logits_shape = logits_shape_tensor.tolist()
-        # presents_shape = presents_shape_tensor.tolist()
-        #
-        # if self.is_last_stage():
-        #     print(f'SENDING FROM SRC RANK: {self.global_rank}')
-        #
-        #     # outputs = torch.Tensor([logits, presents]).to(self.device)
-        #     dist.broadcast(tensor=logits,
-        #                     src=self.global_rank,
-        #                     group=self.mpu.get_pipe_parallel_group())
-        #     dist.broadcast(tensor=presents,
-        #                     src=self.global_rank,
-        #                     group=self.mpu.get_pipe_parallel_group())
-        #     print(f'DONE SENDING FROM SRC RANK: {self.global_rank}')
-        #
-        # else:
-        #     logits = torch.zeros(logits_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
-        #     presents = torch.zeros(presents_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
-        #     src_rank = self.grid.stage_to_global(self.num_stages - 1)
-        #     assert src_rank in self.grid.pp_group
-        #     print(f'RECVING FROM SRC RANK: {src_rank}')
-        #     dist.broadcast(tensor=logits,
-        #                     src=src_rank,
-        #                     group=self.grid.get_pipe_parallel_group())
-        #     dist.broadcast(tensor=presents,
-        #                     src=src_rank,
-        #                     group=self.grid.get_pipe_parallel_group())
-        #     logits = logits.clone().detach()
-        #     presents = presents.clone().detach()
-        #     print(f'DONE RECVING FROM SRC RANK: {src_rank}')
+            logits_shape_tensor = torch.LongTensor(logits_shape).to(self.device)
+            presents_shape_tensor = torch.LongTensor(presents_shape).to(self.device)
+            dist.broadcast(tensor=logits_shape_tensor,
+                           src=self.global_rank)
+            dist.broadcast(tensor=presents_shape_tensor,
+                           src=self.global_rank)
+        else:
+            src_rank = self.grid.stage_to_global(self.num_stages - 1)
+            logits_shape_tensor = torch.LongTensor([0] * 3).to(self.device)
+            presents_shape_tensor = torch.LongTensor([0] * 6).to(self.device)
+            dist.broadcast(tensor=logits_shape_tensor,
+                           src=src_rank)
+            dist.broadcast(tensor=presents_shape_tensor,
+                           src=src_rank)
+            logits_shape_tensor = logits_shape_tensor.clone().detach()
+            presents_shape_tensor = presents_shape_tensor.clone().detach()
+
+        logits_shape = logits_shape_tensor.tolist()
+        presents_shape = presents_shape_tensor.tolist()
+
+        if self.is_last_stage():
+            dist.broadcast(tensor=logits,
+                           src=self.global_rank,
+                           group=self.mpu.get_pipe_parallel_group())
+            dist.broadcast(tensor=presents,
+                           src=self.global_rank,
+                           group=self.mpu.get_pipe_parallel_group())
+
+        else:
+            logits = torch.zeros(logits_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(
+                self.device)
+            presents = torch.zeros(presents_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(
+                self.device)
+            src_rank = self.grid.stage_to_global(self.num_stages - 1)
+            assert src_rank in self.grid.pp_group
+            dist.broadcast(tensor=logits,
+                           src=src_rank,
+                           group=self.grid.get_pipe_parallel_group())
+            dist.broadcast(tensor=presents,
+                           src=src_rank,
+                           group=self.grid.get_pipe_parallel_group())
+            logits = logits.clone().detach()
+            presents = presents.clone().detach()
 
         # self.agg_eval_loss = self._aggregate_total_loss()
         if self.tensorboard_enabled():
@@ -511,8 +502,6 @@ class PipelineEngine(DeepSpeedEngine):
         # Restore the training iterator
         self.set_dataiterator(train_iterator)
 
-        # Reset any buffers that may have been populated during the forward passes.
-        # ds_checkpointing.reset()
         return logits, presents
 
     def is_first_stage(self):
@@ -785,7 +774,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.wall_clock_breakdown():
             self.timers('batch_input').stop()
-        # print('DONE LOADING MICROBATCH: ', loaded)
 
     def _send_tensor_meta(self, buffer, recv_stage):
         """ Communicate metadata about upcoming p2p transfers.
@@ -904,7 +892,6 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').start()
             self.timers('comms').start()
-        print(f'send 1 -> {self.local_rank}', flush=True)
         outputs = self.pipe_buffers['outputs'][buffer_id]
 
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
@@ -914,13 +901,10 @@ class PipelineEngine(DeepSpeedEngine):
             outputs = list(outputs)
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
-        print(f'send 2 -> {self.local_rank}', flush=True)
 
         if self.first_output_send:
-            print(f'SEND FIRST OUTPUT (RANK: {self.local_rank})')
             self.first_output_send = False
             self._send_tensor_meta(outputs, self.next_stage)
-        print(f'send 3 -> {self.local_rank}', flush=True)
 
         if isinstance(outputs, torch.Tensor):
             p2p.send(outputs, self.next_stage)
@@ -930,19 +914,16 @@ class PipelineEngine(DeepSpeedEngine):
         else:
             raise NotImplementedError('Could not send output of type '
                                       f'{type(outputs)}')
-        print(f'send 4 -> {self.local_rank}', flush=True)
 
         # Restore the boolean tensor
         if self.module.__class__.__name__ == 'GPT2ModelPipe':
             outputs = list(outputs)
             outputs[-1] = outputs[-1].bool()
             outputs = tuple(outputs)
-        print(f'send 5 -> {self.local_rank}', flush=True)
 
         if self.wall_clock_breakdown():
             self.timers('pipe_send_output').stop()
             self.timers('comms').stop()
-        print(f'send done -> {self.local_rank}', flush=True)
 
     def _exec_send_grads(self, buffer_id):
         if self.wall_clock_breakdown():
@@ -1001,11 +982,9 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('pipe_recv_input').start()
 
         recvd = None
-        print(f'1 rank: {self.local_rank}', flush=True)
         # Allocate the buffer if necessary
         if self.pipe_recv_buf is None:
             self.pipe_recv_buf = self._recv_tensor_meta(self.prev_stage)
-        print(f'2 rank: {self.local_rank}', flush=True)
 
         if isinstance(self.pipe_recv_buf, torch.Tensor):
             p2p.recv(self.pipe_recv_buf, self.prev_stage)
@@ -1036,14 +1015,11 @@ class PipelineEngine(DeepSpeedEngine):
 
             for buffer in recvd:
                 buffer.requires_grad = buffer.is_floating_point()
-        print(f'3 rank: {self.local_rank}', flush=True)
 
         self.pipe_buffers['inputs'][buffer_id] = recvd
-        print(f'3.1 rank: {self.local_rank}', flush=True)
 
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_input').stop()
-        print(f'DONE RECV ACTIVATION rank: {self.local_rank}', flush=True)
 
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
@@ -1278,7 +1254,6 @@ class PipelineEngine(DeepSpeedEngine):
         for step_cmds in pipe_schedule:
             # For each instruction in the step
             for cmd in step_cmds:
-                print(cmd, self.global_rank)
                 if type(cmd) not in self._INSTRUCTION_MAP:
                     raise RuntimeError(
                         f'{self.__class__.__name__} does not understand instruction {repr(cmd)}'
