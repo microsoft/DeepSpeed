@@ -1038,6 +1038,7 @@ class PipelineEngine(DeepSpeedEngine):
         print('3')
 
         self.pipe_buffers['inputs'][buffer_id] = recvd
+        print('3.1')
 
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_input').stop()
