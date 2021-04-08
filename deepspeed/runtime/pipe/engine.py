@@ -439,7 +439,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         if not self.is_last_stage():
             # print(f'1. SENDING FROM SRC RANK: {self.global_rank}')
-            logits, presents = None
+            logits, presents = None, None
         else:
             logits, presents = self.total_loss
 
