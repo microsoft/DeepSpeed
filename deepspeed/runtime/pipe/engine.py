@@ -437,81 +437,67 @@ class PipelineEngine(DeepSpeedEngine):
 
         # the shapes are variable so we need to first broadcast the shapes, then the tensors themselves
 
-        if self.is_last_stage():
-            print(f'1. SENDING FROM SRC RANK: {self.global_rank}')
-
+        if not self.is_last_stage():
+            # print(f'1. SENDING FROM SRC RANK: {self.global_rank}')
+            logits, presents = None
+        else:
             logits, presents = self.total_loss
-            logits = logits.clone().detach()
-            presents = presents.clone().detach()
-            logits_shape = list(logits.shape) # [4, 1, 50304]
-            presents_shape = list(presents.shape) # [12, 2, 1, 4, 12, 64]
-            print(f'1. SENDING CONSTRUCT TENSORS')
 
-            logits_shape_tensor = torch.LongTensor(logits_shape).to(self.device)
-            presents_shape_tensor = torch.LongTensor(presents_shape).to(self.device)
-            dist.broadcast(tensor=logits_shape_tensor,
-                            src=self.global_rank)
-            dist.broadcast(tensor=presents_shape_tensor,
-                            src=self.global_rank)
-            print(f'1. DONE SENDING FROM SRC RANK: {self.global_rank}')
+        #     src_rank = self.grid.stage_to_global(self.num_stages - 1)
+        #     print(f'1. RECVING FROM SRC RANK: {src_rank}')
+        #     print(f'1. CONSTRUCTING TENSORS')
+        #     a = 1
+        #     print(f'1. CONSTRUCTED A')
+        #
+        #     misc = torch.LongTensor([0]).to(self.device)
+        #     print(f'1. CONSTRUCTED MISC')
+        #
+        #     logits_shape_tensor = torch.LongTensor([0] * 3).to(self.device)
+        #     print(f'1. CONSTRUCTED LOGITS')
+        #
+        #     presents_shape_tensor = torch.LongTensor([0] * 6).to(self.device)
+        #     print(f'1. DONE CONSTRUCTING TENSORS')
+        #
+        #
+        #     dist.broadcast(tensor=logits_shape_tensor,
+        #                     src=src_rank)
+        #     dist.broadcast(tensor=presents_shape_tensor,
+        #                     src=src_rank)
+        #     print(f'1. DONE RECVING FROM SRC RANK: {src_rank}')
+        #     logits_shape_tensor = logits_shape_tensor.clone().detach()
+        #     presents_shape_tensor = presents_shape_tensor.clone().detach()
+        #
+        # logits_shape = logits_shape_tensor.tolist()
+        # presents_shape = presents_shape_tensor.tolist()
+        #
+        # if self.is_last_stage():
+        #     print(f'SENDING FROM SRC RANK: {self.global_rank}')
+        #
+        #     # outputs = torch.Tensor([logits, presents]).to(self.device)
+        #     dist.broadcast(tensor=logits,
+        #                     src=self.global_rank,
+        #                     group=self.mpu.get_pipe_parallel_group())
+        #     dist.broadcast(tensor=presents,
+        #                     src=self.global_rank,
+        #                     group=self.mpu.get_pipe_parallel_group())
+        #     print(f'DONE SENDING FROM SRC RANK: {self.global_rank}')
+        #
+        # else:
+        #     logits = torch.zeros(logits_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
+        #     presents = torch.zeros(presents_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
+        #     src_rank = self.grid.stage_to_global(self.num_stages - 1)
+        #     assert src_rank in self.grid.pp_group
+        #     print(f'RECVING FROM SRC RANK: {src_rank}')
+        #     dist.broadcast(tensor=logits,
+        #                     src=src_rank,
+        #                     group=self.grid.get_pipe_parallel_group())
+        #     dist.broadcast(tensor=presents,
+        #                     src=src_rank,
+        #                     group=self.grid.get_pipe_parallel_group())
+        #     logits = logits.clone().detach()
+        #     presents = presents.clone().detach()
+        #     print(f'DONE RECVING FROM SRC RANK: {src_rank}')
 
-        else:
-            src_rank = self.grid.stage_to_global(self.num_stages - 1)
-            print(f'1. RECVING FROM SRC RANK: {src_rank}')
-            print(f'1. CONSTRUCTING TENSORS')
-            a = 1
-            print(f'1. CONSTRUCTED A')
-
-            misc = torch.LongTensor([0]).to(self.device)
-            print(f'1. CONSTRUCTED MISC')
-
-            logits_shape_tensor = torch.LongTensor([0] * 3).to(self.device)
-            print(f'1. CONSTRUCTED LOGITS')
-
-            presents_shape_tensor = torch.LongTensor([0] * 6).to(self.device)
-            print(f'1. DONE CONSTRUCTING TENSORS')
-
-
-            dist.broadcast(tensor=logits_shape_tensor,
-                            src=src_rank)
-            dist.broadcast(tensor=presents_shape_tensor,
-                            src=src_rank)
-            print(f'1. DONE RECVING FROM SRC RANK: {src_rank}')
-            logits_shape_tensor = logits_shape_tensor.clone().detach()
-            presents_shape_tensor = presents_shape_tensor.clone().detach()
-
-        logits_shape = logits_shape_tensor.tolist()
-        presents_shape = presents_shape_tensor.tolist()
-
-        if self.is_last_stage():
-            print(f'SENDING FROM SRC RANK: {self.global_rank}')
-
-            # outputs = torch.Tensor([logits, presents]).to(self.device)
-            dist.broadcast(tensor=logits,
-                            src=self.global_rank,
-                            group=self.mpu.get_pipe_parallel_group())
-            dist.broadcast(tensor=presents,
-                            src=self.global_rank,
-                            group=self.mpu.get_pipe_parallel_group())
-            print(f'DONE SENDING FROM SRC RANK: {self.global_rank}')
-
-        else:
-            logits = torch.zeros(logits_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
-            presents = torch.zeros(presents_shape, dtype=torch.half if self.fp16_enabled() else torch.float32).to(self.device)
-            src_rank = self.grid.stage_to_global(self.num_stages - 1)
-            assert src_rank in self.grid.pp_group
-            print(f'RECVING FROM SRC RANK: {src_rank}')
-            dist.broadcast(tensor=logits,
-                            src=src_rank,
-                            group=self.grid.get_pipe_parallel_group())
-            dist.broadcast(tensor=presents,
-                            src=src_rank,
-                            group=self.grid.get_pipe_parallel_group())
-            logits = logits.clone().detach()
-            presents = presents.clone().detach()
-            print(f'DONE RECVING FROM SRC RANK: {src_rank}')
-
-        print(f'LOGITS: {logits.shape}, PRESENTS: {presents.shape}, IS_DATA_PARALLEL: {self.is_data_parallel}')
         # self.agg_eval_loss = self._aggregate_total_loss()
         if self.tensorboard_enabled():
             if self.global_rank == 0:
@@ -527,7 +513,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Reset any buffers that may have been populated during the forward passes.
         # ds_checkpointing.reset()
-        print('RETURNING LOGITS / PRESENTS')
         return logits, presents
 
     def is_first_stage(self):
