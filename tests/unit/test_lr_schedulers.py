@@ -4,7 +4,7 @@ import argparse
 import pytest
 import json
 import os
-from common import distributed_test, skipIfRocm
+from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 from deepspeed.runtime.lr_schedules import LR_RANGE_TEST, LR_RANGE_TEST_MIN_LR, LR_RANGE_TEST_STEP_RATE, LR_RANGE_TEST_STEP_SIZE, LR_RANGE_TEST_STAIRCASE
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WARMUP_MIN_LR, WARMUP_MAX_LR, WARMUP_NUM_STEPS

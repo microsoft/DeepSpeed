@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 
-from common import distributed_test, skipIfRocm
+from common import distributed_test
 
 import pytest
 

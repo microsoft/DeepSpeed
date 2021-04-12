@@ -5,7 +5,7 @@ import pytest
 import json
 import os
 import numpy as np
-from common import distributed_test, skipIfRocm
+from common import distributed_test
 from simple_model import SimpleModel, args_from_dict
 
 

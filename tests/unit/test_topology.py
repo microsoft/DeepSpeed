@@ -157,7 +157,7 @@ def test_topology_comm_list():
     assert topo.get_axis_comm_lists('jeff') == []
 
 
-@skipIfRocm
+@skipIfRocm()
 @distributed_test(world_size=4)
 def test_grid_pipe_data():
     topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
@@ -183,10 +183,8 @@ def test_grid_pipe_data():
     data_group = grid.dp_group
     assert torch.all(rank_tensor == sum(data_group))
 
-@skipIfRocm
 @distributed_test(world_size=4)
 def test_stage_to_global():
-    #pytest.skip("Skipped for now as cupy is not available on ROCm")
     topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
     grid = Grid(topology=topo)
 

@@ -7,7 +7,7 @@ import json
 import os
 import numpy as np
 import time
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -17,8 +17,8 @@ if TORCH_MAJOR < 1 or TORCH_MINOR < 8:
                 allow_module_level=True)
 
 
+@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_fp16_basic(tmpdir):
-    pytest.skip("Skipped for now as cupy is not available on ROCm")
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -61,8 +61,8 @@ def test_onebitadam_fp16_basic(tmpdir):
     _test_onebitadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
+@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_fp32_basic(tmpdir):
-    pytest.skip("Skipped for now as cupy is not available on ROCm")
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -101,8 +101,8 @@ def test_onebitadam_fp32_basic(tmpdir):
     _test_onebitadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
+@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_exp_avg_mask(tmpdir):
-    pytest.skip("Skipped for now as cupy is not available on ROCm")
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -163,8 +163,8 @@ def test_onebitadam_exp_avg_mask(tmpdir):
     _test_onebitadam_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
 
+@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_checkpointing(tmpdir):
-    pytest.skip("Skipped for now as cupy is not available on ROCm")
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
@@ -301,8 +301,8 @@ def test_onebitadam_checkpointing(tmpdir):
                                    hidden_dim=hidden_dim)
 
 
+@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_compressed_allreduce_basic(tmpdir):
-    pytest.skip("Skipped for now as cupy is not available on ROCm")
     @distributed_test(world_size=[1, 2])
     def _test_compressed_allreduce_basic():
         from deepspeed.runtime.comm.nccl import NcclBackend

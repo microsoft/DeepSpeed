@@ -56,7 +56,7 @@ def simple_args(tmpdir):
     return args
 
 
-@skipIfRocm
+@skipIfRocm()
 def test_pipe_module_sequential(sequential_model, simple_args):
     batch_input = torch.randn(1, HIDDEN_DIM)
 
