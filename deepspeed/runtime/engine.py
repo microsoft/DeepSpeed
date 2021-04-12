@@ -111,7 +111,7 @@ class DeepSpeedEngine(Module):
                  dist_init_required=None,
                  collate_fn=None,
                  config_params=None,
-                 dont_change_device=False
+                 dont_change_device=False,
                  # For stage2 complete_grad_norm_calculation_for_cpu_offload
                  # Enable this to avoid: https://github.com/microsoft/DeepSpeed/issues/707
                  # torch.nn.parallel.DistributedDataParallel has the same option with similar usage
