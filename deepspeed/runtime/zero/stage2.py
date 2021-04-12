@@ -893,13 +893,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     total_norm += param_norm.item()**2
                 else:
                     # As unused parameters in modules may not be expected sometimes,
-                    # add an explicit error msg when it occurred and an option to avoid the error
+                    # add an explicit error msg when it occurred and an option to
+                    # avoid the error
                     # Error msg adapted from torch.nn.parallel.DistributedDataParallel
                     assert self.find_unused_parameters, """
-                        This error indicates that your module has parameters that were not used in producing loss.
+                        This error indicates that your module has parameters that
+                        were not used in producing loss.
                         You can enable unused parameter detection by
-                        (1) passing the keyword argument `find_unused_parameters=True` to `deepspeed.runtime.engine.DeepSpeedEngine`;
-                        (2) making sure all trainable parameters and `forward` function outputs participate in calculating loss.
+                        (1) passing the keyword argument `find_unused_parameters=True`
+                            to `deepspeed.runtime.engine.DeepSpeedEngine`;
+                        (2) making sure all trainable parameters and `forward` function
+                            outputs participate in calculating loss.
                     """
 
 
