@@ -111,7 +111,11 @@ class DeepSpeedEngine(Module):
                  dist_init_required=None,
                  collate_fn=None,
                  config_params=None,
-                 dont_change_device=False):
+                 dont_change_device=False
+                 # For stage2 complete_grad_norm_calculation_for_cpu_offload
+                 # Enable this to avoid: https://github.com/microsoft/DeepSpeed/issues/707
+                 # torch.nn.parallel.DistributedDataParallel has the same option with similar usage
+                 find_unused_parameters=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -133,6 +137,7 @@ class DeepSpeedEngine(Module):
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+        self.find_unused_parameters = find_unused_parameters
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -772,7 +777,8 @@ class DeepSpeedEngine(Module):
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                find_unused_parameters=self.find_unused_parameters)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
