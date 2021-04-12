@@ -37,7 +37,7 @@ def split_half_float_double(tensors):
     ]
     buckets = []
     for i, dtype in enumerate(dtypes):
-        bucket = [t for t in tensors if t is not None and t.type() == dtype]
+        bucket = [t for t in tensors if t.type() == dtype]
         if bucket:
             buckets.append(bucket)
     return buckets
@@ -477,6 +477,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.overlap_comm:
             torch.cuda.synchronize()
+            # It is safe to clear previously reduced grads of other partitions
+            self._clear_previous_reduced_grads()
 
         if self.cpu_offload is False:
             for i, _ in enumerate(self.fp16_groups):
@@ -638,6 +640,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             param.grad.data = new_grad_tensor.data.view_as(param.grad)
 
         self.elements_in_ipg_bucket += param.numel()
+
+        assert param.grad is not None, f"rank {dist.get_rank()} - Invalid to reduce Param {param_id} with None gradient"
+
         self.grads_in_ipg_bucket.append(param.grad)
         self.params_in_ipg_bucket.append((i, param, param_id))
 
@@ -878,8 +883,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for p in params:
             if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                 param_id = self.get_param_id(p)
-                param_norm = self.norm_for_param_grads[param_id]
-                total_norm += param_norm.item()**2
+                # as some model have trainable parameters but skipped in training,
+                # their backward hooks in self.create_reduce_and_remove_grad_hooks() will not run,
+                # so they have no norm_for_param_grads
+                if param_id in self.norm_for_param_grads:
+                    param_norm = self.norm_for_param_grads[param_id]
+                    total_norm += param_norm.item()**2
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -965,7 +974,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                 if not self.is_param_in_current_partition[param_id]:
                     if self.overlap_comm and self.contiguous_gradients is False:
-                        # Clear the previous grads during the next reduction
+                        # Clear grads of other partitions during the next reduction
                         # to avoid clearing them before the reduction is complete.
                         if self.previous_reduced_grads is None:
                             self.previous_reduced_grads = []
@@ -1078,16 +1087,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         return tensor
 
+    def _clear_previous_reduced_grads(self):
+        if self.previous_reduced_grads is not None:
+            for param in self.previous_reduced_grads:
+                param.grad = None
+            self.previous_reduced_grads = None
+
     #if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
         if self.overlap_comm:
             torch.cuda.synchronize()
-            if self.previous_reduced_grads is not None:
-                # previous_reduced_grads has the previous reduced grads,
-                # now it is safe to clear.
-                for param in self.previous_reduced_grads:
-                    param.grad = None
-                self.previous_reduced_grads = None
+            # It is safe to clear the previously reduced grads of other partitions
+            self._clear_previous_reduced_grads()
             stream = self.reduction_stream
         else:
             stream = torch.cuda.current_stream()

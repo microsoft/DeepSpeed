@@ -60,7 +60,7 @@ The Adam optimizer also supports the following two params keys/values in additio
 | torch\_adam   | Use torch's implementation of adam instead of our fused adam implementation | false   |
 | adam\_w\_mode | Apply L2 regularization (also known as AdamW)                               | true    |
 
-  Another example of ***optimizer*** with 1-bit Adam specific parameters is as follows.
+  Another example of ***optimizer*** with 1-bit Adam
 
 ```json
 "optimizer": {
@@ -74,10 +74,19 @@ The Adam optimizer also supports the following two params keys/values in additio
       "eps": 1e-8,
       "weight_decay": 3e-7,
       "freeze_step": 400,
-      "cuda_aware": true
+      "cuda_aware": false,
+      "comm_backend_name": "nccl"
     }
   }
 ```
+
+The 1-bit Adam optimizer supports the following three params keys/values in addition to the standard Adam (learn more in our [tutorial](/tutorials/onebit-adam/)):
+
+| "params" key  | Description                                                                 | Default |
+| ------------- | --------------------------------------------------------------------------- | ------- |
+| freeze\_step   | Number of warm up steps before 1-bit compression gets applied to the communication | 100000   |
+| cuda\_aware | To indicate that the underlying MPI library supports CUDA-Aware communication         | false    |
+| comm\_backend\_name | To indicate which backend implementation to use                               | "nccl"   |
 
 ### Scheduler Parameters
 
@@ -247,7 +256,8 @@ Enabling and configuring ZeRO memory optimizations
     "stage3_prefetch_bucket_size" : 5e8,
     "stage3_param_persistence_threshold" : 1e6,
     "sub_group_size" : 1e12,
-    "elastic_checkpoint" : [true|false]
+    "elastic_checkpoint" : [true|false],
+    "stage3_gather_fp16_weights_on_model_save": [true|false]
     }
 ```
 
@@ -341,6 +351,11 @@ Enabling and configuring ZeRO memory optimizations
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
 
+
+***stage3_gather_fp16_weights_on_model_save***: [boolean]
+| Description                                                                                                                                                          | Default |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Consolidate the weights before saving the model by `save_fp16_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gather the weights when this option is enabled and then saves the fp16 model weights. | `False` |
 
 ### Logging
 

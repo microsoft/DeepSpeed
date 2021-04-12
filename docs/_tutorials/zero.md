@@ -3,7 +3,7 @@ title: "Zero Redundancy Optimizer (ZeRO)"
 ---
 If you have not done so already, we advise that you read the DeepSpeed tutorials on [Getting Started](/getting-started/) and [Megatron-LM GPT-2](/tutorials/megatron/) before stepping through this tutorial.
 
-In this tutorial, we will apply the ZeRO optimizer to the [Megatron-LM GPT-2](https://github.com/NVIDIA/Megatron-LM) model. ZeRO is a powerful set of memory optimization techniques that enable effective FP16 training of large models with trillons of parameters, such as [GPT-2](https://openai.com/blog/better-language-models/) and [Turing-NLG 17B](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/). Compared to the alternative model parallelism approaches for training large models, a key appeal of ZeRO is that no model code modifications are required. As this tutorial will demonstrate, *using ZeRO in a DeepSpeed model is quick and easy because all you need is to change a few configurations in the DeepSpeed configuration JSON*. No code changes are needed.
+In this tutorial, we will apply the ZeRO optimizer to the [Megatron-LM GPT-2](https://github.com/NVIDIA/Megatron-LM) model. ZeRO is a powerful set of memory optimization techniques that enable effective FP16 training of large models with trillions of parameters, such as [GPT-2](https://openai.com/blog/better-language-models/) and [Turing-NLG 17B](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/). Compared to the alternative model parallelism approaches for training large models, a key appeal of ZeRO is that no model code modifications are required. As this tutorial will demonstrate, *using ZeRO in a DeepSpeed model is quick and easy because all you need is to change a few configurations in the DeepSpeed configuration JSON*. No code changes are needed.
 
 ## ZeRO Overview
 ZeRO leverages the aggregate computation and memory resources of data parallelism to reduce the memory and compute requirements of each device (GPU) used for model training. ZeRO reduces the memory consumption of each GPU by partitioning the various model training states (weights, gradients, and optimizer states) across the available devices (GPUs and CPUs) in the distributed training hardware. Concretely, ZeRO is being implemented as incremental stages of optimizations, where optimizations in earlier stages are available in the later stages. To deep dive into ZeRO, please see our [paper](https://arxiv.org/abs/1910.02054v3).
@@ -122,7 +122,7 @@ configurations is available [here](/docs/config-json/#zero-optimizations-for-fp1
     "stage3_max_live_parameters": 6000000,
     "stage3_max_reuse_distance": 100000000,
     "stage3_prefetch_bucket_size": 200000,
-    "stage3_param_persitance_threshold": 100000,
+    "stage3_param_persistence_threshold": 100000,
     "reduce_bucket_size": 3000000,
     "sub_group_size": 1e6
   }
@@ -226,7 +226,7 @@ class ParallelTransformerLayer(MegatronModule):
 
 #### Allocating Massive Megatron-LM Models
 
-We make two further changes to model initalization in order to support models
+We make two further changes to model initialization in order to support models
 that exceed *local* system memory, but not *total* system memory.
 
 1. Allocate the model in a memory-scalable fashion. The model parameters will
@@ -259,6 +259,44 @@ for more details.
         # Initialize the position embeddings.
         self.init_method(self.position_embeddings.weight)
     ```
+
+## Extracting weights
+
+If you need to take the pretrained weights out of Deepspeed here is what you can do for getting fp16 weights:
+
+- under ZeRO-2 `state_dict` contains the fp16 model weights and these can be saved normally with `torch.save`.
+- under ZeRO-3 `state_dict` contains just the placeholders since the model weights are partitioned across multiple GPUs. If you want to get to these weights enable:
+
+```
+    "zero_optimization": {
+        "stage3_gather_fp16_weights_on_model_save": true
+    },
+```
+And then save the model using:
+
+```
+            if self.deepspeed:
+                self.deepspeed.save_fp16_model(output_dir, output_file)
+```
+
+Because it requires consolidation of the weights on one GPU it can be slow and memory demanding, so only use this feature when needed.
+
+Note that if `stage3_gather_fp16_weights_on_model_save` is `False`, no weights will be saved (again, because `state_dict` doesn't have them.
+You can use this method to save ZeRO-2 weights as well.
+
+If you'd like to get the fp32 weights, we supply a special script that can do offline consolidation. It requires no configuration files or GPUs. Here is an example of its usage:
+
+```
+$ cd /path/to/checkpoints_dir
+$ ./zero_to_fp32.py global_step1 pytorch_model.bin
+Processing zero checkpoint at global_step1
+Detected checkpoint of type zero stage 3, world_size: 2
+Saving fp32 state dict to pytorch_model.bin (total_numel=60506624)
+```
+
+The `zero_to_fp32.py` gets created automatically when you save a checkpoint.
+
+Note: currently this script uses 2x memory (general RAM) of the size of the final checkpoint.
 
 
 Congratulations! You have completed the ZeRO tutorial.
