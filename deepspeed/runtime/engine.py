@@ -100,24 +100,25 @@ def print_configuration(args, name):
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
-    def __init__(self,
-                 args,
-                 model,
-                 optimizer=None,
-                 model_parameters=None,
-                 training_data=None,
-                 lr_scheduler=None,
-                 mpu=None,
-                 dist_init_required=None,
-                 collate_fn=None,
-                 config_params=None,
-                 dont_change_device=False,
-                 # For stage2 complete_grad_norm_calculation_for_cpu_offload
-                 # Enable this option to avoid:
-                 # https://github.com/microsoft/DeepSpeed/issues/707
-                 # torch.nn.parallel.DistributedDataParallel has the same option with
-                 # similar usage
-                 find_unused_parameters=False):
+    def __init__(
+        self,
+        args,
+        model,
+        optimizer=None,
+        model_parameters=None,
+        training_data=None,
+        lr_scheduler=None,
+        mpu=None,
+        dist_init_required=None,
+        collate_fn=None,
+        config_params=None,
+        dont_change_device=False,
+        # For stage2 complete_grad_norm_calculation_for_cpu_offload
+        # Enable this option to avoid:
+        # https://github.com/microsoft/DeepSpeed/issues/707
+        # torch.nn.parallel.DistributedDataParallel has the same option with
+        # similar usage
+        find_unused_parameters=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
