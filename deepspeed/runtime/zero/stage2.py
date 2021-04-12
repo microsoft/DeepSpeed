@@ -906,7 +906,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                             outputs participate in calculating loss.
                     """
 
-
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
 
