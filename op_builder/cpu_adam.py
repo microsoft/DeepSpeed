@@ -42,7 +42,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         result = subprocess.check_output('lscpu', shell=True)
         result = result.decode('utf-8').strip().lower()
         if 'genuineintel' in result:
-            if 'avx512' in result:
+            if not is_rocm_pytorch and 'avx512' in result:
                 return '-D__AVX512__'
             elif 'avx2' in result:
                 return '-D__AVX256__'
