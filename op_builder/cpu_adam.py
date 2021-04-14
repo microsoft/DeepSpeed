@@ -1,3 +1,6 @@
+"""
+Copyright 2020 The Microsoft DeepSpeed Team
+"""
 import os
 import torch
 import subprocess
@@ -36,7 +39,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
                 return '-D__AVX512__'
             elif 'avx2' in result:
                 return '-D__AVX256__'
-        return ''
+        return '-D__SCALAR__'
 
     def cxx_args(self):
         CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")

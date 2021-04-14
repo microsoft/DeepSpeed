@@ -3,11 +3,11 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from deepspeed.runtime.config_utils import get_scalar_param
+from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigObject
 from deepspeed.profiling.constants import *
 
 
-class DeepSpeedFlopsProfilerConfig(object):
+class DeepSpeedFlopsProfilerConfig(DeepSpeedConfigObject):
     def __init__(self, param_dict):
         """
         docstring
