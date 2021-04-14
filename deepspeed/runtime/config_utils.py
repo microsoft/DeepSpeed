@@ -14,7 +14,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
     """
     This class overrides ``json.dumps`` default formatter.
 
-    This version keeps everything as normal except formats floats bigger than 1e3 using scientific notation.
+    This version keeps everything as normal except formats numbers bigger than 1e3 using scientific notation.
 
     Just pass ``cls=ScientificNotationEncoder`` to ``json.dumps`` to activate it
 
@@ -24,7 +24,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
         prefix_close = " " * level * indent
         level += 1
         prefix = " " * level * indent
-        if isinstance(o, float):
+        if isinstance(o, float) or isinstance(o, int):
             if o > 1e3:
                 return f"{o:e}"
             else:
