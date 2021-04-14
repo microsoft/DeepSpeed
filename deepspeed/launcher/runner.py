@@ -262,19 +262,22 @@ def main(args=None):
             resource_preset += f" --include={args.include}"
         if len(args.exclude):
             resource_preset += f" --exclude={args.exclude}"
+        detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
         if len(resource_preset):
             print(
-                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices} but ignoring it because of {resource_preset}. Use either include/exclude rules or CUDA_VISIBLE_DEVICES but not both at the same time."
+                f"{detected_str} but ignoring it because of {resource_preset}. Use either include/exclude rules or CUDA_VISIBLE_DEVICES but not both at the same time."
             )
         elif args.num_nodes > 1:
             print(
-                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices} but ignoring it because of --num_nodes={args.num_nodes}. CUDA_VISIBLE_DEVICES can be used to override local devices only."
+                f"{detected_str} but ignoring it because of --num_nodes={args.num_nodes}. CUDA_VISIBLE_DEVICES can be used to override local devices only."
+            )
+        elif args.num_gpus > 0:
+            print(
+                f"{detected_str} but ignoring it because of --num_gpus={args.num_gpus}. CUDA_VISIBLE_DEVICES can be used when no other resource restrictions are defined."
             )
         else:
             args.include = f"localhost:{cuda_visible_devices}"
-            print(
-                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}: setting --include={args.include}"
-            )
+            print(f"{detected_str}: setting --include={args.include}")
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
     if args.num_nodes >= 0 or args.num_gpus >= 0:
