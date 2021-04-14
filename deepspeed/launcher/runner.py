@@ -254,6 +254,29 @@ def encode_world_info(world_info):
 def main(args=None):
     args = parse_args(args)
 
+    # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if len(cuda_visible_devices):
+        resource_preset = ""
+        if len(args.include):
+            resource_preset += f" --include={args.include}"
+        if len(args.exclude):
+            resource_preset += f" --exclude={args.exclude}"
+        if len(resource_preset):
+            print(
+                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices} but ignoring it because of {resource_preset}. Use either include/exclude rules or CUDA_VISIBLE_DEVICES but not both at the same time."
+            )
+        elif args.num_nodes > 1:
+            print(
+                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices} but ignoring it because of --num_nodes={args.num_nodes}. CUDA_VISIBLE_DEVICES can be used to override local devices only."
+            )
+        else:
+            args.include = f"localhost:{cuda_visible_devices}"
+            print(
+                f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}: setting --include={args.include}"
+            )
+        del os.environ["CUDA_VISIBLE_DEVICES"]
+
     if args.num_nodes >= 0 or args.num_gpus >= 0:
         if args.include != "" or args.exclude != "":
             raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
