@@ -261,7 +261,7 @@ def main(args=None):
         if len(args.include) or len(
                 args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
             print(
-                f"{detected_str} but ignoring it because one or more of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
+                f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
         else:
             args.include = f"localhost:{cuda_visible_devices}"
