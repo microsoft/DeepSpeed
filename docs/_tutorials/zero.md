@@ -122,7 +122,7 @@ configurations is available [here](/docs/config-json/#zero-optimizations-for-fp1
     "stage3_max_live_parameters": 6000000,
     "stage3_max_reuse_distance": 100000000,
     "stage3_prefetch_bucket_size": 200000,
-    "stage3_param_persitance_threshold": 100000,
+    "stage3_param_persistence_threshold": 100000,
     "reduce_bucket_size": 3000000,
     "sub_group_size": 1e6
   }
@@ -259,6 +259,44 @@ for more details.
         # Initialize the position embeddings.
         self.init_method(self.position_embeddings.weight)
     ```
+
+## Extracting weights
+
+If you need to take the pretrained weights out of Deepspeed here is what you can do for getting fp16 weights:
+
+- under ZeRO-2 `state_dict` contains the fp16 model weights and these can be saved normally with `torch.save`.
+- under ZeRO-3 `state_dict` contains just the placeholders since the model weights are partitioned across multiple GPUs. If you want to get to these weights enable:
+
+```
+    "zero_optimization": {
+        "stage3_gather_fp16_weights_on_model_save": true
+    },
+```
+And then save the model using:
+
+```
+            if self.deepspeed:
+                self.deepspeed.save_fp16_model(output_dir, output_file)
+```
+
+Because it requires consolidation of the weights on one GPU it can be slow and memory demanding, so only use this feature when needed.
+
+Note that if `stage3_gather_fp16_weights_on_model_save` is `False`, no weights will be saved (again, because `state_dict` doesn't have them.
+You can use this method to save ZeRO-2 weights as well.
+
+If you'd like to get the fp32 weights, we supply a special script that can do offline consolidation. It requires no configuration files or GPUs. Here is an example of its usage:
+
+```
+$ cd /path/to/checkpoints_dir
+$ ./zero_to_fp32.py global_step1 pytorch_model.bin
+Processing zero checkpoint at global_step1
+Detected checkpoint of type zero stage 3, world_size: 2
+Saving fp32 state dict to pytorch_model.bin (total_numel=60506624)
+```
+
+The `zero_to_fp32.py` gets created automatically when you save a checkpoint.
+
+Note: currently this script uses 2x memory (general RAM) of the size of the final checkpoint.
 
 
 Congratulations! You have completed the ZeRO tutorial.
