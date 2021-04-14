@@ -34,7 +34,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
                 f'\n{prefix}"{k}": {self.iterencode(v, level=level)}' for k,
                 v in o.items()
             ]
-            return "{" + ', '.join(x) + f"\n{prefix_close}}}"
+            return "{" + ', '.join(x) + f"\n{prefix_close}" + "}"
         elif isinstance(o, Sequence) and not isinstance(o, str):
             return f"[{ f', '.join(map(self.iterencode, o)) }]"
         return "\n, ".join(super().iterencode(o, _one_shot))
