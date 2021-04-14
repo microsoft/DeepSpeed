@@ -6,7 +6,38 @@ Licensed under the MIT license.
 Collection of DeepSpeed configuration utilities
 """
 import json
-from collections import Counter
+from collections import Counter, Mapping, Sequence
+
+
+# adapted from https://stackoverflow.com/a/50701137/9201239
+class ScientificNotationEncoder(json.JSONEncoder):
+    """
+    This class overrides ``json.dumps`` default formatter.
+
+    This version keeps everything as normal except formats floats bigger than 1e3 using scientific notation.
+
+    Just pass ``cls=ScientificNotationEncoder`` to ``json.dumps`` to activate it
+
+    """
+    def iterencode(self, o, _one_shot=False, level=0):
+        indent = self.indent if self.indent is not None else 4
+        prefix_close = " " * level * indent
+        level += 1
+        prefix = " " * level * indent
+        if isinstance(o, float):
+            if o > 1e3:
+                return f"{o:e}"
+            else:
+                return f"{o}"
+        elif isinstance(o, Mapping):
+            x = [
+                f'\n{prefix}"{k}": {self.iterencode(v, level=level)}' for k,
+                v in o.items()
+            ]
+            return "{" + ', '.join(x) + f"\n{prefix_close}}}"
+        elif isinstance(o, Sequence) and not isinstance(o, str):
+            return f"[{ f', '.join(map(self.iterencode, o)) }]"
+        return "\n, ".join(super().iterencode(o, _one_shot))
 
 
 class DeepSpeedConfigObject(object):
@@ -17,7 +48,12 @@ class DeepSpeedConfigObject(object):
         return self.__dict__
 
     def __repr__(self):
-        return json.dumps(self.__dict__, sort_keys=True, indent=4)
+        return json.dumps(
+            self.__dict__,
+            sort_keys=True,
+            indent=4,
+            cls=ScientificNotationEncoder,
+        )
 
 
 def get_scalar_param(param_dict, param_name, param_default_value):
