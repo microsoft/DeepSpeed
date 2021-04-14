@@ -257,23 +257,11 @@ def main(args=None):
     # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
     cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
     if len(cuda_visible_devices):
-        resource_preset = ""
-        if len(args.include):
-            resource_preset += f" --include={args.include}"
-        if len(args.exclude):
-            resource_preset += f" --exclude={args.exclude}"
         detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
-        if len(resource_preset):
+        if len(args.include) or len(
+                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
             print(
-                f"{detected_str} but ignoring it because of {resource_preset}. Use either include/exclude rules or CUDA_VISIBLE_DEVICES but not both at the same time."
-            )
-        elif args.num_nodes > 1:
-            print(
-                f"{detected_str} but ignoring it because of --num_nodes={args.num_nodes}. CUDA_VISIBLE_DEVICES can be used to override local devices only."
-            )
-        elif args.num_gpus > 0:
-            print(
-                f"{detected_str} but ignoring it because of --num_gpus={args.num_gpus}. CUDA_VISIBLE_DEVICES can be used when no other resource restrictions are defined."
+                f"{detected_str} but ignoring it because one or more of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
         else:
             args.include = f"localhost:{cuda_visible_devices}"
