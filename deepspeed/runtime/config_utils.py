@@ -24,7 +24,9 @@ class ScientificNotationEncoder(json.JSONEncoder):
         prefix_close = " " * level * indent
         level += 1
         prefix = " " * level * indent
-        if isinstance(o, float) or isinstance(o, int):
+        if isinstance(o, bool):
+            return "true" if o else "false"
+        elif isinstance(o, float) or isinstance(o, int):
             if o > 1e3:
                 return f"{o:e}"
             else:
