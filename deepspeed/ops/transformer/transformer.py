@@ -191,7 +191,7 @@ class DeepSpeedTransformerFunction(Function):
                                            device=input.device,
                                            dtype=input.dtype)),
                               1)
-            input_mask = torch.cat((input_mask, torch.ones((inp_size[0], input_mask.shape[1], input_mask.shape[2], \
+            input_mask = torch.cat((input_mask, torch.ones((input_mask.shape[0], input_mask.shape[1], input_mask.shape[2], \
                                             (16 - (inp_size[1] % 16))), device=input_mask.device, dtype=input_mask.dtype) * -10000), 3)
 
         (output,
