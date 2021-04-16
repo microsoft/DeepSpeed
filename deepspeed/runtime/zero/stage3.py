@@ -2890,6 +2890,7 @@ def estimate_zero3_mem_needs(model,
     return int(cpu_mem), int(gpu_mem), total_params, largest_layer_params
 
 
+import math
 def estimate_zero3_mem_needs_all(model,
                                  one_node_gpus=1,
                                  total_gpus=1,
@@ -2901,11 +2902,11 @@ def estimate_zero3_mem_needs_all(model,
         enabled.append(f"zero_init={1 if zero_init else 0}")
         return ", ".join(enabled)
 
-    nodes = total_gpus / one_node_gpus
+    nodes = math.ceil(total_gpus / one_node_gpus)
     print(
         f"Estimated memory need for params, optim states and gradient for a setup with {nodes} nodes, {one_node_gpus} GPUs per node:"
     )
-    print(" per CPU  |  per GPU |   Options")
+    print("  per CPU  |  per GPU |   Options")
     for cpu_offload in [True, False]:
         for cpu_offload_params in [True, False]:
             if not cpu_offload and cpu_offload_params:
