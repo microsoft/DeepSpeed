@@ -2904,7 +2904,7 @@ def estimate_zero3_mem_needs_all(model,
 
     nodes = math.ceil(total_gpus / one_node_gpus)
     print(
-        f"Estimated memory need for params, optim states and gradient for a setup with {nodes} nodes, {one_node_gpus} GPUs per node:"
+        f"Estimated memory needed for params, optim states and gradients for a setup with {nodes} nodes, {one_node_gpus} GPUs per node:"
     )
     print("  per CPU  |  per GPU |   Options")
     for cpu_offload in [True, False]:
@@ -2917,4 +2917,4 @@ def estimate_zero3_mem_needs_all(model,
                 options_str = format_options(cpu_offload=cpu_offload,
                                              cpu_offload_params=cpu_offload_params,
                                              zero_init=zero_init)
-                print(f" {cpu_mem>>20:7}MB | {gpu_mem>>20:6}MB | {options_str}")
+                print(f" {cpu_mem/2**30:7.2f}GB | {gpu_mem/2**30:6.2f}GB | {options_str}")
