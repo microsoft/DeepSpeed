@@ -2833,3 +2833,87 @@ def _handle_overflow(cpu_sum, x, i):
         logger.info(
             f"rank {rank} detected overflow {cpu_sum} in tensor {i}:{t_i} shape {x.shape}"
         )
+
+
+def estimate_zero3_mem_needs(model,
+                             one_node_gpus=1,
+                             total_gpus=1,
+                             cpu_offload=True,
+                             cpu_offload_params=True,
+                             zero_init=True,
+                             additional_buffer_factor=1.5):
+
+    gpus_factor = one_node_gpus / total_gpus
+
+    # shared params calculated only once
+    total_params = sum(
+        dict((p.data_ptr(),
+              p.numel()) for p in model.parameters()).values())
+
+    largest_layer_params = 0
+    for m in model.modules():
+        # assuming no shared params within a single layer
+        layer_params = sum(p.numel() for p in m.parameters(recurse=False))
+        largest_layer_params = max(largest_layer_params, layer_params)
+
+    largest_layer_memory = (4 * largest_layer_params)
+
+    # print(f"total params:         {int(total_params/1e6):6d}M")
+    # print(f"largest layer params: {int(largest_layer_params/1e6):6d}M")
+    # print(f"largest layer memory: {largest_layer_memory>>20:6}MB")
+
+    if cpu_offload:
+        if cpu_offload_params:
+            gpu_mem = largest_layer_memory
+
+            if zero_init:
+                cpu_mem = total_params * 18 * gpus_factor * additional_buffer_factor
+            else:
+                cpu_mem = total_params * max(4 * one_node_gpus,
+                                             18 * gpus_factor) * additional_buffer_factor
+
+        else:
+            gpu_mem = largest_layer_memory + int(2 * total_params / total_gpus)
+
+            if zero_init:
+                cpu_mem = total_params * 16 * gpus_factor * additional_buffer_factor
+            else:
+                cpu_mem = total_params * max(4 * one_node_gpus,
+                                             16 * gpus_factor) * additional_buffer_factor
+    else:
+        gpu_mem = largest_layer_memory + int(18 * total_params / total_gpus)
+        if zero_init:
+            cpu_mem = largest_layer_params * 4 * one_node_gpus * additional_buffer_factor
+        else:
+            cpu_mem = total_params * 4 * one_node_gpus * additional_buffer_factor
+
+    return int(cpu_mem), int(gpu_mem), total_params, largest_layer_params
+
+
+def estimate_zero3_mem_needs_all(model,
+                                 one_node_gpus=1,
+                                 total_gpus=1,
+                                 additional_buffer_factor=1.5):
+    def format_options(cpu_offload, cpu_offload_params, zero_init):
+        enabled = []
+        enabled.append(f"cpu_offload={1 if cpu_offload else 0}")
+        enabled.append(f"cpu_offload_params={1 if cpu_offload_params else 0}")
+        enabled.append(f"zero_init={1 if zero_init else 0}")
+        return ", ".join(enabled)
+
+    nodes = total_gpus / one_node_gpus
+    print(
+        f"Estimated memory need for params, optim states and gradient for a setup with {nodes} nodes, {one_node_gpus} GPUs per node:"
+    )
+    print(" per CPU  |  per GPU |   Options")
+    for cpu_offload in [True, False]:
+        for cpu_offload_params in [True, False]:
+            if not cpu_offload and cpu_offload_params:
+                continue
+            for zero_init in [True, False]:
+                cpu_mem, gpu_mem, total_params, largest_layer_params = estimate_zero3_mem_needs(model=model, one_node_gpus=one_node_gpus, total_gpus=total_gpus, cpu_offload=cpu_offload, cpu_offload_params=cpu_offload_params, zero_init=zero_init, additional_buffer_factor=additional_buffer_factor)
+
+                options_str = format_options(cpu_offload=cpu_offload,
+                                             cpu_offload_params=cpu_offload_params,
+                                             zero_init=zero_init)
+                print(f" {cpu_mem>>20:7}MB | {gpu_mem>>20:6}MB | {options_str}")

@@ -252,7 +252,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             remote_device (string, optional): The device to store model
                 weights. Passing ``"cpu"`` will create the model in CPU
                 memory. The model may still be moved to GPU if
-                ``cpu_offload_param`` is ``False`` in the config provided to
+                ``cpu_offload_params`` is ``False`` in the config provided to
                 :meth:`deepspeed.initialize`. Defaults to the local GPU.
             pin_memory (bool, optional): Potentially increase performance by
                 using pinned memory for model weights. ``remote_device`` must be
