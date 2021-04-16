@@ -852,7 +852,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #                                             elements))
 
         #print("after partition gradients")
-        param.grad.data = dest_tensor_full_buffer.data
+        param.grad.data = dest_tensor.data
         see_memory_usage("After partitioning gradients", force=False)
 
 
