@@ -34,7 +34,7 @@ title: "DeepSpeed Configuration JSON"
 
 | Fields | Value                                                                                                                                                                                                                                                                                        | Example                      |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| type   | The optimizer name. DeepSpeed natively supports **Adam**, **AdamW**, **OneBitAdam**, and **Lamb** optimizers (See [here](https://deepspeed.readthedocs.io/en/latest/optimizers.html) for details) and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                     |
+| type   | The optimizer name. DeepSpeed natively supports **Adam**, **AdamW**, **OneBitAdam**, **Lamb**, and **OneBitLamb** optimizers (See [here](https://deepspeed.readthedocs.io/en/latest/optimizers.html) for details) and will import other optimizers from [torch](https://pytorch.org/docs/stable/optim.html). | `"Adam"`                     |
 | params | Dictionary of parameters to instantiate optimizer. The parameter names must match the optimizer constructor signature (e.g., for [Adam](https://pytorch.org/docs/stable/optim.html#torch.optim.Adam)).                                                                                       | `{"lr": 0.001, "eps": 1e-8}` |
 
   Example of ***optimizer*** with Adam
@@ -88,7 +88,7 @@ The 1-bit Adam optimizer supports the following three params keys/values in addi
 | cuda\_aware         | To indicate that the underlying MPI library supports CUDA-Aware communication      | false   |
 | comm\_backend\_name | To indicate which backend implementation to use                                    | "nccl"  |
 
-Another example of ***optimizer*** with 1-bit Lamb
+Another example of ***optimizer*** with 1-bit LAMB
 
 ```json
 "optimizer": {
@@ -110,7 +110,7 @@ Another example of ***optimizer*** with 1-bit Lamb
   }
 ```
 
-The 1-bit Lamb optimizer supports the following params keys/values in addition to the standard Lamb (learn more in our [tutorial](/tutorials/onebit-lamb/)):
+The 1-bit LAMB optimizer supports the following params keys/values in addition to the standard LAMB (learn more in our [tutorial](/tutorials/onebit-lamb/)):
 
 | "params" key  | Description                                                                 | Default |
 | ------------- | --------------------------------------------------------------------------- | ------- |

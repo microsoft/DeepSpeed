@@ -11,7 +11,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 class OnebitLamb(torch.optim.Optimizer):
     """Implements the 1-bit Lamb algorithm. Currently GPU-only.
     For usage example please see https://www.deepspeed.ai/tutorials/onebit-lamb/
-    For technical details we will publish an arxiv paper soon.
+    For technical details please see our paper https://arxiv.org/abs/2104.06069.
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
