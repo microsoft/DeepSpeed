@@ -206,12 +206,12 @@ class OnebitLamb(torch.optim.Optimizer):
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(p.data)
-                    state['exp_avg_sq_back'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq_fresh'] = torch.zeros_like(p.data)
 
                 if not self.initialize:
                     self.lamb_freeze_key = True
 
-                exp_avg, exp_avg_sq, exp_avg_sq_back = state['exp_avg'], state['exp_avg_sq'], state['exp_avg_sq_back']
+                exp_avg, exp_avg_sq, exp_avg_sq_fresh = state['exp_avg'], state['exp_avg_sq'], state['exp_avg_sq_fresh']
                 beta1, beta2 = group['betas']
                 max_coeff = group['max_coeff']
                 min_coeff = group['min_coeff']
@@ -223,7 +223,7 @@ class OnebitLamb(torch.optim.Optimizer):
                     exp_avg.mul_(beta1).add_(1 - beta1, grad)
                     exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                     if state['step'] == self.freeze_step:
-                        exp_avg_sq_back.data = exp_avg_sq.detach().clone()
+                        exp_avg_sq_fresh.data = exp_avg_sq.detach().clone()
                     grad = None
                     if self.initialize:
                         weight_norm = p.data.pow(2).sum().sqrt()
@@ -328,7 +328,7 @@ class OnebitLamb(torch.optim.Optimizer):
 
                 for j, p in enumerate(group['params']):
                     state = self.state[p]
-                    exp_avg, exp_avg_sq, exp_avg_sq_back = state['exp_avg'], state['exp_avg_sq'], state['exp_avg_sq_back']
+                    exp_avg, exp_avg_sq, exp_avg_sq_fresh = state['exp_avg'], state['exp_avg_sq'], state['exp_avg_sq_fresh']
                     beta1, beta2 = group['betas']
                     exp_avg.div_(self.state[p]['scaling_coeff'])
                     # Because 1-bit compression cannot represent exact zero, it is required to
@@ -347,9 +347,9 @@ class OnebitLamb(torch.optim.Optimizer):
 
                     grad_reconstruct = ((exp_avg - exp_avg_last_step[i][j] * beta1) /
                                         (1 - beta1))
-                    exp_avg_sq_back.mul_(beta2).addcmul_(1 - beta2,
-                                                         grad_reconstruct,
-                                                         grad_reconstruct)
+                    exp_avg_sq_fresh.mul_(beta2).addcmul_(1 - beta2,
+                                                          grad_reconstruct,
+                                                          grad_reconstruct)
                     denom = exp_avg_sq.sqrt() + group['eps']
                     update_prelim = exp_avg / denom
 
@@ -360,7 +360,7 @@ class OnebitLamb(torch.optim.Optimizer):
 
                     lamb_coeff = 1.0
                     update_norm = update.pow(2).sum().sqrt()
-                    denom_real = exp_avg_sq_back.sqrt() + group['eps']
+                    denom_real = exp_avg_sq_fresh.sqrt() + group['eps']
                     factor = (denom / denom_real).max().item()
                     if group['weight_decay'] > 0.0:
                         update_ratio = min(1.0,
