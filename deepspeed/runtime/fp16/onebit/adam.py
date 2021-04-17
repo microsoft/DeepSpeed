@@ -254,7 +254,7 @@ class OnebitAdam(torch.optim.Optimizer):
 
         if self.adam_freeze_key is False:
             if state['step'] >= self.freeze_step:
-                print('OneBitAdam - starting compressed communication')
+                print('OnebitAdam - starting compressed communication')
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
                 self.deepspeed.pipeline_enable_backward_allreduce = False
@@ -279,7 +279,7 @@ class OnebitAdam(torch.optim.Optimizer):
         super().load_state_dict(state_dict)
         if self.state[self.param_groups[0]['params'][0]]['step'] < self.freeze_step:
             if torch.distributed.get_rank() == 0:
-                print("Checkpoint loaded and 1-bit Adam warmup stage starts/continues.")
+                print("Checkpoint loaded and OnebitAdam warmup stage starts/continues.")
             if self.adam_freeze_key is True:
                 self.adam_freeze_key = False
                 self.deepspeed.enable_backward_allreduce = True
@@ -287,11 +287,12 @@ class OnebitAdam(torch.optim.Optimizer):
         else:
             if torch.distributed.get_rank() == 0:
                 print(
-                    "Checkpoint loaded and 1-bit Adam compression stage starts/continues."
+                    "Checkpoint loaded and OnebitAdam compression stage starts/continues."
                 )
             if self.adam_freeze_key is False:
                 self.adam_freeze_key = True
                 self.deepspeed.enable_backward_allreduce = False
+                self.deepspeed.pipeline_enable_backward_allreduce = False
         # We reset the compression errors when loading checkpoints for 3 reasons:
         # 1) The worker and server error at each GPU are distinct, so in current implementation
         # only rank 0's errors are saved in the checkpoint. Thus we have to reset the errors.

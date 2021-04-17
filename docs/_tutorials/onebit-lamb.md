@@ -3,7 +3,7 @@ title: "1-bit LAMB: Communication Efficient Large-Scale Large-Batch Training wit
 ---
 
 **Watch out!**
-1) The NCCL-based implementation requires PyTorch >= 1.8 (and NCCL >= 2.8.3 when you have 64 or more GPUs). See details below. 2) Although 1-bit LAMB is compatible with both FP16 and FP32, currently we only verified the convergence under mixed precision/FP16 training. 3) Currently 1-bit LAMB is not compatible with pipeline parallelism. 4) Frequent checkpoint loading could hurt 1-bit LAMB's convergence. See details below.
+1) The NCCL-based implementation requires PyTorch >= 1.8 (and NCCL >= 2.8.3 when you have 64 or more GPUs). See details below. 2) Although 1-bit LAMB is compatible with both FP16 and FP32, currently we only verified the convergence under mixed precision/FP16 training. 3) Currently the MPI-based implementation is not compatible with pipeline parallelism. 4) Frequent checkpoint loading could hurt 1-bit LAMB's convergence. See details below.
 {: .notice--warning}
 
 In this tutorial, we introduce DeepSpeed's 1-bit LAMB optimizer which enables communication-efficient large-scale large-batch training with LAMB's convergence speed. 1-bit LAMB can improve model training speed on communication-constrained clusters, especially for communication-intensive large models by reducing the overall communication volume by up to 4.6x. We also have a [paper](https://arxiv.org/abs/2104.06069) which provides the technical details including algorithm, system implementation, and evaluations.

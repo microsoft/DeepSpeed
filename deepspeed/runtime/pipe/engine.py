@@ -55,7 +55,7 @@ class PipelineEngine(DeepSpeedEngine):
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
 
-        # used to disable the pipeline all-reduce when used with 1-bit adam
+        # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
 
         assert not self.elasticity_enabled(), "Elasticity is not currently supported" \

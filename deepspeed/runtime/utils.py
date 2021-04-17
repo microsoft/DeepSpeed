@@ -130,6 +130,10 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=torch.distributed.group.WORLD)
         elif self.mpu is not None:
+            if self.deepspeed.pipeline_enable_backward_allreduce is False:
+                torch.distributed.all_reduce(overflow_gpu,
+                                             op=torch.distributed.ReduceOp.MAX,
+                                             group=self.mpu.get_data_parallel_group())
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())

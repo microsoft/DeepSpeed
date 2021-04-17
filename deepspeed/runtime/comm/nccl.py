@@ -96,7 +96,9 @@ class NcclBackend(object):
         # communication phase 1
         # gather_start = time.time()
         # Alltoall for sign
-        dist.all_to_all_single(recvbuf_sign, torch.stack(sign_list_packed), group=self.world_group)
+        dist.all_to_all_single(recvbuf_sign,
+                               torch.stack(sign_list_packed),
+                               group=self.world_group)
         # Allgather for scale
         dist.all_gather(recvbuf_scale, worker_scale, group=self.world_group)
 
@@ -155,7 +157,9 @@ class NcclBackend(object):
         ]
 
         # Communication Phase 2
-        dist.all_gather(recvbuf_sign_server, server_sign_packed[0], group=self.world_group)
+        dist.all_gather(recvbuf_sign_server,
+                        server_sign_packed[0],
+                        group=self.world_group)
         dist.all_gather(recvbuf_scale_server, server_scale, group=self.world_group)
 
         cupy_server_sign_packed = None
