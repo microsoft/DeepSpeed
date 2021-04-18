@@ -1,14 +1,22 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torch.distributed as dist
 import deepspeed
 import argparse
 import pytest
+import copy
 import json
 import os
 import numpy as np
 import time
+
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+PipeTopo = PipeDataParallelTopology
+from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
+from test_pipe import AlexNetPipe, train_cifar
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -344,6 +352,69 @@ def test_onebitadam_checkpointing_overflow(tmpdir):
     _test_onebitadam_checkpointing_overflow(args=args,
                                             model=model,
                                             hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize('topo',
+                         [
+                             PipeTopo(num_pp=1,
+                                      num_dp=4),
+                             PipeTopo(num_pp=2,
+                                      num_dp=2),
+                             PipeTopo(num_pp=4,
+                                      num_dp=1),
+                         ])
+def test_onebitadam_fp16_pipeline(topo, tmpdir):
+    config_dict = {
+        "train_batch_size": 16,
+        "train_micro_batch_size_per_gpu": 4,
+        "steps_per_print": 20,
+        "optimizer": {
+            "type": "OneBitAdam",
+            "params": {
+                "lr": 0.00001,
+                "betas": [0.9,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7,
+                "freeze_step": 200,
+                "cuda_aware": False,
+                "comm_backend_name": "nccl"
+            }
+        },
+        "gradient_clipping": 1.0,
+        "zero_optimization": {
+            "stage": 0
+        },
+        "fp16": {
+            "enabled": True,
+            "loss_scale": 0,
+            "initial_scale_power": 16
+        },
+        "pipeline": {
+            "seed_layers": True,
+            "activation_checkpoint_interval": 1
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+
+    # Allocate model for consistent initial weights.
+    init_net = AlexNetPipe()
+
+    @distributed_test(world_size=4)
+    def _helper(topo, tmpdir, steps=500):
+        assert steps >= 100
+
+        test_net = copy.deepcopy(init_net)
+        test_model = PipelineModule(layers=test_net.to_layers(),
+                                    topology=topo,
+                                    loss_fn=nn.CrossEntropyLoss())
+
+        test_losses = train_cifar(test_model,
+                                  args,
+                                  num_steps=steps,
+                                  fp16=config_dict['fp16']['enabled'])
+
+    _helper(topo, tmpdir)
 
 
 def test_onebitlamb_fp16_basic(tmpdir):
@@ -713,6 +784,69 @@ def test_onebitlamb_checkpointing_overflow(tmpdir):
     _test_onebitlamb_checkpointing_overflow(args=args,
                                             model=model,
                                             hidden_dim=hidden_dim)
+
+
+@pytest.mark.parametrize('topo',
+                         [
+                             PipeTopo(num_pp=1,
+                                      num_dp=4),
+                             PipeTopo(num_pp=2,
+                                      num_dp=2),
+                             PipeTopo(num_pp=4,
+                                      num_dp=1),
+                         ])
+def test_onebitlamb_fp16_pipeline(topo, tmpdir):
+    config_dict = {
+        "train_batch_size": 16,
+        "train_micro_batch_size_per_gpu": 4,
+        "steps_per_print": 20,
+        "optimizer": {
+            "type": "OneBitLamb",
+            "params": {
+                "lr": 0.00001,
+                "betas": [0.9,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7,
+                "freeze_step": 200,
+                "cuda_aware": False,
+                "comm_backend_name": "nccl"
+            }
+        },
+        "gradient_clipping": 1.0,
+        "zero_optimization": {
+            "stage": 0
+        },
+        "fp16": {
+            "enabled": True,
+            "loss_scale": 0,
+            "initial_scale_power": 16
+        },
+        "pipeline": {
+            "seed_layers": True,
+            "activation_checkpoint_interval": 1
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+
+    # Allocate model for consistent initial weights.
+    init_net = AlexNetPipe()
+
+    @distributed_test(world_size=4)
+    def _helper(topo, tmpdir, steps=500):
+        assert steps >= 100
+
+        test_net = copy.deepcopy(init_net)
+        test_model = PipelineModule(layers=test_net.to_layers(),
+                                    topology=topo,
+                                    loss_fn=nn.CrossEntropyLoss())
+
+        test_losses = train_cifar(test_model,
+                                  args,
+                                  num_steps=steps,
+                                  fp16=config_dict['fp16']['enabled'])
+
+    _helper(topo, tmpdir)
 
 
 def test_compressed_allreduce_basic(tmpdir):
