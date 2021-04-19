@@ -14,6 +14,8 @@ ZeRO leverages the aggregate computation and memory resources of data parallelis
 
 * **Stage 3**: The 16-bit model parameters are partitioned across the processes. ZeRO will automatically collect and partition them during the forward and backward passes.
 
+In addition, ZeRO-3 includes the *infinity offload engine* to form ZeRO-Infinity ([paper](https://arxiv.org/abs/2104.07857)), which can offload to both CPU and NVMe memory for huge memory savings.
+
 ## Training environment
 We use the DeepSpeed [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM) GPT-2 code for this exercise. You can step through the Megatron-LM [tutorial](/tutorials/megatron/) to familiarize yourself with the code. We will train the models in this tutorial on [NVIDIA Tesla V100-SXM3 Tensor Core GPUs](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM.
 
@@ -108,34 +110,31 @@ Here is a screenshot of nvidia-smi showing GPU activity during training:
 
 ### Training trillion-scale models with ZeRO-Infinity
 
-Stage 3 can be enabled in the JSON configuration. A full description of these
-configurations is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).
+ZeRO Stage 3 can be enabled in the JSON configuration. A full description of
+these configurations is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).
+
+
 
 ```json
   "zero_optimization": {
     "stage": 3,
-    "cpu_offload": true,
-    "cpu_offload_params": true,
     "contiguous_gradients": true,
     "stage3_max_live_parameters": 1e9,
     "stage3_max_reuse_distance": 1e9,
     "stage3_prefetch_bucket_size": 1e7,
     "stage3_param_persistence_threshold": 1e5,
     "reduce_bucket_size": 1e7,
-    "sub_group_size": 1e9
-  }
+    "sub_group_size": 1e9,
+    "offload_optimizer": {
+      "device": "cpu"
+    },
+    "offload_param": {
+      "device": "cpu"
+    }
 }
 ```
 
 
-
-
-#### Registering external parameters with ZeRO-3
-
-**Deprecated:**
-DeepSpeed version `0.3.15` introduced automatic external parameter
-registration and this step is no longer needed.
-{: .notice--info}
 
 
 
@@ -175,6 +174,46 @@ for more details.
         self.init_method(self.position_embeddings.weight)
     ```
 
+#### Memory-centric tiling
+ZeRO-Infinity includes a replacement for `Linear` layers that further reduces memory.
+The `deepspeed.zero.TiledLinearReturnBias` module exploits the data fetch and release
+pattern of ZeRO-3 to reduce the working memory requirements by breaking down
+a large operator into smaller tiles that can be executed sequentially.
+
+We optionally tile the model parallel linear layers found in each Transformer layer. Note
+that model parallelism and tiling can be combined by specifying the corresponding
+base class when building the  layer.
+
+We include the changes for one example from Megatron-LM's [ParallelMLP](https://github.com/microsoft/DeepSpeedExamples/blob/bdf8e59aede8c8e0577e8d4d557298ca8515268f/Megatron-LM-v1.1.5-ZeRO3/megatron/model/transformer.py#L82). Three more
+model-parallel layers in `transformer.py` proceed similarly.
+
+
+```diff
+
+@@ -1,6 +1,9 @@
+-self.dense_h_to_4h = mpu.ColumnParallelLinear(
++self.dense_h_to_4h = deepspeed.zero.TiledLinearReturnBias(
+     args.hidden_size,
+     4 * args.hidden_size,
++    in_splits=args.tile_factor,
++    out_splits=4*args.tile_factor,
++    linear_cls=mpu.ColumnParallelLinear,
+     gather_output=False,
+     init_method=init_method,
+     skip_bias_add=True)
+```
+
+Note that we scale `in_splits` and `out_splits` proportionally with `input_size` and `output_size`.  This
+results in tiles of fixed size `[hidden/tile_factor, hidden/tile_factor]`.
+
+#### Registering external parameters
+
+**Deprecated:**
+DeepSpeed version `0.3.15` introduced automatic external parameter
+registration and this step is no longer needed.
+{: .notice--info}
+
+
 ## Extracting weights
 
 If you need to take the pretrained weights out of Deepspeed here is what you can do for getting fp16 weights:
@@ -182,14 +221,14 @@ If you need to take the pretrained weights out of Deepspeed here is what you can
 - under ZeRO-2 `state_dict` contains the fp16 model weights and these can be saved normally with `torch.save`.
 - under ZeRO-3 `state_dict` contains just the placeholders since the model weights are partitioned across multiple GPUs. If you want to get to these weights enable:
 
-```
+```json
     "zero_optimization": {
         "stage3_gather_fp16_weights_on_model_save": true
     },
 ```
 And then save the model using:
 
-```
+```python
             if self.deepspeed:
                 self.deepspeed.save_fp16_model(output_dir, output_file)
 ```
@@ -201,7 +240,7 @@ You can use this method to save ZeRO-2 weights as well.
 
 If you'd like to get the fp32 weights, we supply a special script that can do offline consolidation. It requires no configuration files or GPUs. Here is an example of its usage:
 
-```
+``` bash
 $ cd /path/to/checkpoints_dir
 $ ./zero_to_fp32.py global_step1 pytorch_model.bin
 Processing zero checkpoint at global_step1
