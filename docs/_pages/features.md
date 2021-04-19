@@ -175,7 +175,7 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 ### 1-bit Adam and 1-bit LAMB optimizers with up to 5x less communication
 
 DeepSpeed has two communication-efficient optimizers called 1-bit Adam and 1-bit LAMB.
-They offer the same convergence as Adam/LAMB, incurs up to 5x less communication that enables
+They offer the same convergence as Adam/LAMB, incur up to 5x less communication that enables
 up to 3.5x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput
 for SQuAD fine-tuning on bandwidth-limited clusters. For more details on usage and performance,
 please refer to the [1-bit Adam tutorial](https://www.deepspeed.ai/tutorials/onebit-adam),
