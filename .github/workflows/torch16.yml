@@ -42,3 +42,12 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose -x tests/unit/
+      - name: HF transformers tests
+        run: |
+          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
+          git clone https://github.com/huggingface/transformers
+          cd transformers
+          pip install -e .
+          pip install sacrebleu rouge-score nltk parameterized psutil datasets
+          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --forked --verbose tests/deepspeed
+          
