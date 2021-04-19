@@ -6,7 +6,7 @@ Licensed under the MIT license.
 import sys
 import os
 from collections import defaultdict, OrderedDict
-
+import itertools
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 import torch.distributed as dist
@@ -26,8 +26,6 @@ from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
-
-import itertools
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -843,7 +841,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.is_gradient_accumulation_boundary = True
         self._release_ipg_buffers()
         self.previous_reduced_grads = None
-
 
         # simplified param id
         self.param_id = {}
@@ -2098,33 +2095,38 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         with torch.cuda.stream(self.copy_grad_stream):
             self.reduction_stream.synchronize()
             for param in self.previous_reduced_grads:
-    
-                [i, dest_offset, num_elements] = self.grad_position[self.get_param_id(param)]
-    
+
+                [i,
+                 dest_offset,
+                 num_elements] = self.grad_position[self.get_param_id(param)]
+
                 if self.offload_optimizer:
-                    param.partition_gradients(partition_buffers=self.temp_grad_gpu_buffer)
+                    param.partition_gradients(
+                        partition_buffers=self.temp_grad_gpu_buffer)
                     #with torch.cuda.stream(self.copy_grad_stream):
                     #    self.reduction_stream.synchronize()
-    
+
                     if self.gradient_accumulation_steps > 1:
                         # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
                         fp16_grad_tensor = self.grads_in_partition[i].narrow(
                             0,
                             dest_offset,
                             num_elements)
-                        self.async_accumulate_grad_in_cpu_via_gpu(param, fp16_grad_tensor)
-    
+                        self.async_accumulate_grad_in_cpu_via_gpu(
+                            param,
+                            fp16_grad_tensor)
+
                     if self.is_gradient_accumulation_boundary:
-    
+
                         self.set_norm_for_param_grad_in_gpu(param)
-    
+
                         self.update_overflow_tracker_for_param_grad(param)
-    
+
                         if self._swappable_optimizer_subgroup(i):
                             if not i in offload_fp32_gradients.keys():
                                 offload_fp32_gradients[i] = []
                                 offload_fp32_offsets[i] = []
-    
+
                             offload_fp32_gradients[i].append(param.grad.view(-1).float())
                             param.grad = None
                             offload_fp32_offsets[i].append(dest_offset)
@@ -2133,7 +2135,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                 i].grad.narrow(0,
                                                dest_offset,
                                                num_elements)
-    
+
                             self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(
                                 param,
                                 fp32_grad_tensor)
