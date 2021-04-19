@@ -7,6 +7,7 @@ import sys
 
 from collections import namedtuple
 from itertools import product as cartesian_product
+from pprint import pprint
 
 
 class ProcessTopology:
@@ -22,6 +23,7 @@ class ProcessTopology:
 
     Some methods return ProcessCoord namedtuples.
     """
+
     def __init__(self, axes, dims):
         """Create a mapping of n-dimensional tensor coordinates to linear indices.
 
@@ -58,7 +60,7 @@ class ProcessTopology:
             raise ValueError('get_rank() does not support slices. Use filter_match())')
 
         key = self.ProcessCoord(**coord_kwargs)
-        assert key in self.mapping, f'key {kwargs} invalid'
+        assert key in self.mapping, f'key {coord_kwargs} invalid'
         return self.mapping[key]
 
     def get_axis_names(self):
@@ -184,6 +186,7 @@ class ProcessTopology:
         Returns:
             The list of ranks whose coordinates match filter_kwargs.
         """
+
         def _filter_helper(x):
             for key, val in filter_kwargs.items():
                 if getattr(x, key) != val:
@@ -239,12 +242,14 @@ class PipeDataParallelTopology(ProcessTopology):
         reductions to use high-bandwidth intra-node links and lower-volume
         pipeline communications to use low-bandwidth inter-node links.
     """
+
     def __init__(self, num_pp, num_dp):
         super().__init__(axes=['pipe', 'data'], dims=[num_pp, num_dp])
 
 
 class PipeModelDataParallelTopology(ProcessTopology):
     """ A topology for hybrid pipeline, model, and data parallelism. """
+
     def __init__(self, num_pp, num_mp, num_dp):
         super().__init__(axes=['pipe', 'data', 'model'], dims=[num_pp, num_dp, num_mp])
 
@@ -271,6 +276,7 @@ class PipelineParallelGrid:
     data_parallel_id = 0, or similarly [9,5] represents wrapped around stages [4,0]
     for data_parallel_id = 1.
     """
+
     def __init__(self, topology=None, process_group=None):
         # TODO use process_group if provided
         self.global_rank = dist.get_rank()
@@ -303,7 +309,7 @@ class PipelineParallelGrid:
         for dp in range(self.data_parallel_size):
             ranks = sorted(self._topo.get_axis_list(axis='data', idx=dp))
             if self.global_rank == 0:
-                #print(f'RANK={self.global_rank} building DeepSpeed model group: {ranks}')
+                # print(f'RANK={self.global_rank} building DeepSpeed model group: {ranks}')
                 pass
             proc_group = dist.new_group(ranks=ranks)
             if self.global_rank in ranks:
@@ -333,7 +339,7 @@ class PipelineParallelGrid:
         self.pipe_groups = self._topo.get_axis_comm_lists('pipe')
         for ranks in self.pipe_groups:
             if self.global_rank == 0:
-                #print(f'RANK={self.global_rank} building pipeline group: {ranks}')
+                # print(f'RANK={self.global_rank} building pipeline group: {ranks}')
                 pass
             proc_group = dist.new_group(ranks=ranks)
             if self.global_rank in ranks:
@@ -392,8 +398,8 @@ class PipelineParallelGrid:
             ranks *= self._topo.get_dim(ax)
         return ranks == dist.get_world_size()
 
-    #returns the global rank of the process with the provided stage id
-    #which has the same data_parallel_id as caller process
+    # returns the global rank of the process with the provided stage id
+    # which has the same data_parallel_id as caller process
     def stage_to_global(self, stage_id, **kwargs):
         me = self._topo.get_coord(self.global_rank)
         transform = me._replace(pipe=stage_id, **kwargs)._asdict()
@@ -459,3 +465,8 @@ class PipelineParallelGrid:
 
     def get_slice_parallel_group(self):
         return self.slice_proc_group
+
+
+if __name__ == "__main__":
+    topo = PipeModelDataParallelTopology(num_pp=6, num_dp=2, num_mp=4)
+    pprint(str(topo))

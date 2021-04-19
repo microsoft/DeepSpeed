@@ -109,7 +109,8 @@ class DeepSpeedEngine(Module):
                  dist_init_required=None,
                  collate_fn=None,
                  config_params=None,
-                 dont_change_device=False):
+                 dont_change_device=False,
+                 bs_schedule=None):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
