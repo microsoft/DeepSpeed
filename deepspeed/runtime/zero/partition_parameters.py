@@ -289,6 +289,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
             self.dtype = torch.half if _ds_config.fp16_enabled else torch.float
         elif dtype is None:
             self.dtype = torch.half
+        else:
+            self.dtype = dtype
 
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
