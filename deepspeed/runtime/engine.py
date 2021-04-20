@@ -574,6 +574,8 @@ class DeepSpeedEngine(Module):
         self.module = model
         if self.fp16_enabled():
             self.module.half()
+        else:
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), f"The fp16 is not enabled but dtype on parameters not fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
