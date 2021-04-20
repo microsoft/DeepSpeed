@@ -345,7 +345,12 @@ class FP16_UnfusedOptimizer(object):
         # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
         # constructed in the same way as the one whose state_dict we are loading, the same master params
         # are guaranteed to exist, so we can just copy_() from the saved master params.
-        for current_group, saved_group in zip(self.fp32_groups, state_dict['fp32_groups']):
+        if 'fp32_groups' in state_dict.keys():
+            source_groups = state_dict['fp32_groups']
+        else:
+            source_groups = self.fp16_groups
+            
+        for current_group, saved_group in zip(self.fp32_groups, source_groups):
             for current, saved in zip(current_group, saved_group):
                 current.data.copy_(saved.data)
 
