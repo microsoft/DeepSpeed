@@ -349,7 +349,7 @@ class FP16_UnfusedOptimizer(object):
             source_groups = state_dict['fp32_groups']
         else:
             source_groups = self.fp16_groups
-            
+
         for current_group, saved_group in zip(self.fp32_groups, source_groups):
             for current, saved in zip(current_group, saved_group):
                 current.data.copy_(saved.data)
