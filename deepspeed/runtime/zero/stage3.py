@@ -791,7 +791,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-
+        self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         see_memory_usage("Before creating fp16 partitions", force=True)
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
@@ -844,7 +844,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         # simplified param id
         self.param_id = {}
-        self.dtype = self.fp16_groups[0][0].dtype
 
         count = 0
         for i, params_group in enumerate(self.fp16_groups):
