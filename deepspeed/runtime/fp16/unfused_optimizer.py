@@ -320,17 +320,18 @@ class FP16_UnfusedOptimizer(object):
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
-        # I think it should actually be ok to reload the optimizer before the model.
-        self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
-        self.cur_scale = state_dict['cur_scale']
-        self.cur_iter = state_dict['cur_iter']
-        if state_dict['dynamic_loss_scale']:
-            self.last_overflow_iter = state_dict['last_overflow_iter']
-            self.scale_factor = state_dict['scale_factor']
-            self.scale_window = state_dict['scale_window']
-
         if load_optimizer_states:
+            # I think it should actually be ok to reload the optimizer before the model.
+            self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
+            self.cur_scale = state_dict['cur_scale']
+            self.cur_iter = state_dict['cur_iter']
+            if state_dict['dynamic_loss_scale']:
+                self.last_overflow_iter = state_dict['last_overflow_iter']
+                self.scale_factor = state_dict['scale_factor']
+                self.scale_window = state_dict['scale_window']
+
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
         # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still
