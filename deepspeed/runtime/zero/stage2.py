@@ -187,6 +187,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         partition_id = dist.get_rank(group=self.dp_process_group)
 
         self.all_reduce_print = False
+        self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
 
         # padding on each partition for alignment purposes
         self.groups_padding = []
@@ -306,10 +307,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.grad_position = {}
             self.temp_grad_buffer_for_cpu_offload = torch.zeros(
                 largest_param_numel,
-                device=self.device).half().pin_memory()
+                device=self.device,
+                dtype=self.dtype).pin_memory()
             self.temp_grad_buffer_for_gpu_offload = torch.zeros(
                 largest_param_numel,
-                device=torch.cuda.current_device()).half()
+                device=torch.cuda.current_device(),
+                dtype=self.dtype)
 
             for i, params_group in enumerate(self.fp16_groups):
                 self.get_grad_position(i,
@@ -464,14 +467,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         self.params_in_partition[i],
                         self.first_offset[i],
                         self.partition_size[i],
-                        dtype=torch.half,
+                        dtype=self.dtype,
                         device=torch.cuda.current_device(),
                         return_tensor_list=True)
                 else:
                     avg_new = self.get_flat_partition(self.params_in_partition[i],
                                                       self.first_offset[i],
                                                       self.partition_size[i],
-                                                      dtype=torch.half,
+                                                      dtype=self.dtype,
                                                       device=torch.cuda.current_device(),
                                                       return_tensor_list=True)
 
@@ -931,7 +934,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             see_memory_usage(f"before copying {total_size} gradients into partition")
             self.grads_in_partition = torch.empty(int(total_size),
-                                                  dtype=torch.half,
+                                                  dtype=self.dtype,
                                                   device=torch.cuda.current_device())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
@@ -1617,14 +1620,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(int(self.reduce_bucket_size * 4.5),
-                                dtype=torch.half,
+                                dtype=self.dtype,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
                 buf_1 = torch.empty(int(self.reduce_bucket_size * 4.5),
-                                    dtype=torch.half,
+                                    dtype=self.dtype,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
