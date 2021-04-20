@@ -844,6 +844,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         # simplified param id
         self.param_id = {}
+        self.dtype = self.fp16_groups[0][0].dtype
 
         count = 0
         for i, params_group in enumerate(self.fp16_groups):
@@ -874,10 +875,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.local_overflow = False
             self.temp_grad_buffer_for_gpu_offload = torch.zeros(
                 largest_partitioned_param_numel,
-                device=torch.cuda.current_device()).half()
-            self.temp_grad_gpu_buffer = torch.zeros(
-                largest_partitioned_param_numel,
-                device=torch.cuda.current_device()).half()
+                device=torch.cuda.current_device(),
+                dtype=self.dtype)
+            self.temp_grad_gpu_buffer = torch.zeros(largest_partitioned_param_numel,
+                                                    device=torch.cuda.current_device(),
+                                                    dtype=self.dtype)
         see_memory_usage(f"After CPU Offload initialization", force=False)
 
         # stores if a partition has been reduced in this step
@@ -1059,7 +1061,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                              force=False)
                 self.param_groups_fp16_flat_cpu_memory.append(
                     torch.empty(int(flat_buffer_size),
-                                dtype=torch.half,
+                                dtype=self.dtype,
                                 pin_memory=True))
             else:
                 print_rank_0(
@@ -1068,7 +1070,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                 self.param_groups_fp16_flat_cpu_memory.append(
                     torch.empty(1,
-                                dtype=torch.half))
+                                dtype=self.dtype))
 
     def _create_fp16_partitions_with_defragmentation(self):
         dist.barrier()
@@ -1170,7 +1172,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                         -1] is None and self.param_group_fp16_flat_reuse_buffer is None:
                     self.param_group_fp16_flat_reuse_buffer = torch.empty(
                         max(self.fp16_partitioned_groups_flat_numel),
-                        dtype=torch.half,
+                        dtype=self.dtype,
                         device='cpu',
                         pin_memory=True)
 
@@ -2077,12 +2079,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 if self.offload_param_pin_memory:
                     self.grads_in_partition.append(
                         torch.zeros(int(total_size),
-                                    dtype=torch.half,
+                                    dtype=self.dtype,
                                     device=self.device).pin_memory())
                 else:
                     self.grads_in_partition.append(
                         torch.zeros(int(total_size),
-                                    dtype=torch.half,
+                                    dtype=self.dtype,
                                     device=self.device))
                 see_memory_usage(
                     f"group {i} after creating {total_size} reduced gradients into partition",
@@ -2930,14 +2932,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self.contiguous_gradients:
             self.ipg_buffer = []
             buf_0 = torch.empty(self.reduce_bucket_size,
-                                dtype=torch.half,
+                                dtype=self.dtype,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
                 buf_1 = torch.empty(self.reduce_bucket_size,
-                                    dtype=torch.half,
+                                    dtype=self.dtype,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0

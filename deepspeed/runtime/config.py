@@ -759,7 +759,8 @@ class DeepSpeedConfig(object):
             GRADIENT_ACCUMULATION_STEPS)
 
         if self.zero_enabled:
-            assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
+            if self.zero_optimization_stage != MAX_STAGE_ZERO_OPTIMIZATION:
+                assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
             #if self.zero_config.cpu_offload is True:
             #    assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
