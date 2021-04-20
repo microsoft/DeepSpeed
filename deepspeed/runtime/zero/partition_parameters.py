@@ -291,7 +291,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             pin_memory (bool, optional): Potentially increase performance by
                 using pinned memory for model weights. ``remote_device`` must be
                 ``"cpu"``. Defaults to ``False``.
-            deepspeed_config (``json file``, optional): If provided, provides configuration
+            deepspeed_config (``json file`` or dict, optional): If provided, provides configuration
                 for swapping fp16 params to NVMe.
             enabled (bool, optional): If ``False``, this context has no
                 effect. Defaults to ``True``.
