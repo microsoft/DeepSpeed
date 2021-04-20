@@ -521,8 +521,10 @@ class DeepSpeedConfigWriter:
 class DeepSpeedConfig(object):
     def __init__(self, json_file, mpu=None, param_dict=None):
         super(DeepSpeedConfig, self).__init__()
-
-        if param_dict is None:
+        if isinstance(json_file, dict):
+            # Assume json file has been loaded
+            self._param_dict = json_file
+        elif param_dict is None:
             self._param_dict = json.load(
                 open(json_file,
                      'r'),
