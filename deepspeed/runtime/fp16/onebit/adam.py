@@ -9,6 +9,7 @@ import time
 import torch.distributed as dist
 
 from deepspeed.utils.logging import logger
+from deepspeed.runtime.pipe.engine import PipelineEngine
 
 
 class OnebitAdam(torch.optim.Optimizer):
@@ -82,6 +83,7 @@ class OnebitAdam(torch.optim.Optimizer):
         self.initialize = False
         self.freeze_step = freeze_step
         self.cuda_aware = cuda_aware
+        self.using_pipeline = False
 
         self.comm_backend_name = comm_backend_name
 
@@ -94,6 +96,7 @@ class OnebitAdam(torch.optim.Optimizer):
             assert TORCH_MAJOR >= 1 and TORCH_MINOR >= 8, "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
+            self.using_pipeline = isinstance(self.deepspeed, PipelineEngine)
             self.comm_backend_handle = NcclBackend(self.deepspeed.mpu)
 
         elif self.comm_backend_name == 'mpi':
@@ -256,8 +259,10 @@ class OnebitAdam(torch.optim.Optimizer):
             if state['step'] >= self.freeze_step:
                 print('OnebitAdam - starting compressed communication')
                 self.adam_freeze_key = True
-                self.deepspeed.enable_backward_allreduce = False
-                self.deepspeed.pipeline_enable_backward_allreduce = False
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
 
         return loss
 
@@ -282,8 +287,10 @@ class OnebitAdam(torch.optim.Optimizer):
                 print("Checkpoint loaded and OnebitAdam warmup stage starts/continues.")
             if self.adam_freeze_key is True:
                 self.adam_freeze_key = False
-                self.deepspeed.enable_backward_allreduce = True
-                self.deepspeed.pipeline_enable_backward_allreduce = True
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = True
+                else:
+                    self.deepspeed.enable_backward_allreduce = True
         else:
             if torch.distributed.get_rank() == 0:
                 print(
@@ -291,8 +298,10 @@ class OnebitAdam(torch.optim.Optimizer):
                 )
             if self.adam_freeze_key is False:
                 self.adam_freeze_key = True
-                self.deepspeed.enable_backward_allreduce = False
-                self.deepspeed.pipeline_enable_backward_allreduce = False
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
         # We reset the compression errors when loading checkpoints for 3 reasons:
         # 1) The worker and server error at each GPU are distinct, so in current implementation
         # only rank 0's errors are saved in the checkpoint. Thus we have to reset the errors.

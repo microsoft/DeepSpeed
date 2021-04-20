@@ -19,6 +19,7 @@ from torch._six import inf
 import torch.distributed as dist
 
 from deepspeed.utils import logger
+from deepspeed.runtime.pipe.engine import PipelineEngine
 from numpy import prod
 
 
@@ -130,10 +131,16 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=torch.distributed.group.WORLD)
         elif self.mpu is not None:
-            if self.deepspeed.pipeline_enable_backward_allreduce is False:
-                torch.distributed.all_reduce(overflow_gpu,
-                                             op=torch.distributed.ReduceOp.MAX,
-                                             group=self.mpu.get_data_parallel_group())
+            if self.deepspeed is not None:
+                using_pipeline = isinstance(self.deepspeed, PipelineEngine)
+                if (using_pipeline
+                        and self.deepspeed.pipeline_enable_backward_allreduce is False
+                    ) or (not using_pipeline
+                          and self.deepspeed.enable_backward_allreduce is False):
+                    torch.distributed.all_reduce(
+                        overflow_gpu,
+                        op=torch.distributed.ReduceOp.MAX,
+                        group=self.mpu.get_data_parallel_group())
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())

@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+from deepspeed.runtime.pipe.engine import PipelineEngine
 
 
 class OnebitLamb(torch.optim.Optimizer):
@@ -100,6 +101,7 @@ class OnebitLamb(torch.optim.Optimizer):
         self.factor_max = factor_max
         self.factor_min = factor_min
         self.factor_threshold = factor_threshold
+        self.using_pipeline = False
 
         self.comm_backend_name = comm_backend_name
 
@@ -112,6 +114,7 @@ class OnebitLamb(torch.optim.Optimizer):
             assert TORCH_MAJOR >= 1 and TORCH_MINOR >= 8, "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
+            self.using_pipeline = isinstance(self.deepspeed, PipelineEngine)
             self.comm_backend_handle = NcclBackend(self.deepspeed.mpu)
 
         elif self.comm_backend_name == 'mpi':
@@ -395,8 +398,10 @@ class OnebitLamb(torch.optim.Optimizer):
             if state['step'] >= self.freeze_step:
                 print('OnebitLamb - starting compressed communication')
                 self.lamb_freeze_key = True
-                self.deepspeed.enable_backward_allreduce = False
-                self.deepspeed.pipeline_enable_backward_allreduce = False
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
 
         return loss
 
@@ -426,8 +431,10 @@ class OnebitLamb(torch.optim.Optimizer):
                 print("Checkpoint loaded and OnebitLamb warmup stage starts/continues.")
             if self.lamb_freeze_key is True:
                 self.lamb_freeze_key = False
-                self.deepspeed.enable_backward_allreduce = True
-                self.deepspeed.pipeline_enable_backward_allreduce = True
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = True
+                else:
+                    self.deepspeed.enable_backward_allreduce = True
             for group in self.param_groups:
                 for p in group['params']:
                     self.state[p]['lamb_coeff_freeze'] = 0.0
@@ -441,8 +448,10 @@ class OnebitLamb(torch.optim.Optimizer):
                 )
             if self.lamb_freeze_key is False:
                 self.lamb_freeze_key = True
-                self.deepspeed.enable_backward_allreduce = False
-                self.deepspeed.pipeline_enable_backward_allreduce = False
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
         # We reset the compression errors when loading checkpoints for 3 reasons:
         # 1) The worker and server error at each GPU are distinct, so in current implementation
         # only rank 0's errors are saved in the checkpoint. Thus we have to reset the errors.
