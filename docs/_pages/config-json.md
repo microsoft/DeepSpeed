@@ -114,6 +114,8 @@ The 1-bit LAMB optimizer supports the following params keys/values in addition t
 
 | "params" key  | Description                                                                 | Default |
 | ------------- | --------------------------------------------------------------------------- | ------- |
+| max\_coeff   | Scaling coefficient upper bound for original LAMB algorithm and 1-bit LAMB's warmup stage   | 10.0   |
+| min\_coeff   | Scaling coefficient lower bound for original LAMB algorithm and 1-bit LAMB's warmup stage   | 0.01   |
 | freeze\_step   | Number of warm up steps before 1-bit compression gets applied to the communication   | 100000   |
 | cuda\_aware | To indicate that the underlying MPI library supports CUDA-Aware communication           | false    |
 | comm\_backend\_name | To indicate which backend implementation to use                                 | "nccl"   |
