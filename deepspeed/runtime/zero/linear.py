@@ -22,7 +22,7 @@ from deepspeed.runtime.utils import noop_decorator
 try:
     autocast_custom_fwd = torch.cuda.amp.custom_fwd
     autocast_custom_bwd = torch.cuda.amp.custom_bwd
-except _:
+except:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator
 
