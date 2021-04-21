@@ -6,7 +6,6 @@ import torch
 import numpy as np
 import torch.distributed as dist
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from deepspeed.runtime.pipe.engine import PipelineEngine
 
 
 class OnebitLamb(torch.optim.Optimizer):
@@ -114,7 +113,8 @@ class OnebitLamb(torch.optim.Optimizer):
             assert TORCH_MAJOR >= 1 and TORCH_MINOR >= 8, "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
-            self.using_pipeline = isinstance(self.deepspeed, PipelineEngine)
+            self.using_pipeline = hasattr(self.deepspeed,
+                                          'pipeline_enable_backward_allreduce')
             self.comm_backend_handle = NcclBackend(self.deepspeed.mpu)
 
         elif self.comm_backend_name == 'mpi':

@@ -19,7 +19,6 @@ from torch._six import inf
 import torch.distributed as dist
 
 from deepspeed.utils import logger
-from deepspeed.runtime.pipe.engine import PipelineEngine
 from numpy import prod
 
 
@@ -132,7 +131,8 @@ class CheckOverflow(object):
                                          group=torch.distributed.group.WORLD)
         elif self.mpu is not None:
             if self.deepspeed is not None:
-                using_pipeline = isinstance(self.deepspeed, PipelineEngine)
+                using_pipeline = hasattr(self.deepspeed,
+                                         'pipeline_enable_backward_allreduce')
                 if (using_pipeline
                         and self.deepspeed.pipeline_enable_backward_allreduce is False
                     ) or (not using_pipeline
