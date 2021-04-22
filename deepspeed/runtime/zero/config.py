@@ -3,13 +3,15 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from deepspeed.runtime.config_utils import get_scalar_param
+from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigObject
 from deepspeed.utils import logger
-from deepspeed.runtime.zero.constants import *
-import json
+from .constants import *
+from .offload_constants import *
+from .offload_config import get_offload_param_config, get_default_offload_param_config, \
+    get_offload_optimizer_config, get_default_offload_optimizer_config
 
 
-class DeepSpeedZeroConfig(object):
+class DeepSpeedZeroConfig(DeepSpeedConfigObject):
     def __init__(self, param_dict):
         super(DeepSpeedZeroConfig, self).__init__()
 
@@ -25,9 +27,8 @@ class DeepSpeedZeroConfig(object):
         self.elastic_checkpoint = None
 
         #Offload Specific Parameters
-        self.cpu_offload = None
-        self.cpu_offload_params = None
-        self.cpu_offload_use_pin_memory = None
+        self.offload_param = None
+        self.offload_optimizer = None
         self.sub_group_size = None
 
         #Stage3 Specific Parameters
@@ -35,12 +36,7 @@ class DeepSpeedZeroConfig(object):
         self.param_persistence_threshold = None
         self.max_live_parameters = None
         self.max_reuse_distance = None
-
-        #Stage3 Specific Parameters
-        self.prefetch_bucket_size = None
-        self.param_persistence_threshold = None
-        self.max_live_parameters = None
-        self.max_reuse_distance = None
+        self.gather_fp16_weights_on_model_save = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -66,17 +62,24 @@ class DeepSpeedZeroConfig(object):
             .format(ZERO_FORMAT))
         return zero_config_dict
 
-    """
-    For json serialization
-    """
+    def _sanity_check(self, zero_config_dict):
+        deprecated_dict = {
+            ZERO_OPTIMIZATION_CPU_OFFLOAD:
+            ZERO_OPTIMIZATION_OFFLOAD_OPTIMIZER,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS:
+            ZERO_OPTIMIZATION_OFFLOAD_PARAM,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY:
+            f'{ZERO_OPTIMIZATION_OFFLOAD_PARAM} or {ZERO_OPTIMIZATION_OFFLOAD_OPTIMIZER}'
+        }
 
-    def repr(self):
-        return self.__dict__
-
-    def __repr__(self):
-        return json.dumps(self.__dict__, sort_keys=True, indent=4)
+        for old_key, new_key in deprecated_dict.items():
+            if old_key in zero_config_dict:
+                logger.warning(
+                    f'DeepSpeedConfig: {old_key} is deprecated. Please use {new_key}.')
 
     def _initialize(self, zero_config_dict):
+        self._sanity_check(zero_config_dict)
+
         self.stage = get_scalar_param(zero_config_dict,
                                       ZERO_OPTIMIZATION_STAGE,
                                       ZERO_OPTIMIZATION_STAGE_DEFAULT)
@@ -119,24 +122,30 @@ class DeepSpeedZeroConfig(object):
             ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS,
             ZERO_OPTIMIZATION_LOAD_FROM_FP32_WEIGHTS_DEFAULT)
 
-        self.cpu_offload = get_scalar_param(zero_config_dict,
-                                            ZERO_OPTIMIZATION_CPU_OFFLOAD,
-                                            ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT)
-
         self.elastic_checkpoint = get_scalar_param(
             zero_config_dict,
             ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT,
             ZERO_OPTIMIZATION_ELASTIC_CHECKPOINT_DEFAULT)
 
-        self.cpu_offload_params = get_scalar_param(
-            zero_config_dict,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS_DEFAULT)
+        if ZERO_OPTIMIZATION_CPU_OFFLOAD in zero_config_dict:
+            cpu_offload_optimizer = get_scalar_param(
+                zero_config_dict,
+                ZERO_OPTIMIZATION_CPU_OFFLOAD,
+                ZERO_OPTIMIZATION_CPU_OFFLOAD_DEFAULT)
+            if cpu_offload_optimizer:
+                self.offload_optimizer = get_default_offload_optimizer_config()
+        else:
+            self.offload_optimizer = get_offload_optimizer_config(zero_config_dict)
 
-        self.cpu_offload_use_pin_memory = get_scalar_param(
-            zero_config_dict,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY_DEFAULT)
+        if ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS in zero_config_dict:
+            cpu_offload_params = get_scalar_param(
+                zero_config_dict,
+                ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS,
+                ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS_DEFAULT)
+            if cpu_offload_params:
+                self.offload_param = get_default_offload_param_config()
+        else:
+            self.offload_param = get_offload_param_config(zero_config_dict)
 
         self.sub_group_size = get_scalar_param(zero_config_dict,
                                                ZERO_OPTIMIZATION_SUB_GROUP_SIZE,
@@ -161,3 +170,8 @@ class DeepSpeedZeroConfig(object):
             zero_config_dict,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT)
+
+        self.gather_fp16_weights_on_model_save = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE,
+            ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE_DEFAULT)

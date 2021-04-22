@@ -8,6 +8,7 @@ Helper functions and classes from multiple sources.
 
 import os
 import psutil
+import gc
 from math import ceil
 from math import floor
 from bisect import bisect_left, bisect_right
@@ -63,11 +64,15 @@ def move_to_device(item, device):
 
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
-
-    def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False):
+    def __init__(self,
+                 param_groups=None,
+                 mpu=None,
+                 zero_reduce_scatter=False,
+                 deepspeed=None):
         self.mpu = mpu
         self.params = [] if param_groups else None
         self.zero_reduce_scatter = zero_reduce_scatter
+        self.deepspeed = deepspeed
         if param_groups:
             for group in param_groups:
                 for param in group:
@@ -125,9 +130,24 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=torch.distributed.group.WORLD)
         elif self.mpu is not None:
+            if self.deepspeed is not None:
+                using_pipeline = hasattr(self.deepspeed,
+                                         'pipeline_enable_backward_allreduce')
+                if (using_pipeline
+                        and self.deepspeed.pipeline_enable_backward_allreduce is False
+                    ) or (not using_pipeline
+                          and self.deepspeed.enable_backward_allreduce is False):
+                    torch.distributed.all_reduce(
+                        overflow_gpu,
+                        op=torch.distributed.ReduceOp.MAX,
+                        group=self.mpu.get_data_parallel_group())
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
+        elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
+            torch.distributed.all_reduce(overflow_gpu,
+                                         op=torch.distributed.ReduceOp.MAX,
+                                         group=torch.distributed.group.WORLD)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -552,6 +572,9 @@ def see_memory_usage(message, force=False):
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
         return
 
+    # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
+    gc.collect()
+
     # Print message except when distributed but not rank 0
     logger.info(message)
     logger.info(
@@ -564,6 +587,10 @@ def see_memory_usage(message, force=False):
     used_GB = round(((vm_stats.total - vm_stats.available) / (1024 ** 3)), 2)
     logger.info(
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
+
+    # get the peak memory to report correct data, so reset the counter for the next call
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
+        torch.cuda.reset_peak_memory_stats()
 
 
 def call_to_str(base, *args, **kwargs):

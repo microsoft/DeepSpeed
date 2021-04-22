@@ -18,13 +18,9 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 
-#TODO: Detect the hostname we are running on automatically
-torch.distributed.init_process_group(backend='nccl',
-                                     init_method='tcp://worker-0:2245',
-                                     world_size=size,
-                                     rank=rank)
-
-backend = MpiBackend(cuda_aware=True)
+deepspeed.init_distributed(dist_backend='nccl')
+# Change cuda_aware to True to test out CUDA-Aware MPI communication
+backend = MpiBackend(cuda_aware=False)
 
 device = torch.device('cuda', rank % torch.cuda.device_count())
 

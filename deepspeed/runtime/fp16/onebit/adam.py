@@ -13,8 +13,8 @@ from deepspeed.utils.logging import logger
 
 class OnebitAdam(torch.optim.Optimizer):
     """Implements the 1-bit Adam algorithm. Currently GPU-only.
-    For usage example please see, https://www.deepspeed.ai/tutorials/onebit-adam/
-    It has been proposed in APMSqueeze (https://arxiv.org/abs/2008.11343)
+    For usage example please see https://www.deepspeed.ai/tutorials/onebit-adam/
+    For technical details please read https://arxiv.org/abs/2102.02888
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
@@ -82,6 +82,7 @@ class OnebitAdam(torch.optim.Optimizer):
         self.initialize = False
         self.freeze_step = freeze_step
         self.cuda_aware = cuda_aware
+        self.using_pipeline = False
 
         self.comm_backend_name = comm_backend_name
 
@@ -94,6 +95,8 @@ class OnebitAdam(torch.optim.Optimizer):
             assert TORCH_MAJOR >= 1 and TORCH_MINOR >= 8, "Please use torch 1.8 or greater to enable NCCL backend in 1-bit Adam. Alternatively, please specify 'mpi' as the 'comm_backend_name' in config file to proceed with the MPI backend"
             assert dist.is_initialized() == True, "Please initialize the torch distributed backend."
             from deepspeed.runtime.comm.nccl import NcclBackend
+            self.using_pipeline = hasattr(self.deepspeed,
+                                          'pipeline_enable_backward_allreduce')
             self.comm_backend_handle = NcclBackend(self.deepspeed.mpu)
 
         elif self.comm_backend_name == 'mpi':
@@ -200,11 +203,8 @@ class OnebitAdam(torch.optim.Optimizer):
 
                 else:
                     if 'non_freeze' in group.keys() and group['non_freeze'] is True:
-                        world_group = self.comm_backend_handle.world_group if hasattr(self.comm_backend_handle,
-                                                                                              "world_group") else None
-                        dist.all_reduce(grad,
-                                        group=world_group)
-                        grad.mul_(1 / dist.get_world_size(group=world_group))
+                        dist.all_reduce(grad)
+                        grad.mul_(1 / dist.get_world_size())
                         exp_avg.mul_(beta1).add(1 - beta1, grad)
                         exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                         grad = None
@@ -220,6 +220,13 @@ class OnebitAdam(torch.optim.Optimizer):
                                     state['worker_error'],
                                     state['server_error'],
                                     self.deepspeed.local_rank))
+                        # Because 1-bit compression cannot represent exact zero, it is required to
+                        # provide a momentum mask for those params that have constant exact zeros in their
+                        # momentums, otherwise the compression error would keep accumulating.
+                        # For example, for BERT pre-training seq 128, bert.embeddings.position_embeddings.weight
+                        # always have exact zeros in its momentum for row 129 to 512, because it only
+                        # learns up to seq length 128 while the model supports up to 512 seq length.
+                        # (See example in DeepSpeedExamples/bing_bert/deepspeed_train.py.)
                         if 'exp_avg_mask' in group:
                             if exp_avg.device != group['exp_avg_mask'].device:
                                 group['exp_avg_mask'] = group['exp_avg_mask'].to(
@@ -250,39 +257,66 @@ class OnebitAdam(torch.optim.Optimizer):
 
         if self.adam_freeze_key is False:
             if state['step'] >= self.freeze_step:
-                print('Starting compressed communication')
+                print('OnebitAdam - starting compressed communication')
                 self.adam_freeze_key = True
-                self.deepspeed.enable_backward_allreduce = False
-                self.deepspeed.pipeline_enable_backward_allreduce = False
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
 
         return loss
 
     def load_state_dict(self, state_dict):
         """
-        Overrides state_dict() to reset 1-bit Adam states when needed
+        Overrides load_state_dict() to add special handling when loading checkpoints
         """
-        mask = {}
+        # Because at different stage exp_avg_mask may change (e.g.,
+        # BERT pre-training seqlen 128 and 512 ), we don't use the exp_avg_mask
+        # in checkpoints but always use the one user provided in training script.
+        # (See example in DeepSpeedExamples/bing_bert/deepspeed_train.py.)
+        # Thus here we keep the exp_avg_mask unchanged when loading checkpoint
         for i, group in enumerate(self.param_groups):
             if 'exp_avg_mask' in group:
-                mask[i] = group['exp_avg_mask']
+                state_dict['param_groups'][i]['exp_avg_mask'] = group['exp_avg_mask']
+            elif 'exp_avg_mask' not in group and 'exp_avg_mask' in state_dict[
+                    'param_groups'][i]:
+                state_dict['param_groups'][i].pop('exp_avg_mask')
         super().load_state_dict(state_dict)
-        # Because at different stage exp_avg_mask may change (e.g.,
-        # when loading seq 128 checkpoint for seq 512 pretraining),
-        # we don't load the exp_avg_mask from the checkpoint but always
-        # use the one provided in optimizer_grouped_parameters in deepspeed_train.py.
-        for k, v in mask.items():
-            self.param_groups[k]['exp_avg_mask'] = v
         if self.state[self.param_groups[0]['params'][0]]['step'] < self.freeze_step:
             if torch.distributed.get_rank() == 0:
-                print(
-                    "Checkpoint loaded and warmup stage starts/continues, reset 1-bit Adam states."
-                )
+                print("Checkpoint loaded and OnebitAdam warmup stage starts/continues.")
             if self.adam_freeze_key is True:
                 self.adam_freeze_key = False
-                self.deepspeed.enable_backward_allreduce = True
-                self.deepspeed.pipeline_enable_backward_allreduce = True
-
-            for group in self.param_groups:
-                for p in group['params']:
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = True
+                else:
+                    self.deepspeed.enable_backward_allreduce = True
+        else:
+            if torch.distributed.get_rank() == 0:
+                print(
+                    "Checkpoint loaded and OnebitAdam compression stage starts/continues."
+                )
+            if self.adam_freeze_key is False:
+                self.adam_freeze_key = True
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
+        # We reset the compression errors when loading checkpoints for 3 reasons:
+        # 1) The worker and server error at each GPU are distinct, so in current implementation
+        # only rank 0's errors are saved in the checkpoint. Thus we have to reset the errors.
+        # If we want to save them correctly we need O(num_gpu*model_size) memory in order to
+        # gather all the error, which is a very large memory requirement. It's possible to save
+        # them in a distributed way, but it will make the checkpoint saving/loading much more complicated.
+        # 2) Even if we are able to save the compression errors correctly, you need to have the
+        # exact same number of GPUs in order to load them correctly.
+        # 3) We verified on BERT pre-training that occasionally resetting the compression error
+        # at checkpoint loading does not affect the convergence.
+        # However, please avoid frequent checkpoint loading which could break the error
+        # compensation mechanism thus affect the convergence.
+        for group in self.param_groups:
+            for p in group['params']:
+                if 'worker_error' in self.state[p]:
                     self.state[p].pop('worker_error')
+                if 'server_error' in self.state[p]:
                     self.state[p].pop('server_error')

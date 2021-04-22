@@ -37,7 +37,7 @@ and communication- efficient training. DeepSpeed supports a hybrid
 combination of data, model, and pipeline parallelism and has scaled to over
 [one trillion parameters using 3D parallelism]({{ site.press_release_v3 }}).
 Pipeline parallelism can also improve communication efficiency and has
-accelerated training by up to 7x on low-banwdith clusters.
+accelerated training by up to 7x on low-bandwidth clusters.
 
 
 ## Model Parallelism
@@ -172,15 +172,17 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 
 ## Training Optimizers
 
-### 1-bit Adam optimizer with up to 5x less communication
+### 1-bit Adam and 1-bit LAMB optimizers with up to 5x less communication
 
-DeepSpeed has an efficient implementation of a novel algorithm called 1-bit Adam.
-It offers the same convergence as Adam, incurs up to 5x less communication that enables
+DeepSpeed has two communication-efficient optimizers called 1-bit Adam and 1-bit LAMB.
+They offer the same convergence as Adam/LAMB, incur up to 5x less communication that enables
 up to 3.5x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput
 for SQuAD fine-tuning on bandwidth-limited clusters. For more details on usage and performance,
-please refer to the detailed [tutorial](https://www.deepspeed.ai/tutorials/onebit-adam) and
-[blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md), respectively.
-<!-- **TODO: add paper link when it is ready ** -->
+please refer to the [1-bit Adam tutorial](https://www.deepspeed.ai/tutorials/onebit-adam),
+[1-bit Adam blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md),
+and [1-bit LAMB tutorial](https://www.deepspeed.ai/tutorials/onebit-lamb/). For technical details,
+please refer to the [1-bit Adam paper](https://arxiv.org/abs/2102.02888) and
+[1-bit LAMB paper](https://arxiv.org/abs/2104.06069).
 
 ### Fused Adam optimizer and arbitrary torch.optim.Optimizer
 With DeepSpeed, the user can choose to use a high performance implementation of ADAM from
@@ -256,9 +258,9 @@ This can be enabled by setting the following in the `deepspeed_config` file.
 
 ```
 
-###  Timing Activiation Checkpoint Functions
+###  Timing Activation Checkpoint Functions
 
-When activiation checkpoingint is enabled, profiling the forward and backward time of each checkpoint function can be enabled in the `deepspeed_config` file.
+When activation checkpointing is enabled, profiling the forward and backward time of each checkpoint function can be enabled in the `deepspeed_config` file.
 
 ```json
 {

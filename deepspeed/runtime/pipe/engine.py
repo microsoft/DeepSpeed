@@ -42,12 +42,12 @@ def _tensor_bytes(tensor):
     return tensor.numel() * tensor.element_size()
 
 
-def print_rank_0(message):
+def print_rank_0(*message):
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
-            print(message)
+            print(*message)
     else:
-        print(message)
+        print(*message)
 
 
 class PipelineEngine(DeepSpeedEngine):
@@ -61,9 +61,14 @@ class PipelineEngine(DeepSpeedEngine):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
+        assert self.zero_optimization_stage() < 2, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
+
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
+
+        # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
+
         assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
                                               " with pipeline parallelism."
 
@@ -141,7 +146,7 @@ class PipelineEngine(DeepSpeedEngine):
                         f'TOTAL_PARAMS={total_params} ({total_params / 1e6:0.3f}M) '
                         f'UNIQUE_PARAMS={unique_params} ({unique_params / 1e6:0.3f}M)')
 
-        # intialize peer-2-peer communication and allreduce groups
+        #intialize peer-2-peer communication and allreduce groups
         if self.is_pipe_parallel:
             p2p.init_process_groups(self.grid)
 

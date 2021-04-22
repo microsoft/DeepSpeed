@@ -4,6 +4,7 @@ import torch.distributed as dist
 import numpy as np
 import argparse
 import deepspeed
+import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 from deepspeed.utils.timer import SynchronizedWallClockTimer
@@ -15,7 +16,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)
 args = parser.parse_args()
 
-dist.init_process_group(backend='nccl')
+deepspeed.init_distributed(dist_backend='nccl')
+args.local_rank = int(os.environ['LOCAL_RANK'])
 
 torch.cuda.set_device(args.local_rank)
 device = torch.device("cuda", args.local_rank)

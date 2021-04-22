@@ -13,7 +13,8 @@ import torch.distributed as dist
 from deepspeed.runtime.utils import get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger, log_dist
-from deepspeed.runtime.fp16.onebit.onebitadam import OnebitAdam
+from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
+from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
 
 
 class FP16_Optimizer(object):
@@ -25,6 +26,7 @@ class FP16_Optimizer(object):
 
     def __init__(self,
                  init_optimizer,
+                 deepspeed=None,
                  static_loss_scale=1.0,
                  dynamic_loss_scale=False,
                  initial_dynamic_scale=2 ** 32,
@@ -103,7 +105,9 @@ class FP16_Optimizer(object):
         self.mpu = mpu
 
         self.overflow = False
-        self.overflow_checker = CheckOverflow(self.fp16_groups, mpu=self.mpu)
+        self.overflow_checker = CheckOverflow(self.fp16_groups,
+                                              mpu=self.mpu,
+                                              deepspeed=deepspeed)
         self.initialize_optimizer_states()
 
     def initialize_optimizer_states(self):
@@ -215,7 +219,7 @@ class FP16_Optimizer(object):
         self.overflow = self.overflow_checker.has_overflow(fp16_params)
         self.stop_timers([OVERFLOW_CHECK])
         prev_scale = self.cur_scale
-        if isinstance(self.optimizer, OnebitAdam):
+        if isinstance(self.optimizer, OnebitAdam) or isinstance(self.optimizer, OnebitLamb):
             # if optimizer has mpu (i.e, is pipeline parallel), communicate the skipped step to all optimizers in group
             if hasattr(self.optimizer.comm_backend_handle,
                        "mpu") and self.optimizer.comm_backend_handle.mpu is not None:
