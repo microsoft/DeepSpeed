@@ -219,18 +219,6 @@ class FP16_Optimizer(object):
         self.overflow = self.overflow_checker.has_overflow(fp16_params)
         self.stop_timers([OVERFLOW_CHECK])
         prev_scale = self.cur_scale
-        if isinstance(self.optimizer, OnebitAdam) or isinstance(self.optimizer, OnebitLamb):
-            # if optimizer has mpu (i.e, is pipeline parallel), communicate the skipped step to all optimizers in group
-            if hasattr(self.optimizer.comm_backend_handle,
-                       "mpu") and self.optimizer.comm_backend_handle.mpu is not None:
-                if self.overflow:
-                    bool_tensor = torch.zeros(1).cuda()
-                else:
-                    bool_tensor = torch.ones(1).cuda()
-                dist.all_reduce(bool_tensor, op=dist.ReduceOp.PRODUCT)
-                if not any(bool_tensor):
-                    self.overflow = True
-
         self._update_scale(self.overflow)
 
         if self.overflow:
