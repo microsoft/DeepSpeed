@@ -332,23 +332,29 @@ class FP16_UnfusedOptimizer(object):
 
             self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
 
-        # At this point, the optimizer's references to the model's fp32 parameters are up to date.
-        # The optimizer's hyperparameters and internal buffers are also up to date.
-        # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still
-        # out of date.  There are two options.
-        # 1:  Refresh the master params from the model's fp16 params.
-        # This requires less storage but incurs precision loss.
-        # 2:  Save and restore the fp32 master copies separately.
-        # We choose option 2.
-        #
-        # Pytorch Optimizer.load_state_dict casts saved buffers (e.g. momentum) to the type and device
-        # of their associated parameters, because it's possible those buffers might not exist yet in
-        # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
-        # constructed in the same way as the one whose state_dict we are loading, the same master params
-        # are guaranteed to exist, so we can just copy_() from the saved master params.
-        if 'fp32_groups' in state_dict.keys():
-            source_groups = state_dict['fp32_groups']
+            # At this point, the optimizer's references to the model's fp32 parameters are up to date.
+            # The optimizer's hyperparameters and internal buffers are also up to date.
+            # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still
+            # out of date.  There are two options.
+            # 1:  Refresh the master params from the model's fp16 params.
+            # This requires less storage but incurs precision loss.
+            # 2:  Save and restore the fp32 master copies separately.
+            # We choose option 2.
+            #
+            # Pytorch Optimizer.load_state_dict casts saved buffers (e.g. momentum) to the type and device
+            # of their associated parameters, because it's possible those buffers might not exist yet in
+            # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
+            # constructed in the same way as the one whose state_dict we are loading, the same master params
+            # are guaranteed to exist, so we can just copy_() from the saved master params.
+            if 'fp32_groups' in state_dict.keys():
+                source_groups = state_dict['fp32_groups']
+            else:
+                source_groups = self.fp16_groups
         else:
+            # This is needed for finetuning case when we do not want to load the optimizer states from the
+            # checkpoint even if they exist in the checkpoint. E.g. a deepspeed checkpoint will always have
+            # fp32_groups but we don't want to use those. Instead, we want to copy them from the actual
+            #optimizer being used by the client.
             source_groups = self.fp16_groups
 
         for current_group, saved_group in zip(self.fp32_groups, source_groups):

@@ -397,35 +397,45 @@ class FP16_Optimizer(object):
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
+
         if load_optimizer_states:
             # I think it should actually be ok to reload the optimizer before the model.
             self.dynamic_loss_scale = state_dict['dynamic_loss_scale']
             self.cur_scale = state_dict['cur_scale']
             self.cur_iter = state_dict['cur_iter']
+
             if state_dict['dynamic_loss_scale']:
                 self.last_overflow_iter = state_dict['last_overflow_iter']
                 self.scale_factor = state_dict['scale_factor']
                 self.scale_window = state_dict['scale_window']
-                self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
 
+            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
             self.clip_grad = state_dict['clip_grad']
-        # At this point, the optimizer's references to the model's fp32 parameters are up to date.
-        # The optimizer's hyperparameters and internal buffers are also up to date.
-        # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still
-        # out of date.  There are two options.
-        # 1:  Refresh the master params from the model's fp16 params.
-        # This requires less storage but incurs precision loss.
-        # 2:  Save and restore the fp32 master copies separately.
-        # We choose option 2.
-        #
-        # Pytorch Optimizer.load_state_dict casts saved buffers (e.g. momentum) to the type and device
-        # of their associated parameters, because it's possible those buffers might not exist yet in
-        # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
-        # constructed in the same way as the one whose state_dict we are loading, the same master params
-        # are guaranteed to exist, so we can just copy_() from the saved master params.
-        if 'fp32_groups_flat' in state_dict.keys():
-            source_groups_flat = state_dict['fp32_groups_flat']
+            # At this point, the optimizer's references to the model's fp32 parameters are up to date.
+            # The optimizer's hyperparameters and internal buffers are also up to date.
+            # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still
+            # out of date.  There are two options.
+            # 1:  Refresh the master params from the model's fp16 params.
+            # This requires less storage but incurs precision loss.
+            # 2:  Save and restore the fp32 master copies separately.
+            # We choose option 2.
+            #
+            # Pytorch Optimizer.load_state_dict casts saved buffers (e.g. momentum) to the type and device
+            # of their associated parameters, because it's possible those buffers might not exist yet in
+            # the current optimizer instance.  In our case, as long as the current FP16_Optimizer has been
+            # constructed in the same way as the one whose state_dict we are loading, the same master params
+            # are guaranteed to exist, so we can just copy_() from the saved master params.
+            if 'fp32_groups_flat' in state_dict.keys():
+                source_groups_flat = state_dict['fp32_groups_flat']
+                print("fp32_groups_flat found in checkpoint")
+            else:
+                source_groups_flat = self.fp16_groups_flat
+                print("fp32_groups_flat not found so copying from fp16_groups_flat")
         else:
+            # This is needed for finetuning case when we do not want to load the optimizer states from the
+            # checkpoint even if they exist in the checkpoint. E.g. a deepspeed checkpoint will always have
+            # fp32_groups_flat but we don't want to use those. Instead, we want to copy them from the actual
+            #optimizer being used by the client.
             source_groups_flat = self.fp16_groups_flat
 
         for current, saved in zip(self.fp32_groups_flat, source_groups_flat):
