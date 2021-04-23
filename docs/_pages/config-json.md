@@ -412,6 +412,7 @@ Enabling and configuring ZeRO optimization of parameter offloading to CPU/NVMe. 
   "offload_param": {
     "device": "[none|cpu|nvme]",
     "nvme_path": "/local_nvme",
+    "pin_memory": [true|false],  
     "buffer_count": 5,
     "buffer_size": 1e8,
     "max_in_cpu": 1e9
@@ -428,6 +429,12 @@ Enabling and configuring ZeRO optimization of parameter offloading to CPU/NVMe. 
 | Description                                                                                                                           | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Filesystem path for NVMe device for parameter offloading. | `/local_nvme`   |
+
+***pin_memory***: [boolean]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Offload to page-locked CPU memory. This could boost throughput at the cost of extra memory overhead. | `false`  |
 
 ***buffer_count***: [integer]
 
@@ -454,8 +461,8 @@ Enabling and configuring ZeRO optimization of offloading optimizer computation t
   "offload_optimizer": {
     "device": "[none|cpu|nvme]",
     "nvme_path": "/local_nvme",
-    "buffer_count": 4,
     "pin_memory": [true|false],
+    "buffer_count": 4,
     "fast_init": false
   }
 ```
@@ -471,24 +478,66 @@ Enabling and configuring ZeRO optimization of offloading optimizer computation t
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Filesystem path for NVMe device for optimizer state offloading. | `/local_nvme`   |
 
-***buffer_count***: [integer]
-
-| Description                                                                                                                           | Default |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Number of buffers in buffer pool for optimizer state offloading to NVMe. This should be at least the number of states maintained per parameter by the optimizer. For example, Adam optimizer has 4 states (parameter, gradient, momentum, and variance). | 4  |
-
-
 ***pin_memory***: [boolean]
 
 | Description                                                                                                                           | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Offload to page-locked CPU memory. This could boost throughput at the cost of extra memory overhead. | `false`  |
 
+***buffer_count***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Number of buffers in buffer pool for optimizer state offloading to NVMe. This should be at least the number of states maintained per parameter by the optimizer. For example, Adam optimizer has 4 states (parameter, gradient, momentum, and variance). | 4  |
+
 ***fast_init***: [boolean]
 
 | Description                                                                                                                           | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Enable fast optimizer initialization when offloading to NVMe. | `false`  |
+
+
+### Asynchronous I/O
+Configuring the asynchronous I/O module for offloading parameter and optimizer states to persistent (NVMe) storage. This module uses Linux native asynchronous I/O (libaio).
+```json
+  "aio": {
+    "block_size": 1048576,
+    "queue_depth": 8,
+    "thread_count": 1,
+    "single_submit": false,
+    "overlap_events": true
+  }
+```
+***block_size***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| I/O block size in bytes. | 1048576   |
+
+***queue_depth***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| I/O queue depth. | 8  |
+
+***thread_count***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Intra-request parallelism for each read/write submitted by a user thread. | 1  |
+
+***single_submit***: [boolean]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Submit requests to storage device as multiple individual requests as opposed to one block of requests. | `false`  |
+
+***overlap_events***: [boolean]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Submit requests to storage device in an overlapped fashion without waiting for completion of earlier requests. | `true`  |
+
 
 ### Logging
 
