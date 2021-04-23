@@ -60,20 +60,21 @@ def test_disabled():
 
 def test_valid_world_size():
     ds_config = base_ds_config.copy()
-    final_batch_size, valid_gpus, mbsize = deepspeed.elasticity.compute_elastic_config(
+    final_batch_size, valid_gpus, mbsize, final_world_size = deepspeed.elasticity.compute_elastic_config(
             ds_config=ds_config,
             target_deepspeed_version=ds_version,
             world_size=64)
     assert mbsize == 17
 
 
-def test_invalid_world_size():
+def test_larger_world_size():
     ds_config = base_ds_config.copy()
-    with pytest.raises(deepspeed.elasticity.config.ElasticityIncompatibleWorldSize):
-        final_batch_size, valid_gpus, mbsize = deepspeed.elasticity.compute_elastic_config(
-            ds_config=ds_config,
-            target_deepspeed_version=ds_version,
-            world_size=128)
+    #with pytest.raises(deepspeed.elasticity.config.ElasticityIncompatibleWorldSize):
+    final_batch_size, valid_gpus, mbsize, final_world_size = deepspeed.elasticity.compute_elastic_config(
+        ds_config=ds_config,
+        target_deepspeed_version=ds_version,
+        world_size=128)
+    assert final_world_size < 128
 
 
 def test_future_elastic_version():
@@ -141,7 +142,7 @@ def test_proper_mbsz():
     ds_config["elasticity"]["max_train_batch_size"] = 32
     ds_config["elasticity"]["micro_batch_sizes"] = [1, 2, 3, 7]
     ds_config["elasticity"]["min_gpus"] = 1
-    final_batch_size, valid_gpus, mbsize = deepspeed.elasticity.compute_elastic_config(
+    final_batch_size, valid_gpus, mbsize, final_world_size = deepspeed.elasticity.compute_elastic_config(
         ds_config=ds_config,
         target_deepspeed_version=ds_version,
         world_size=7)
@@ -251,8 +252,8 @@ def test_elastic_config_changed(tmpdir):
             "ignore_non_elastic_batch_info": True
         }
     }
-    import json, os
-    scheduler_elastic_config = config_dict.copy()
+    import json, os, copy
+    scheduler_elastic_config = copy.deepcopy(config_dict)
     scheduler_elastic_config["elasticity"]["max_train_batch_size"] = 27
     os.environ['DEEPSPEED_ELASTICITY_CONFIG'] = json.dumps(scheduler_elastic_config)
     args = args_from_dict(tmpdir, config_dict)

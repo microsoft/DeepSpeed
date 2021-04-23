@@ -13,6 +13,7 @@ FORMAT = '''
 Elasticity should be enabled as:
 "elasticity": {
   "enabled": true,
+  "auto" : true,
   "max_train_batch_size": 2000,
   "micro_batch_sizes": [2,4,6],
   "min_gpus": 1,
@@ -31,6 +32,9 @@ LATEST_ELASTICITY_VERSION = 0.1
 
 ENABLED = 'enabled'
 ENABLED_DEFAULT = False
+
+AUTO = 'auto'
+AUTO_DEFAULT = True
 
 # Max acceptable train_batch_size
 MAX_ACCEPTABLE_BATCH_SIZE = 'max_train_batch_size'
@@ -72,3 +76,13 @@ MINIMUM_DEEPSPEED_VERSION = "0.3.8"
 
 # Environment variable storing elastic config from resource scheduler
 DEEPSPEED_ELASTICITY_CONFIG = "DEEPSPEED_ELASTICITY_CONFIG"
+
+DIVISIBLE_BY = "divisible_by"
+DIVISIBLE_BY_DEFAULT = 1
+
+DETECTION_MODE = "detection_mode"
+DETECTION_MODE_POLL = "poll"
+DETECTION_MODE_INOTIFY = "inotify"
+DETECTION_MODE_DEFAULT = DETECTION_MODE_POLL
+
+RUNNER_PID_FILE = '/tmp/deepspeed_runner.pid'

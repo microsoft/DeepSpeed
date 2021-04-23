@@ -22,12 +22,16 @@ from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
+from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG, RUNNER_PID_FILE
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024
+
+ELASTIC_TRAINING = 'IS_ELASTIC_TRAINING_JOB'
+ELASTIC_TRAINING_DEFAULT = 'false'
 
 
 def parse_args(args=None):
@@ -250,10 +254,31 @@ def parse_inclusion_exclusion(resource_pool, inclusion, exclusion):
                                  exclude_str=exclusion)
 
 
-def encode_world_info(world_info):
-    world_info_json = json.dumps(world_info).encode('utf-8')
+def encode64(world_info, json_dump=True):
+    if json_dump:
+        world_info_json = json.dumps(world_info).encode('utf-8')
+    else:
+        world_info_json = world_info.encode('utf-8')
     world_info_base64 = base64.urlsafe_b64encode(world_info_json).decode('utf-8')
     return world_info_base64
+
+
+def get_env(name, env_list, default=None):
+    value = default
+    for env in env_list:
+        if name in env:
+            value = env[name]
+    assert value is not None, f"Unable to find {name} in env"
+    return value
+
+
+def rescale_resources(args):
+    # after elastic scale up/down event re-read hostfile
+    resource_pool = fetch_hostfile(args.hostfile)
+    active_resources = parse_inclusion_exclusion(resource_pool,
+                                                 args.include,
+                                                 args.exclude)
+    return active_resources, encode64(active_resources)
 
 
 def main(args=None):
@@ -311,6 +336,69 @@ def main(args=None):
 
     multi_node_exec = args.force_multi or len(active_resources) > 1
 
+    env_file = {}
+    for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
+        environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
+        if os.path.isfile(environ_file):
+            with open(environ_file, 'r') as fd:
+                for var in fd.readlines():
+                    key, val = var.split('=')
+                    env_file[key] = val.strip()
+
+    if DEEPSPEED_ELASTICITY_CONFIG in env:
+        elastic_config = get_env(DEEPSPEED_ELASTICITY_CONFIG, [env, env_file])
+        elastic_config_json = json.loads(elastic_config)
+
+        assert DEEPSPEED_ELASTICITY_CONFIG not in env_file
+        env_file[DEEPSPEED_ELASTICITY_CONFIG] = encode64(elastic_config, json_dump=False)
+
+        from ..elasticity import compute_elastic_config
+        from .. import __version__
+
+        world_size = sum(map(lambda w: len(w), active_resources.values()))
+
+        final_batch_size, valid_gpus, micro_batch_size, final_world_size = compute_elastic_config(
+            ds_config=elastic_config_json,
+            target_deepspeed_version=__version__,
+            world_size=world_size)
+
+        if world_size != final_world_size:
+            logger.info(
+                f"Modifying world size to be within the valid gpus range needed for elastic training: {world_size} -> {final_world_size}"
+            )
+            curr_world_size = sum(map(lambda w: len(w), active_resources.values()))
+            while curr_world_size != final_world_size:
+                last_worker = list(active_resources.keys())[-1]
+                if len(active_resources[last_worker]) > 0:
+                    active_resources[last_worker].pop()
+                else:
+                    active_resources.pop(last_worker)
+                curr_world_size = sum(map(lambda w: len(w), active_resources.values()))
+            logger.info(f"Updated active resources: {active_resources}")
+
+    # This auto support will work for the deepspeed launcher only
+    auto_elasticity_enabled = False
+    if ELASTIC_TRAINING in env or ELASTIC_TRAINING in env_file:
+        is_elastic_training = get_env(ELASTIC_TRAINING, [env, env_file])
+        if is_elastic_training.lower() == 'true':
+            auto_elasticity_enabled = True
+            logger.info(
+                "DeepSpeed Auto Elasticity Enabled. Ignoring all arguments to deepspeed launcher."
+            )
+        # add ELASTIC_TRAINING to environment file if it's not there already
+        if ELASTIC_TRAINING in env and ELASTIC_TRAINING not in env_file:
+            env_file[ELASTIC_TRAINING] = is_elastic_training.lower()
+
+    if auto_elasticity_enabled:
+        relaunch_cmd = ["deepspeed"] + ["--master_port={}".format(args.master_port)
+                                        ] + [args.user_script] + args.user_args
+        encoded_cmd = encode64(relaunch_cmd)
+        assert args.hostfile == DLTS_HOSTFILE, "auto elasticity doesn't support custom hostfile paths"
+        assert args.include == "" and args.exclude == "" and args.num_nodes == -1 and args.num_gpus == -1, "auto elasticity doesn't support launching on subset of job"
+
+    # encode world info as base64 to make it easier to pass via command line
+    world_info_base64 = encode64(active_resources)
+
     if not multi_node_exec:
         deepspeed_launch = [
             sys.executable,
@@ -319,9 +407,16 @@ def main(args=None):
             "deepspeed.launcher.launch",
             "--world_info={}".format(world_info_base64),
             "--master_addr={}".format(args.master_addr),
-            "--master_port={}".format(args.master_port)
+            "--master_port={}".format(args.master_port),
         ]
-        cmd = deepspeed_launch + [args.user_script] + args.user_args
+        if auto_elasticity_enabled:
+            cmd = deepspeed_launch + ["--ds_command={}".format(encoded_cmd)
+                                      ] + [args.user_script] + args.user_args
+        else:
+            cmd = deepspeed_launch + [args.user_script] + args.user_args
+
+        # update local environment with contents of environment file
+        env.update(env_file)
     else:
         args.launcher = args.launcher.lower()
         if args.launcher == PDSH_LAUNCHER:
@@ -342,24 +437,53 @@ def main(args=None):
         else:
             env['PYTHONPATH'] = curr_path
 
-        exports = ""
         for var in env.keys():
             if any([var.startswith(name) for name in EXPORT_ENVS]):
                 runner.add_export(var, env[var])
 
-        for environ_path in DEEPSPEED_ENVIRONMENT_PATHS:
-            environ_file = os.path.join(environ_path, DEEPSPEED_ENVIRONMENT_NAME)
-            if os.path.isfile(environ_file):
-                with open(environ_file, 'r') as fd:
-                    for var in fd.readlines():
-                        key, val = var.split('=')
-                        runner.add_export(key, val)
+        for key, val in env_file.items():
+            runner.add_export(key, val)
 
-        cmd = runner.get_cmd(env, active_resources)
+        if auto_elasticity_enabled:
+            cmd = runner.get_cmd(env,
+                                 active_resources,
+                                 auto_elasticity_enabled,
+                                 encoded_cmd)
+        else:
+            cmd = runner.get_cmd(env, active_resources)
 
-    logger.info("cmd = {}".format(' '.join(cmd)))
+    if auto_elasticity_enabled:
+        logger.info(
+            "Auto elasticity enabled, cmd used for relaunching will be = {}".format(
+                ' '.join(json.loads(base64.urlsafe_b64decode(encoded_cmd)))))
+        # remove relaunch signal if exists
+        if os.path.isfile('/tmp/ds-requires-relaunch'):
+            os.remove('/tmp/ds-requires-relaunch')
+
+    logger.info("Launch cmd = {}".format(' '.join(cmd)))
+
     result = subprocess.Popen(cmd, env=env)
+
+    #if auto_elasticity_enabled:
+    #    pid_dict = {'runner': os.getpid(), 'launcher': result.pid}
+    #    with open(RUNNER_PID_FILE, 'w') as fd:
+    #        json.dump(pid_dict, fd)
+    #    print(f'pid dict: {pid_dict}')
+
     result.wait()
+
+    if auto_elasticity_enabled:
+        while os.path.isfile('/tmp/ds-requires-relaunch'):
+            logger.info(f"relaunching with cmd: {cmd}")
+            os.remove('/tmp/ds-requires-relaunch')
+            new_resources, new_world_info = rescale_resources(args)
+            runner.world_info_base64 = new_world_info
+            cmd = runner.get_cmd(env,
+                                 new_resources,
+                                 auto_elasticity_enabled,
+                                 encoded_cmd)
+            result = subprocess.Popen(cmd, env=env)
+            result.wait()
 
     # In case of failure must propagate the error-condition back to the caller (usually shell). The
     # actual error and traceback should have been printed in the subprocess, so in order to avoid

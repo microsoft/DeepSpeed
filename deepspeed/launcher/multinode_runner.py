@@ -2,7 +2,9 @@ import os
 import sys
 import shutil
 import subprocess
+import base64
 import warnings
+import json
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -44,7 +46,16 @@ class PDSHRunner(MultiNodeRunner):
             map(lambda x: x if x.startswith("-") else "'{}'".format(x),
                 self.args.user_args))
 
-    def get_cmd(self, environment, active_resources):
+    def encode_cmd(self, cmd):
+        cmd_json = json.dumps(cmd).encode('utf-8')
+        cmd_base64 = base64.urlsafe_b64encode(cmd_json).decode('utf-8')
+        return cmd_base64
+
+    def get_cmd(self,
+                environment,
+                active_resources,
+                auto_elasticity_enabled=None,
+                encoded_cmd=None):
         environment['PDSH_RCMD_TYPE'] = 'ssh'
 
         active_workers = ",".join(active_resources.keys())
@@ -68,11 +79,19 @@ class PDSHRunner(MultiNodeRunner):
             '--world_info={}'.format(self.world_info_base64),
             "--node_rank=%n",
             "--master_addr={}".format(self.args.master_addr),
-            "--master_port={}".format(self.args.master_port)
+            "--master_port={}".format(self.args.master_port),
         ]
 
-        return pdsh_cmd_args + deepspeed_launch + [self.user_script
-                                                   ] + self.user_arguments
+        if auto_elasticity_enabled is not None:
+            # add deepspeed relaunch command to the cmd
+            cmd = pdsh_cmd_args + deepspeed_launch + [
+                "--ds_command={}".format(encoded_cmd)
+            ] + [self.user_script] + self.user_arguments
+        else:
+            cmd = pdsh_cmd_args + deepspeed_launch + [self.user_script
+                                                      ] + self.user_arguments
+
+        return cmd
 
 
 class OpenMPIRunner(MultiNodeRunner):

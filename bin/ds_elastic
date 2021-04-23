@@ -26,13 +26,14 @@ if __name__ == '__main__':
     print(json.dumps(elastic_config, indent=4, sort_keys=True))
 
     if args.world_size > 0:
-        final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(ds_config=ds_config, target_deepspeed_version=ds_version, world_size=args.world_size)
+        final_batch_size, valid_gpus, micro_batch_size, final_world_size = compute_elastic_config(ds_config=ds_config, target_deepspeed_version=ds_version, world_size=args.world_size)
         print('------------------------------------------')
         print(f"Calculated results for world size {args.world_size}:")
         print('------------------------------------------')
         print(f'final_batch_size .... {final_batch_size}')
         print(f'valid_gpus .......... {valid_gpus}')
         print(f'micro_batch_size .... {micro_batch_size}')
+        print(f'final_world_size .... {final_world_size}')
     else:
         final_batch_size, valid_gpus = compute_elastic_config(ds_config=ds_config, target_deepspeed_version=ds_version)
         print('------------------------------------------')
