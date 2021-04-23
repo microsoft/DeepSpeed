@@ -95,7 +95,7 @@ def parse_args(args=None):
     parser.add_argument("--launcher",
                         default=PDSH_LAUNCHER,
                         type=str,
-                        help="(optional) choose launcher backend for multi-node"
+                        help="(optional) choose launcher backend for multi-node "
                         "training. Options currently include PDSH, OpenMPI, MVAPICH.")
 
     parser.add_argument("--launcher_args",
@@ -103,6 +103,11 @@ def parse_args(args=None):
                         type=str,
                         help="(optional) pass launcher specific arguments as a "
                         "single quoted argument.")
+
+    parser.add_argument("--force_multi",
+                        action="store_true",
+                        help="Force multi-node launcher mode, helps in cases where user "
+                        "wants to launch on single remote node.")
 
     parser.add_argument("user_script",
                         type=str,
@@ -304,10 +309,7 @@ def main(args=None):
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
-    multi_node_exec = True  # len(active_resources) > 1
-
-    if multi_node_exec and not shutil.which('pdsh'):
-        raise RuntimeError("pdsh is not installed, unable to proceed")
+    multi_node_exec = args.force_multi or len(active_resources) > 1
 
     if not multi_node_exec:
         deepspeed_launch = [
@@ -358,6 +360,12 @@ def main(args=None):
     logger.info("cmd = {}".format(' '.join(cmd)))
     result = subprocess.Popen(cmd, env=env)
     result.wait()
+
+    # In case of failure must propagate the error-condition back to the caller (usually shell). The
+    # actual error and traceback should have been printed in the subprocess, so in order to avoid
+    # unnecessary noise we just quietly exit here with the same code as the subprocess
+    if result.returncode > 0:
+        sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
