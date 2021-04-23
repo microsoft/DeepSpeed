@@ -292,6 +292,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         else:
             self.dtype = dtype
 
+
 # Replaces all parameters in module with Scattered Parameters
 class Init(InsertPostInitMethodToModuleSubClasses):
     param_id = 0
@@ -331,6 +332,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 as a dictionary instead for swapping fp16 params to NVMe.
             enabled (bool, optional): If ``False``, this context has no
                 effect. Defaults to ``True``.
+            dtype (``torch.dtype``, optional): Can be used to change the data type of the parameters.
+                Supported options are ``torch.half`` and ``torch.float``. Defaults to ``torch.half``
 
         This context accelerates model initialization and enables models that
         are too large to allocate in their entirety in CPU memory. It has the
