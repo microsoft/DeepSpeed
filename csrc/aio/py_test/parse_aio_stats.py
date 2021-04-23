@@ -16,9 +16,6 @@ PERF_METRICS = [READ_SPEED, WRITE_SPEED]
 
 METRIC_SEARCH = {READ_SPEED: 'E2E Read Speed', WRITE_SPEED: 'E2E Write Speed'}
 
-NUM_BYTES = (400 * 1024 * 1024)
-NUM_GIGA_BYTES = (1024 * 1024 * 1024)
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -79,9 +76,20 @@ def get_thread_count(file):
     return 1
 
 
+"""
+Extract performance metric from log file.
+Sample file lines are:
+Task Read Latency = 0.031647682189941406 sec
+Task Read Speed = 12.342926020792527 GB/sec
+E2E Read Latency = 0.031697988510131836 sec
+E2E Read Speed = 12.323337169333062 GB/sec
+
+For the above sample, -metric = "read_speed" corresponds to "E2E Read Speed", and 12.32 will be returned
+"""
+
+
 def get_metric(file, metric):
     thread_count = get_thread_count(file)
-    num_giga_bytes = NUM_BYTES / NUM_GIGA_BYTES
     with open(file) as f:
         for line in f.readlines():
             if line.startswith(METRIC_SEARCH[metric]):
