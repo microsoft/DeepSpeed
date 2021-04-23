@@ -640,12 +640,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
+        self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
 
         if not all(is_zero_param(p) for p in module.parameters()):
             group = None
             if mpu:
                 group = mpu.get_data_parallel_group()
-            Init(module=module, data_parallel_group=group)
+            Init(module=module, data_parallel_group=group, dtype=self.dtype)
 
         for m in module.modules():
             _init_external_params(m)
@@ -791,7 +792,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-        self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         see_memory_usage("Before creating fp16 partitions", force=True)
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
@@ -896,18 +896,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #exit(0)
 
         # we may have a way of fusing dynamic scale. Do not support for now
-        if dynamic_loss_scale:
+        if self.dtype == torch.float or not dynamic_loss_scale:
+            loss_scale_value = 1.0 if self.dtype == torch.float else static_loss_scale
+
+            self.dynamic_loss_scale = False
+            self.loss_scaler = LossScaler(scale=loss_scale_value)
+            cur_iter = 0
+        else:
             if dynamic_loss_args is None:
                 self.loss_scaler = DynamicLossScaler()
             else:
                 self.loss_scaler = DynamicLossScaler(**dynamic_loss_args)
 
             self.dynamic_loss_scale = True
-
-        else:
-            self.dynamic_loss_scale = False
-            self.loss_scaler = LossScaler(scale=static_loss_scale)
-            self.cur_iter = 0
 
         self.debug_fp16_grads = [{} for _ in self.fp16_groups]
 
