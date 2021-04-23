@@ -6,12 +6,11 @@ from deepspeed.runtime.zero.linear import LinearModuleForZeroStage3
 
 def _skip_autocast_test():
     try:
-        import torch.cuda.amp.custom_fwd
-        import torch.cuda.amp.custom_bwd
+        from torch.cuda.amp import custom_fwd, custom_bwd
     except (ImportError, AttributeError) as exp:
-        return False
+        return True
 
-    return True
+    return False
 
 
 @pytest.mark.parametrize('half_op', [False, True])
