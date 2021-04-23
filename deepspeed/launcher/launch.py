@@ -18,6 +18,7 @@ import signal
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
+from ..elasticity.constants import DEEPSPEED_ELASTICITY_CONFIG
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
@@ -50,7 +51,10 @@ def parse_args():
                         default="None",
                         type=str,
                         help="world info base64 encoded dictionary")
-
+    parser.add_argument("--ds_command",
+                        default="None",
+                        type=str,
+                        help="deepspeed run command base64 encoded dictionary")
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -76,6 +80,10 @@ def main():
     assert args.world_info != "None", "must provide world info dict"
     world_info = base64.urlsafe_b64decode(args.world_info)
     world_info = json.loads(world_info)
+
+    if DEEPSPEED_ELASTICITY_CONFIG in current_env:
+        current_env[DEEPSPEED_ELASTICITY_CONFIG] = base64.urlsafe_b64decode(
+            current_env[DEEPSPEED_ELASTICITY_CONFIG])
 
     logger.info("WORLD INFO DICT: {}".format(world_info))
     node_list = list(world_info.keys())
@@ -109,6 +117,10 @@ def main():
     current_env["MASTER_ADDR"] = args.master_addr
     current_env["MASTER_PORT"] = str(args.master_port)
     current_env["WORLD_SIZE"] = str(dist_world_size)
+
+    if os.environ.get('IS_ELASTIC_TRAINING_JOB', 'false').lower() == 'true':
+        current_env["DS_CMD"] = str(args.ds_command)
+        current_env["DS_RANK_MAPPING"] = json.dumps(global_rank_mapping)
 
     processes = []
     for local_rank in range(0, num_local_procs):

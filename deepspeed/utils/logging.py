@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 import torch.distributed as dist
@@ -59,7 +60,9 @@ def log_dist(message, ranks=None, level=logging.INFO):
     """
     should_log = not dist.is_initialized()
     ranks = ranks or []
-    my_rank = dist.get_rank() if dist.is_initialized() else -1
+    my_rank = dist.get_rank() if dist.is_initialized() else int(
+        os.environ.get('RANK',
+                       -1))
     if ranks and not should_log:
         should_log = ranks[0] == -1
         should_log = should_log or (my_rank in set(ranks))

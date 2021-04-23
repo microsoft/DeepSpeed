@@ -37,17 +37,20 @@ class ElasticityConfig:
 
     {
         "enabled": true,
+        "auto" : true,
         "max_train_batch_size": 2000,
         "micro_batch_sizes": [2,4,6],
         "min_gpus": 1,
-        "max_gpus" : 10000
-        "min_time": 20
-        "ignore_non_elastic_batch_info": false
+        "max_gpus" : 10000,
+        "min_time": 20,
+        "divisible_by": 1,
+        "ignore_non_elastic_batch_info": false,
         "version": 0.1
     }
     """
     def __init__(self, param_dict):
         self.enabled = param_dict.get(ENABLED, ENABLED_DEFAULT)
+        self.auto = param_dict.get(AUTO, AUTO_DEFAULT)
         if self.enabled:
             if MAX_ACCEPTABLE_BATCH_SIZE in param_dict:
                 self.max_acceptable_batch_size = param_dict[MAX_ACCEPTABLE_BATCH_SIZE]
@@ -95,6 +98,10 @@ class ElasticityConfig:
         if self.min_time < 0:
             raise ElasticityConfigError(
                 f"Elasticity min time needs to be >= 0: given {self.min_time}")
+
+        self.divisible_by = param_dict.get(DIVISIBLE_BY, DIVISIBLE_BY_DEFAULT)
+        self.detection_mode = param_dict.get(DETECTION_MODE,
+                                             DETECTION_MODE_DEFAULT).lower()
 
         self.version = param_dict.get(VERSION, VERSION_DEFAULT)
         self.prefer_larger_batch_size = param_dict.get(PREFER_LARGER_BATCH,

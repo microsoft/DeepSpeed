@@ -19,7 +19,8 @@ from .activation_checkpointing.config import DeepSpeedActivationCheckpointingCon
 from ..git_version_info import version as __version__
 from ..utils import logger
 
-from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config
+from ..elasticity.auto import auto_enabled
+from ..elasticity import elasticity_enabled, compute_elastic_config, ensure_immutable_elastic_config, detection_method
 from ..elasticity.config import ElasticityConfigError
 from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT
@@ -703,14 +704,19 @@ class DeepSpeedConfig(object):
             self.global_rank = 0
             self.world_size = 1
 
+        print(f"param dict to auto = {self._param_dict}")
+        self.auto_enabled = auto_enabled(self._param_dict)
         # If elastic-mode enabled, update compute + update _param_dict
         self.elasticity_enabled = elasticity_enabled(self._param_dict)
+        self.elasticity_detection_method = detection_method(self._param_dict)
         if self.elasticity_enabled:
             logger.info("DeepSpeed elasticity support enabled")
-            final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
+            final_batch_size, valid_gpus, micro_batch_size, final_world_size = compute_elastic_config(
                 ds_config=self._param_dict,
                 target_deepspeed_version=__version__,
                 world_size=self.world_size)
+
+            assert final_world_size == self.world_size, f"Not running elastic training with expected world size {self.world_size} != {final_world_size}"
 
             elastic_dict = self._param_dict[ELASTICITY]
 

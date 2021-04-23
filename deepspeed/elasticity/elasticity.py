@@ -12,7 +12,8 @@ from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
     ElasticityIncompatibleWorldSize
 from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_VERSION, \
     MINIMUM_DEEPSPEED_VERSION, IGNORE_NON_ELASTIC_BATCH_INFO, \
-    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG
+    IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG, \
+    DETECTION_MODE, DETECTION_MODE_DEFAULT
 from ..git_version_info import version as __version__
 from ..utils import logger
 
@@ -75,18 +76,22 @@ def get_candidate_batch_sizes(base_list, max_acceptable_batch_size):
     return list(set(candidate_batch_size))
 
 
-def get_valid_gpus(batch_size, micro_batches, min_valid_gpus, max_valid_gpus):
+def get_valid_gpus(batch_size,
+                   micro_batches,
+                   min_valid_gpus,
+                   max_valid_gpus,
+                   divisible_by=1):
     valid_gpus = []
     for micro_batch in micro_batches:
         if batch_size % micro_batch == 0:
 
             max_gpus = batch_size // micro_batch
-            if max_gpus >= min_valid_gpus and max_gpus <= max_valid_gpus:
+            if max_gpus >= min_valid_gpus and max_gpus <= max_valid_gpus and max_gpus % divisible_by == 0:
                 valid_gpus.append(max_gpus)
 
             for i in range(1, max_gpus // 2 + 1):
                 if max_gpus % i == 0:
-                    if i >= min_valid_gpus and i <= max_valid_gpus:
+                    if i >= min_valid_gpus and i <= max_valid_gpus and i % divisible_by == 0:
                         valid_gpus.append(i)
     valid_gpus = set(valid_gpus)
     valid_gpus = sorted(list(valid_gpus))
@@ -97,7 +102,8 @@ def get_best_candidates(candidate_batch_sizes,
                         micro_batches,
                         min_gpus,
                         max_gpus,
-                        prefer_larger):
+                        prefer_larger,
+                        divisible_by=1):
 
     max_valid_gpus = 0
     valid_gpus = None
@@ -108,7 +114,8 @@ def get_best_candidates(candidate_batch_sizes,
         current_valid_gpus = get_valid_gpus(batch_size,
                                             micro_batches,
                                             min_gpus,
-                                            max_gpus)
+                                            max_gpus,
+                                            divisible_by)
 
         if (len(current_valid_gpus) > max_valid_gpus
                 or (len(current_valid_gpus) == max_valid_gpus and
@@ -125,7 +132,8 @@ def _get_compatible_gpus_v01(micro_batches,
                              max_acceptable_batch_size,
                              min_gpus=None,
                              max_gpus=None,
-                             prefer_larger=True):
+                             prefer_larger=True,
+                             divisible_by=1):
     '''We use two heuristics to compute the batch size
         1. We use the Lowest Common Multiple of the micro-batches
     as the base batch size and scale it by a HCN such that the result is
@@ -168,7 +176,8 @@ def _get_compatible_gpus_v01(micro_batches,
         micro_batches,
         min_gpus,
         max_gpus,
-        prefer_larger)
+        prefer_larger,
+        divisible_by)
 
     return final_batch_size, valid_gpus
 
@@ -190,6 +199,12 @@ def elasticity_enabled(ds_config: dict):
     return ds_config[ELASTICITY].get(ENABLED, ENABLED_DEFAULT)
 
 
+def detection_method(ds_config: dict):
+    if ELASTICITY not in ds_config:
+        return None
+    return ds_config[ELASTICITY].get(DETECTION_MODE, DETECTION_MODE_DEFAULT)
+
+
 def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
     """
     Ensure the resource scheduler saw the same elastic config we are using at runtime
@@ -197,6 +212,11 @@ def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
     if DEEPSPEED_ELASTICITY_CONFIG in os.environ:
         scheduler_elastic_config_dict = json.loads(
             os.environ[DEEPSPEED_ELASTICITY_CONFIG])
+
+        # remove outer config ELASTICITY key if exists
+        if ELASTICITY in scheduler_elastic_config_dict:
+            scheduler_elastic_config_dict = scheduler_elastic_config_dict[ELASTICITY]
+
         scheduler_elastic_config = ElasticityConfig(scheduler_elastic_config_dict)
         runtime_elastic_config = ElasticityConfig(runtime_elastic_config_dict)
         err_str = "Elastic config '{}={}' seen by resource scheduler does not match config passed to runtime {}={}"
@@ -294,7 +314,8 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
             min_gpus=elastic_config.min_gpus,
             max_gpus=elastic_config.max_gpus,
-            prefer_larger=elastic_config.prefer_larger_batch_size)
+            prefer_larger=elastic_config.prefer_larger_batch_size,
+            divisible_by=elastic_config.divisible_by)
         # ensure batch size is int dtype
         final_batch_size = int(final_batch_size)
     else:
@@ -303,8 +324,12 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
 
     if world_size > 0:
         if world_size not in valid_gpus:
-            raise ElasticityIncompatibleWorldSize(f"World size ({world_size}) is not valid " \
-        f"with the current list of valid GPU counts: {valid_gpus}")
+            logger.warning(f"Given world size ({world_size}) is not perfectly valid " \
+                f"with the current list of valid GPU counts: {valid_gpus}. Will use the largest world size that's still valid.")
+            # Pick largest world size possible within valid gpu counts
+            filtered_valid_gpus = list(filter(lambda t: t <= world_size, valid_gpus))
+            assert len(filtered_valid_gpus) > 0, "Unable to find any valid gpus within world size"
+            world_size = filtered_valid_gpus[-1]
 
         # Pick largest valid micro batch size
         micro_batch_size = None
@@ -315,6 +340,6 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
         assert micro_batch_size is not None, "Unable to find divisible micro batch size" \
             f" world_size={world_size}, final_batch_size={final_batch_size}, and " \
             f" micro_batches={elastic_config.micro_batches}."
-        return final_batch_size, valid_gpus, micro_batch_size
+        return final_batch_size, valid_gpus, micro_batch_size, world_size
 
     return final_batch_size, valid_gpus

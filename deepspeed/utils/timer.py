@@ -131,6 +131,9 @@ class ThroughputTimer():
         self.epoch_count += 1
         self.local_step_count = 0
 
+    def restore_steps(self, steps):
+        self.local_step_count = steps
+
     def _init_timer(self):
         self.initialized = True
 
