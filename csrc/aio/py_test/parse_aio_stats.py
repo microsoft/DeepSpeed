@@ -9,28 +9,15 @@ import os
 import argparse
 import re
 
-RAW_RATE = 'raw_rate'
-E2E_RATE = 'e2e_rate'
-SUBMIT_LATENCY = 'submit_latency'
-COMPLETE_LATENCY = 'complete_latency'
 READ_SPEED = 'read_speed'
 WRITE_SPEED = 'write_speed'
 
-TASK_READ_SPEED = 'task_read_speed'
-
 PERF_METRICS = [
-    RAW_RATE,
-    E2E_RATE,
-    SUBMIT_LATENCY,
-    COMPLETE_LATENCY,
     READ_SPEED,
     WRITE_SPEED
 ]
+
 METRIC_SEARCH = {
-    RAW_RATE: 'ds_raw_time',
-    E2E_RATE: 'ds_time',
-    SUBMIT_LATENCY: 'aggr: submit',
-    COMPLETE_LATENCY: 'aggr: complete',
     READ_SPEED: 'E2E Read Speed',
     WRITE_SPEED: 'E2E Write Speed'
 }
@@ -52,7 +39,7 @@ def parse_arguments():
         type=str,
         required=True,
         help=
-        'Performance metric to report: [raw_rate|e2e_rate|submit_latency|complete_latency]'
+        'Performance metric to report: [read_speed|write_speed]'
     )
 
     args = parser.parse_args()
@@ -107,12 +94,7 @@ def get_metric(file, metric):
     with open(file) as f:
         for line in f.readlines():
             if line.startswith(METRIC_SEARCH[metric]):
-                if metric == RAW_RATE:
-                    fields = line.split()
-                    raw_time_sec = float(fields[2]) / 1e06
-                    raw_rate = (thread_count * num_giga_bytes * 1.0) / raw_time_sec
-                    return raw_rate
-                elif metric in [READ_SPEED, WRITE_SPEED]:
+                if metric in [READ_SPEED, WRITE_SPEED]:
                     fields = line.split()
                     return float(fields[-2])
                 else:
