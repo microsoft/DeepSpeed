@@ -12,15 +12,9 @@ import re
 READ_SPEED = 'read_speed'
 WRITE_SPEED = 'write_speed'
 
-PERF_METRICS = [
-    READ_SPEED,
-    WRITE_SPEED
-]
+PERF_METRICS = [READ_SPEED, WRITE_SPEED]
 
-METRIC_SEARCH = {
-    READ_SPEED: 'E2E Read Speed',
-    WRITE_SPEED: 'E2E Write Speed'
-}
+METRIC_SEARCH = {READ_SPEED: 'E2E Read Speed', WRITE_SPEED: 'E2E Write Speed'}
 
 NUM_BYTES = (400 * 1024 * 1024)
 NUM_GIGA_BYTES = (1024 * 1024 * 1024)
@@ -34,13 +28,10 @@ def parse_arguments():
                         required=True,
                         help='Folder of statistics logs')
 
-    parser.add_argument(
-        '--metric',
-        type=str,
-        required=True,
-        help=
-        'Performance metric to report: [read_speed|write_speed]'
-    )
+    parser.add_argument('--metric',
+                        type=str,
+                        required=True,
+                        help='Performance metric to report: [read_speed|write_speed]')
 
     args = parser.parse_args()
     print(f'args = {args}')
