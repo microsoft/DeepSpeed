@@ -100,19 +100,18 @@ def print_configuration(args, name):
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
-    def __init__(
-        self,
-        args,
-        model,
-        optimizer=None,
-        model_parameters=None,
-        training_data=None,
-        lr_scheduler=None,
-        mpu=None,
-        dist_init_required=None,
-        collate_fn=None,
-        config_params=None,
-        dont_change_device=False):
+    def __init__(self,
+                 args,
+                 model,
+                 optimizer=None,
+                 model_parameters=None,
+                 training_data=None,
+                 lr_scheduler=None,
+                 mpu=None,
+                 dist_init_required=None,
+                 collate_fn=None,
+                 config_params=None,
+                 dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
@@ -351,8 +350,8 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.offload_optimizer is not None
 
     def zero_sub_group_size(self):
-        return self._config.zero_config.sub_group_size    
-    
+        return self._config.zero_config.sub_group_size
+
     def zero_find_unused_parameters(self):
         return self._config.zero_config.find_unused_parameters
 
