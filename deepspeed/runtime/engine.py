@@ -24,7 +24,7 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
-    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
+    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
@@ -341,14 +341,14 @@ class DeepSpeedEngine(Module):
     def zero_overlap_comm(self):
         return self._config.zero_config.overlap_comm
 
+    def zero_offload_optimizer(self):
+        return self._config.zero_config.offload_optimizer
+
+    def zero_offload_param(self):
+        return self._config.zero_config.offload_param
+
     def zero_cpu_offload(self):
-        return self._config.zero_config.cpu_offload
-
-    def zero_cpu_offload_params(self):
-        return self._config.zero_config.cpu_offload_params
-
-    def zero_cpu_offload_use_pin_memory(self):
-        return self._config.zero_config.cpu_offload_use_pin_memory
+        return self._config.zero_config.offload_optimizer is not None
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size    
@@ -439,6 +439,12 @@ class DeepSpeedEngine(Module):
 
     def dynamic_loss_scale_args(self):
         return self._config.dynamic_loss_scale_args
+
+    def swap_tensor_config(self):
+        return self._config.swap_tensor_config
+
+    def aio_config(self):
+        return self._config.aio_config
 
     def _configure_lr_scheduler(self, client_lr_scheduler):
         # First check for scheduler in json configuration
@@ -551,7 +557,8 @@ class DeepSpeedEngine(Module):
                 assert self._is_supported_optimizer(self.optimizer_name()), \
                     '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
-        if self.optimizer_name() == LAMB_OPTIMIZER:
+        if self.optimizer_name() == LAMB_OPTIMIZER or self.optimizer_name(
+        ) == ONEBIT_LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
@@ -598,8 +605,9 @@ class DeepSpeedEngine(Module):
             client_optimizer.param_groups[:] = [
                 pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
             ]
-            logger.info(
-                "Removing param_group that has no 'params'in the client Optimizer")
+            if self.global_rank == 0:
+                logger.info(
+                    "Removing param_group that has no 'params' in the client Optimizer")
 
             basic_optimizer = client_optimizer
             if self.global_rank == 0:
@@ -691,6 +699,13 @@ class DeepSpeedEngine(Module):
                 logger.warning(
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
+        elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
+            from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
+            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
+            if not self.fp16_enabled():
+                logger.warning(
+                    f'Currently the convergence of 1-bit Lamb is only verified under FP16'
+                )
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -707,6 +722,7 @@ class DeepSpeedEngine(Module):
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     dynamic_loss_scale=True,
                     initial_dynamic_scale=initial_dynamic_scale,
                     dynamic_loss_args=dynamic_loss_args,
@@ -720,6 +736,7 @@ class DeepSpeedEngine(Module):
                          ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     static_loss_scale=self.loss_scale(),
                     mpu=self.mpu,
                     clip_grad=clip_grad,
@@ -729,6 +746,7 @@ class DeepSpeedEngine(Module):
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                deepspeed=self,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
@@ -745,7 +763,6 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -798,14 +815,14 @@ class DeepSpeedEngine(Module):
                 dp_process_group=self.data_parallel_group,
                 reduce_scatter=self.zero_reduce_scatter(),
                 overlap_comm=self.zero_overlap_comm(),
-                cpu_offload_optimizer_state=self.zero_cpu_offload(),
-                cpu_offload_params=self.zero_cpu_offload_params(),
-                cpu_offload_use_pin_memory=self.zero_cpu_offload_use_pin_memory(),
+                offload_optimizer_config=self.zero_offload_optimizer(),
+                offload_param_config=self.zero_offload_param(),
                 sub_group_size=self.zero_sub_group_size(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                aio_config=self.aio_config())
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -910,6 +927,13 @@ class DeepSpeedEngine(Module):
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
 
+        if self.zero_optimization_partition_weights():
+            # Enable automated discovery of external parameters by indicating that
+            # we are in a forward pass.
+            for module in self.module.modules():
+                module._parameters._in_forward = True
+                pass
+
         if self.wall_clock_breakdown():
             self.timers('forward_microstep').start()
             self.timers('forward').start()
@@ -918,10 +942,14 @@ class DeepSpeedEngine(Module):
             self.tput_timer.start()
         loss = self.module(*inputs, **kwargs)
 
-        # Reset the ZeRO-3 state if we are only doing forward-passes (ie evaluation).
         if self.zero_optimization_partition_weights():
+            # Reset the ZeRO-3 state if we are only doing forward-passes (ie evaluation).
             if not torch._C.is_grad_enabled():
                 self.optimizer.param_coordinator.reset_step()
+
+            # Disable automated discovery of external parameters
+            for module in self.module.modules():
+                module._parameters._in_forward = False
 
         if self.wall_clock_breakdown():
             self.timers('forward').stop()
@@ -946,8 +974,8 @@ class DeepSpeedEngine(Module):
 
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                assert self.zero_reduce_scatter()
+            if self.zero_optimization_stage(
+            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter():
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -1090,8 +1118,9 @@ class DeepSpeedEngine(Module):
         else:
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step(**(lr_kwargs or {}))
-            if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
-                self._report_progress(self.global_steps + 1)
+
+        if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
+            self._report_progress(self.global_steps + 1)
 
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
