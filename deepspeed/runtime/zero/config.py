@@ -29,6 +29,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.cpu_offload_use_pin_memory = None
         self.sub_group_size = None
 
+        #Stage2 Specific Parameters
+        self.find_unused_parameters = None
+
         #Stage3 Specific Parameters
         self.prefetch_bucket_size = None
         self.param_persistence_threshold = None
@@ -125,6 +128,11 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.sub_group_size = get_scalar_param(zero_config_dict,
                                                ZERO_OPTIMIZATION_SUB_GROUP_SIZE,
                                                ZERO_OPTIMIZATION_SUB_GROUP_SIZE_DEFAULT)
+
+        self.find_unused_parameters = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS,
+            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS_DEFAULT)
 
         self.max_live_parameters = get_scalar_param(
             zero_config_dict,
