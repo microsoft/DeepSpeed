@@ -56,6 +56,22 @@ except ImportError:
     pass
 
 
+def see_memory_usage_wcolor(message):
+    import gc
+    RED = '\033[91m'
+    END = '\033[0m'
+    torch.cuda.synchronize()
+    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+        return
+    gc.collect()
+    logger.info(f"{RED}{message}{END}")
+    logger.info(f"{RED}MemAlloc {torch.cuda.memory_allocated():,} \
+        Max_MemAlloc {torch.cuda.max_memory_allocated():,} \
+        MemCached {torch.cuda.memory_cached():,} \
+        Max_MemCached {torch.cuda.max_memory_cached():,}{END}")
+    torch.cuda.reset_peak_memory_stats()
+
+
 def split_half_float_double_csr(tensors):
     dtypes = [
         "torch.cuda.HalfTensor",
@@ -748,7 +764,7 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
+            # assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -761,6 +777,26 @@ class DeepSpeedEngine(Module):
                 dp_process_group=self.data_parallel_group,
                 elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu)
+        elif zero_stage == -1:
+            optimizer = FP16_DeepSpeedZeroOptimizer(
+                optimizer,
+                timers=timers,
+                static_loss_scale=self.loss_scale(),
+                dynamic_loss_scale=self.dynamic_loss_scale(),
+                dynamic_loss_args=self.dynamic_loss_scale_args(),
+                clip_grad=self.gradient_clipping(),
+                contiguous_gradients=self.zero_contiguous_gradients(),
+                reduce_bucket_size=self.zero_reduce_bucket_size(),
+                allgather_bucket_size=self.zero_allgather_bucket_size(),
+                dp_process_group=self.data_parallel_group,
+                reduce_scatter=self.zero_reduce_scatter(),
+                overlap_comm=self.zero_overlap_comm(),
+                cpu_offload=self.zero_cpu_offload(),
+                mpu=self.mpu,
+                postscale_gradients=self.postscale_gradients(),
+                gradient_predivide_factor=self.gradient_predivide_factor(),
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                stage1=True)
         elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
@@ -959,8 +995,10 @@ class DeepSpeedEngine(Module):
 
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                assert self.zero_reduce_scatter()
+            if self.zero_optimization_stage(
+            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter(
+            ) or self.zero_optimization_stage() == -1:
+                # assert self.zero_reduce_scatter()
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -980,6 +1018,8 @@ class DeepSpeedEngine(Module):
             logger.warning(
                 f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
             )
+
+        see_memory_usage_wcolor('pre-backward')
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
@@ -1035,7 +1075,9 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce').start()
 
         if self.enable_backward_allreduce:
+            see_memory_usage_wcolor('pre-grad-reduce')
             self.allreduce_gradients()
+            see_memory_usage_wcolor('post-grad-reduce')
 
         if self.wall_clock_breakdown():
             self.timers('backward_allreduce').stop()

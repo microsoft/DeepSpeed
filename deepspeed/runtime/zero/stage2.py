@@ -23,6 +23,22 @@ from deepspeed.utils import logger
 pg_correctness_test = False
 
 
+def see_memory_usage_wcolor(message):
+    import gc
+    RED = '\033[91m'
+    END = '\033[0m'
+    torch.cuda.synchronize()
+    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+        return
+    gc.collect()
+    logger.info(f"{RED}{message}{END}")
+    logger.info(f"{RED}MemAlloc {torch.cuda.memory_allocated():,} \
+        Max_MemAlloc {torch.cuda.max_memory_allocated():,} \
+        MemCached {torch.cuda.memory_cached():,} \
+        Max_MemCached {torch.cuda.max_memory_cached():,}{END}")
+    torch.cuda.reset_peak_memory_stats()
+
+
 def input(msg):
     return
 
@@ -95,7 +111,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  allreduce_always_fp32=False,
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
-                 gradient_accumulation_steps=1):
+                 gradient_accumulation_steps=1,
+                 stage1=False):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -118,6 +135,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
+
+        self.stage1 = stage1
+        if self.stage1:
+            assert not cpu_offload, "stage 1 does not support offload"
 
         self.timers = timers
 
@@ -149,6 +170,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = 0
+
+        self.extra_large_param_to_reduce = None
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -246,9 +269,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(
                 group=self.dp_process_group)
-            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(self.fp16_groups[i], partition_size, partition_id)
-
             self.partition_size.append(partition_size)
+
+            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(self.fp16_groups[i], partition_size, partition_id)
             self.params_in_partition.append(params_in_partition)
             self.params_not_in_partition.append(params_not_in_partition)
             self.first_offset.append(first_offset)
@@ -256,6 +279,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
+        # if not stage1:
         self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
         self.reduction_stream = torch.cuda.Stream()
         self.cpu_computation_stream = torch.cuda.Stream()
@@ -351,7 +375,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reset_partition_gradient_structures()
 
         #creates backward hooks for gradient partitioning
-        self.create_reduce_and_remove_grad_hooks()
+        if not self.stage1:
+            self.create_reduce_and_remove_grad_hooks()
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if dynamic_loss_scale:
@@ -401,6 +426,22 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 group.grad = None
 
         return
+
+    #########################################################################
+    #################### ZeRO Stage 1 - reduce gradients ####################
+    #########################################################################
+
+    def reduce_scatter_gradients(self,
+                                 postscale_gradients,
+                                 gradient_predivide_factor,
+                                 gradient_average):
+        world_size = dist.get_world_size(self.dp_process_group)
+        my_rank = dist.get_rank(self.dp_process_group)
+
+        for i, group in enumerate(self.fp16_groups):
+            for param in group:
+                self.reduce_ready_partitions_and_remove_grads(param, i)
+        self.overlapping_partition_gradients_reduce_epilogue()
 
     #########################################################################
     #########################ZeRO Partition Gradients########################
@@ -627,8 +668,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
             Gradient computed twice for this partition. \
             Multiple gradient reduction is currently not supported"
 
-        #keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
-        if self.contiguous_gradients:
+        if param.numel() > self.reduce_bucket_size:
+            self.extra_large_param_to_reduce = param
+
+        elif self.contiguous_gradients:
+            #keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
             new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
                 0,
                 self.elements_in_ipg_bucket,
@@ -728,8 +772,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             async_handles = []
             for dst, bucket_offset, numel in rank_and_offsets:
+                # print(f'{tensor.numel()=}, {bucket_offset=}, {numel=}')
                 grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
                 dst_rank = _get_global_rank(self.dp_process_group, dst)
+                # print(f'******* [{dist.get_rank()}] dist.reduce {grad_slice.numel()}, dst={dst_rank}')
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=self.dp_process_group,
@@ -952,7 +998,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
             stream = torch.cuda.current_stream()
 
         if self.contiguous_gradients:
-            self.average_tensor(self.ipg_buffer[self.ipg_index])
+            if self.extra_large_param_to_reduce is not None:
+                # assert False, 'yay, found extra large param!'
+                assert len(self.params_in_ipg_bucket) == 1, "more than 1 param in ipg bucket, this shouldn't happen"
+                _, _, param_id = self.params_in_ipg_bucket[0]
+                assert self.get_param_id(self.extra_large_param_to_reduce) == param_id, "param in ipg bucket does not match extra-large param"
+                self.average_tensor(self.extra_large_param_to_reduce.grad.view(-1))
+                self.extra_large_param_to_reduce = None
+            else:
+                self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
             self.buffered_reduce_fallback(
                 None,
@@ -1426,6 +1480,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 assert single_grad_partition.numel() == self.partition_size[i], \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
+                # print(f"[{partition_id}] grad-norm {single_grad_partition.norm()}")
+                # print(f"[{partition_id}] grad_partition {single_grad_partition}")
                 self.single_partition_of_fp32_groups[i].grad = single_grad_partition
                 #release all the gradient since we have already created a necessary copy in dp_grad_partition
                 self.free_grad_in_param_list(self.params_in_partition[i])
@@ -1518,7 +1574,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for norm in norm_groups:
             total_norm += norm**2.0
         total_norm = math.sqrt(total_norm)
-
+        # print(f'[{dist.get_rank()}] total_norm={total_norm}')
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
         if self.clip_grad > 0.:
@@ -1613,17 +1669,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload:
             torch.cuda.current_stream().wait_stream(self.migration_stream)
 
-        #TODO: we need to revist this and remove the magic 4.5x multiplier here
         if self.contiguous_gradients:
             self.ipg_buffer = []
-            buf_0 = torch.empty(int(self.reduce_bucket_size * 4.5),
+            buf_0 = torch.empty(int(self.reduce_bucket_size),
                                 dtype=torch.half,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
-                buf_1 = torch.empty(int(self.reduce_bucket_size * 4.5),
+                buf_1 = torch.empty(int(self.reduce_bucket_size),
                                     dtype=torch.half,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
