@@ -182,3 +182,23 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS,
             ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS_DEFAULT)
+
+        if self.stage >= ZERO_OPTIMIZATION_GRADIENTS:
+            # grad hooks are always enabled for stage 2 and above
+            self.grad_hooks = ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT
+
+            config_value = get_scalar_param(zero_config_dict,
+                                            ZERO_OPTIMIZATION_GRAD_HOOKS,
+                                            ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT)
+            if config_value != self.grad_hooks:
+                logger.warning(f"ZeRO {ZERO_OPTIMIZATION_GRAD_HOOKS} is \
+                    always {ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT} for \
+                    stage {ZERO_OPTIMIZATION_GRADIENTS} and above.")
+        else:
+            self.grad_hooks = get_scalar_param(zero_config_dict,
+                                               ZERO_OPTIMIZATION_GRAD_HOOKS,
+                                               ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT)
+
+        self.legacy_stage1 = get_scalar_param(zero_config_dict,
+                                              ZERO_OPTIMIZATION_LEGACY_STAGE1,
+                                              ZERO_OPTIMIZATION_LEGACY_STAGE1_DEFAULT)
