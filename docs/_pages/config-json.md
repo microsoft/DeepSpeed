@@ -543,8 +543,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 ***stage2_find_unused_parameters***: [boolean]
 | Description                                                                                                                                                          | Default |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| As unused parameters in modules may not be expected sometimes, it will cause an explicit error msg when it occurred and enable this option to avoid the error, torch.nn.parallel.DistributedDataParallel has the same `find_unused_parameters` option with similar usage. | `False` |
-
+| As unused parameters in modules may not be expected sometimes, it will cause an explicit error msg when it occurred and enable this option to avoid the error, `torch.nn.parallel.DistributedDataParallel` has the same `find_unused_parameters` option with similar usage. | `False` |
 
 ### Logging
 
