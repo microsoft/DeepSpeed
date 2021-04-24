@@ -17,7 +17,6 @@ from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
@@ -54,6 +53,23 @@ try:
 except ImportError:
     # Fail silently so we don't spam logs unnecessarily if user isn't using amp
     pass
+
+
+def see_memory_usage_wcolor(message):
+    return
+    import gc
+    RED = '\033[91m'
+    END = '\033[0m'
+    torch.cuda.synchronize()
+    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+        return
+    gc.collect()
+    logger.info(f"{RED}{message}{END}")
+    logger.info(f"{RED}MemAlloc {torch.cuda.memory_allocated():,} \
+        Max_MemAlloc {torch.cuda.max_memory_allocated():,} \
+        MemCached {torch.cuda.memory_cached():,} \
+        Max_MemCached {torch.cuda.max_memory_cached():,}{END}")
+    torch.cuda.reset_peak_memory_stats()
 
 
 def split_half_float_double_csr(tensors):
@@ -398,6 +414,9 @@ class DeepSpeedEngine(Module):
 
     def zero_find_unused_parameters(self):
         return self._config.zero_config.find_unused_parameters
+        
+    def zero_grad_hooks(self):
+        return self._config.zero_config.grad_hooks
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -773,20 +792,7 @@ class DeepSpeedEngine(Module):
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
-                optimizer,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                all_gather_partitions=self.zero_allgather_partitions(),
-                allgather_size=self.zero_allgather_bucket_size(),
-                max_elements_per_comm=self.zero_reduce_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                elastic_checkpoint=self.zero_elastic_checkpoint(),
-                mpu=self.mpu)
-        elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
+        if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
@@ -805,7 +811,9 @@ class DeepSpeedEngine(Module):
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                find_unused_parameters=self.zero_find_unused_parameters())
+                find_unused_parameters=self.zero_find_unused_parameters(),
+                partition_grads=zero_stage==ZERO_OPTIMIZATION_GRADIENTS,
+                grad_hooks=self.zero_grad_hooks())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -987,18 +995,14 @@ class DeepSpeedEngine(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
-        #Zero stage 2 communicates during non gradient accumulation boundaries as well
+        # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
-        #Communicate only at gradient accumulation boundaries
+        # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage(
-            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter():
-                self.optimizer.reduce_scatter_gradients(
-                    postscale_gradients=self.postscale_gradients(),
-                    gradient_predivide_factor=self.gradient_predivide_factor(),
-                    gradient_average=self.gradient_average)
+            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                self.optimizer.reduce_gradients()
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
@@ -1014,6 +1018,8 @@ class DeepSpeedEngine(Module):
             logger.warning(
                 f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
             )
+
+        see_memory_usage_wcolor('pre-backward')
 
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
@@ -1069,7 +1075,9 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce').start()
 
         if self.enable_backward_allreduce:
+            see_memory_usage_wcolor('pre-grad-reduce')
             self.allreduce_gradients()
+            see_memory_usage_wcolor('post-grad-reduce')
 
         if self.wall_clock_breakdown():
             self.timers('backward_allreduce').stop()
