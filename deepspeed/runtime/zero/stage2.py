@@ -899,9 +899,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     assert self.find_unused_parameters, """
                         This error indicates that your module has parameters that
                         were not used in producing loss.
-                        You can enable unused parameter detection by
-                        (1) passing the keyword argument `find_unused_parameters=True`
-                            to `deepspeed.runtime.engine.DeepSpeedEngine`;
+                        You can avoid this error by
+                        (1) enable stage2_find_unused_parameters option in zero_optimization config;
                         (2) making sure all trainable parameters and `forward` function
                             outputs participate in calculating loss.
                     """
