@@ -53,21 +53,20 @@ def test_stage2_find_unused_parameters(tmpdir, find_unused_parameters):
                                         total_samples=10,
                                         hidden_dim=hidden_dim,
                                         device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
 
-    if not find_unused_parameters:
-        try:
-            _test_stage2_find_unused_parameters(args=args,
-                                                model=model,
-                                                hidden_dim=hidden_dim)
-            assert False, 'Should not reach here.'
-        except AssertionError as e:
-            error_msg = e.args[0]
-            assert 'find_unused_parameters' in error_msg
-    else:
-        _test_stage2_find_unused_parameters(args=args,
-                                            model=model,
-                                            hidden_dim=hidden_dim)
+        def _loop():
+            for n, batch in enumerate(data_loader):
+                loss = model(batch[0], batch[1])
+                model.backward(loss)
+                model.step()
+
+        if not find_unused_parameters:                                                                                                                                                                             
+            with pytest.raises(AssertionError) as e:
+                _loop()
+            assert e.value.args and 'find_unused_parameters' in e.value.args[0]
+        else:
+            _loop()
+
+    _test_stage2_find_unused_parameters(args=args,
+                                        model=model,
+                                        hidden_dim=hidden_dim)
