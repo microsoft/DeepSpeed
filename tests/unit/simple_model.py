@@ -27,7 +27,7 @@ class SimpleModel(torch.nn.Module):
 class UnusedParametersModel(SimpleModel):
     def __init__(self, hidden_dim, empty_grad=False):
         super().__init__(hidden_dim, empty_grad)
-        
+
         self.unused_linear = torch.nn.Linear(hidden_dim, hidden_dim)
 
 
