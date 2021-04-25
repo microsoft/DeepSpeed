@@ -300,7 +300,7 @@ Enabling and configuring ZeRO memory optimizations
     "sub_group_size" : 1e12,
     "elastic_checkpoint" : [true|false],
     "stage3_gather_fp16_weights_on_model_save": [true|false],
-    "stage2_find_unused_parameters": [true|false]
+    "find_unused_parameters": [true|false]
     }
 ```
 
@@ -540,10 +540,10 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Submit requests to storage device in an overlapped fashion without waiting for completion of earlier requests. | `true`  |
 
-***stage2_find_unused_parameters***: [boolean]
+***find_unused_parameters***: [boolean]
 | Description                                                                                                                                                          | Default |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| As unused parameters in modules may not be expected sometimes, it will cause an explicit error msg when it occurred and enable this option to avoid the error, `torch.nn.parallel.DistributedDataParallel` has the same `find_unused_parameters` option with similar usage. | `False` |
+| As unused parameters in modules may not be expected sometimes, it will cause an explicit error msg when it occurred and enable this option to avoid the error, `torch.nn.parallel.DistributedDataParallel` has the same `find_unused_parameters` option with similar usage. Now it just used in stage2. | `False` |
 
 ### Logging
 
