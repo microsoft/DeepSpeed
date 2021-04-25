@@ -3,7 +3,6 @@ import pytest
 import json
 import argparse
 import os
-import pytest
 from common import distributed_test
 from simple_model import UnusedParametersModel, random_dataloader, args_from_dict
 from deepspeed.ops.op_builder import CPUAdamBuilder
