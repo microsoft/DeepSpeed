@@ -352,9 +352,6 @@ class DeepSpeedEngine(Module):
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
 
-    def zero_find_unused_parameters(self):
-        return self._config.zero_config.find_unused_parameters
-
     def zero_optimization_stage(self):
         return self._config.zero_optimization_stage
 
@@ -393,6 +390,9 @@ class DeepSpeedEngine(Module):
 
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
+
+    def zero_find_unused_parameters(self):
+        return self._config.zero_config.find_unused_parameters
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
