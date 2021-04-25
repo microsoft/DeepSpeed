@@ -31,15 +31,14 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.offload_optimizer = None
         self.sub_group_size = None
 
-        #Stage2 Specific Parameters
-        self.find_unused_parameters = None
-
         #Stage3 Specific Parameters
         self.prefetch_bucket_size = None
         self.param_persistence_threshold = None
         self.max_live_parameters = None
         self.max_reuse_distance = None
         self.gather_fp16_weights_on_model_save = None
+
+        self.find_unused_parameters = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -154,11 +153,6 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
                                                ZERO_OPTIMIZATION_SUB_GROUP_SIZE,
                                                ZERO_OPTIMIZATION_SUB_GROUP_SIZE_DEFAULT)
 
-        self.find_unused_parameters = get_scalar_param(
-            zero_config_dict,
-            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS,
-            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS_DEFAULT)
-
         self.max_live_parameters = get_scalar_param(
             zero_config_dict,
             ZERO_OPTIMIZATION_MAX_LIVE_PARAMETERS,
@@ -183,3 +177,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE,
             ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE_DEFAULT)
+
+        self.find_unused_parameters = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS,
+            ZERO_OPTIMIZATION_FIND_UNUSED_PARAMETERS_DEFAULT)
