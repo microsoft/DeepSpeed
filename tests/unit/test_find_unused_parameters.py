@@ -67,6 +67,4 @@ def test_stage2_find_unused_parameters(tmpdir, find_unused_parameters):
         else:
             _loop()
 
-    _test_stage2_find_unused_parameters(args=args,
-                                        model=model,
-                                        hidden_dim=hidden_dim)
+    _test_stage2_find_unused_parameters(args=args, model=model, hidden_dim=hidden_dim)
