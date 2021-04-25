@@ -63,6 +63,7 @@ def test_stage2_find_unused_parameters(tmpdir, find_unused_parameters):
             _test_stage2_find_unused_parameters(args=args,
                                                 model=model,
                                                 hidden_dim=hidden_dim)
+            assert False, 'Should not reach here.'
         except AssertionError as e:
             error_msg = e.args[0]
             assert 'find_unused_parameters' in error_msg
