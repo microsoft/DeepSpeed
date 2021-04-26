@@ -9,7 +9,7 @@ import copy
 
 from .constants import *
 from .fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
-from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
+from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys, ScientificNotationEncoder
 from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
@@ -24,17 +24,21 @@ from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 
+from .swap_tensor.aio_config import get_aio_config
+
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAM_OPTIMIZER = 'adam'
 ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
     ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
+    ONEBIT_LAMB_OPTIMIZER,
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -656,6 +660,8 @@ class DeepSpeedConfig(object):
         self.checkpoint_tag_validation_enabled = validation_mode != ValidationMode.IGNORE
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
 
+        self.aio_config = get_aio_config(param_dict)
+
     def _batch_assertion(self):
 
         train_batch = self.train_batch_size
@@ -744,6 +750,7 @@ class DeepSpeedConfig(object):
             json.dumps(self._param_dict,
                        sort_keys=True,
                        indent=4,
+                       cls=ScientificNotationEncoder,
                        separators=(',',
                                    ':'))))
 
