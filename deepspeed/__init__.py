@@ -58,7 +58,8 @@ def initialize(args=None,
                mpu=None,
                dist_init_required=None,
                collate_fn=None,
-               deepspeed_config=None):
+               config=None,
+               config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
@@ -88,8 +89,10 @@ def initialize(args=None,
             mini-batch of Tensor(s).  Used when using batched loading from a
             map-style dataset.
 
-        deepspeed_config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+        config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
             as an argument instead, as a path or a dictionary.
+
+        config_params: Optional: Same as `config`, kept for backwards compatibility.
 
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
@@ -123,7 +126,8 @@ def initialize(args=None,
                                  mpu=mpu,
                                  dist_init_required=dist_init_required,
                                  collate_fn=collate_fn,
-                                 deepspeed_config=deepspeed_config)
+                                 config=config,
+                                 config_params=config_params)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
         engine = PipelineEngine(args=args,
@@ -135,7 +139,8 @@ def initialize(args=None,
                                 mpu=model.mpu(),
                                 dist_init_required=dist_init_required,
                                 collate_fn=collate_fn,
-                                deepspeed_config=deepspeed_config)
+                                config=config,
+                                config_params=config_params)
 
     return_items = [
         engine,

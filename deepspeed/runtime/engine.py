@@ -110,7 +110,8 @@ class DeepSpeedEngine(Module):
                  mpu=None,
                  dist_init_required=None,
                  collate_fn=None,
-                 deepspeed_config=None,
+                 config=None,
+                 config_params=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -127,12 +128,16 @@ class DeepSpeedEngine(Module):
         self.skipped_steps = 0
         self.gradient_average = True
         self.warn_unscaled_loss = True
-        self.deepspeed_config = deepspeed_config
+        self.config = config
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+
+        # Set config using config_params for backwards compat
+        if self.config is None and config_params is not None:
+            self.config = config_params
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -515,11 +520,10 @@ class DeepSpeedEngine(Module):
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
 
-        if self.deepspeed_config is None:
-            self.deepspeed_config = args.deepspeed_config if hasattr(
-                args,
-                'deepspeed_config') else None
-        self._config = DeepSpeedConfig(self.deepspeed_config, mpu)
+        if self.config is None:
+            self.config = args.deepspeed_config if hasattr(args,
+                                                           'deepspeed_config') else None
+        self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -540,7 +544,7 @@ class DeepSpeedEngine(Module):
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
-        if self.deepspeed_config is None:
+        if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
 
