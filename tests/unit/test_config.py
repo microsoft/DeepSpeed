@@ -229,7 +229,7 @@ def test_init_no_optimizer(tmpdir):
 
 
 def test_none_args(tmpdir):
-    config_dict = {
+    deepspeed_config = {
         "train_batch_size": 1,
         "optimizer": {
             "type": "Adam",
