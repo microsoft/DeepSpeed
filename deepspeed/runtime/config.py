@@ -523,13 +523,13 @@ class DeepSpeedConfigWriter:
 
 
 class DeepSpeedConfig(object):
-    def __init__(self, ds_config: Union[str, dict], mpu=None):
+    def __init__(self, config: Union[str, dict], mpu=None):
         super(DeepSpeedConfig, self).__init__()
-        if isinstance(ds_config, dict):
-            self._param_dict = ds_config
-        elif os.path.exists(ds_config):
+        if isinstance(config, dict):
+            self._param_dict = config
+        elif os.path.exists(config):
             self._param_dict = json.load(
-                open(ds_config,
+                open(config,
                      'r'),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
