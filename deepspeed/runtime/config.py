@@ -525,13 +525,17 @@ class DeepSpeedConfigWriter:
 class DeepSpeedConfig(object):
     def __init__(self, ds_config: Union[str, dict], mpu=None):
         super(DeepSpeedConfig, self).__init__()
-        self._param_dict = ds_config
-        if not isinstance(ds_config, dict) and os.path.exists(ds_config):
+        if isinstance(ds_config, dict):
+            self._param_dict = ds_config
+        elif os.path.exists(ds_config):
             self._param_dict = json.load(
                 open(ds_config,
                      'r'),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
-
+        else:
+            raise ValueError(
+                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {ds_config}"
+            )
         try:
             self.global_rank = torch.distributed.get_rank()
             if mpu is None:
