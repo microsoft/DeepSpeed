@@ -64,7 +64,7 @@ def initialize(args=None,
 
     Arguments:
         args: an object containing local_rank and deepspeed_config fields.
-            This is optional if `deepspeed_config` is passed.
+            This is optional if `config` is passed.
 
         model: Required: nn.module class before apply any wrappers
 
