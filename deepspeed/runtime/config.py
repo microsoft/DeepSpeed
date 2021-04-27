@@ -2,6 +2,8 @@
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
+import os
+from typing import Union
 
 import torch
 import json
@@ -521,16 +523,14 @@ class DeepSpeedConfigWriter:
 
 
 class DeepSpeedConfig(object):
-    def __init__(self, json_file, mpu=None, param_dict=None):
+    def __init__(self, ds_config: Union[str, dict], mpu=None):
         super(DeepSpeedConfig, self).__init__()
-
-        if param_dict is None:
+        self._param_dict = ds_config
+        if not isinstance(ds_config, dict) and os.path.exists(ds_config):
             self._param_dict = json.load(
-                open(json_file,
+                open(ds_config,
                      'r'),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
-        else:
-            self._param_dict = param_dict
 
         try:
             self.global_rank = torch.distributed.get_rank()

@@ -196,7 +196,7 @@ def test_adamw_fp16_basic(tmpdir):
 
 
 def test_dict_config_adamw_fp16_basic():
-    config_dict = {
+    deepspeed_config = {
         "train_batch_size": 1,
         "steps_per_print": 1,
         "fp16": {
@@ -209,12 +209,12 @@ def test_dict_config_adamw_fp16_basic():
     model = SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1])
-    def _test_adamw_fp16_basic(args, model, hidden_dim, config_dict):
+    def _test_adamw_fp16_basic(args, model, hidden_dim, deepspeed_config):
         optimizer = torch.optim.AdamW(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
                                               optimizer=optimizer,
-                                              config_params=config_dict)
+                                              deepspeed_config=deepspeed_config)
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
@@ -227,7 +227,7 @@ def test_dict_config_adamw_fp16_basic():
     _test_adamw_fp16_basic(args=args,
                            model=model,
                            hidden_dim=hidden_dim,
-                           config_dict=config_dict)
+                           deepspeed_config=deepspeed_config)
 
 
 def test_adamw_fp16_empty_grad(tmpdir):

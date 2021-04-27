@@ -58,11 +58,12 @@ def initialize(args=None,
                mpu=None,
                dist_init_required=None,
                collate_fn=None,
-               config_params=None):
+               deepspeed_config=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
-        args: an object containing local_rank and deepspeed_config fields. This is optional if `config_params` is passed.
+        args: an object containing local_rank and deepspeed_config fields.
+            This is optional if `deepspeed_config` is passed.
 
         model: Required: nn.module class before apply any wrappers
 
@@ -87,8 +88,8 @@ def initialize(args=None,
             mini-batch of Tensor(s).  Used when using batched loading from a
             map-style dataset.
 
-        config_params: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
-            as a dictionary instead.
+        deepspeed_config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+            as an argument instead, as a path or a dictionary.
 
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
@@ -122,7 +123,7 @@ def initialize(args=None,
                                  mpu=mpu,
                                  dist_init_required=dist_init_required,
                                  collate_fn=collate_fn,
-                                 config_params=config_params)
+                                 deepspeed_config=deepspeed_config)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
         engine = PipelineEngine(args=args,
@@ -134,7 +135,7 @@ def initialize(args=None,
                                 mpu=model.mpu(),
                                 dist_init_required=dist_init_required,
                                 collate_fn=collate_fn,
-                                config_params=config_params)
+                                deepspeed_config=deepspeed_config)
 
     return_items = [
         engine,
