@@ -516,7 +516,9 @@ class DeepSpeedEngine(Module):
             args.local_rank = self.local_rank
 
         if self.deepspeed_config is None:
-            self.deepspeed_config = args.deepspeed_config if hasattr(args, 'deepspeed_config') else None
+            self.deepspeed_config = args.deepspeed_config if hasattr(
+                args,
+                'deepspeed_config') else None
         self._config = DeepSpeedConfig(self.deepspeed_config, mpu)
 
     # Validate command line arguments
