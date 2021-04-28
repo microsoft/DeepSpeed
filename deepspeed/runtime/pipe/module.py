@@ -19,6 +19,7 @@ from .topology import PipeDataParallelTopology, PipelineParallelGrid
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
 
+    
 class Lambda(torch.nn.Module):
     def __init__(self, func):
         super().__init__()
@@ -26,7 +27,6 @@ class Lambda(torch.nn.Module):
 
     def forward(self, x):
         return self.func(x)
-
 
 
 class LayerSpec:
