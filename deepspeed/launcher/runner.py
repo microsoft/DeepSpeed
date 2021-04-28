@@ -95,7 +95,7 @@ def parse_args(args=None):
     parser.add_argument("--launcher",
                         default=PDSH_LAUNCHER,
                         type=str,
-                        help="(optional) choose launcher backend for multi-node"
+                        help="(optional) choose launcher backend for multi-node "
                         "training. Options currently include PDSH, OpenMPI, MVAPICH.")
 
     parser.add_argument("--launcher_args",
@@ -305,9 +305,6 @@ def main(args=None):
     world_info_base64 = encode_world_info(active_resources)
 
     multi_node_exec = len(active_resources) > 1
-
-    if multi_node_exec and not shutil.which('pdsh'):
-        raise RuntimeError("pdsh is not installed, unable to proceed")
 
     if not multi_node_exec:
         deepspeed_launch = [

@@ -73,6 +73,18 @@ DS_BUILD_OPS=1 pip install deepspeed --global-option="build_ext" --global-option
 
 This should complete the full build 2-3 times faster. You can adjust `-j` to specify how many cpu-cores are to be used during the build. In the example it is set to 8 cores.
 
+You can also build a binary wheel and install it on multiple machines that have the same type of GPUs and the same software environment (CUDA toolkit, pytorch, python, etc.)
+
+```bash
+DS_BUILD_OPS=1 python setup.py build_ext -j8 bdist_wheel
+```
+
+This will create a pypi binary wheel under `dist`, e.g., ``dist/deepspeed-0.3.13+8cd046f-cp38-cp38-linux_x86_64.whl`` and then you can install it directly on multiple machines, in our example:
+
+```bash
+pip install dist/deepspeed-0.3.13+8cd046f-cp38-cp38-linux_x86_64.whl
+```
+
 
 ## Install DeepSpeed from source
 
@@ -91,6 +103,23 @@ script in the repo. This will build a python wheel locally and copy it to all
 the nodes listed in your hostfile (either given via --hostfile, or defaults to
 /job/hostfile).
 
+When the code using DeepSpeed is used for the first time it'll automatically build only the CUDA
+extensions, required for the run, and by default it'll place them under
+`~/.cache/torch_extensions/`. The next time the same program is executed these now precompiled
+extensions will be loaded form that directory.
+
+If you use multiple virtual environments this could be a problem, since by default there is only one
+extensions directory, but different virtual environments may use different setups (e.g. different
+python or cuda versions) and then the loading of a CUDA extension built by another environment will
+fail. Therefore, if you need to you can override the default location with the help of the
+ `TORCH_EXTENSIONS_DIR` environment variable. So in each virtual environment you can point it to a
+ unique directory and DeepSpeed will use it to save and load CUDA extensions.
+
+ You can also change it just for a specific run with:
+
+```bash
+ TORCH_EXTENSIONS_DIR=./torch-extensions deepspeed ...
+```
 
 ## Building for the correct architectures
 

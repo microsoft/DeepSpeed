@@ -82,13 +82,15 @@ The Adam optimizer also supports the following two params keys/values in additio
 
 The 1-bit Adam optimizer supports the following three params keys/values in addition to the standard Adam (learn more in our [tutorial](/tutorials/onebit-adam/)):
 
-| "params" key  | Description                                                                 | Default |
-| ------------- | --------------------------------------------------------------------------- | ------- |
-| freeze\_step   | Number of warm up steps before 1-bit compression gets applied to the communication | 100000   |
-| cuda\_aware | To indicate that the underlying MPI library supports CUDA-Aware communication         | false    |
-| comm\_backend\_name | To indicate which backend implementation to use                               | "nccl"   |
+| "params" key        | Description                                                                        | Default |
+| ------------------- | ---------------------------------------------------------------------------------- | ------- |
+| freeze\_step        | Number of warm up steps before 1-bit compression gets applied to the communication | 100000  |
+| cuda\_aware         | To indicate that the underlying MPI library supports CUDA-Aware communication      | false   |
+| comm\_backend\_name | To indicate which backend implementation to use                                    | "nccl"  |
 
 ### Scheduler Parameters
+
+DeepSpeed calls the `step()` method of the scheduler at every training step when `model_engine.step()` is executed.
 
 ***scheduler***: [dictionary]
 
@@ -248,15 +250,19 @@ Enabling and configuring ZeRO memory optimizations
     "reduce_scatter": [true|false],
     "reduce_bucket_size": 5e8,
     "contiguous_gradients" : [true|false],
-    "cpu_offload": [true|false],
-    "cpu_offload_params" : [true|false],
-    "cpu_offload_use_pin_memory" : [true|false],
+    "offload_param": {
+      ...
+    },
+    "offload_optimizer": {
+      ...
+    },
     "stage3_max_live_parameters" : 1e9,
     "stage3_max_reuse_distance" : 1e9,
     "stage3_prefetch_bucket_size" : 5e8,
     "stage3_param_persistence_threshold" : 1e6,
     "sub_group_size" : 1e12,
-    "elastic_checkpoint" : [true|false]
+    "elastic_checkpoint" : [true|false],
+    "stage3_gather_fp16_weights_on_model_save": [true|false]
     }
 ```
 
@@ -268,8 +274,8 @@ Enabling and configuring ZeRO memory optimizations
 
 ***stage***: [integer]
 
-| Description                                                                                                                                                           | Default |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Description                                                                                                                                                                                                               | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Chooses different stages of ZeRO Optimizer. Stage 0, 1, 2, and 3 refer to disabled, optimizer state partitioning, and optimizer+gradient state partitioning, and optimizer+gradient+parameter partitioning, respectively. | `0`     |
 
 ***allgather_partitions***: [boolean]
@@ -278,7 +284,7 @@ Enabling and configuring ZeRO memory optimizations
 | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | Chooses between allgather collective or a series of broadcast collectives to gather updated parameters from all the GPUs at the end of each step | `true`  |
 
-***allgather_bucket_size***: [boolean]
+***allgather_bucket_size***: [integer]
 
 | Description                                                                                                  | Default |
 | ------------------------------------------------------------------------------------------------------------ | ------- |
@@ -296,7 +302,7 @@ Enabling and configuring ZeRO memory optimizations
 | ----------------------------------------------------------------------- | ------- |
 | Uses reduce or reduce scatter instead of allreduce to average gradients | `true`  |
 
-***reduce_bucket_size***: [boolean]
+***reduce_bucket_size***: [integer]
 
 | Description                                                                                                         | Default |
 | ------------------------------------------------------------------------------------------------------------------- | ------- |
@@ -308,48 +314,144 @@ Enabling and configuring ZeRO memory optimizations
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. Only useful when running very large models. | `False` |
 
-***cpu_offload***: [boolean]
 
-| Description                                                                                                              | Default |
-| ------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes. | `False` |
-
-***cpu_offload_params***: [boolean]
+***offload_param***: [dictionary]
 
 | Description                                                                                                                       | Default |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Enable offloading of model parameters to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 3. | `False` |
+| Enable offloading of model parameters to CPU or NVMe. This frees up GPU memory for larger models or batch sizes. Valid only with stage 3. See [here](#parameter-offloading) for more details. | `False` |
 
-***cpu_offload_use_pin_memory***: [boolean]
+***offload_optimizer***: [dictionary]
 
 | Description                                                                               | Default |
 | ----------------------------------------------------------------------------------------- | ------- |
-| Use pinned CPU memory when offloading. Can improve performance. Valid only with stage 3.  | `False` |
+| Enable offloading of optimizer state to CPU or NVMe, and optimizer computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 3. See [here](#optimizer-offloading) for more details. | `False` |
 
 ***stage3_max_live_parameters***: [integer]
 
-| Description                                                                                                                           | Default |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Description                                                                                                                         | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | The maximum number of parameters resident per GPU before releasing. Smaller values use less memory, but perform more communication. | `1e9`   |
 
 ***stage3_max_reuse_distance***: [integer]
 
-| Description                                                                                                      | Default |
-| ---------------------------------------------------------------------------------------------------------------- | ------- |
+| Description                                                                                                                                          | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Do not release a parameter if it will be reused within this threshold of parameters. Smaller values use less memory, but perform more communication. | `1e9`   |
 
 ***stage3_prefetch_bucket_size***: [integer]
 
-| Description                                                                                                                     | Default |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Description                                                                                                                            | Default |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | The size of the fixed buffer for prefetching parameters. Smaller values use less memory, but can increase stalls due to communication. | `5e8`   |
 
 
 ***stage3_param_persistence_threshold***: [integer]
+
 | Description                                                                                                                                                          | Default |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
 
+
+***stage3_gather_fp16_weights_on_model_save***: [boolean]
+
+| Description                                                                                                                                                          | Default |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Consolidate the weights before saving the model by `save_fp16_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gather the weights when this option is enabled and then saves the fp16 model weights. | `False` |
+
+***cpu_offload***: [boolean]
+
+**Deprecated:** **cpu_offload** is disabled and will be removed in future, please use `offload_optimizer` instead.
+{: .notice--warning}
+
+| Description                                                                                                              | Default |
+| ------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Enable offloading of optimizer memory and computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 2.| `False` |
+
+
+### Parameter offloading
+Enabling and configuring ZeRO optimization of parameter offloading to CPU/NVMe. Available only with ZeRO stage 3.
+```json
+  "offload_param": {
+    "device": "[none|cpu|nvme]",
+    "nvme_path": "/local_nvme",
+    "buffer_count": 5,
+    "buffer_size": 1e8,
+    "max_in_cpu": 1e9
+  }
+```
+***device***: [string]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Device memory to offload model parameters. Supported options are `cpu` and `nvme`. | `cpu`   |
+
+***nvme_path***: [string]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Filesystem path for NVMe device for parameter offloading. | `/local_nvme`   |
+
+***buffer_count***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Number of buffers in buffer pool for parameter offloading to NVMe. | 5  |
+
+
+***buffer_size***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Size of buffers in buffer pool for parameter offloading to NVMe. | 1e8  |
+
+***max_in_cpu***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Number of parameter elements to maintain in CPU memory when offloading to NVMe is enabled. | 1e9  |
+
+### Optimizer offloading
+Enabling and configuring ZeRO optimization of offloading optimizer computation to CPU and state to CPU/NVMe. CPU offloading is available with ZeRO stage 2 or 3. NVMe offloading is available only with ZeRO stage 3.
+```json
+  "offload_optimizer": {
+    "device": "[none|cpu|nvme]",
+    "nvme_path": "/local_nvme",
+    "buffer_count": 4,
+    "pin_memory": [true|false],
+    "fast_init": false
+  }
+```
+***device***: [string]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Device memory to offload optimizer state. Supported options are `cpu` and `nvme`. Optimizer computation is offload to CPU regardless of device option. | `cpu`   |
+
+***nvme_path***: [string]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Filesystem path for NVMe device for optimizer state offloading. | `/local_nvme`   |
+
+***buffer_count***: [integer]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Number of buffers in buffer pool for optimizer state offloading to NVMe. This should be at least the number of states maintained per parameter by the optimizer. For example, Adam optimizer has 4 states (parameter, gradient, momentum, and variance). | 4  |
+
+
+***pin_memory***: [boolean]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Offload to page-locked CPU memory. This could boost throughput at the cost of extra memory overhead. | `false`  |
+
+***fast_init***: [boolean]
+
+| Description                                                                                                                           | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Enable fast optimizer initialization when offloading to NVMe. | `false`  |
 
 ### Logging
 
