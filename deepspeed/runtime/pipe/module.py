@@ -19,6 +19,15 @@ from .topology import PipeDataParallelTopology, PipelineParallelGrid
 class PipelineError(Exception):
     """Errors related to the use of deepspeed.PipelineModule """
 
+class Lambda(torch.nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, x):
+        return self.func(x)
+
+
 
 class LayerSpec:
     """Building block for specifying pipeline-parallel modules.
@@ -578,3 +587,31 @@ class PipelineModule(nn.Module):
 
         params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
         return any(len(list(p)) > 0 for p in params)
+    
+    def to_sequential(self):
+        """
+        Transforms the PipelineModule to a plain nn.Sequential module
+        """
+        layers = []
+        tied_layers = defaultdict(list)
+        for n, spec in enumerate(self.specs):
+            if isinstance(spec, TiedLayerSpec):
+                if spec.key in tied_layers:
+                    # receiver
+                    layers.append(Lambda(lambda x: spec.forward_fn(tied_layers[spec.key][0], x)))
+                else:
+                    # owner
+                    module = spec.build(log=False)
+                    layers.append(module)
+                    tied_layers[spec.key].append(module)
+            elif isinstance(spec, LayerSpec):
+                layers.append(spec.build(log=False))
+            else:
+                # check that it's a lambda function
+                LAMBDA = lambda:0
+                if isinstance(spec, type(LAMBDA)) and spec.__name__ == LAMBDA.__name__:
+                    # we assume it is a lambda function
+                    layers.append(Lambda(spec))
+                else:
+                    raise ValueError(f'Layer number {n} ({spec}) Not recognized')
+        return torch.nn.Sequential(*layers)
