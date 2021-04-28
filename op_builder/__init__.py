@@ -9,6 +9,7 @@ from .transformer import TransformerBuilder
 from .stochastic_transformer import StochasticTransformerBuilder
 from .utils import UtilsBuilder
 from .builder import get_default_compute_capatabilities, is_rocm_pytorch
+from .async_io import AsyncIOBuilder
 
 # TODO: infer this list instead of hard coded
 # List of all available ops
@@ -19,6 +20,7 @@ __op_builders__ = [
     SparseAttnBuilder(),
     TransformerBuilder(),
     StochasticTransformerBuilder(),
-    UtilsBuilder()
+    UtilsBuilder(),
+    AsyncIOBuilder()
 ]
 ALL_OPS = {op.name: op for op in __op_builders__}
