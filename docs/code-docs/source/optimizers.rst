@@ -1,7 +1,7 @@
 Optimizers
 ===================
 
-DeepSpeed offers high-performance implementations of ``Adam`` optimizer on CPU; ``FusedAdam``, ``FusedAdam``, ``OneBitAdam`` optimizers on GPU.
+DeepSpeed offers high-performance implementations of ``Adam`` optimizer on CPU; ``FusedAdam``, ``FusedLamb``, ``OnebitAdam``, ``OnebitLamb`` optimizers on GPU.
 
 Adam (CPU)
 ----------------------------
@@ -17,8 +17,8 @@ FusedLamb (GPU)
 
 OneBitAdam (GPU)
 ----------------------------
-<<<<<<< HEAD
-.. autoclass:: deepspeed.runtime.fp16.onebit.adam.OneBitAdam
-=======
-.. autoclass:: deepspeed.runtime.fp16.OneBitAdam
->>>>>>> [squash] Staging zero infinity v1 (#168)
+.. autoclass:: deepspeed.runtime.fp16.onebit.adam.OnebitAdam
+
+OnebitLamb (GPU)
+----------------------------
+.. autoclass:: deepspeed.runtime.fp16.onebit.lamb.OnebitLamb

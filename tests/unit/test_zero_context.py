@@ -6,7 +6,7 @@ import torch
 import pytest
 
 import deepspeed
-from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 
 from common import distributed_test
 
@@ -32,7 +32,7 @@ def test_scatter_gather():
     with deepspeed.zero.Init():
         l = torch.nn.Linear(6, 3)
     assert l.weight.ds_status == ZeroParamStatus.NOT_AVAILABLE
-    assert l.weight.numel() == 1
+    assert l.weight.shape == torch.Size(partitioned_param_data_shape)
 
     # Ensure there is no impact outside the context
     l2 = torch.nn.Linear(6, 3)
@@ -65,7 +65,7 @@ def test_gather_update():
         assert torch.equal(l.weight, torch.zeros_like(l.weight))
 
 
-config_dict = {
+config = {
     "train_batch_size": 1,
     "steps_per_print": 1,
     "optimizer": {
@@ -109,7 +109,7 @@ def test_ext_param_getattr():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     with deepspeed.zero.GatheredParameters(net.linear1.weight):
         assert net.linear1.weight.numel() == net.dim**2
@@ -214,7 +214,7 @@ def test_ext_param_return():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     for _ in range(5):
         input = torch.rand(net.dim).to(engine.device).half()
@@ -234,7 +234,7 @@ def test_ext_param_returnobj():
     engine, optim, _, _ = deepspeed.initialize(args=args,
                                                model=net,
                                                model_parameters=net.parameters(),
-                                               config_params=config_dict)
+                                               config=config)
 
     for _ in range(5):
         input = torch.rand(net.dim).to(engine.device).half()

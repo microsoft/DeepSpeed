@@ -24,7 +24,7 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
-    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
+    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
@@ -110,6 +110,7 @@ class DeepSpeedEngine(Module):
                  mpu=None,
                  dist_init_required=None,
                  collate_fn=None,
+                 config=None,
                  config_params=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
@@ -127,12 +128,16 @@ class DeepSpeedEngine(Module):
         self.skipped_steps = 0
         self.gradient_average = True
         self.warn_unscaled_loss = True
-        self.config_params = config_params
+        self.config = config
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+
+        # Set config using config_params for backwards compat
+        if self.config is None and config_params is not None:
+            self.config = config_params
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -391,6 +396,9 @@ class DeepSpeedEngine(Module):
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
+    def zero_find_unused_parameters(self):
+        return self._config.zero_config.find_unused_parameters
+
     def fp16_enabled(self):
         return self._config.fp16_enabled
 
@@ -512,9 +520,10 @@ class DeepSpeedEngine(Module):
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
 
-        config_file = args.deepspeed_config if hasattr(args,
-                                                       'deepspeed_config') else None
-        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
+        if self.config is None:
+            self.config = args.deepspeed_config if hasattr(args,
+                                                           'deepspeed_config') else None
+        self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -535,7 +544,7 @@ class DeepSpeedEngine(Module):
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
-        if self.config_params is None:
+        if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
 
@@ -553,7 +562,8 @@ class DeepSpeedEngine(Module):
                 assert self._is_supported_optimizer(self.optimizer_name()), \
                     '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
-        if self.optimizer_name() == LAMB_OPTIMIZER:
+        if self.optimizer_name() == LAMB_OPTIMIZER or self.optimizer_name(
+        ) == ONEBIT_LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
@@ -694,6 +704,13 @@ class DeepSpeedEngine(Module):
                 logger.warning(
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
+        elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
+            from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
+            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
+            if not self.fp16_enabled():
+                logger.warning(
+                    f'Currently the convergence of 1-bit Lamb is only verified under FP16'
+                )
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -710,6 +727,7 @@ class DeepSpeedEngine(Module):
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     dynamic_loss_scale=True,
                     initial_dynamic_scale=initial_dynamic_scale,
                     dynamic_loss_args=dynamic_loss_args,
@@ -723,6 +741,7 @@ class DeepSpeedEngine(Module):
                          ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     static_loss_scale=self.loss_scale(),
                     mpu=self.mpu,
                     clip_grad=clip_grad,
@@ -732,6 +751,7 @@ class DeepSpeedEngine(Module):
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                deepspeed=self,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
@@ -748,7 +768,6 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -779,7 +798,8 @@ class DeepSpeedEngine(Module):
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                find_unused_parameters=self.zero_find_unused_parameters())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -959,8 +979,8 @@ class DeepSpeedEngine(Module):
 
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                assert self.zero_reduce_scatter()
+            if self.zero_optimization_stage(
+            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter():
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
