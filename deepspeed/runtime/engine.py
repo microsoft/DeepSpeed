@@ -582,6 +582,8 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
+            if self.zero_optimization_partition_weights():
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), f"Model must initialized in fp16 mode for ZeRO Stage 3."
             self.module.half()
         else:
             assert all([param.dtype == torch.float for param in self.module.parameters()]), f"The fp16 is not enabled but dtype on parameters not fp16"
