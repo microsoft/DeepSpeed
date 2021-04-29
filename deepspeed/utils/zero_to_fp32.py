@@ -60,8 +60,8 @@ def parse_optim_states(files):
     # XXX: could make the script more memory efficient for when there are multiple groups - it
     # will require matching the sub-lists of param_shapes for each param group flattened tensor
     fp32_flat_groups = [
-        torch.cat(state_dicts[i]['optimizer_state_dict'][fp32_groups_key], 0)
-        for i in range(len(state_dicts))
+        torch.cat(state_dicts[i]['optimizer_state_dict'][fp32_groups_key],
+                  0) for i in range(len(state_dicts))
     ]
 
     return zero_stage, world_size, param_shapes, fp32_flat_groups
@@ -119,7 +119,9 @@ def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir, output_file):
 
         if zero_stage == 2:
             if debug:
-                print(f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} ")
+                print(
+                    f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} "
+                )
             state_dict[name] = full_single_fp32_vector.narrow(
                 0,
                 offset,
@@ -130,7 +132,9 @@ def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir, output_file):
             partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
 
             if debug:
-                print(f"{name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}")
+                print(
+                    f"{name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+                )
 
             # XXX: memory usage doubles here (zero3)
             state_dict[name] = torch.cat(
