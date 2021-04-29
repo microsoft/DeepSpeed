@@ -1095,7 +1095,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
-            if not self.fp16_enabled() and not self.amp_enabled():
+            if not (self.fp16_enabled() or self.amp_enabled()
+                    or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
