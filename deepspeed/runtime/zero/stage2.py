@@ -1459,7 +1459,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.start_timers([OPTIMIZER_STEP])
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
-            if type(self.optimizer) == DeepSpeedCPUAdam:
+            if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
                 fp16_param_groups = [
                     fp16_partitions[partition_id]
                     for fp16_partitions in self.parallel_partitioned_fp16_groups

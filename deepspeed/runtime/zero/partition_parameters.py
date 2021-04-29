@@ -194,14 +194,10 @@ empty_buffers = {}
 # Inserts _post_init_method at the end of init method
 # for all sub classes of torch.nn.Module
 class InsertPostInitMethodToModuleSubClasses(object):
-    def __init__(self,
-                 enabled=True,
-                 mem_efficient_linear=True,
-                 deepspeed_config=None,
-                 dtype=None):
+    def __init__(self, enabled=True, mem_efficient_linear=True, config=None, dtype=None):
         self.mem_efficient_linear = mem_efficient_linear
         self.enabled = enabled
-        self._set_dtype(deepspeed_config, dtype)
+        self._set_dtype(config, dtype)
         assert self.dtype in [torch.half, torch.float], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.float]"
 
     def __enter__(self):
@@ -304,7 +300,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  remote_device=None,
                  pin_memory=False,
                  config=None,
-                 enabled=True):
+                 enabled=True,
+                 dtype=torch.half):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -403,7 +400,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         super().__init__(enabled=enabled,
                          mem_efficient_linear=mem_efficient_linear,
-                         deepspeed_config=deepspeed_config,
+                         config=config,
                          dtype=dtype)
         if not torch.distributed.is_initialized():
             init_distributed()

@@ -534,7 +534,7 @@ class DeepSpeedConfig(object):
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
             raise ValueError(
-                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {ds_config}"
+                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
             )
         try:
             self.global_rank = torch.distributed.get_rank()
