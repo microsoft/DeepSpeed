@@ -175,3 +175,21 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE,
             ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE_DEFAULT)
+
+        if self.stage >= ZERO_OPTIMIZATION_GRADIENTS:
+            self.grad_hooks = ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT
+            config_value = get_scalar_param(
+                zero_config_dict,
+                ZERO_OPTIMIZATION_GRAD_HOOKS,
+                ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT
+            )
+            if config_value != self.grad_hooks:
+                logger.warning(f"ZeRO {ZERO_OPTIMIZATION_GRAD_HOOKS} must \
+                    be {ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT} for \
+                    stage {ZERO_OPTIMIZATION_GRADIENTS} and above.")
+        else:
+            self.grad_hooks = get_scalar_param(
+                zero_config_dict,
+                ZERO_OPTIMIZATION_GRAD_HOOKS,
+                ZERO_OPTIMIZATION_GRAD_HOOKS_DEFAULT
+            )

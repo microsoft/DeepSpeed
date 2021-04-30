@@ -24,6 +24,7 @@ pg_correctness_test = False
 
 
 def see_memory_usage_wcolor(message):
+    return
     import gc
     RED = '\033[91m'
     END = '\033[0m'
@@ -112,7 +113,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
-                 stage1=False):
+                 partition_grads=True,
+                 grad_hooks=True):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -136,9 +138,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
-        self.stage1 = stage1
-        if self.stage1:
-            assert not cpu_offload, "stage 1 does not support offload"
+        # ZeRO stage 1 (False) or 2 (True)
+        self.partition_gradients = partition_grads
+        
+        self.grad_hooks = grad_hooks
 
         self.timers = timers
 
@@ -279,7 +282,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
 
-        # if not stage1:
         self.reduction_event = torch.cuda.Event(enable_timing=False, blocking=False)
         self.reduction_stream = torch.cuda.Stream()
         self.cpu_computation_stream = torch.cuda.Stream()
@@ -375,7 +377,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reset_partition_gradient_structures()
 
         #creates backward hooks for gradient partitioning
-        if not self.stage1:
+        if self.grad_hooks:
             self.create_reduce_and_remove_grad_hooks()
 
         # we may have a way of fusing dynamic scale. Do not support for now
@@ -431,16 +433,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
     #################### ZeRO Stage 1 - reduce gradients ####################
     #########################################################################
 
-    def reduce_scatter_gradients(self,
-                                 postscale_gradients,
-                                 gradient_predivide_factor,
-                                 gradient_average):
+    def reduce_gradients(self):
         world_size = dist.get_world_size(self.dp_process_group)
         my_rank = dist.get_rank(self.dp_process_group)
 
-        for i, group in enumerate(self.fp16_groups):
-            for param in group:
-                self.reduce_ready_partitions_and_remove_grads(param, i)
+        if not self.grad_hooks:
+            for i, group in enumerate(self.fp16_groups):
+                for param in group:
+                    self.reduce_ready_partitions_and_remove_grads(param, i)
+        
+        # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
 
     #########################################################################
@@ -1041,7 +1043,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
+        if self.partition_gradients or self.is_gradient_accumulation_boundary:
+            self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
         def are_all_related_partitions_reduced(params_id):

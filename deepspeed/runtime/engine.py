@@ -17,7 +17,6 @@ from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
@@ -57,6 +56,7 @@ except ImportError:
 
 
 def see_memory_usage_wcolor(message):
+    return
     import gc
     RED = '\033[91m'
     END = '\033[0m'
@@ -406,6 +406,9 @@ class DeepSpeedEngine(Module):
 
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
+
+    def zero_grad_hooks(self):
+        return self._config.zero_config.grad_hooks
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -763,21 +766,7 @@ class DeepSpeedEngine(Module):
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            # assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
-                optimizer,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                all_gather_partitions=self.zero_allgather_partitions(),
-                allgather_size=self.zero_allgather_bucket_size(),
-                max_elements_per_comm=self.zero_reduce_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                elastic_checkpoint=self.zero_elastic_checkpoint(),
-                mpu=self.mpu)
-        elif zero_stage == -1:
+        if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
@@ -796,26 +785,8 @@ class DeepSpeedEngine(Module):
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                stage1=True)
-        elif zero_stage == ZERO_OPTIMIZATION_GRADIENTS:
-            optimizer = FP16_DeepSpeedZeroOptimizer(
-                optimizer,
-                timers=timers,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
-                reduce_bucket_size=self.zero_reduce_bucket_size(),
-                allgather_bucket_size=self.zero_allgather_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                reduce_scatter=self.zero_reduce_scatter(),
-                overlap_comm=self.zero_overlap_comm(),
-                cpu_offload=self.zero_cpu_offload(),
-                mpu=self.mpu,
-                postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                partition_grads=zero_stage==ZERO_OPTIMIZATION_GRADIENTS,
+                grad_hooks=self.zero_grad_hooks())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -995,14 +966,8 @@ class DeepSpeedEngine(Module):
 
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage(
-            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter(
-            ) or self.zero_optimization_stage() == -1:
-                # assert self.zero_reduce_scatter()
-                self.optimizer.reduce_scatter_gradients(
-                    postscale_gradients=self.postscale_gradients(),
-                    gradient_predivide_factor=self.gradient_predivide_factor(),
-                    gradient_average=self.gradient_average)
+            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                self.optimizer.reduce_gradients()
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
