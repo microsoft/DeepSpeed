@@ -28,6 +28,69 @@ class Lambda(torch.nn.Module):
     def forward(self, x):
         return self.func(x)
 
+    
+class SequentialWrapper(torch.nn.Module):
+    """
+    Used to convert a deepspeed PipelineModule to an nn.Sequential like model whilst retaining
+    activation checkpointing.
+    """
+
+    def __init__(self, layers, activation_checkpoint_interval, activation_checkpoint_func, parent_class_name=None):
+        super().__init__()
+        self.sequential = torch.nn.Sequential(*layers)
+        self.activation_checkpoint_interval = activation_checkpoint_interval
+        self.parent_class_name = parent_class_name
+        self.activation_checkpoint_func = activation_checkpoint_func
+
+    def _is_checkpointable(self, funcs):
+        if self.parent_class_name == 'GPT2ModelPipe':
+            return all('ParallelTransformerLayerPipe' in f.__class__.__name__
+                       for f in funcs)
+        params = [f.parameters() for f in funcs if isinstance(f, torch.nn.Module)]
+        return any(len(list(p)) > 0 for p in params)
+
+    def forward(self, forward_input):
+
+        def exec_range_func(start, end):
+            ''' Helper function to be used with checkpoint()
+            Adapted from torch.utils.checkpoint:checkpoint_sequential()
+            '''
+
+            def exec_func(*inputs):
+                # Single tensor inputs need to be unwrapped
+                if len(inputs) == 1:
+                    inputs = inputs[0]
+                for idx, layer in enumerate(self.sequential[start:end]):
+                    inputs = layer(inputs)
+                return inputs
+
+            return exec_func
+
+        if self.activation_checkpoint_interval == 0:
+            func = exec_range_func(0, len(self.sequential))
+            x = func(forward_input)
+        else:
+            num_layers = len(self.sequential)
+            x = forward_input
+            for start_idx in range(0, num_layers, self.activation_checkpoint_interval):
+                end_idx = min(start_idx + self.activation_checkpoint_interval,
+                              num_layers)
+
+                funcs = self.sequential[start_idx:end_idx]
+                # Since we either pass tensors or tuples of tensors without unpacking, we
+                # need to be careful not to double-wrap tensors with tuple.
+                if not isinstance(x, tuple):
+                    x = (x,)
+
+                if self._is_checkpointable(funcs):
+                    x = self.activation_checkpoint_func(
+                        exec_range_func(start_idx,
+                                        end_idx),
+                        *x)
+                else:
+                    x = exec_range_func(start_idx, end_idx)(*x)
+        return x
+
 
 class LayerSpec:
     """Building block for specifying pipeline-parallel modules.
