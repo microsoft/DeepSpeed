@@ -110,6 +110,7 @@ class DeepSpeedEngine(Module):
                  mpu=None,
                  dist_init_required=None,
                  collate_fn=None,
+                 config=None,
                  config_params=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
@@ -127,12 +128,16 @@ class DeepSpeedEngine(Module):
         self.skipped_steps = 0
         self.gradient_average = True
         self.warn_unscaled_loss = True
-        self.config_params = config_params
+        self.config = config
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+
+        # Set config using config_params for backwards compat
+        if self.config is None and config_params is not None:
+            self.config = config_params
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -515,9 +520,10 @@ class DeepSpeedEngine(Module):
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
 
-        config_file = args.deepspeed_config if hasattr(args,
-                                                       'deepspeed_config') else None
-        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
+        if self.config is None:
+            self.config = args.deepspeed_config if hasattr(args,
+                                                           'deepspeed_config') else None
+        self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -538,7 +544,7 @@ class DeepSpeedEngine(Module):
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
-        if self.config_params is None:
+        if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
 
@@ -576,7 +582,13 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
+            if self.zero_optimization_partition_weights() and any(
+                [hasattr(param,
+                         'ds_id') for param in self.module.parameters()]):
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), f"Model must initialized in fp16 mode for ZeRO Stage 3."
             self.module.half()
+        else:
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), f"fp16 is not enabled but one or several model parameters have dtype of fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -1095,7 +1107,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
-            if not self.fp16_enabled() and not self.amp_enabled():
+            if not (self.fp16_enabled() or self.amp_enabled()
+                    or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
