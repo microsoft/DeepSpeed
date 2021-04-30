@@ -653,7 +653,8 @@ class PipelineModule(nn.Module):
     
     def to_sequential(self):
         """
-        Transforms the PipelineModule to a plain nn.Sequential module
+        Transforms the PipelineModule to a plain nn.Sequential-like model
+        :return: `SequentialWrapper` model
         """
         layers = []
         tied_layers = defaultdict(list)
@@ -669,12 +670,13 @@ class PipelineModule(nn.Module):
                     tied_layers[spec.key].append(module)
             elif isinstance(spec, LayerSpec):
                 layers.append(spec.build(log=False))
+            elif hasattr(spec, '__call__'):
+                # check that it's a callable function
+                layers.append(Lambda(spec))
             else:
-                # check that it's a lambda function
-                LAMBDA = lambda:0
-                if isinstance(spec, type(LAMBDA)) and spec.__name__ == LAMBDA.__name__:
-                    # we assume it is a lambda function
-                    layers.append(Lambda(spec))
-                else:
-                    raise ValueError(f'Layer number {n} ({spec}) Not recognized')
-        return torch.nn.Sequential(*layers)
+                raise ValueError(f'Layer number {n} ({spec}) Not recognized')
+        model = SequentialWrapper(layers,
+                                  self.activation_checkpoint_interval,
+                                  self.activation_checkpoint_func,
+                                  parent_class_name=self.__class__.__name__)
+        return model
