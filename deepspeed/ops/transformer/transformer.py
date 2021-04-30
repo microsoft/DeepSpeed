@@ -101,6 +101,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  hidden_dropout_ratio=-1,
                  num_hidden_layers=-1,
                  initializer_range=-1,
+                 layer_norm_eps=1e-12,
                  local_rank=-1,
                  seed=-1,
                  fp16=False,
@@ -130,6 +131,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.gelu_checkpoint = gelu_checkpoint  # True: if higher batch size is required
         self.adjust_init_range = adjust_init_range
         self.test_gemm = False
+        self.layer_norm_eps = layer_norm_eps
         self.training = training
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
@@ -516,12 +518,15 @@ class DeepSpeedTransformerLayer(nn.Module):
             self.init_transformer_weights(self.config.adjust_init_range)
         else:
             # For testing only.
-            self.attn_qkvw = nn.Parameter(
-                torch.Tensor(self.config.hidden_size * 3,
-                             self.config.hidden_size))
-            for i in range(3):
-                self.attn_qkvw[i * self.config.hidden_size:(i + 1) * self.config.hidden_size] = \
-                    torch.empty_like(initial_weights[i]).copy_(initial_weights[i])
+            q = initial_weights[0].data
+            k = initial_weights[1].data
+            v = initial_weights[2].data
+
+            self.attn_qkvw = nn.Parameter(torch.cat((q, k, v)))
+            #self.attn_qkvw[i * self.config.hidden_size:(i + 1) * self.config.hidden_size] = \
+            #    initial_weights[i].clone()
+            #torch.empty_like(initial_weights[i]).data.copy_(initial_weights[i].data)
+
             self.attn_qkvb = nn.Parameter(torch.Tensor(self.config.hidden_size * 3))
             self.attn_qkvb.data.zero_()
             self.attn_ow = initial_weights[3]
@@ -553,6 +558,7 @@ class DeepSpeedTransformerLayer(nn.Module):
                           self.config.intermediate_size,
                           self.config.attn_dropout_ratio,
                           self.config.hidden_dropout_ratio,
+                          self.config.layer_norm_eps,
                           self.config.seed,
                           self.config.pre_layer_norm,
                           self.config.test_gemm,

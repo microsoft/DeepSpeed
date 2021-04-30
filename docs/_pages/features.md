@@ -37,7 +37,7 @@ and communication- efficient training. DeepSpeed supports a hybrid
 combination of data, model, and pipeline parallelism and has scaled to over
 [one trillion parameters using 3D parallelism]({{ site.press_release_v3 }}).
 Pipeline parallelism can also improve communication efficiency and has
-accelerated training by up to 7x on low-banwdith clusters.
+accelerated training by up to 7x on low-bandwidth clusters.
 
 
 ## Model Parallelism
@@ -113,7 +113,7 @@ to contiguous buffers preventing memory fragmentation.
 
 ## ZeRO-Offload
 
-ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.  
+ZeRO-Offload pushes the boundary of the maximum model size that can be trained efficiently using minimal GPU resources, by exploiting computational and memory resources on both GPUs and their host CPUs. It allows training up to 13-billion-parameter models on a single NVIDIA V100 GPU, 10x larger than the state-of-the-art, while retaining high training throughput of over 30 teraflops per GPU.
 
 For more details see the [ZeRO-Offload release blog]( https://www.microsoft.com/en-us/research/?p=689370&secret=iSlooB), and [tutorial](/tutorials/zero-offload/) on integration with DeepSpeed.
 
@@ -133,7 +133,7 @@ micro-batch, specially when the number of micro-batches per effective batch is l
 During back propagation, DeepSpeed can overlap the communication required for averaging
 parameter gradients that have already been computed with the ongoing gradient computation.
 This computation-communication overlap allows DeepSpeed to achieve higher throughput even
-at modest batch sizes.  
+at modest batch sizes.
 
 ## Training Features
 
@@ -172,15 +172,17 @@ Please see the [core API doc](https://deepspeed.readthedocs.io/) for more detail
 
 ## Training Optimizers
 
-### 1-bit Adam optimizer with up to 5x less communication
+### 1-bit Adam and 1-bit LAMB optimizers with up to 5x less communication
 
-DeepSpeed has an efficient implementation of a novel algorithm called 1-bit Adam.
-It offers the same convergence as Adam, incurs up to 5x less communication that enables
+DeepSpeed has two communication-efficient optimizers called 1-bit Adam and 1-bit LAMB.
+They offer the same convergence as Adam/LAMB, incur up to 5x less communication that enables
 up to 3.5x higher throughput for BERT-Large pretraining and up to 2.7x higher throughput
 for SQuAD fine-tuning on bandwidth-limited clusters. For more details on usage and performance,
-please refer to the detailed [tutorial](https://www.deepspeed.ai/tutorials/onebit-adam) and
-[blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md), respectively.
-<!-- **TODO: add paper link when it is ready ** -->
+please refer to the [1-bit Adam tutorial](https://www.deepspeed.ai/tutorials/onebit-adam),
+[1-bit Adam blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.md),
+and [1-bit LAMB tutorial](https://www.deepspeed.ai/tutorials/onebit-lamb/). For technical details,
+please refer to the [1-bit Adam paper](https://arxiv.org/abs/2102.02888) and
+[1-bit LAMB paper](https://arxiv.org/abs/2104.06069).
 
 ### Fused Adam optimizer and arbitrary torch.optim.Optimizer
 With DeepSpeed, the user can choose to use a high performance implementation of ADAM from
@@ -240,19 +242,53 @@ comes to data loading. Users simply provide a PyTorch dataset, and DeepSpeed dat
 can automatically handle batch creation appropriately.
 
 ## Performance Analysis and Debugging
-For performance debugging, DeepSpeed can give you a detailed breakdown of the time spent
-in different parts of the training by simply enabling it in the `deepspeed_config`
-file.
-Please see the [core API doc](https://deepspeed.readthedocs.io/) for more details.
+
+DeepSpeed provides a set of tools for performance analysis and debugging.
+
+### Wall Clock Breakdown
+
+DeepSpeed provides a detailed breakdown of the time spent
+in different parts of the training.
+This can be enabled by setting the following in the `deepspeed_config` file.
+
 ```json
 {
   "wall_clock_breakdown": true,
+}
 
+```
+
+###  Timing Activation Checkpoint Functions
+
+When activation checkpointing is enabled, profiling the forward and backward time of each checkpoint function can be enabled in the `deepspeed_config` file.
+
+```json
+{
   "activation_checkpointing": {
     "profile": true
   }
 }
+
 ```
+
+### Flops Profiler
+
+The DeepSpeed flops profiler measures the time, flops and parameters of a PyTorch model and shows which modules or layers are the bottleneck. When used with the DeepSpeed runtime, the flops profiler can be configured in the `deepspeed_config` file as follows:
+
+```json
+{
+  "flops_profiler": {
+    "enabled": true,
+    "profile_step": 1,
+    "module_depth": -1,
+    "top_modules": 3,
+    "detailed": true,
+    }
+}
+
+```
+The flops profiler can also be used as a standalone package. Please refer to the [Flops Profiler](/tutorials/flops-profiler) tutorial for more details.
+
 ## Sparse Attention
 DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
 

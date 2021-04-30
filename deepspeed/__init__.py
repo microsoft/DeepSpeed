@@ -16,6 +16,8 @@ from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConf
 from .utils import log_dist
 from .utils.distributed import init_distributed
 
+from .runtime import zero
+
 from .pipe import PipelineModule
 
 from .git_version_info import version, git_hash, git_branch
@@ -47,8 +49,8 @@ setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
 sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
 
 
-def initialize(args,
-               model,
+def initialize(args=None,
+               model=None,
                optimizer=None,
                model_parameters=None,
                training_data=None,
@@ -56,12 +58,13 @@ def initialize(args,
                mpu=None,
                dist_init_required=None,
                collate_fn=None,
+               config=None,
                config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
-        args: a dictionary containing local_rank and deepspeed_config
-            file location
+        args: an object containing local_rank and deepspeed_config fields.
+            This is optional if `config` is passed.
 
         model: Required: nn.module class before apply any wrappers
 
@@ -86,6 +89,11 @@ def initialize(args,
             mini-batch of Tensor(s).  Used when using batched loading from a
             map-style dataset.
 
+        config: Optional: Instead of requiring args.deepspeed_config you can pass your deepspeed config
+            as an argument instead, as a path or a dictionary.
+
+        config_params: Optional: Same as `config`, kept for backwards compatibility.
+
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
 
@@ -106,6 +114,8 @@ def initialize(args,
         __git_branch__),
              ranks=[0])
 
+    assert model is not None, "deepspeed.initialize requires a model"
+
     if not isinstance(model, PipelineModule):
         engine = DeepSpeedEngine(args=args,
                                  model=model,
@@ -116,6 +126,7 @@ def initialize(args,
                                  mpu=mpu,
                                  dist_init_required=dist_init_required,
                                  collate_fn=collate_fn,
+                                 config=config,
                                  config_params=config_params)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
@@ -128,6 +139,7 @@ def initialize(args,
                                 mpu=model.mpu(),
                                 dist_init_required=dist_init_required,
                                 collate_fn=collate_fn,
+                                config=config,
                                 config_params=config_params)
 
     return_items = [

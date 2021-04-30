@@ -1,6 +1,8 @@
 ---
 title: "ZeRO-Offload"
 ---
+ZeRO-3 Offload consists of a subset of features in our newly released ZeRO-Infinity. Read our [ZeRO-Infinity blog](https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/) to learn more!
+
 We recommend that you read the tutorials on [Getting Started](/getting-started/)  and [ZeRO](/tutorials/zero/) before stepping through this tutorial.
 
 ZeRO-Offload is a ZeRO optimization that offloads the optimizer memory and computation from the GPU to the host CPU. ZeRO-Offload enables large models with up to 13 billion parameters to be efficiently trained on a single GPU. In this tutorial we will use ZeRO-Offload to train a 10-billion parameter GPT-2 model in DeepSpeed. Furthermore, *using ZeRO-Offload in a DeepSpeed model is quick and easy because all you need is to change a few configurations in the DeepSpeed configuration json*. No code changes are needed.
@@ -24,11 +26,10 @@ We need to apply two changes to the launch script for the DeepSpeed Megatron-LM 
        --num-attention-heads 32 \
        --batch-size 10 \
        --deepspeed_config ds_zero_offload.config \
-       --cpu_optimizer \
        --checkpoint-activations
 ```
 
-Most of the flags in the changes above should be familiar if you have stepped through the Megatron-LM [tutorial](/tutorials/megatron/), except for the **_--cpu_optimizer_**. This flag informs the model script to pass a CPU-based Adam optimizer, rather than a GPU-based one, to DeepSpeed as the client optimizer. It is very important that this flag be used when training with ZeRO-Offload to ensure correct operation of the DeepSpeed engine.  
+Most of the flags in the changes above should be familiar if you have stepped through the Megatron-LM [tutorial](/tutorials/megatron/).
 
 Second, we need to apply the following changes to ensure that only one GPU is used for training.
 ```bash
@@ -49,19 +50,26 @@ ZeRO-Offload leverages much for ZeRO stage 2 mechanisms, and so the configuratio
 }
 ```
 
-As seen above, in addition to setting the _stage_ field to **2** (to enable ZeRO stage 2), we also need to set _cpu_offload_ flag to **true** enable ZeRO-Offload optimizations. In addition, we can  set other ZeRO stage 2 optimization flags, such as _overlap_comm_ to tune ZeRO-Offload performance.  With these changes we can now run the model. We share some screenshots of the training below.
+As seen above, in addition to setting the _stage_ field to **2** (to enable ZeRO stage 2), we also need to set _cpu_offload_ flag to **true** to enable ZeRO-Offload optimizations. In addition, we can  set other ZeRO stage 2 optimization flags, such as _overlap_comm_ to tune ZeRO-Offload performance.  With these changes we can now run the model. We share some screenshots of the training below.
 
 Here is a screenshot of the training log:
 
-![ZERO_OFFLOAD_DP1_10B_LOG](/assets/images/zero_offload_dp1_10B_log.png)
+<a href="/assets/images/zero_offload_dp1_10B_log.png">
+<img src="/assets/images/zero_offload_dp1_10B_log.png">
+</a>
+
 
 Here is a screenshot of nvidia-smi showing that only GPU 0 is active during training:
 
-![ZERO_OFFLOAD_DP1_10B_SMI](/assets/images/zero_offload_dp1_10B_smi.png)
+<a href="/assets/images/zero_offload_dp1_10B_smi.png">
+<img src="/assets/images/zero_offload_dp1_10B_smi.png">
+</a>
 
 Finally, here is a screenshot of htop showing host CPU and memory activity during optimizer computation:
 
-![ZERO_OFFLOAD_DP1_10B_SMI](/assets/images/zero_offload_dp1_10B_cpu.png)
+<a href="/assets/images/zero_offload_dp1_10B_cpu.png">
+<img src="/assets/images/zero_offload_dp1_10B_cpu.png">
+</a>
 
 Congratulations! You have completed the ZeRO-Offload tutorial.
 

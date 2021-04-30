@@ -52,8 +52,14 @@ class PipelineEngine(DeepSpeedEngine):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
+        assert self.zero_optimization_stage() < 2, "ZeRO-2 and ZeRO-3 are incompatible with pipeline parallelism"
+
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
+
+        # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
+        self.pipeline_enable_backward_allreduce = True
+
         assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
             " with pipeline parallelism."
 
@@ -220,7 +226,7 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
-        if self.is_data_parallel:
+        if self.is_data_parallel and self.pipeline_enable_backward_allreduce:
             self.buffered_allreduce_fallback(
                 elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
@@ -477,17 +483,6 @@ class PipelineEngine(DeepSpeedEngine):
         # All MP ranks participate in batch_fn, where they might broadcast the data.
         if self.batch_fn:
             batch = self.batch_fn(batch)
-
-        # Sanity check dimensions.
-        # XXX: the last minibatch with size < micro_batch_size kills us
-        if torch.is_tensor(batch[0]):
-            if batch[0].size(0) != self.micro_batch_size:
-                print(f'size mismatch: {batch[0].size(0)} mb: {self.micro_batch_size}')
-                return self._next_batch()
-        else:
-            assert torch.is_tensor(batch[0][0])
-            if batch[0][0].size(0) != self.micro_batch_size:
-                return self._next_batch()
 
         return batch
 
@@ -1170,3 +1165,11 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
+
+    def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
+        self.batch_fn = fn

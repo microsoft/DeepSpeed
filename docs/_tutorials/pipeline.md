@@ -132,7 +132,7 @@ net = PipelineModule(layers=net.to_layers(), num_stages=2)
 ```
 
 **Note:**
-the `lamda` in the middle of `layers` above is not a `torch.nn.Module`
+the `lambda` in the middle of `layers` above is not a `torch.nn.Module`
 type. Any object that implements `__call__()` can be a layer in a
 `PipelineModule`: this allows for convenient data transformations in the
 pipeline.
@@ -165,7 +165,7 @@ These modifications can be accomplished with a short subclass:
 class TransformerBlockPipe(TransformerBlock)
     def forward(self, inputs):
         hidden, mask = inputs
-        outputs = super().forward(hidden, mask)
+        output = super().forward(hidden, mask)
         return (output, mask)
 stack = [ TransformerBlockPipe() for _ in range(num_layers) ]
 ```
@@ -230,7 +230,7 @@ pipeline. Each worker should load micro-batches of size
 a total of `engine.gradient_accumulation_steps()` times per `train_batch()`.
 
 **Watch out!**
-The pipeline engine *pulls* data from an iteratior instead of iterating over
+The pipeline engine *pulls* data from an iterator instead of iterating over
 it. It's critical that the data stream does not empty in the middle of a
 training batch. Each invocation of `train_batch()` will pull
 a total of `engine.gradient_accumulation_steps()` micro-batches of data from
@@ -269,17 +269,18 @@ by DeepSpeed:
 * `partition_method="uniform"` balances the number of layers per stage.
 
 ### Memory-Efficient Model Construction
-Building a `Sequential` and providing it `PipelineModule` is a convenient way
-of specifying a pipeline parallel model. However, this approach encounters
-scalability issues for massive models. Starting from a `Sequential` allocates
-the model in CPU memory redundantly by every worker. A machine with 16 GPUs
-must have as much local CPU memory as 16 times the model size.
+Building a `Sequential` container and providing it to a `PipelineModule` is a convenient way
+of specifying a pipeline parallel model. However, this approach encounters scalability issues
+for massive models because each worker replicates the whole model in CPU memory.
+For example, a machine with 16 GPUs must have as much local CPU memory as 16 times the model size.
 
 DeepSpeed provides a `LayerSpec` class that delays the construction of
-modules until the model layers have been partitioned across workers. Then,
-the modules are built on the GPU that owns the layer.
+modules until the model layers have been partitioned across workers.
+Then each worker will allocate only the layers it's assigned to. So, comparing to the
+example from the previous paragraph, using `LayerSpec` a machine with 16 GPUs will need to
+allocate a total of 1x model size on its CPU memory and not 16x.
 
-Here's an example of the abbreviated AlexNet model, but expressed only
+Here is an example of the abbreviated AlexNet model, but expressed only
 with `LayerSpec`s. Note that the syntax is almost unchanged: `nn.ReLU(inplace=True)`
 simply becomes `LayerSpec(nn.ReLU, inplace=True)`.
 ```python
