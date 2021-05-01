@@ -254,14 +254,13 @@ class ModelContainerVariableOutputType(ModelContainer):
 
     def forward(self, input):
         act1 = self.linear1(input)
-        if self.output_type is None:
-            return None
         if self.output_type is dict:
             return {'loss': act1.sum()}
-        return act1.sum()
+        if self.output_type is torch.tensor:
+            return act1.sum()
 
 
-@pytest.mark.parametrize('output_type', [None, dict])
+@pytest.mark.parametrize('output_type', [torch.tensor, dict, None])
 def test_stage_3_output_type(output_type):
     setup_serial_env()
     print()
