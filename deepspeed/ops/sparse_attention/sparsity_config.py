@@ -124,7 +124,7 @@ class FixedSparsityConfig(SparsityConfig):
 
         self.num_local_blocks = num_local_blocks
 
-        if (num_local_blocks % num_global_blocks != 0):
+        if num_global_blocks > 0 and (num_local_blocks % num_global_blocks != 0):
             raise ValueError(
                 f'Number of blocks in a local window, {num_local_blocks}, must be dividable by number of global blocks, {num_global_blocks}!'
             )
@@ -145,7 +145,7 @@ class FixedSparsityConfig(SparsityConfig):
             raise ValueError(
                 f'Number of different layouts cannot be more than one when you have set a single layout for all heads! Set different_layout_per_head to True.'
             )
-        if (num_different_global_patterns > (num_local_blocks // num_global_blocks)):
+        if num_global_blocks > 0 and (num_different_global_patterns > (num_local_blocks // num_global_blocks)):
             raise ValueError(
                 f'Number of layout versions (num_different_global_patterns), {num_different_global_patterns}, cannot be larger than number of local window blocks divided by number of global blocks, {num_local_blocks} / {num_global_blocks} = {num_local_blocks//num_global_blocks}!'
             )
@@ -234,7 +234,8 @@ class FixedSparsityConfig(SparsityConfig):
         layout = self.setup_layout(seq_len)
         for h in range(0, self.num_layout_heads):
             layout = self.set_local_layout(h, layout)
-            layout = self.set_global_layout(h, layout)
+            if self.num_global_blocks > 0:
+                layout = self.set_global_layout(h, layout)
 
         layout = self.check_and_propagate_first_head_layout(layout)
         return layout
@@ -661,3 +662,4 @@ class BSLongformerSparsityConfig(SparsityConfig):
 
         layout = self.check_and_propagate_first_head_layout(layout)
         return layout
+
