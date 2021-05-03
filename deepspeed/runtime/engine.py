@@ -566,10 +566,10 @@ class DeepSpeedEngine(Module):
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
                          'ds_id') for param in self.module.parameters()]):
-                assert all([param.dtype == torch.half for param in self.module.parameters()]), f"Model must initialized in fp16 mode for ZeRO Stage 3."
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), "fp16 is enabled but one or several model parameters have dtype that is not fp16"
             self.module.half()
         else:
-            assert all([param.dtype == torch.float for param in self.module.parameters()]), f"fp16 is not enabled but one or several model parameters have dtype of fp16"
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), "fp16 is not enabled but one or several model parameters have dtype of fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -826,9 +826,11 @@ class DeepSpeedEngine(Module):
 
         return pld
 
+    @staticmethod
     def is_map_style_dataset(obj):
         return hasattr(obj, "__getitem__") and hasattr(obj, "__len__")
 
+    @staticmethod
     def is_iterable_style_dataset(obj):
         return isinstance(obj,
                           torch.utils.data.IterableDataset
