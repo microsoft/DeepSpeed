@@ -898,9 +898,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     # avoid the error
                     # Error msg adapted from torch.nn.parallel.DistributedDataParallel
                     assert not self.find_unused_parameters, """
-                        This error indicates that your module has parameters that
+                        This assert indicates that your module has parameters that
                         were not used in producing loss.
-                        You can avoid this error by
+                        You can avoid this assert by
                         (1) disable find_unused_parameters option in zero_optimization config;
                         (2) making sure all trainable parameters and `forward` function
                             outputs participate in calculating loss.
