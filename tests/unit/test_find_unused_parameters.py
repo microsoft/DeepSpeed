@@ -60,7 +60,7 @@ def test_stage2_find_unused_parameters(tmpdir, find_unused_parameters):
                 model.backward(loss)
                 model.step()
 
-        if not find_unused_parameters:
+        if find_unused_parameters:
             with pytest.raises(AssertionError) as e:
                 _loop()
             assert e.value.args and 'find_unused_parameters' in e.value.args[0]
