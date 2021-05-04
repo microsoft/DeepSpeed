@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import sys
 import types
-from packaging import version
+import packaging
 
 from . import ops
 
@@ -26,8 +26,8 @@ from .git_version_info import version, git_hash, git_branch
 
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''
-    ver = version.parse(version_str)
-    return ver.major, ver.minor, ver.patch
+    ver = packaging.version.parse(version_str)
+    return ver.major, ver.minor, ver.micro
 
 
 # Export version information
