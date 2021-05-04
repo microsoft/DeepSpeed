@@ -17,6 +17,7 @@ from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
+from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
@@ -43,6 +44,7 @@ from .utils import ensure_directory_exists
 from ..ops.op_builder import UtilsBuilder
 from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
+from .git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 
@@ -53,23 +55,6 @@ try:
 except ImportError:
     # Fail silently so we don't spam logs unnecessarily if user isn't using amp
     pass
-
-
-def see_memory_usage_wcolor(message):
-    return
-    import gc
-    RED = '\033[91m'
-    END = '\033[0m'
-    torch.cuda.synchronize()
-    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
-        return
-    gc.collect()
-    logger.info(f"{RED}{message}{END}")
-    logger.info(f"{RED}MemAlloc {torch.cuda.memory_allocated():,} \
-        Max_MemAlloc {torch.cuda.max_memory_allocated():,} \
-        MemCached {torch.cuda.memory_cached():,} \
-        Max_MemCached {torch.cuda.max_memory_cached():,}{END}")
-    torch.cuda.reset_peak_memory_stats()
 
 
 def split_half_float_double_csr(tensors):
@@ -417,6 +402,9 @@ class DeepSpeedEngine(Module):
         
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
+
+    def zero_legacy_stage1(self):
+        return self._config.zero_config.legacy_stage1
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -792,7 +780,20 @@ class DeepSpeedEngine(Module):
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
+        if self.zero_legacy_stage1() and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+            optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
+                optimizer,
+                static_loss_scale=self.loss_scale(),
+                dynamic_loss_scale=self.dynamic_loss_scale(),
+                dynamic_loss_args=self.dynamic_loss_scale_args(),
+                clip_grad=self.gradient_clipping(),
+                all_gather_partitions=self.zero_allgather_partitions(),
+                allgather_size=self.zero_allgather_bucket_size(),
+                max_elements_per_comm=self.zero_reduce_bucket_size(),
+                dp_process_group=self.data_parallel_group,
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
+                mpu=self.mpu)
+        elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
@@ -1019,8 +1020,6 @@ class DeepSpeedEngine(Module):
                 f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
             )
 
-        see_memory_usage_wcolor('pre-backward')
-
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
             loss = self._scale_loss(loss.float())
@@ -1075,9 +1074,7 @@ class DeepSpeedEngine(Module):
             self.timers('backward_allreduce').start()
 
         if self.enable_backward_allreduce:
-            see_memory_usage_wcolor('pre-grad-reduce')
             self.allreduce_gradients()
-            see_memory_usage_wcolor('post-grad-reduce')
 
         if self.wall_clock_breakdown():
             self.timers('backward_allreduce').stop()
@@ -1736,6 +1733,9 @@ class DeepSpeedEngine(Module):
             global_samples=self.global_samples,
             dp_world_size=self.dp_world_size,
             mp_world_size=self.mp_world_size,
+            ds_config=self.config,
+            zero_stage=self.zero_optimization_stage(),
+            ds_version=version
         )
         state.update(client_state)
 
@@ -1767,6 +1767,9 @@ class DeepSpeedEngine(Module):
         zero_sd = dict(
             optimizer_state_dict=self.optimizer.state_dict(),
             param_shapes=self._get_param_shapes(),
+            ds_config=self.config,
+            zero_stage=self.zero_optimization_stage(),
+            ds_version=version
         )
         torch.save(zero_sd, zero_checkpoint_name)
         self._copy_recovery_script(save_path)

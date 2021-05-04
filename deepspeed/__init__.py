@@ -3,6 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import sys
 import types
+from packaging import version
 
 from . import ops
 
@@ -25,9 +26,8 @@ from .git_version_info import version, git_hash, git_branch
 
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''
-    import re
-    matched = re.search('^(\d+)\.(\d+)\.(\d+)', version_str)
-    return int(matched.group(1)), int(matched.group(2)), int(matched.group(3))
+    ver = version.parse(version_str)
+    return ver.major, ver.minor, ver.patch
 
 
 # Export version information
@@ -35,6 +35,7 @@ __version__ = version
 __version_major__, __version_minor__, __version_patch__ = _parse_version(__version__)
 __git_hash__ = git_hash
 __git_branch__ = git_branch
+
 
 # Provide backwards compatability with old deepspeed.pt module structure, should hopefully not be used
 pt = types.ModuleType('pt', 'dummy pt module for backwards compatability')

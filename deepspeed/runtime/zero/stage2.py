@@ -8,6 +8,7 @@ import torch.distributed as dist
 import math
 from torch._six import inf
 from torch.autograd import Variable
+from packaging import version
 
 import collections
 
@@ -21,23 +22,6 @@ from deepspeed.utils import logger
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
 pg_correctness_test = False
-
-
-def see_memory_usage_wcolor(message):
-    return
-    import gc
-    RED = '\033[91m'
-    END = '\033[0m'
-    torch.cuda.synchronize()
-    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
-        return
-    gc.collect()
-    logger.info(f"{RED}{message}{END}")
-    logger.info(f"{RED}MemAlloc {torch.cuda.memory_allocated():,} \
-        Max_MemAlloc {torch.cuda.max_memory_allocated():,} \
-        MemCached {torch.cuda.memory_cached():,} \
-        Max_MemCached {torch.cuda.max_memory_cached():,}{END}")
-    torch.cuda.reset_peak_memory_stats()
 
 
 def input(msg):
@@ -781,10 +765,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             async_handles = []
             for dst, bucket_offset, numel in rank_and_offsets:
-                # print(f'{tensor.numel()=}, {bucket_offset=}, {numel=}')
                 grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
                 dst_rank = _get_global_rank(self.dp_process_group, dst)
-                # print(f'******* [{dist.get_rank()}] dist.reduce {grad_slice.numel()}, dst={dst_rank}')
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=self.dp_process_group,
@@ -1021,7 +1003,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.contiguous_gradients:
             if self.extra_large_param_to_reduce is not None:
-                # assert False, 'yay, found extra large param!'
                 assert len(self.params_in_ipg_bucket) == 1, "more than 1 param in ipg bucket, this shouldn't happen"
                 _, _, param_id = self.params_in_ipg_bucket[0]
                 assert self.get_param_id(self.extra_large_param_to_reduce) == param_id, "param in ipg bucket does not match extra-large param"
@@ -1503,8 +1484,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 assert single_grad_partition.numel() == self.partition_size[i], \
                     "averaged gradients have different number of elements that partition size {} {} {} {}".format(single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
-                # print(f"[{partition_id}] grad-norm {single_grad_partition.norm()}")
-                # print(f"[{partition_id}] grad_partition {single_grad_partition}")
                 self.single_partition_of_fp32_groups[i].grad = single_grad_partition
                 #release all the gradient since we have already created a necessary copy in dp_grad_partition
                 self.free_grad_in_param_list(self.params_in_partition[i])
@@ -1597,7 +1576,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for norm in norm_groups:
             total_norm += norm**2.0
         total_norm = math.sqrt(total_norm)
-        # print(f'[{dist.get_rank()}] total_norm={total_norm}')
+
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
         if self.clip_grad > 0.:
@@ -1917,6 +1896,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.loss_scaler = state_dict_list[0]['loss_scaler']
         self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
         self.overflow = state_dict_list[0]['overflow']
+
+        # zero stage 1 mode
+        if not self.partition_gradients:
+            required_version = version.parse("0.3.17")
+            ckpt_version = zero_sd_list[0].get("ds_version", False)
+            error_str = "ZeRO stage 1 changed in v0.3.17 and is not backwards compatible \
+                with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint \
+                please set 'legacy_stage1': true in your zero config json. This old version of \
+                stage 1 will be removed in v0.4.0."
+            assert ds_version, error_str
+            assert required_version <= version.parse(ckpt_version), error_str
 
         if load_optimizer_states:
             self._restore_base_optimizer_state(state_dict_list)

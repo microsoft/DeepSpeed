@@ -619,7 +619,7 @@ class DeepSpeedConfig(object):
 
         self.zero_config = DeepSpeedZeroConfig(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
-        self.zero_enabled = self.zero_optimization_stage != 0
+        self.zero_enabled = self.zero_optimization_stage > 0
 
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
