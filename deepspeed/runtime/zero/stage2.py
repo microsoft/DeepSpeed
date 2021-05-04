@@ -125,7 +125,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # ZeRO stage 1 (False) or 2 (True)
         self.partition_gradients = partition_grads
-        
+
         # Use backward hooks to reduce gradients
         self.grad_hooks = grad_hooks
 
@@ -432,7 +432,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for i, group in enumerate(self.fp16_groups):
                 for param in group:
                     self.reduce_ready_partitions_and_remove_grads(param, i)
-        
+
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
 
@@ -1905,6 +1905,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint \
                 please set 'legacy_stage1': true in your zero config json. This old version of \
                 stage 1 will be removed in v0.4.0."
+
             assert ds_version, error_str
             assert required_version <= version.parse(ckpt_version), error_str
 

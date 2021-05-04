@@ -399,7 +399,7 @@ class DeepSpeedEngine(Module):
 
     def zero_find_unused_parameters(self):
         return self._config.zero_config.find_unused_parameters
-        
+
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
 
@@ -780,7 +780,8 @@ class DeepSpeedEngine(Module):
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        if self.zero_legacy_stage1() and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+        if self.zero_legacy_stage1(
+        ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -813,7 +814,7 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 find_unused_parameters=self.zero_find_unused_parameters(),
-                partition_grads=zero_stage==ZERO_OPTIMIZATION_GRADIENTS,
+                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
                 grad_hooks=self.zero_grad_hooks())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
@@ -1721,22 +1722,20 @@ class DeepSpeedEngine(Module):
         # then instead just returns None.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
-        state = dict(
-            module=self.module_state_dict(),
-            optimizer=self.optimizer.state_dict()
-            if self.optimizer and not self.zero_optimization() else None,
-            lr_scheduler=self.lr_scheduler.state_dict()
-            if self.lr_scheduler is not None else None,
-            csr_tensor_module_names=self.csr_tensor_module_names,
-            skipped_steps=self.skipped_steps,
-            global_steps=self.global_steps,
-            global_samples=self.global_samples,
-            dp_world_size=self.dp_world_size,
-            mp_world_size=self.mp_world_size,
-            ds_config=self.config,
-            zero_stage=self.zero_optimization_stage(),
-            ds_version=version
-        )
+        state = dict(module=self.module_state_dict(),
+                     optimizer=self.optimizer.state_dict()
+                     if self.optimizer and not self.zero_optimization() else None,
+                     lr_scheduler=self.lr_scheduler.state_dict()
+                     if self.lr_scheduler is not None else None,
+                     csr_tensor_module_names=self.csr_tensor_module_names,
+                     skipped_steps=self.skipped_steps,
+                     global_steps=self.global_steps,
+                     global_samples=self.global_samples,
+                     dp_world_size=self.dp_world_size,
+                     mp_world_size=self.mp_world_size,
+                     ds_config=self.config,
+                     zero_stage=self.zero_optimization_stage(),
+                     ds_version=version)
         state.update(client_state)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
@@ -1764,13 +1763,11 @@ class DeepSpeedEngine(Module):
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
-        zero_sd = dict(
-            optimizer_state_dict=self.optimizer.state_dict(),
-            param_shapes=self._get_param_shapes(),
-            ds_config=self.config,
-            zero_stage=self.zero_optimization_stage(),
-            ds_version=version
-        )
+        zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
+                       param_shapes=self._get_param_shapes(),
+                       ds_config=self.config,
+                       zero_stage=self.zero_optimization_stage(),
+                       ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
         self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
