@@ -776,6 +776,14 @@ class DeepSpeedEngine(Module):
                 elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu)
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
+            grad_hooks = self.zero_grad_hooks()
+            if isinstance(self.module, PipelineModule):
+                if grad_hooks:
+                    logger.warning(
+                        "Pipeline parallelism does not support backward grad reduction hooks, will be disabled."
+                    )
+                    grad_hooks = False
+
             optimizer = FP16_DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
@@ -796,7 +804,7 @@ class DeepSpeedEngine(Module):
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 find_unused_parameters=self.zero_find_unused_parameters(),
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
-                grad_hooks=self.zero_grad_hooks())
+                grad_hooks=grad_hooks)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3

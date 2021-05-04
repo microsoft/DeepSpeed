@@ -146,6 +146,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
+        self.is_gradient_accumulation_boundary = True
+
         if mpu is None:
             self.model_parallel_group = None
             self.model_parallel_rank = 0
@@ -1902,7 +1904,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # zero stage 1 mode
         if not self.partition_gradients:
-            required_version = pkg_version.parse("0.3.16")
+            required_version = pkg_version.parse("0.3.17")
             ckpt_version = state_dict_list[0].get("ds_version", False)
             error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
                 "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
