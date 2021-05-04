@@ -8,7 +8,7 @@ import torch.distributed as dist
 import math
 from torch._six import inf
 from torch.autograd import Variable
-from packaging import version
+from packaging import version as pkg_version
 
 import collections
 
@@ -18,6 +18,7 @@ from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
+from deepspeed.git_version_info import version
 
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
@@ -1778,6 +1779,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
         state_dict['partition_count'] = self.partition_count
 
+        state_dict['ds_version'] = version
+
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
@@ -1899,15 +1902,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # zero stage 1 mode
         if not self.partition_gradients:
-            required_version = version.parse("0.3.17")
-            ckpt_version = zero_sd_list[0].get("ds_version", False)
-            error_str = "ZeRO stage 1 changed in v0.3.17 and is not backwards compatible \
-                with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint \
-                please set 'legacy_stage1': true in your zero config json. This old version of \
-                stage 1 will be removed in v0.4.0."
+            required_version = pkg_version.parse("0.3.16")
+            ckpt_version = state_dict_list[0].get("ds_version", False)
+            error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
+                "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
+                "please set 'legacy_stage1': true in your zero config json. This old version of " \
+                "stage 1 will be removed in v0.4.0."
 
-            assert ds_version, error_str
-            assert required_version <= version.parse(ckpt_version), error_str
+            assert ckpt_version, f"Empty ds_version! {error_str}"
+            assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
 
         if load_optimizer_states:
             self._restore_base_optimizer_state(state_dict_list)

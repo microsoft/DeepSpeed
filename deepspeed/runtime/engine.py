@@ -1734,7 +1734,6 @@ class DeepSpeedEngine(Module):
                      dp_world_size=self.dp_world_size,
                      mp_world_size=self.mp_world_size,
                      ds_config=self.config,
-                     zero_stage=self.zero_optimization_stage(),
                      ds_version=version)
         state.update(client_state)
 
@@ -1766,7 +1765,6 @@ class DeepSpeedEngine(Module):
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        param_shapes=self._get_param_shapes(),
                        ds_config=self.config,
-                       zero_stage=self.zero_optimization_stage(),
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
         self._copy_recovery_script(save_path)
