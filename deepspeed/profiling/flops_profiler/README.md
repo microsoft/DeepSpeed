@@ -65,12 +65,12 @@ LeNet5(
 
 ## Supported Models
 
-The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that the DeepSpeed flops profiler captures ```torch.nn.functional``` invoked in a module to estimate the flops. Thus the DeepSpeed flops profiler allows for customized modules in the model, e.g., ```ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). This is in contrast to tools that profile at ```torch.nn.module``` level, such as ptflops, which require users to write customized flops calculation functions for each customized module. Finally, the DeepSpeed flops profiler also supports flops computation at module level (for RNNs).
+The flops estimation is partly inspired by [ptflops](https://github.com/sovrasov/flops-counter.pytorch) with the major difference being that the DeepSpeed flops profiler captures `torch.nn.functional` invoked in a module to estimate the flops. Thus the DeepSpeed flops profiler allows for customized modules in the model, e.g., `ParallelTransformerLayerworks, ParallelSelfAttention, RowParallelLinear, etc.` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). This is in contrast to tools that profile at `torch.nn.module` level, such as ptflops, which require users to write customized flops calculation functions for each customized module. Finally, the DeepSpeed flops profiler also supports flops computation at module level (for RNNs).
 
 ## Multi-GPU, Multi-node Runs
 
-For models running on multi-GPU or multi-node, only the model parallelism (e.g. ```--model-parallel-size``` in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affects the number of flops and parameters profiled, i.e.,
-`model_parallel_size * flops = total_flops` and `model_parallel_size * parameters = total_parameters`. The number of GPUs or nodes does not affect the output profile.
+For models running on multi-GPU or multi-node, given a `--batch-size` (per GPU batch size), only the model parallelism and pipeline parallelism (e.g. `tensor-model-parallel-size` and `pipeline-model-parallel-size`  in [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)) affect the number of flops and parameters in the output profile for each GPU, i.e.,
+`model_parallel_size * pipeline_parallel_size * flops (per GPU) = total_flops` and `model_parallel_size * pipeline_parallel_size* parameters (per GPU) = total_parameters`. The data parallelism does not affect the output profile.
 
 
 ## Usage

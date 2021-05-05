@@ -143,6 +143,10 @@ class DeepSpeedEngine(Module):
         if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
 
+        if dist.get_rank() == 0:
+            logger.info(
+                f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}")
+
         see_memory_usage(f"DeepSpeed Engine: Before configure distributed model")
 
         # Configure distributed model
@@ -927,7 +931,7 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
-            self.flops_profiler = FlopsProfiler(self.module)
+            self.flops_profiler = FlopsProfiler(self.module, self)
             self.flops_profiler.start_profile(ignore_list=None)
 
         if self.module.training and self.progressive_layer_drop:
@@ -946,6 +950,7 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
+
         loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
@@ -964,12 +969,13 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
-            self.flops_profiler.print_model_profile(
-                profile_step=self.global_steps,
-                module_depth=self.flops_profiler_module_depth(),
-                top_modules=self.flops_profiler_top_modules(),
-                detailed=self.flops_profiler_detailed(),
-                output_file=self.flops_profiler_output_file())
+            if self.local_rank == 0:
+                self.flops_profiler.print_model_profile(
+                    profile_step=self.global_steps,
+                    module_depth=self.flops_profiler_module_depth(),
+                    top_modules=self.flops_profiler_top_modules(),
+                    detailed=self.flops_profiler_detailed(),
+                    output_file=self.flops_profiler_output_file())
             self.flops_profiler.end_profile()
 
         return loss
