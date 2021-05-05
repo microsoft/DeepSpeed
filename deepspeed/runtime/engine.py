@@ -287,6 +287,9 @@ class DeepSpeedEngine(Module):
     def flops_profiler_detailed(self):
         return self._config.flops_profiler_config.detailed
 
+    def flops_profiler_output_file(self):
+        return self._config.flops_profiler_config.output_file
+
     def memory_breakdown(self):
         return self._config.memory_breakdown
 
@@ -965,7 +968,8 @@ class DeepSpeedEngine(Module):
                 profile_step=self.global_steps,
                 module_depth=self.flops_profiler_module_depth(),
                 top_modules=self.flops_profiler_top_modules(),
-                detailed=self.flops_profiler_detailed())
+                detailed=self.flops_profiler_detailed(),
+                output_file=self.flops_profiler_output_file())
             self.flops_profiler.end_profile()
 
         return loss
