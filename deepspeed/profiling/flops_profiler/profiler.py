@@ -181,7 +181,8 @@ class FlopsProfiler(object):
                             profile_step=1,
                             module_depth=-1,
                             top_modules=3,
-                            detailed=True):
+                            detailed=True,
+                            output_file=None):
         """Prints the model graph with the measured profile attached to each module.
 
         Args:
@@ -190,6 +191,16 @@ class FlopsProfiler(object):
             top_modules (int, optional): Limits the aggregated profile output to the number of top modules specified.
             detailed (bool, optional): Whether to print the detailed model profile.
         """
+
+        import sys
+        import os.path
+        from os import path
+        original_stdout = None
+        f = None
+        if output_file and output_file != "":
+            original_stdout = sys.stdout
+            f = open(output_file, "w")
+            sys.stdout = f
 
         total_flops = self.get_total_flops()
         total_duration = self.get_total_duration()
@@ -274,6 +285,10 @@ class FlopsProfiler(object):
         print(
             "------------------------------------------------------------------------------"
         )
+
+        if output_file:
+            sys.stdout = original_stdout
+            f.close()
 
     def print_model_aggregated_profile(self, module_depth=-1, top_modules=3):
         """Prints the names of the top top_modules modules in terms of aggregated time, flops, and parameters at depth module_depth.
@@ -790,6 +805,7 @@ def get_model_profile(
     top_modules=3,
     warm_up=1,
     as_string=True,
+    output_file=None,
     ignore_modules=None,
 ):
     """Returns the total MACs and parameters of a model.
@@ -861,7 +877,8 @@ def get_model_profile(
         prof.print_model_profile(profile_step=warm_up,
                                  module_depth=module_depth,
                                  top_modules=top_modules,
-                                 detailed=detailed)
+                                 detailed=detailed,
+                                 output_file=output_file)
 
     prof.end_profile()
     if as_string:
