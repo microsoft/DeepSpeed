@@ -44,8 +44,9 @@ class FlopsProfiler(object):
     Args:
         object (torch.nn.Module): The PyTorch model to profile.
     """
-    def __init__(self, model):
+    def __init__(self, model, ds_engine=None):
         self.model = model
+        self.ds_engine = ds_engine
 
     def start_profile(self, ignore_list=None):
         """Starts profiling.
@@ -198,6 +199,9 @@ class FlopsProfiler(object):
         original_stdout = None
         f = None
         if output_file and output_file != "":
+            dir_path = os.path.dirname(output_file)
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
             original_stdout = sys.stdout
             f = open(output_file, "w")
             sys.stdout = f
@@ -212,18 +216,42 @@ class FlopsProfiler(object):
         print(
             "\n-------------------------- DeepSpeed Flops Profiler --------------------------"
         )
-        print("Summary of forward pass:")
-        print('{:<30}  {:<8}'.format('Profile step: ', profile_step))
-        print('{:<30}  {:<8}'.format('Number of parameters: ',
-                                     params_to_string(total_params)))
-        print('{:<30}  {:<8}'.format('Number of multiply-accumulate operations (MACs): ',
+        print(f'Profile Summary at step {profile_step}:')
+        print(
+            "Notations: data parallel size (dp_size), model paralel size(mp_size), number of parameters (params), number of multiply-accumulate operations(MACs), number of floating point operations (flops), floating point operations per second (FLOPS)\n"
+        )
+        if self.ds_engine:
+            print('{:<60}  {:<8}'.format('world size: ', self.ds_engine.world_size))
+            print('{:<60}  {:<8}'.format('data parallel size: ',
+                                         self.ds_engine.dp_world_size))
+            print('{:<60}  {:<8}'.format('model paralel size: ',
+                                         self.ds_engine.mp_world_size))
+            print('{:<60}  {:<8}'.format(
+                'batch size per GPU: ',
+                self.ds_engine.train_micro_batch_size_per_gpu()))
+
+        print('{:<60}  {:<8}'.format('params per gpu: ', params_to_string(total_params)))
+        print('{:<60}  {:<8}'.format(
+            'params of model = params per GPU * mp_size: ',
+            params_to_string(total_params *
+                             (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+
+        print('{:<60}  {:<8}'.format('forward MACs per GPU: ',
                                      num_to_string(total_flops)))
-        print('{:<30}  {:<8}'.format(
-            'Number of floating point operations ( = 2 * MACs): ',
+        print('{:<60}  {:<8}'.format(
+            'forward flops per GPU = 2 * forward MACs per GPU: ',
             num_to_string(2 * total_flops)))
-        print('{:<30}  {:<8}'.format('Latency: ', duration_to_string(total_duration)))
-        print('{:<30}  {:<8}'.format('Floating point operations per second(FLOPS): ',
-                                     flops_to_string(2 * total_flops / total_duration)))
+
+        print('{:<60}  {:<8}'.format(
+            'forward flops of model = forward flops per GPU * mp_size: ',
+            num_to_string(2 * total_flops *
+                          (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+
+        print('{:<60}  {:<8}'.format('forward latency: ',
+                                     duration_to_string(total_duration)))
+        print('{:<60}  {:<8}'.format(
+            'forward FLOPS per GPU = forward flops per GPU / forward latency: ',
+            flops_to_string(2 * total_flops / total_duration)))
 
         def flops_repr(module):
             params = module.__params__
@@ -263,20 +291,20 @@ class FlopsProfiler(object):
         self.model.apply(add_extra_repr)
 
         print(
-            "\n----------------------------- Aggregated Profile -----------------------------"
+            "\n----------------------------- Aggregated Profile per GPU -----------------------------"
         )
         self.print_model_aggregated_profile(module_depth=module_depth,
                                             top_modules=top_modules)
 
         if detailed:
             print(
-                "\n------------------------------ Detailed Profile ------------------------------"
+                "\n------------------------------ Detailed Profile per GPU ------------------------------"
             )
             print(
-                "Each module profile is listed after its name in the following order: \nnumber of parameters, percentage of total parameters, number of multiply-accumulate operations (MACs), percentage of total MACs, latency, percentage of total latency, number of floating point operations per second (FLOPS, computed as 2 * MACs / latency)."
+                "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, forward latency, percentage of total forward latency, forward FLOPS"
             )
             print(
-                "Note: \n1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n"
+                "\nNote: 1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n"
             )
             print(self.model)
 
@@ -350,9 +378,12 @@ class FlopsProfiler(object):
                         key=lambda item: item[1][2],
                         reverse=True)[:num_items]
         }
-        print(f"Top {num_items} modules in MACs at depth {depth} are {sort_flops}")
+
         print(f"Top {num_items} modules in params at depth {depth} are {sort_params}")
-        print(f"Top {num_items} modules in latency at depth {depth} are {sort_time}")
+        print(f"Top {num_items} modules in MACs at depth {depth} are {sort_flops}")
+        print(
+            f"Top {num_items} modules in forward latency at depth {depth} are {sort_time}"
+        )
 
 
 def _prod(dims):
