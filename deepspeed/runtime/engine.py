@@ -969,13 +969,12 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
-            if self.local_rank == 0:
-                self.flops_profiler.print_model_profile(
-                    profile_step=self.global_steps,
-                    module_depth=self.flops_profiler_module_depth(),
-                    top_modules=self.flops_profiler_top_modules(),
-                    detailed=self.flops_profiler_detailed(),
-                    output_file=self.flops_profiler_output_file())
+            self.flops_profiler.print_model_profile(
+                profile_step=self.global_steps,
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules(),
+                detailed=self.flops_profiler_detailed(),
+                output_file=self.flops_profiler_output_file())
             self.flops_profiler.end_profile()
 
         return loss
