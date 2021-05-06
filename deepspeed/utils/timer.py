@@ -37,7 +37,7 @@ class SynchronizedWallClockTimer:
             """Stop the timer."""
             assert self.started_, 'timer is not started'
             torch.cuda.synchronize()
-            self.elapsed_ += (time.time() - self.start_time)
+            self.elapsed_ = (time.time() - self.start_time)
             self.started_ = False
 
         def reset(self):

@@ -143,10 +143,6 @@ class DeepSpeedEngine(Module):
         if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
 
-        if dist.get_rank() == 0:
-            logger.info(
-                f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}")
-
         see_memory_usage(f"DeepSpeed Engine: Before configure distributed model")
 
         # Configure distributed model
@@ -163,6 +159,13 @@ class DeepSpeedEngine(Module):
             num_workers=self.dp_world_size,
             steps_per_output=self.steps_per_print(),
             monitor_memory=False)
+
+        if dist.get_rank() == 0:
+            logger.info(
+                f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}")
+
+        if self.flops_profiler_enabled():
+            self.flops_profiler = FlopsProfiler(self.module, self)
 
         if training_data:
             self.training_dataloader = self.deepspeed_io(training_data)
@@ -931,7 +934,6 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
-            self.flops_profiler = FlopsProfiler(self.module, self)
             self.flops_profiler.start_profile(ignore_list=None)
 
         if self.module.training and self.progressive_layer_drop:
@@ -969,6 +971,7 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
+            self.flops_profiler.stop_profile()
             self.flops_profiler.print_model_profile(
                 profile_step=self.global_steps,
                 module_depth=self.flops_profiler_module_depth(),
@@ -1186,7 +1189,9 @@ class DeepSpeedEngine(Module):
                 'backward_allreduce_microstep',
                 'step_microstep'
             ]
-            self.timers.log(names=timer_names, memory_breakdown=self.memory_breakdown())
+            self.timers.log(names=timer_names,
+                            reset=False,
+                            memory_breakdown=self.memory_breakdown())
 
             # Log timing
             if self.is_gradient_accumulation_boundary():
@@ -1221,7 +1226,8 @@ class DeepSpeedEngine(Module):
                     'backward_inner',
                     'backward_allreduce',
                     'step'
-                ])
+                ],
+                                reset=False)
 
         self.micro_steps += 1
 
