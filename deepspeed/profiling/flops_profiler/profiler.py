@@ -47,6 +47,8 @@ class FlopsProfiler(object):
     def __init__(self, model, ds_engine=None):
         self.model = model
         self.ds_engine = ds_engine
+        self.started = False
+        self.func_patched = False
 
     def start_profile(self, ignore_list=None):
         """Starts profiling.
@@ -94,21 +96,19 @@ class FlopsProfiler(object):
             module.__end_time_hook_handle__ = module.register_forward_hook(end_time_hook)
 
         self.model.apply(partial(register_module_hooks, ignore_list=ignore_list))
+        self.started = True
+        self.func_patched = True
 
-    def end_profile(self):
-        """Ends profiling.
+    def stop_profile(self):
+        """Stop profiling.
 
-        Added attributes and handles are removed recursively on all the modules and the torch.nn.functionals are restored.
+        All torch.nn.functionals are restored to their originals.
         """
+        if self.started and self.func_patched:
+            _reload_functionals()
+            self.func_patched = False
+
         def remove_profile_attrs(module):
-            if hasattr(module, "__flops__"):
-                del module.__flops__
-            if hasattr(module, "__params__"):
-                del module.__params__
-            if hasattr(module, "__start_time__"):
-                del module.__start_time__
-            if hasattr(module, "__duration__"):
-                del module.__duration__
             if hasattr(module, "__pre_hook_handle__"):
                 module.__pre_hook_handle__.remove()
                 del module.__pre_hook_handle__
@@ -126,7 +126,6 @@ class FlopsProfiler(object):
                 del module.__end_time_hook_handle__
 
         self.model.apply(remove_profile_attrs)
-        _reload_functionals()
 
     def reset_profile(self):
         """Resets the profiling.
@@ -141,6 +140,28 @@ class FlopsProfiler(object):
             module.__duration__ = 0
 
         self.model.apply(add_or_reset_attrs)
+
+    def end_profile(self):
+        """Ends profiling.
+
+        The added attributes and handles are removed recursively on all the modules.
+        """
+        if not self.started:
+            return
+        self.stop_profile()
+        self.started = False
+
+        def remove_profile_attrs(module):
+            if hasattr(module, "__flops__"):
+                del module.__flops__
+            if hasattr(module, "__params__"):
+                del module.__params__
+            if hasattr(module, "__start_time__"):
+                del module.__start_time__
+            if hasattr(module, "__duration__"):
+                del module.__duration__
+
+        self.model.apply(remove_profile_attrs)
 
     def get_total_flops(self, as_string=False):
         """Returns the total flops of the model.
@@ -192,7 +213,8 @@ class FlopsProfiler(object):
             top_modules (int, optional): Limits the aggregated profile output to the number of top modules specified.
             detailed (bool, optional): Whether to print the detailed model profile.
         """
-
+        if not self.started:
+            return
         import sys
         import os.path
         from os import path
@@ -218,7 +240,7 @@ class FlopsProfiler(object):
         )
         print(f'Profile Summary at step {profile_step}:')
         print(
-            "Notations: data parallel size (dp_size), model paralel size(mp_size), number of parameters (params), number of multiply-accumulate operations(MACs), number of floating point operations (flops), floating point operations per second (FLOPS)\n"
+            "Notations:\ndata parallel size (dp_size), model paralel size(mp_size), number of parameters (params),\nnumber of multiply-accumulate operations(MACs), number of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency), step (weights update latency)\n"
         )
         if self.ds_engine:
             print('{:<60}  {:<8}'.format('world size: ', self.ds_engine.world_size))
@@ -236,22 +258,35 @@ class FlopsProfiler(object):
             params_to_string(total_params *
                              (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
 
-        print('{:<60}  {:<8}'.format('forward MACs per GPU: ',
-                                     num_to_string(total_flops)))
-        print('{:<60}  {:<8}'.format(
-            'forward flops per GPU = 2 * forward MACs per GPU: ',
-            num_to_string(2 * total_flops)))
+        print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', num_to_string(total_flops)))
+        print('{:<60}  {:<8}'.format('fwd flops per GPU = 2 * fwd MACs per GPU: ',
+                                     num_to_string(2 * total_flops)))
 
         print('{:<60}  {:<8}'.format(
-            'forward flops of model = forward flops per GPU * mp_size: ',
+            'fwd flops of model = fwd flops per GPU * mp_size: ',
             num_to_string(2 * total_flops *
                           (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
 
-        print('{:<60}  {:<8}'.format('forward latency: ',
-                                     duration_to_string(total_duration)))
-        print('{:<60}  {:<8}'.format(
-            'forward FLOPS per GPU = forward flops per GPU / forward latency: ',
-            flops_to_string(2 * total_flops / total_duration)))
+        if self.ds_engine:
+            fwd_latency = self.ds_engine.timers('forward').elapsed(False)
+            bwd_latency = self.ds_engine.timers('backward').elapsed(False)
+            step_latency = self.ds_engine.timers('step').elapsed(False)
+            print('{:<60}  {:<8}'.format('fwd latency: ',
+                                         duration_to_string(fwd_latency)))
+            print('{:<60}  {:<8}'.format('bwd latency: ',
+                                         duration_to_string(bwd_latency)))
+            print('{:<60}  {:<8}'.format(
+                'fwd FLOPS per GPU = fwd flops per GPU / fwd latency: ',
+                flops_to_string(2 * total_flops / fwd_latency)))
+            print('{:<60}  {:<8}'.format(
+                'bwd FLOPS per GPU = 2 * fwd flops per GPU / bwd latency: ',
+                flops_to_string(2 * 2 * total_flops / bwd_latency)))
+            print('{:<60}  {:<8}'.format(
+                'fwd+bwd FLOPS per GPU = 3 * fwd flops per GPU / (fwd+bwd latency): ',
+                flops_to_string(3 * 2 * total_flops / (fwd_latency + bwd_latency))))
+
+            print('{:<60}  {:<8}'.format('step latency: ',
+                                         duration_to_string(step_latency)))
 
         def flops_repr(module):
             params = module.__params__
