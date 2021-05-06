@@ -336,10 +336,10 @@ class FlopsProfiler(object):
                 "\n------------------------------ Detailed Profile per GPU ------------------------------"
             )
             print(
-                "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, forward latency, percentage of total forward latency, forward FLOPS"
+                "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS"
             )
             print(
-                "\nNote: 1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n"
+                "\nNote: 1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed"
             )
             print(self.model)
 
@@ -390,35 +390,39 @@ class FlopsProfiler(object):
         if module_depth == -1:
             depth = len(info) - 1
 
-        num_items = min(top_modules, len(info[depth]))
-
-        sort_flops = {
-            k: macs_to_string(v[0])
-            for k,
-            v in sorted(info[depth].items(),
-                        key=lambda item: item[1][0],
-                        reverse=True)[:num_items]
-        }
-        sort_params = {
-            k: params_to_string(v[1])
-            for k,
-            v in sorted(info[depth].items(),
-                        key=lambda item: item[1][1],
-                        reverse=True)[:num_items]
-        }
-        sort_time = {
-            k: duration_to_string(v[2])
-            for k,
-            v in sorted(info[depth].items(),
-                        key=lambda item: item[1][2],
-                        reverse=True)[:num_items]
-        }
-
-        print(f"Top {num_items} modules in params at depth {depth} are {sort_params}")
-        print(f"Top {num_items} modules in MACs at depth {depth} are {sort_flops}")
         print(
-            f"Top {num_items} modules in forward latency at depth {depth} are {sort_time}"
+            f'Top {top_modules} modules in terms of params, MACs or fwd latency at different model depths:'
         )
+
+        for d in range(depth):
+            num_items = min(top_modules, len(info[d]))
+
+            sort_flops = {
+                k: macs_to_string(v[0])
+                for k,
+                v in sorted(info[d].items(),
+                            key=lambda item: item[1][0],
+                            reverse=True)[:num_items]
+            }
+            sort_params = {
+                k: params_to_string(v[1])
+                for k,
+                v in sorted(info[d].items(),
+                            key=lambda item: item[1][1],
+                            reverse=True)[:num_items]
+            }
+            sort_time = {
+                k: duration_to_string(v[2])
+                for k,
+                v in sorted(info[d].items(),
+                            key=lambda item: item[1][2],
+                            reverse=True)[:num_items]
+            }
+
+            print(f"depth {d}:")
+            print(f"    params      - {sort_params}")
+            print(f"    MACs        - {sort_flops}")
+            print(f"    fwd latency - {sort_time}")
 
 
 def _prod(dims):
