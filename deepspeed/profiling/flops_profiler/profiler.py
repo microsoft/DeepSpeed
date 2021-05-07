@@ -184,7 +184,7 @@ class FlopsProfiler(object):
         Returns:
             The latency of the model forward pass.
         """
-        total_duration = self.model.__duration__
+        total_duration = get_module_duration(self.model)
         return duration_to_string(total_duration) if as_string else total_duration
 
     def get_total_params(self, as_string=False):
@@ -240,7 +240,7 @@ class FlopsProfiler(object):
         )
         print(f'Profile Summary at step {profile_step}:')
         print(
-            "Notations:\ndata parallel size (dp_size), model paralel size(mp_size), number of parameters (params),\nnumber of multiply-accumulate operations(MACs), number of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency), step (weights update latency)\n"
+            "Notations:\ndata parallel size (dp_size), model paralel size(mp_size),\nnumber of parameters (params), number of multiply-accumulate operations(MACs),\number of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency),\nstep (weights update latency), iter latency (sum of fwd, bwd and step latency)\n"
         )
         if self.ds_engine:
             print('{:<60}  {:<8}'.format('world size: ', self.ds_engine.world_size))
@@ -288,6 +288,15 @@ class FlopsProfiler(object):
             print('{:<60}  {:<8}'.format('step latency: ',
                                          duration_to_string(step_latency)))
 
+            iter_latency = fwd_latency + bwd_latency + step_latency
+            print('{:<60}  {:<8}'.format('iter latency: ',
+                                         duration_to_string(iter_latency)))
+
+            samples_per_iter = self.ds_engine.train_micro_batch_size_per_gpu(
+            ) * self.ds_engine.world_size
+            print('{:<60}  {:<8.2f}'.format('samples/second: ',
+                                            samples_per_iter / iter_latency))
+
         def flops_repr(module):
             params = module.__params__
             flops = get_module_flops(module)
@@ -297,10 +306,7 @@ class FlopsProfiler(object):
                 macs_to_string(flops),
                 "{:.2%} MACs".format(0.0 if total_flops == 0 else flops / total_flops),
             ]
-            duration = module.__duration__
-            if duration == 0:  # e.g. ModuleList
-                for m in module.children():
-                    duration += m.__duration__
+            duration = get_module_duration(module)
 
             items.append(duration_to_string(duration))
             items.append(
@@ -339,7 +345,7 @@ class FlopsProfiler(object):
                 "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS"
             )
             print(
-                "\nNote: 1. A module can have torch.nn.functional (e.g. to compute logits) along with submodules, thus making the difference between the parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed"
+                "\nNote: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.\n"
             )
             print(self.model)
 
@@ -353,12 +359,12 @@ class FlopsProfiler(object):
             sys.stdout = original_stdout
             f.close()
 
-    def print_model_aggregated_profile(self, module_depth=-1, top_modules=3):
+    def print_model_aggregated_profile(self, module_depth=-1, top_modules=1):
         """Prints the names of the top top_modules modules in terms of aggregated time, flops, and parameters at depth module_depth.
 
         Args:
             module_depth (int, optional): the depth of the modules to show. Defaults to -1 (the innermost modules).
-            top_modules (int, optional): the number of top modules to show. Defaults to 3.
+            top_modules (int, optional): the number of top modules to show. Defaults to 1.
         """
         info = {}
         if not hasattr(self.model, "__flops__"):
@@ -376,9 +382,9 @@ class FlopsProfiler(object):
                     0,
                     0,
                 ]  # flops, params, time
-            info[curr_depth][module.__class__.__name__][0] += module.__flops__
+            info[curr_depth][module.__class__.__name__][0] += get_module_flops(module)
             info[curr_depth][module.__class__.__name__][1] += module.__params__
-            info[curr_depth][module.__class__.__name__][2] += (module.__duration__)
+            info[curr_depth][module.__class__.__name__][2] += get_module_duration(module)
             has_children = len(module._modules.items()) != 0
             if has_children:
                 for child in module.children():
@@ -863,6 +869,14 @@ def get_module_flops(module):
     for child in module.children():
         sum += get_module_flops(child)
     return sum
+
+
+def get_module_duration(module):
+    duration = module.__duration__
+    if duration == 0:  # e.g. ModuleList
+        for m in module.children():
+            duration += m.__duration__
+    return duration
 
 
 def get_model_profile(
