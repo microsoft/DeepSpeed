@@ -377,8 +377,8 @@ class DeepSpeedEngine(Module):
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
-    def zero_find_unused_parameters(self):
-        return self._config.zero_config.find_unused_parameters
+    def zero_ignore_unused_parameters(self):
+        return self._config.zero_config.ignore_unused_parameters
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -566,10 +566,10 @@ class DeepSpeedEngine(Module):
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
                          'ds_id') for param in self.module.parameters()]):
-                assert all([param.dtype == torch.half for param in self.module.parameters()]), f"Model must initialized in fp16 mode for ZeRO Stage 3."
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), "fp16 is enabled but one or several model parameters have dtype that is not fp16"
             self.module.half()
         else:
-            assert all([param.dtype == torch.float for param in self.module.parameters()]), f"fp16 is not enabled but one or several model parameters have dtype of fp16"
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), "fp16 is not enabled but one or several model parameters have dtype of fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -786,7 +786,7 @@ class DeepSpeedEngine(Module):
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                find_unused_parameters=self.zero_find_unused_parameters())
+                ignore_unused_parameters=self.zero_ignore_unused_parameters())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -826,9 +826,11 @@ class DeepSpeedEngine(Module):
 
         return pld
 
+    @staticmethod
     def is_map_style_dataset(obj):
         return hasattr(obj, "__getitem__") and hasattr(obj, "__len__")
 
+    @staticmethod
     def is_iterable_style_dataset(obj):
         return isinstance(obj,
                           torch.utils.data.IterableDataset
@@ -842,7 +844,8 @@ class DeepSpeedEngine(Module):
                      data_sampler=None,
                      collate_fn=None,
                      num_local_io_workers=None):
-        if not (is_map_style_dataset(dataset) or is_iterable_style_dataset(dataset)):
+        if not (self.is_map_style_dataset(dataset)
+                or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
 
         if data_sampler is None and (route == ROUTE_PREDICT or route == ROUTE_EVAL):
