@@ -98,7 +98,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
-                 find_unused_parameters=False,
+                 ignore_unused_parameters=True,
                  partition_grads=True,
                  grad_hooks=True):
 
@@ -162,7 +162,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = 0
-        self.find_unused_parameters = find_unused_parameters
+        self.ignore_unused_parameters = ignore_unused_parameters
 
         self.extra_large_param_to_reduce = None
 
@@ -930,12 +930,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     # As unused parameters in modules may not be expected sometimes,
                     # add an explicit error msg when it occurred and an option to
                     # avoid the error
-                    # Error msg adapted from torch.nn.parallel.DistributedDataParallel
-                    assert self.find_unused_parameters, """
-                        This error indicates that your module has parameters that
+                    assert self.ignore_unused_parameters, """
+                        This assert indicates that your module has parameters that
                         were not used in producing loss.
-                        You can avoid this error by
-                        (1) enable find_unused_parameters option in zero_optimization config;
+                        You can avoid this assert by
+                        (1) enable ignore_unused_parameters option in zero_optimization config;
                         (2) making sure all trainable parameters and `forward` function
                             outputs participate in calculating loss.
                     """

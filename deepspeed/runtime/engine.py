@@ -378,8 +378,8 @@ class DeepSpeedEngine(Module):
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
-    def zero_find_unused_parameters(self):
-        return self._config.zero_config.find_unused_parameters
+    def zero_ignore_unused_parameters(self):
+        return self._config.zero_config.ignore_unused_parameters
 
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
@@ -802,7 +802,7 @@ class DeepSpeedEngine(Module):
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                find_unused_parameters=self.zero_find_unused_parameters(),
+                ignore_unused_parameters=self.zero_ignore_unused_parameters(),
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
                 grad_hooks=grad_hooks)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
