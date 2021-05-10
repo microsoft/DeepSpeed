@@ -19,7 +19,7 @@ from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, _initialize_parameter_parallel_groups
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
@@ -71,25 +71,6 @@ def split_half_float_double_csr(tensors):
     return buckets
 
 
-def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
-    data_parallel_size = int(dist.get_world_size())
-    if parameter_parallel_size is None:
-        parameter_parallel_size = int(data_parallel_size)
-    logger.info("data_parallel_size: %s, parameter_parallel_size: %s",
-                data_parallel_size,
-                parameter_parallel_size)
-    assert data_parallel_size % parameter_parallel_size == 0, \
-        'world size should be divisible by parameter parallel size'
-    rank = dist.get_rank()
-    my_group = None
-    for i in range(dist.get_world_size() // parameter_parallel_size):
-        ranks = range(i * parameter_parallel_size, (i + 1) * parameter_parallel_size)
-        group = torch.distributed.new_group(ranks)
-        if rank in ranks:
-            my_group = group
-    return my_group
-
-
 def print_configuration(args, name):
     logger.info('{}:'.format(name))
     for arg in sorted(vars(args)):
@@ -110,6 +91,7 @@ class DeepSpeedEngine(Module):
                  mpu=None,
                  dist_init_required=None,
                  collate_fn=None,
+                 config=None,
                  config_params=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
@@ -127,12 +109,16 @@ class DeepSpeedEngine(Module):
         self.skipped_steps = 0
         self.gradient_average = True
         self.warn_unscaled_loss = True
-        self.config_params = config_params
+        self.config = config
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+
+        # Set config using config_params for backwards compat
+        if self.config is None and config_params is not None:
+            self.config = config_params
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -391,6 +377,9 @@ class DeepSpeedEngine(Module):
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
+    def zero_ignore_unused_parameters(self):
+        return self._config.zero_config.ignore_unused_parameters
+
     def fp16_enabled(self):
         return self._config.fp16_enabled
 
@@ -512,9 +501,10 @@ class DeepSpeedEngine(Module):
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
 
-        config_file = args.deepspeed_config if hasattr(args,
-                                                       'deepspeed_config') else None
-        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
+        if self.config is None:
+            self.config = args.deepspeed_config if hasattr(args,
+                                                           'deepspeed_config') else None
+        self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -535,7 +525,7 @@ class DeepSpeedEngine(Module):
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
-        if self.config_params is None:
+        if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
 
@@ -573,7 +563,13 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
+            if self.zero_optimization_partition_weights() and any(
+                [hasattr(param,
+                         'ds_id') for param in self.module.parameters()]):
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), "fp16 is enabled but one or several model parameters have dtype that is not fp16"
             self.module.half()
+        else:
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), "fp16 is not enabled but one or several model parameters have dtype of fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -789,7 +785,8 @@ class DeepSpeedEngine(Module):
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                ignore_unused_parameters=self.zero_ignore_unused_parameters())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -829,6 +826,16 @@ class DeepSpeedEngine(Module):
 
         return pld
 
+    @staticmethod
+    def is_map_style_dataset(obj):
+        return hasattr(obj, "__getitem__") and hasattr(obj, "__len__")
+
+    @staticmethod
+    def is_iterable_style_dataset(obj):
+        return isinstance(obj,
+                          torch.utils.data.IterableDataset
+                          )  # hasattr(obj, "__iter__") should work as well
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -837,7 +844,8 @@ class DeepSpeedEngine(Module):
                      data_sampler=None,
                      collate_fn=None,
                      num_local_io_workers=None):
-        if not isinstance(dataset, torch.utils.data.Dataset):
+        if not (self.is_map_style_dataset(dataset)
+                or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
 
         if data_sampler is None and (route == ROUTE_PREDICT or route == ROUTE_EVAL):
@@ -1083,7 +1091,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
-            if not self.fp16_enabled() and not self.amp_enabled():
+            if not (self.fp16_enabled() or self.amp_enabled()
+                    or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
