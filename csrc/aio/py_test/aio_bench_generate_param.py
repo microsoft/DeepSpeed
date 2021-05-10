@@ -10,6 +10,7 @@ import json
 from parse_aio_stats import READ_SPEED, WRITE_SPEED, get_sorted_results
 from perf_sweep_utils import READ_LOG_DIR, WRITE_LOG_DIR
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -17,7 +18,6 @@ def parse_arguments():
                         type=str,
                         default=None,
                         help='Folder of performance sweep logs')
-
 
     args = parser.parse_args()
     print(f'args = {args}')
@@ -45,10 +45,11 @@ def convert_to_param(key):
         "block_size": int(key[5])
     }
 
+
 def generate_aio_param(read_log_dir, write_log_dir):
     _, read_results = get_sorted_results(read_log_dir, READ_SPEED)
     _, write_results = get_sorted_results(write_log_dir, WRITE_SPEED)
-    combined_perf = {key[1:]:value for key, value in read_results.items()}
+    combined_perf = {key[1:]: value for key, value in read_results.items()}
 
     for key, value in write_results.items():
         new_key = key[1:]
@@ -64,17 +65,18 @@ def generate_aio_param(read_log_dir, write_log_dir):
             optimal_perf = value
             optimal_key = key
 
-    aio_param = {
-        "aio": convert_to_param(optimal_key)
-    }
+    aio_param = {"aio": convert_to_param(optimal_key)}
 
     read_perf_keys = {key[1:]: key for key in read_results.keys()}
     write_perf_keys = {key[1:]: key for key in write_results.keys()}
     optimal_config_read = read_results.get(read_perf_keys[optimal_key], None)
     optimal_config_write = write_results.get(write_perf_keys[optimal_key], None)
 
-    print(f'Best performance (GB/sec): read = {optimal_config_read:5.2f}, write = {optimal_config_write:5.2f}')
+    print(
+        f'Best performance (GB/sec): read = {optimal_config_read:5.2f}, write = {optimal_config_write:5.2f}'
+    )
     print(json.dumps(aio_param, indent=3))
+
 
 def main():
     print('Generate aio param')
@@ -85,7 +87,6 @@ def main():
     read_log_dir = os.path.join(args.log_dir, READ_LOG_DIR)
     write_log_dir = os.path.join(args.log_dir, WRITE_LOG_DIR)
     generate_aio_param(read_log_dir, write_log_dir)
-
 
 
 if __name__ == "__main__":

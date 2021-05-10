@@ -127,9 +127,8 @@ def get_results(log_files, metric):
 
 def get_sorted_results(log_dir, metric):
     log_files = [
-        f for f in os.listdir(log_dir)
-        if os.path.isfile(os.path.join(log_dir,
-                                       f))
+        f for f in os.listdir(log_dir) if os.path.isfile(os.path.join(log_dir,
+                                                                      f))
     ]
 
     log_files_path = [os.path.join(log_dir, f) for f in log_files]
