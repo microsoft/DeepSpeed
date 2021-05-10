@@ -68,7 +68,7 @@ def get_file_key(file):
 
 
 def get_thread_count(file):
-    f, _ = os.path.splitext(file)
+    f, _ = os.path.splitext(os.path.basename(file))
     fields = f.split('_')
     for key in fields:
         if key[0] == 't':

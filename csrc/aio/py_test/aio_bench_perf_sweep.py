@@ -13,7 +13,8 @@ import subprocess
 import shutil
 
 from test_ds_aio_utils import refine_integer_value
-from perf_sweep_utils import READ_OP_DESC, WRITE_OP_DESC, READ_IO_DIR, WRITE_IO_DIR, READ_LOG_DIR, WRITE_LOG_DIR
+from perf_sweep_utils import READ_OP_DESC, WRITE_OP_DESC, BENCH_LOG_DIR, \
+    READ_IO_DIR, WRITE_IO_DIR, READ_LOG_DIR, WRITE_LOG_DIR
 
 OTHER_OPTIONS = '--handle'
 PERF_SCRIPT = 'test_ds_aio.py'
@@ -62,7 +63,7 @@ class Job(object):
 
 class SweepConfig(object):
     def __init__(self, args):
-        self.io_dir = args.io_dir
+        self.nvme_dir = args.nvme_dir
         self.io_size = args.io_size
         self.search_space = get_sweep_config_dict(args.sweep_config)
         self.read = not args.no_read
@@ -77,11 +78,11 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--io_dir',
+        '--nvme_dir',
         required=True,
         type=str,
         help=
-        'Directory in which to perform I/O tests. Normally where (NVMe) device is mounted.'
+        'Directory in which to perform I/O tests. A writeable directory on a NVMe device.'
     )
 
     parser.add_argument('--sweep_config',
@@ -110,10 +111,13 @@ def parse_arguments():
         'Run without sudo access. Page cache will not be flushed and reported read speeds may be higher than actual.'
     )
 
-    parser.add_argument('--log_dir',
-                        type=str,
-                        default=os.getcwd(),
-                        help='Output directory for performance log files.')
+    parser.add_argument(
+        '--log_dir',
+        type=str,
+        default=BENCH_LOG_DIR,
+        help=
+        f'Output directory for performance log files. Default is {os.path.join(".", BENCH_LOG_DIR)}'
+    )
 
     parser.add_argument('--loops',
                         type=int,
@@ -291,7 +295,7 @@ def get_block_size_and_count(io_bytes):
 
 
 def create_read_file(sweep_config):
-    read_folder = os.path.join(sweep_config.io_dir, f'{READ_IO_DIR}')
+    read_folder = os.path.join(sweep_config.nvme_dir, f'{READ_IO_DIR}')
     os.makedirs(read_folder, exist_ok=True)
     read_file_name = os.path.join(read_folder, f'random_{sweep_config.io_size}B.pt')
     block_size, block_count = get_block_size_and_count(refine_integer_value(sweep_config.io_size))
@@ -335,7 +339,7 @@ def run_read_sweep(sweep_config, flush_cache_job, sync_job, cmd_lines):
 
 
 def run_write_sweep(sweep_config, flush_cache_job, sync_job, cmd_lines):
-    write_folder = os.path.join(sweep_config.io_dir, f'{WRITE_IO_DIR}')
+    write_folder = os.path.join(sweep_config.nvme_dir, f'{WRITE_IO_DIR}')
     os.makedirs(write_folder, exist_ok=True)
     write_file_name = os.path.join(write_folder, f'random_{sweep_config.io_size}B.pt')
     write_option = f'--write_size {sweep_config.io_size} --write_file {write_file_name}'

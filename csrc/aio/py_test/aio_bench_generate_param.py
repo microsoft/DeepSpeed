@@ -8,16 +8,19 @@ import os
 import argparse
 import json
 from parse_aio_stats import READ_SPEED, WRITE_SPEED, get_sorted_results
-from perf_sweep_utils import READ_LOG_DIR, WRITE_LOG_DIR
+from perf_sweep_utils import BENCH_LOG_DIR, READ_LOG_DIR, WRITE_LOG_DIR
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--log_dir',
-                        type=str,
-                        default=None,
-                        help='Folder of performance sweep logs')
+    parser.add_argument(
+        '--log_dir',
+        type=str,
+        default=BENCH_LOG_DIR,
+        help=
+        f'Folder of performance sweep logs. Default is {os.path.join(".", BENCH_LOG_DIR)}'
+    )
 
     args = parser.parse_args()
     print(f'args = {args}')
