@@ -238,15 +238,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             # set model fp16 weight to slices of flattened buffer
             self._update_model_fp16_weights(i)
-#            updated_params = self.unflatten(self.fp16_groups_flat[i],
-#                                            self.round_robin_fp16_groups[i])
-#            for p, q in zip(self.round_robin_fp16_groups[i], updated_params):
-#                p.data = q.data
-#
-#            # set model fp16 weight to slices of reordered flattened buffer
-#            for param_index, param in enumerate(self.fp16_groups[i]):
-#                new_index = self.round_robin_fp6_indices[i][param_index]
-#                param.data = self.round_robin_fp16_groups[i][new_index].data
+            #            updated_params = self.unflatten(self.fp16_groups_flat[i],
+            #                                            self.round_robin_fp16_groups[i])
+            #            for p, q in zip(self.round_robin_fp16_groups[i], updated_params):
+            #                p.data = q.data
+            #
+            #            # set model fp16 weight to slices of reordered flattened buffer
+            #            for param_index, param in enumerate(self.fp16_groups[i]):
+            #                new_index = self.round_robin_fp6_indices[i][param_index]
+            #                param.data = self.round_robin_fp16_groups[i][new_index].data
 
             #divide the flat weights into near equal partition equal to the data parallel degree
             #each process will compute on a different part of the partition
@@ -404,7 +404,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer")
 
-
     def _update_model_fp16_weights(self, group_index):
         updated_params = self.unflatten(self.fp16_groups_flat[group_index],
                                         self.round_robin_fp16_groups[group_index])
@@ -415,7 +414,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for param_index, param in enumerate(self.fp16_groups[group_index]):
             new_index = self.round_robin_fp6_indices[group_index][param_index]
             param.data = self.round_robin_fp16_groups[group_index][new_index].data
-
 
     def _round_robin_reorder(self, tensor_list, num_partitions):
         partition_tensors = {}
@@ -436,7 +434,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 if i < 10:
                     print(f'partition 0 tensors: idx = {idx} param_id = {id(tensor)}')
 
-
         reordered_tensors = []
         reordered_indices = {}
 
@@ -446,8 +443,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 reordered_tensors.append(tensor)
                 if partition_index == 0 and torch.distributed.get_rank() == 0:
                     if i < 10:
-                        print(f'merging partition {partition_index} orig_idx = {original_index} new_idx = {reordered_indices[original_index]} param_id = {id(reordered_tensors[-1])}')
-
+                        print(
+                            f'merging partition {partition_index} orig_idx = {original_index} new_idx = {reordered_indices[original_index]} param_id = {id(reordered_tensors[-1])}'
+                        )
 
         if torch.distributed.get_rank() == 0:
             tensor_ids = [id(p) for p in reordered_tensors[:10]]
@@ -456,7 +454,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             print(f'new indices = {new_idxs}')
 
         return reordered_tensors, reordered_indices
-
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -1599,6 +1596,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
             self._update_model_fp16_weights(i)
+
+
 #            updated_params = self.unflatten(self.fp16_groups_flat[i],
 #                                            self.fp16_groups[i])
 #            for p, q in zip(self.fp16_groups[i], updated_params):
