@@ -417,10 +417,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def _round_robin_reorder(self, tensor_list, num_partitions):
         partition_tensors = {}
+        dump_size = min(10, len(tensor_list))
 
         if torch.distributed.get_rank() == 0:
             for i, tensor in enumerate(tensor_list):
-                if i < 10:
+                if i < dump_size:
                     print(f'orig tensors: idx = {i} param_id = {id(tensor)}')
 
         for i, tensor in enumerate(tensor_list):
@@ -431,7 +432,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if torch.distributed.get_rank() == 0:
             for i, (idx, tensor) in enumerate(partition_tensors[0]):
-                if i < 10:
+                if i < dump_size:
                     print(f'partition 0 tensors: idx = {idx} param_id = {id(tensor)}')
 
         reordered_tensors = []
@@ -442,14 +443,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 reordered_indices[original_index] = len(reordered_tensors)
                 reordered_tensors.append(tensor)
                 if partition_index == 0 and torch.distributed.get_rank() == 0:
-                    if i < 10:
+                    if i < dump_size:
                         print(
                             f'merging partition {partition_index} orig_idx = {original_index} new_idx = {reordered_indices[original_index]} param_id = {id(reordered_tensors[-1])}'
                         )
 
         if torch.distributed.get_rank() == 0:
-            tensor_ids = [id(p) for p in reordered_tensors[:10]]
-            new_idxs = [reordered_indices[i] for i in range(10)]
+            tensor_ids = [id(p) for p in reordered_tensors[:dump_size]]
+            new_idxs = [reordered_indices[i] for i in range(dump_size)]
             print(f'reordered params = {tensor_ids}')
             print(f'new indices = {new_idxs}')
 
