@@ -28,6 +28,8 @@ jobs:
           git remote add upstream https://github.com/microsoft/DeepSpeed
           git fetch upstream master
           git merge upstream/master 
+          # Since we use our own fork of DeepSpeedExamples, ignore theirs
+          git checkout HEAD DeepSpeedExamples
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
