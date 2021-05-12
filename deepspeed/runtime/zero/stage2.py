@@ -216,7 +216,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             move_to_cpu(self.fp16_groups[i])
             see_memory_usage(f"After moving param group {i} to CPU")
 
-            # Reorder group parameters to load balance in backward copies
+            # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
+            # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
+            # For example, rather than 3 gradients (g_n+2, g_n+1, g_n) that are reduced consecutively belonging
+            # to the same rank, instead they will belong to 3 ranks (r_m+2, r_m+1, r_m).
             round_robin_tensors, round_robin_indices = self._round_robin_reorder(
                 self.fp16_groups[i],
                 dist.get_world_size(group=self.dp_process_group)
@@ -238,15 +241,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             # set model fp16 weight to slices of flattened buffer
             self._update_model_fp16_weights(i)
-            #            updated_params = self.unflatten(self.fp16_groups_flat[i],
-            #                                            self.round_robin_fp16_groups[i])
-            #            for p, q in zip(self.round_robin_fp16_groups[i], updated_params):
-            #                p.data = q.data
-            #
-            #            # set model fp16 weight to slices of reordered flattened buffer
-            #            for param_index, param in enumerate(self.fp16_groups[i]):
-            #                new_index = self.round_robin_fp6_indices[i][param_index]
-            #                param.data = self.round_robin_fp16_groups[i][new_index].data
 
             #divide the flat weights into near equal partition equal to the data parallel degree
             #each process will compute on a different part of the partition
@@ -417,23 +411,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def _round_robin_reorder(self, tensor_list, num_partitions):
         partition_tensors = {}
-        dump_size = min(10, len(tensor_list))
-
-        if torch.distributed.get_rank() == 0:
-            for i, tensor in enumerate(tensor_list):
-                if i < dump_size:
-                    print(f'orig tensors: idx = {i} param_id = {id(tensor)}')
 
         for i, tensor in enumerate(tensor_list):
             j = i % num_partitions
             if not j in partition_tensors:
                 partition_tensors[j] = []
             partition_tensors[j].append((i, tensor))
-
-        if torch.distributed.get_rank() == 0:
-            for i, (idx, tensor) in enumerate(partition_tensors[0]):
-                if i < dump_size:
-                    print(f'partition 0 tensors: idx = {idx} param_id = {id(tensor)}')
 
         reordered_tensors = []
         reordered_indices = {}
@@ -442,17 +425,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for i, (original_index, tensor) in enumerate(partition_tensors[partition_index]):
                 reordered_indices[original_index] = len(reordered_tensors)
                 reordered_tensors.append(tensor)
-                if partition_index == 0 and torch.distributed.get_rank() == 0:
-                    if i < dump_size:
-                        print(
-                            f'merging partition {partition_index} orig_idx = {original_index} new_idx = {reordered_indices[original_index]} param_id = {id(reordered_tensors[-1])}'
-                        )
-
-        if torch.distributed.get_rank() == 0:
-            tensor_ids = [id(p) for p in reordered_tensors[:dump_size]]
-            new_idxs = [reordered_indices[i] for i in range(dump_size)]
-            print(f'reordered params = {tensor_ids}')
-            print(f'new indices = {new_idxs}')
 
         return reordered_tensors, reordered_indices
 
