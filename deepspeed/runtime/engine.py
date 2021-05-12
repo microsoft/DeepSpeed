@@ -19,12 +19,12 @@ from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.utils import is_zero_supported_optimizer
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, _initialize_parameter_parallel_groups
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
-    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, \
+    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
@@ -71,25 +71,6 @@ def split_half_float_double_csr(tensors):
     return buckets
 
 
-def _initialize_parameter_parallel_groups(parameter_parallel_size=None):
-    data_parallel_size = int(dist.get_world_size())
-    if parameter_parallel_size is None:
-        parameter_parallel_size = int(data_parallel_size)
-    logger.info("data_parallel_size: %s, parameter_parallel_size: %s",
-                data_parallel_size,
-                parameter_parallel_size)
-    assert data_parallel_size % parameter_parallel_size == 0, \
-        'world size should be divisible by parameter parallel size'
-    rank = dist.get_rank()
-    my_group = None
-    for i in range(dist.get_world_size() // parameter_parallel_size):
-        ranks = range(i * parameter_parallel_size, (i + 1) * parameter_parallel_size)
-        group = torch.distributed.new_group(ranks)
-        if rank in ranks:
-            my_group = group
-    return my_group
-
-
 def print_configuration(args, name):
     logger.info('{}:'.format(name))
     for arg in sorted(vars(args)):
@@ -110,6 +91,7 @@ class DeepSpeedEngine(Module):
                  mpu=None,
                  dist_init_required=None,
                  collate_fn=None,
+                 config=None,
                  config_params=None,
                  dont_change_device=False):
         super(DeepSpeedEngine, self).__init__()
@@ -127,12 +109,16 @@ class DeepSpeedEngine(Module):
         self.skipped_steps = 0
         self.gradient_average = True
         self.warn_unscaled_loss = True
-        self.config_params = config_params
+        self.config = config
         self.loaded_checkpoint_mp_world_size = None
         self.loaded_checkpoint_dp_world_size = None
         self.enable_backward_allreduce = True
         self.progressive_layer_drop = None
         self.dist_backend = "nccl"
+
+        # Set config using config_params for backwards compat
+        if self.config is None and config_params is not None:
+            self.config = config_params
 
         if dist_init_required is None:
             dist_init_required = not dist.is_initialized()
@@ -173,6 +159,13 @@ class DeepSpeedEngine(Module):
             num_workers=self.dp_world_size,
             steps_per_output=self.steps_per_print(),
             monitor_memory=False)
+
+        if dist.get_rank() == 0:
+            logger.info(
+                f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}")
+
+        if self.flops_profiler_enabled():
+            self.flops_profiler = FlopsProfiler(self.module, self)
 
         if training_data:
             self.training_dataloader = self.deepspeed_io(training_data)
@@ -301,6 +294,9 @@ class DeepSpeedEngine(Module):
     def flops_profiler_detailed(self):
         return self._config.flops_profiler_config.detailed
 
+    def flops_profiler_output_file(self):
+        return self._config.flops_profiler_config.output_file
+
     def memory_breakdown(self):
         return self._config.memory_breakdown
 
@@ -390,6 +386,9 @@ class DeepSpeedEngine(Module):
 
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
+
+    def zero_ignore_unused_parameters(self):
+        return self._config.zero_config.ignore_unused_parameters
 
     def fp16_enabled(self):
         return self._config.fp16_enabled
@@ -512,9 +511,10 @@ class DeepSpeedEngine(Module):
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
 
-        config_file = args.deepspeed_config if hasattr(args,
-                                                       'deepspeed_config') else None
-        self._config = DeepSpeedConfig(config_file, mpu, param_dict=self.config_params)
+        if self.config is None:
+            self.config = args.deepspeed_config if hasattr(args,
+                                                           'deepspeed_config') else None
+        self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
     def _do_args_sanity_check(self, args):
@@ -535,7 +535,7 @@ class DeepSpeedEngine(Module):
                 assert env_local_rank == args.local_rank, \
                     f"Mismatch in local rank setting, args.local_rank={args.local_rank} but env['LOCAL_RANK']={env_local_rank}."
 
-        if self.config_params is None:
+        if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
 
@@ -553,7 +553,8 @@ class DeepSpeedEngine(Module):
                 assert self._is_supported_optimizer(self.optimizer_name()), \
                     '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
 
-        if self.optimizer_name() == LAMB_OPTIMIZER:
+        if self.optimizer_name() == LAMB_OPTIMIZER or self.optimizer_name(
+        ) == ONEBIT_LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
@@ -572,7 +573,13 @@ class DeepSpeedEngine(Module):
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
+            if self.zero_optimization_partition_weights() and any(
+                [hasattr(param,
+                         'ds_id') for param in self.module.parameters()]):
+                assert all([param.dtype == torch.half for param in self.module.parameters()]), "fp16 is enabled but one or several model parameters have dtype that is not fp16"
             self.module.half()
+        else:
+            assert all([param.dtype == torch.float for param in self.module.parameters()]), "fp16 is not enabled but one or several model parameters have dtype of fp16"
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -694,6 +701,13 @@ class DeepSpeedEngine(Module):
                 logger.warning(
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
+        elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
+            from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
+            optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
+            if not self.fp16_enabled():
+                logger.warning(
+                    f'Currently the convergence of 1-bit Lamb is only verified under FP16'
+                )
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
@@ -710,6 +724,7 @@ class DeepSpeedEngine(Module):
                 timers = self.timers if self.wall_clock_breakdown() else None
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     dynamic_loss_scale=True,
                     initial_dynamic_scale=initial_dynamic_scale,
                     dynamic_loss_args=dynamic_loss_args,
@@ -723,6 +738,7 @@ class DeepSpeedEngine(Module):
                          ranks=[0])
                 optimizer = FP16_Optimizer(
                     optimizer,
+                    deepspeed=self,
                     static_loss_scale=self.loss_scale(),
                     mpu=self.mpu,
                     clip_grad=clip_grad,
@@ -732,6 +748,7 @@ class DeepSpeedEngine(Module):
                      ranks=[0])
             optimizer = FP16_UnfusedOptimizer(
                 optimizer,
+                deepspeed=self,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=dynamic_loss_args,
@@ -748,7 +765,6 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert self.zero_reduce_scatter(), 'Stage 1 only supports reduce scatter mode'
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
                 static_loss_scale=self.loss_scale(),
@@ -779,7 +795,8 @@ class DeepSpeedEngine(Module):
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
                 gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps())
+                gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                ignore_unused_parameters=self.zero_ignore_unused_parameters())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -819,6 +836,16 @@ class DeepSpeedEngine(Module):
 
         return pld
 
+    @staticmethod
+    def is_map_style_dataset(obj):
+        return hasattr(obj, "__getitem__") and hasattr(obj, "__len__")
+
+    @staticmethod
+    def is_iterable_style_dataset(obj):
+        return isinstance(obj,
+                          torch.utils.data.IterableDataset
+                          )  # hasattr(obj, "__iter__") should work as well
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -827,7 +854,8 @@ class DeepSpeedEngine(Module):
                      data_sampler=None,
                      collate_fn=None,
                      num_local_io_workers=None):
-        if not isinstance(dataset, torch.utils.data.Dataset):
+        if not (self.is_map_style_dataset(dataset)
+                or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
 
         if data_sampler is None and (route == ROUTE_PREDICT or route == ROUTE_EVAL):
@@ -906,7 +934,6 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
-            self.flops_profiler = FlopsProfiler(self.module)
             self.flops_profiler.start_profile(ignore_list=None)
 
         if self.module.training and self.progressive_layer_drop:
@@ -925,6 +952,7 @@ class DeepSpeedEngine(Module):
 
         if self.training_dataloader is None:
             self.tput_timer.start()
+
         loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
@@ -943,11 +971,13 @@ class DeepSpeedEngine(Module):
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
+            self.flops_profiler.stop_profile()
             self.flops_profiler.print_model_profile(
                 profile_step=self.global_steps,
                 module_depth=self.flops_profiler_module_depth(),
                 top_modules=self.flops_profiler_top_modules(),
-                detailed=self.flops_profiler_detailed())
+                detailed=self.flops_profiler_detailed(),
+                output_file=self.flops_profiler_output_file())
             self.flops_profiler.end_profile()
 
         return loss
@@ -959,8 +989,8 @@ class DeepSpeedEngine(Module):
 
         #Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
-            if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                assert self.zero_reduce_scatter()
+            if self.zero_optimization_stage(
+            ) == ZERO_OPTIMIZATION_OPTIMIZER_STATES and self.zero_reduce_scatter():
                 self.optimizer.reduce_scatter_gradients(
                     postscale_gradients=self.postscale_gradients(),
                     gradient_predivide_factor=self.gradient_predivide_factor(),
@@ -1073,7 +1103,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
-            if not self.fp16_enabled() and not self.amp_enabled():
+            if not (self.fp16_enabled() or self.amp_enabled()
+                    or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
@@ -1158,7 +1189,9 @@ class DeepSpeedEngine(Module):
                 'backward_allreduce_microstep',
                 'step_microstep'
             ]
-            self.timers.log(names=timer_names, memory_breakdown=self.memory_breakdown())
+            self.timers.log(names=timer_names,
+                            reset=False,
+                            memory_breakdown=self.memory_breakdown())
 
             # Log timing
             if self.is_gradient_accumulation_boundary():
@@ -1193,7 +1226,8 @@ class DeepSpeedEngine(Module):
                     'backward_inner',
                     'backward_allreduce',
                     'step'
-                ])
+                ],
+                                reset=False)
 
         self.micro_steps += 1
 

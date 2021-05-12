@@ -2,6 +2,8 @@
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
+import os
+from typing import Union
 
 import torch
 import json
@@ -32,11 +34,13 @@ ADAM_OPTIMIZER = 'adam'
 ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
     ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
+    ONEBIT_LAMB_OPTIMIZER,
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -519,17 +523,19 @@ class DeepSpeedConfigWriter:
 
 
 class DeepSpeedConfig(object):
-    def __init__(self, json_file, mpu=None, param_dict=None):
+    def __init__(self, config: Union[str, dict], mpu=None):
         super(DeepSpeedConfig, self).__init__()
-
-        if param_dict is None:
+        if isinstance(config, dict):
+            self._param_dict = config
+        elif os.path.exists(config):
             self._param_dict = json.load(
-                open(json_file,
+                open(config,
                      'r'),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
-            self._param_dict = param_dict
-
+            raise ValueError(
+                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
+            )
         try:
             self.global_rank = torch.distributed.get_rank()
             if mpu is None:
@@ -640,8 +646,9 @@ class DeepSpeedConfig(object):
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)
 
-        self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
         self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
+        self.wall_clock_breakdown = get_wall_clock_breakdown(
+            param_dict) | self.flops_profiler_config.enabled
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
@@ -759,7 +766,8 @@ class DeepSpeedConfig(object):
             GRADIENT_ACCUMULATION_STEPS)
 
         if self.zero_enabled:
-            assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
+            if self.zero_optimization_stage < ZERO_OPTIMIZATION_GRADIENTS:
+                assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
             #if self.zero_config.cpu_offload is True:
             #    assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
