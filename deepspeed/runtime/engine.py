@@ -166,6 +166,7 @@ class DeepSpeedEngine(Module):
 
         if self.flops_profiler_enabled():
             self.flops_profiler = FlopsProfiler(self.module, self)
+            self.wall_clock_breakdown()
 
         if training_data:
             self.training_dataloader = self.deepspeed_io(training_data)

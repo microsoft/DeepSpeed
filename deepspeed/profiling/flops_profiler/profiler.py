@@ -202,16 +202,17 @@ class FlopsProfiler(object):
     def print_model_profile(self,
                             profile_step=1,
                             module_depth=-1,
-                            top_modules=3,
+                            top_modules=1,
                             detailed=True,
                             output_file=None):
         """Prints the model graph with the measured profile attached to each module.
 
         Args:
             profile_step (int, optional): The global training step at which to profile. Note that warm up steps are needed for accurate time measurement.
-            module_depth (int, optional): The depth of the model at which to print the aggregated module information. When set to -1, it prints information on the innermost modules (with the maximum depth).
+            module_depth (int, optional): The depth of the model to which to print the aggregated module information. When set to -1, it prints information from the top to the innermost modules (the maximum depth).
             top_modules (int, optional): Limits the aggregated profile output to the number of top modules specified.
             detailed (bool, optional): Whether to print the detailed model profile.
+            output_file (str, optional): Path to the output file. If None, the profiler prints to stdout.
         """
         if not self.started:
             return
@@ -267,7 +268,7 @@ class FlopsProfiler(object):
             num_to_string(2 * total_flops *
                           (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
 
-        if self.ds_engine:
+        if self.ds_engine and self.ds_engine.wall_clock_breakdown():
             fwd_latency = self.ds_engine.timers('forward').elapsed(False)
             bwd_latency = self.ds_engine.timers('backward').elapsed(False)
             step_latency = self.ds_engine.timers('step').elapsed(False)
@@ -886,7 +887,7 @@ def get_model_profile(
     print_profile=True,
     detailed=True,
     module_depth=-1,
-    top_modules=3,
+    top_modules=1,
     warm_up=1,
     as_string=True,
     output_file=None,
@@ -912,6 +913,7 @@ def get_model_profile(
         top_modules (int, optional): the number of top modules to print in the aggregated profile. Defaults to 3.
         warm_up (int, optional): the number of warm-up steps before measuring the latency of each module. Defaults to 1.
         as_string (bool, optional): whether to print the output as string. Defaults to True.
+        output_file (str, optional): path to the output file. If None, the profiler prints to stdout.
         ignore_modules ([type], optional): the list of modules to ignore during profiling. Defaults to None.
 
     Returns:
