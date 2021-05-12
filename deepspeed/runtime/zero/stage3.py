@@ -320,6 +320,8 @@ class PartitionedParameterCoordinator(object):
         if print_trace:
             self.prefetch_coordinator.print_trace()
 
+
+
     #swap in parameter partitions from nvme for those parameters that will be used
     # after the ones that are already being prefetched into full parameters
     def _prefetch_nvme_param_partitions(self, sub_module, params_in_flight):
@@ -336,6 +338,8 @@ class PartitionedParameterCoordinator(object):
 
         if len(swap_in_params) > 0:
             swap_in_params[0].nvme_swapper.swap_in(swap_in_params, async_op=True)
+
+
 
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
@@ -365,6 +369,8 @@ class PartitionedParameterCoordinator(object):
         print_rank_0(
             f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {self.total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
             force=False)
+
+
 
     def _print_prefetch_elements_info(self, sub_module, params_to_prefetch):
         sub_module_numel = 0.0
@@ -796,23 +802,23 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
-                         force=False)
+                         force=True)
 
         # Optimizer ensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
-        see_memory_usage("Before creating fp32 partitions", force=False)
+        see_memory_usage("Before creating fp32 partitions", force=True)
         self._create_fp32_partitions()
-        see_memory_usage("After creating fp32 partitions", force=False)
+        see_memory_usage("After creating fp32 partitions", force=True)
         dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
 
-        see_memory_usage("Before initializing optimizer states", force=False)
+        see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states", force=False)
+        see_memory_usage("After initializing optimizer states", force=True)
         dist.barrier()
 
         if dist.get_rank() == 0:
@@ -1509,7 +1515,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         module.register_forward_pre_hook(_post_backward_module_hook)
 
     def pre_sub_module_forward_function(self, sub_module):
-        see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}",
+        see_memory_usage(f"Before sub module forward function {sub_module.__class__.__name__}",
                          force=False)
 
         global FWD_MODULE_STACK
@@ -1519,7 +1525,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.param_coordinator.fetch_sub_module(sub_module)
         see_memory_usage(
-            f"Before sub module function {sub_module.__class__.__name__} after fetch",
+            f"Before sub module forward function {sub_module.__class__.__name__} {sub_module.id} after fetch",
             force=False)
 
         self.param_coordinator.prefetch_next_sub_modules(
@@ -1527,7 +1533,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             numel=self.prefetch_elements,
             nvme=self.params_in_nvme_and_cpu)
         see_memory_usage(
-            f"Before sub module function {sub_module.__class__.__name__} after prefetch",
+            f"Before sub module forward function {sub_module.__class__.__name__} {sub_module.id} after prefetch",
             force=False)
 
         self.param_coordinator.increment_step(sub_module)

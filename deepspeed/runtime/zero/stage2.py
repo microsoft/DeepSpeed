@@ -191,6 +191,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
 
+        self.round_robin_fp16_groups = []
+        self.round_robin_fp6_indices = []
+
         # padding on each partition for alignment purposes
         self.groups_padding = []
         # loop to deal with groups
@@ -213,10 +216,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
             move_to_cpu(self.fp16_groups[i])
             see_memory_usage(f"After moving param group {i} to CPU")
 
+            # Reorder group parameters to load balance in backward copies
+            round_robin_tensors, round_robin_indices = self._round_robin_reorder(
+                self.fp16_groups[i],
+                dist.get_world_size(group=self.dp_process_group)
+            )
+            self.round_robin_fp16_groups.append(round_robin_tensors)
+            self.round_robin_fp6_indices.append(round_robin_indices)
+
             #create flat buffer in CPU and move to GPU
             self.fp16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
-                    self.fp16_groups[i],
+                    self.round_robin_fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU")
@@ -226,10 +237,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     f"After Flattening and after emptying param group {i} cache")
 
             # set model fp16 weight to slices of flattened buffer
-            updated_params = self.unflatten(self.fp16_groups_flat[i],
-                                            self.fp16_groups[i])
-            for p, q in zip(self.fp16_groups[i], updated_params):
-                p.data = q.data
+            self._update_model_fp16_weights(i)
+#            updated_params = self.unflatten(self.fp16_groups_flat[i],
+#                                            self.round_robin_fp16_groups[i])
+#            for p, q in zip(self.round_robin_fp16_groups[i], updated_params):
+#                p.data = q.data
+#
+#            # set model fp16 weight to slices of reordered flattened buffer
+#            for param_index, param in enumerate(self.fp16_groups[i]):
+#                new_index = self.round_robin_fp6_indices[i][param_index]
+#                param.data = self.round_robin_fp16_groups[i][new_index].data
 
             #divide the flat weights into near equal partition equal to the data parallel degree
             #each process will compute on a different part of the partition
@@ -249,7 +266,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(
                 group=self.dp_process_group)
-            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(self.fp16_groups[i], partition_size, partition_id)
+            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(
+                self.round_robin_fp16_groups[i],
+                partition_size,
+                partition_id)
 
             self.partition_size.append(partition_size)
             self.params_in_partition.append(params_in_partition)
@@ -263,6 +283,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduction_stream = torch.cuda.Stream()
         self.cpu_computation_stream = torch.cuda.Stream()
         self.migration_stream = torch.cuda.Stream()
+        self.copy_grad_stream = torch.cuda.Stream()
         self.callback_queued = False
 
         self.param_dict = {}
@@ -382,6 +403,60 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer")
+
+
+    def _update_model_fp16_weights(self, group_index):
+        updated_params = self.unflatten(self.fp16_groups_flat[group_index],
+                                        self.round_robin_fp16_groups[group_index])
+        for p, q in zip(self.round_robin_fp16_groups[group_index], updated_params):
+            p.data = q.data
+
+        # set model fp16 weight to slices of reordered flattened buffer
+        for param_index, param in enumerate(self.fp16_groups[group_index]):
+            new_index = self.round_robin_fp6_indices[group_index][param_index]
+            param.data = self.round_robin_fp16_groups[group_index][new_index].data
+
+
+    def _round_robin_reorder(self, tensor_list, num_partitions):
+        partition_tensors = {}
+
+        if torch.distributed.get_rank() == 0:
+            for i, tensor in enumerate(tensor_list):
+                if i < 10:
+                    print(f'orig tensors: idx = {i} param_id = {id(tensor)}')
+
+        for i, tensor in enumerate(tensor_list):
+            j = i % num_partitions
+            if not j in partition_tensors:
+                partition_tensors[j] = []
+            partition_tensors[j].append((i, tensor))
+
+        if torch.distributed.get_rank() == 0:
+            for i, (idx, tensor) in enumerate(partition_tensors[0]):
+                if i < 10:
+                    print(f'partition 0 tensors: idx = {idx} param_id = {id(tensor)}')
+
+
+        reordered_tensors = []
+        reordered_indices = {}
+
+        for partition_index in partition_tensors.keys():
+            for i, (original_index, tensor) in enumerate(partition_tensors[partition_index]):
+                reordered_indices[original_index] = len(reordered_tensors)
+                reordered_tensors.append(tensor)
+                if partition_index == 0 and torch.distributed.get_rank() == 0:
+                    if i < 10:
+                        print(f'merging partition {partition_index} orig_idx = {original_index} new_idx = {reordered_indices[original_index]} param_id = {id(reordered_tensors[-1])}')
+
+
+        if torch.distributed.get_rank() == 0:
+            tensor_ids = [id(p) for p in reordered_tensors[:10]]
+            new_idxs = [reordered_indices[i] for i in range(10)]
+            print(f'reordered params = {tensor_ids}')
+            print(f'new indices = {new_idxs}')
+
+        return reordered_tensors, reordered_indices
+
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -966,6 +1041,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def reduce_ipg_grads(self):
         if self.overlap_comm:
             stream = self.reduction_stream
+        elif self.cpu_offload:
+            stream = self.copy_grad_stream
         else:
             stream = torch.cuda.current_stream()
 
@@ -1521,10 +1598,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = self.unflatten(self.fp16_groups_flat[i],
-                                            self.fp16_groups[i])
-            for p, q in zip(self.fp16_groups[i], updated_params):
-                p.data = q.data
+            self._update_model_fp16_weights(i)
+#            updated_params = self.unflatten(self.fp16_groups_flat[i],
+#                                            self.fp16_groups[i])
+#            for p, q in zip(self.fp16_groups[i], updated_params):
+#                p.data = q.data
 
         self.log_timers(timer_names)
         see_memory_usage('After zero_optimizer step')
