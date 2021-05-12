@@ -268,17 +268,19 @@ class FlopsProfiler(object):
             num_to_string(2 * total_flops *
                           (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
 
+        fwd_latency = self.get_total_duration()
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
             fwd_latency = self.ds_engine.timers('forward').elapsed(False)
+        print('{:<60}  {:<8}'.format('fwd latency: ', duration_to_string(fwd_latency)))
+        print('{:<60}  {:<8}'.format(
+            'fwd FLOPS per GPU = fwd flops per GPU / fwd latency: ',
+            flops_to_string(2 * total_flops / fwd_latency)))
+
+        if self.ds_engine and self.ds_engine.wall_clock_breakdown():
             bwd_latency = self.ds_engine.timers('backward').elapsed(False)
             step_latency = self.ds_engine.timers('step').elapsed(False)
-            print('{:<60}  {:<8}'.format('fwd latency: ',
-                                         duration_to_string(fwd_latency)))
             print('{:<60}  {:<8}'.format('bwd latency: ',
                                          duration_to_string(bwd_latency)))
-            print('{:<60}  {:<8}'.format(
-                'fwd FLOPS per GPU = fwd flops per GPU / fwd latency: ',
-                flops_to_string(2 * total_flops / fwd_latency)))
             print('{:<60}  {:<8}'.format(
                 'bwd FLOPS per GPU = 2 * fwd flops per GPU / bwd latency: ',
                 flops_to_string(2 * 2 * total_flops / bwd_latency)))
@@ -292,6 +294,9 @@ class FlopsProfiler(object):
             iter_latency = fwd_latency + bwd_latency + step_latency
             print('{:<60}  {:<8}'.format('iter latency: ',
                                          duration_to_string(iter_latency)))
+            print('{:<60}  {:<8}'.format(
+                'FLOPS per GPU = 3 * fwd flops per GPU / iter latency: ',
+                flops_to_string(3 * 2 * total_flops / iter_latency)))
 
             samples_per_iter = self.ds_engine.train_micro_batch_size_per_gpu(
             ) * self.ds_engine.world_size
