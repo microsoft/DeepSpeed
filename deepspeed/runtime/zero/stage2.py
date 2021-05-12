@@ -1570,12 +1570,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i in range(len(norm_groups)):
             self._update_model_fp16_weights(i)
 
-
-#            updated_params = self.unflatten(self.fp16_groups_flat[i],
-#                                            self.fp16_groups[i])
-#            for p, q in zip(self.fp16_groups[i], updated_params):
-#                p.data = q.data
-
         self.log_timers(timer_names)
         see_memory_usage('After zero_optimizer step')
 
