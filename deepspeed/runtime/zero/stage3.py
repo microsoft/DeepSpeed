@@ -796,23 +796,23 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
-                         force=True)
+                         force=False)
 
         # Optimizer ensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
-        see_memory_usage("Before creating fp32 partitions", force=True)
+        see_memory_usage("Before creating fp32 partitions", force=False)
         self._create_fp32_partitions()
-        see_memory_usage("After creating fp32 partitions", force=True)
+        see_memory_usage("After creating fp32 partitions", force=False)
         dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
 
-        see_memory_usage("Before initializing optimizer states", force=True)
+        see_memory_usage("Before initializing optimizer states", force=False)
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states", force=True)
+        see_memory_usage("After initializing optimizer states", force=False)
         dist.barrier()
 
         if dist.get_rank() == 0:
@@ -1509,9 +1509,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         module.register_forward_pre_hook(_post_backward_module_hook)
 
     def pre_sub_module_forward_function(self, sub_module):
-        see_memory_usage(
-            f"Before sub module forward function {sub_module.__class__.__name__}",
-            force=False)
+        see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}",
+                         force=False)
 
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
@@ -1520,7 +1519,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.param_coordinator.fetch_sub_module(sub_module)
         see_memory_usage(
-            f"Before sub module forward function {sub_module.__class__.__name__} {sub_module.id} after fetch",
+            f"Before sub module function {sub_module.__class__.__name__} after fetch",
             force=False)
 
         self.param_coordinator.prefetch_next_sub_modules(
@@ -1528,7 +1527,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             numel=self.prefetch_elements,
             nvme=self.params_in_nvme_and_cpu)
         see_memory_usage(
-            f"Before sub module forward function {sub_module.__class__.__name__} {sub_module.id} after prefetch",
+            f"Before sub module function {sub_module.__class__.__name__} after prefetch",
             force=False)
 
         self.param_coordinator.increment_step(sub_module)
