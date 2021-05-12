@@ -3,10 +3,9 @@
 > Measures the parameters, latency, and floating point operations of your model.
 
   - [Overview](#overview)
-  - [Supported Models](#supported-models)
-  - [Multi-GPU, Multi-node Runs](#multi-gpu-multi-node-runs)
+  - [Flops Measurement](#flops-measurement)
+  - [Multi-GPU, Multi-node, Data Parallelism, and Model Parallelism](#multi-gpu-multi-node-data-parallelism-and-model-parallelism)
   - [Usage](#usage)
-
 ## Overview
 
 Effective use of hardware resources is critical to good performance, but performance inefficiency in existing implementations for large-scale model training and inference are often hard to spot and attributed to specific module components. DeepSpeed Flops Profiler helps users easily measure both the model training/inference speed (latency, throughput) and efficiency (floating point operations per second, i.e., FLOPS) of a model and its submodules, with an eye towards eliminating inefficiencies in existing implementations.
@@ -161,14 +160,7 @@ The DeepSpeed Flops Profiler can be used with the DeepSpeed runtime or as a stan
       - [Example Training Workflow](#example-training-workflow)
 ### Usage With the DeepSpeed Runtime
 
-When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explict API calls are needed to use the profiler. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
-
-
-#### Example: Megatron-LM
-
-For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM)
-
-The profiler can be enabled by adding the following field to the `deepspeed_config` json file.
+When using DeepSpeed for model training, the profiler can be configured in the deepspeed configuration file. No explict API calls are needed to use the profiler. The profiler can be enabled by adding the following field to the `deepspeed_config` json file. Refer to [flops profiler](https://www.deepspeed.ai/docs/config-json/#flops-profiler) for details.
 
 ```json
 {
@@ -182,6 +174,10 @@ The profiler can be enabled by adding the following field to the `deepspeed_conf
     }
 }
 ```
+
+#### Example: Megatron-LM
+
+For information on running Megatron-LM with DeepSpeed, please refer to our tutorial [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM).
 
 An example output of 12-layer Megatron-LM model (`hidden_size = 8192, num_attention_heads = 32, batch_size = 1024, seq_length = 1024`) is shown below.
 
@@ -322,8 +318,8 @@ with torch.cuda.device(0):
                                      input_constructor=None, # if specified, a constructor taking input_res is used as input to the model
                                      print_profile=True, # prints the model graph with the measured profile attached to each module
                                      detailed=True, # print the detailed profile
-                                     module_depth=-1, # depth into the nested modules with -1 being the inner most modules
-                                     top_modules=3, # the number of top modules to print aggregated profile
+                                     module_depth=-1, # depth into the nested modules, with -1 being the inner most modules
+                                     top_modules=1, # the number of top modules to print aggregated profile
                                      warm_up=10, # the number of warm-ups before measuring the time of each module
                                      as_string=True, # print raw numbers (e.g. 1000) or as human-readable strings (e.g. 1k)
                                      output_file=None, # path to the output file. If None, the profiler prints to stdout.
@@ -380,7 +376,7 @@ The `FlopsProfiler`class provides the follwing methods:
   * `start_profile()` - starts profiling
   * `get_total_flops(as_string=False)` - returns the total number of MACs in the model
   * `get_total_params(as_string=False)` - returns the total number of parameters in the model
-  * `print_model_profile(profile_step=1, module_depth=-1, top_modules=3, detailed=True, output_file=None)` - prints the model profile
+  * `print_model_profile(profile_step=1, module_depth=-1, top_modules=1, detailed=True, output_file=None)` - prints the model profile
   * `stop_profile()` - stops profiling. This stops the flops counting in the model.
   * `end_profile()` - cleans up. This cleans up the profile attributes added to the model during the profiling. This should be invoked at the end of the profiling and AFTER `get_total_flops`, `get_total_params` or `print_model_profile`.
 
