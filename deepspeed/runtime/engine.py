@@ -129,10 +129,12 @@ class DeepSpeedEngine(Module):
             # Initialize torch distributed if needed
             init_distributed(dist_backend=self.dist_backend)
 
-        see_memory_usage(f"DeepSpeed Engine: Before args sanity test")
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
         self._do_sanity_check()
+
+        see_memory_usage(f"DeepSpeed Engine: After args sanity test",
+                         force=self.memory_breakdown())
 
         if mpu is not None:
             assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
@@ -143,12 +145,14 @@ class DeepSpeedEngine(Module):
         if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
 
-        see_memory_usage(f"DeepSpeed Engine: Before configure distributed model")
+        see_memory_usage(f"DeepSpeed Engine: Before configure distributed model",
+                         force=self.memory_breakdown())
 
         # Configure distributed model
         self._configure_distributed_model(model)
 
-        see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
+        see_memory_usage(f"DeepSpeed Engine: After configure distributed model",
+                         force=self.memory_breakdown())
 
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
@@ -931,6 +935,8 @@ class DeepSpeedEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+        see_memory_usage("Engine before forward", force=self.memory_breakdown())
+
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
@@ -980,6 +986,8 @@ class DeepSpeedEngine(Module):
                 output_file=self.flops_profiler_output_file())
             self.flops_profiler.end_profile()
 
+        see_memory_usage("Engine after forward", force=self.memory_breakdown())
+
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
@@ -1005,6 +1013,8 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: is deprecated, ignored, and will soon be removed'
         """
+
+        see_memory_usage("Engine before backward", force=self.memory_breakdown())
 
         if not allreduce_gradients:
             logger.warning(
@@ -1077,6 +1087,8 @@ class DeepSpeedEngine(Module):
             # loss.data = None
             pass
 
+        see_memory_usage("Engine after backward", force=self.memory_breakdown())
+
         return loss
 
     def is_gradient_accumulation_boundary(self):
@@ -1145,6 +1157,8 @@ class DeepSpeedEngine(Module):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
+        see_memory_usage("Engine before step", force=self.memory_breakdown())
+
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
             self.timers('step').start()
@@ -1230,6 +1244,7 @@ class DeepSpeedEngine(Module):
                                 reset=False)
 
         self.micro_steps += 1
+        see_memory_usage("Engine after step", force=self.memory_breakdown())
 
     def _get_optimizer_param(self, param_name):
         result = []
