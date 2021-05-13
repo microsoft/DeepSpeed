@@ -82,19 +82,28 @@ class AsyncPartitionedParameterSwapper(object):
                                         f'rank{dist.get_rank()}')
         os.makedirs(self.swap_folder, exist_ok=True)
 
+        self.swap_element_size = torch.tensor([], dtype=torch.half).element_size()
+
+        self.aio_config = ds_config.aio_config
+
+        # Read/Write alignment for each thread during Intra-request parallelism
+        self.min_aio_bytes = max(MIN_AIO_BYTES, self.aio_config[AIO_BLOCK_SIZE])
+        self.aligned_bytes = AIO_ALIGNED_BYTES * self.aio_config[AIO_THREAD_COUNT]
+        self.numel_alignment = self.aligned_bytes // self.swap_element_size
+
         self.elements_per_buffer = self.swap_config[OFFLOAD_PARAM_BUFFER_SIZE]
+        self.aligned_elements_per_buffer = self._io_aligned_numel(
+            self.elements_per_buffer)
         self.param_buffer_count = self.swap_config[OFFLOAD_PARAM_BUFFER_COUNT]
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
 
-        self.buffers = torch.empty(int(self.elements_per_buffer *
+        self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
                                        self.param_buffer_count),
                                    dtype=torch.half,
                                    pin_memory=True,
                                    requires_grad=False)
-
-        self.aio_config = ds_config.aio_config
 
         self.aio_read_handle = self.aio_handle(self.aio_config[AIO_BLOCK_SIZE],
                                                self.aio_config[AIO_QUEUE_DEPTH],
@@ -108,9 +117,6 @@ class AsyncPartitionedParameterSwapper(object):
                                                 self.aio_config[AIO_OVERLAP_EVENTS],
                                                 self.aio_config[AIO_THREAD_COUNT])
 
-        self.min_aio_bytes = max(MIN_AIO_BYTES, self.aio_config[AIO_BLOCK_SIZE])
-
-        self.swap_element_size = torch.tensor([], dtype=torch.half).element_size()
         self.swap_out_params = []
 
     #Check if partiitoned param or numel in a tensor is swappable or not
@@ -160,9 +166,10 @@ class AsyncPartitionedParameterSwapper(object):
             print_rank_0(
                 f"param {param.ds_id} is assigned swap in buffer id {buffer_id}  ")
             self.param_id_to_buffer_id[param_id] = buffer_id
-            buffer = self.buffers.narrow(0,
-                                         int(buffer_id * self.elements_per_buffer),
-                                         self.param_id_to_numel[param_id])
+            buffer = self.buffers.narrow(
+                0,
+                int(buffer_id * self.aligned_elements_per_buffer),
+                self._io_aligned_numel(self.param_id_to_numel[param_id]))
             buffers.append(buffer)
 
         return buffers
@@ -283,9 +290,10 @@ class AsyncPartitionedParameterSwapper(object):
         buffer_id = self.available_buffer_ids.pop()
         self.param_id_to_buffer_id[param_id] = buffer_id
 
-        buffer = self.buffers.narrow(0,
-                                     int(buffer_id * self.elements_per_buffer),
-                                     self.param_id_to_numel[param_id])
+        buffer = self.buffers.narrow(
+            0,
+            int(buffer_id * self.aligned_elements_per_buffer),
+            self._io_aligned_numel(self.param_id_to_numel[param_id]))
         print_rank_0(f"param {param.ds_id} is assigned swap in buffer id {buffer_id}")
         return buffer
 
@@ -294,8 +302,8 @@ class AsyncPartitionedParameterSwapper(object):
         for id in self.available_buffer_ids:
             buffers.append(
                 self.buffers.narrow(0,
-                                    int(id * self.elements_per_buffer),
-                                    int(self.elements_per_buffer)))
+                                    int(id * self.aligned_elements_per_buffer),
+                                    int(self.aligned_elements_per_buffer)))
             self.reserved_buffer_ids.append(id)
 
         self.available_buffer_ids = []
@@ -306,3 +314,7 @@ class AsyncPartitionedParameterSwapper(object):
             self.available_buffer_ids.append(id)
 
         self.reserved_buffer_ids = []
+
+    def _io_aligned_numel(self, numel):
+        remainder = numel % self.numel_alignment
+        return numel if remainder == 0 else (numel + self.numel_alignment - remainder)
