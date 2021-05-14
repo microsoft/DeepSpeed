@@ -99,8 +99,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
                  ignore_unused_parameters=True,
-                 partition_grads=True,
-                 grad_hooks=True):
+                 partition_grads=True):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -126,9 +125,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # ZeRO stage 1 (False) or 2 (True)
         self.partition_gradients = partition_grads
-
-        # Use backward hooks to reduce gradients
-        self.grad_hooks = grad_hooks
 
         self.timers = timers
 
@@ -370,7 +366,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reset_partition_gradient_structures()
 
         #creates backward hooks for gradient partitioning
-        if self.grad_hooks:
+        if self.partition_gradients or self.overlap_comm:
             self.create_reduce_and_remove_grad_hooks()
 
         # we may have a way of fusing dynamic scale. Do not support for now
@@ -431,7 +427,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         world_size = dist.get_world_size(self.dp_process_group)
         my_rank = dist.get_rank(self.dp_process_group)
 
-        if not self.grad_hooks:
+        if not self.overlap_comm:
             for i, group in enumerate(self.fp16_groups):
                 for param in group:
                     self.reduce_ready_partitions_and_remove_grads(param, i)
