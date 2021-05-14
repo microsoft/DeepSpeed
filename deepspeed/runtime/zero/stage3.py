@@ -1576,6 +1576,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             self.grads_in_partition_offset = 0
 
+
     def _optimizer_step(self, sub_group_id):
         param_group_id = self.sub_group_to_group_id[sub_group_id]
         fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
@@ -1595,6 +1596,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 0,
                 fp32_param.numel()).data.copy_(fp32_param.data)
 
+
     def _swappable_optimizer_subgroup(self, sub_group_id):
         if not self.swap_optimizer:
             return False
@@ -1602,6 +1604,35 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         return self.optimizer_swapper.swappable_tensor(
             None,
             numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
+
+
+
+    def _partitioned_params_swap_out_2(self, i):
+        offset = 0
+        fp32_param = self.fp32_partitioned_groups_flat[i]
+        assert fp32_param is not None, \
+        f'fp32 parameters of sub_group {i} is None'
+
+        swap_out_params = []
+        for param, partitioned_param in zip(self.fp16_groups[i], self.fp16_partitioned_groups[i]):
+            src = fp32_param.narrow(0, offset, partitioned_param.ds_numel)
+            if partitioned_param.status == PartitionedParamStatus.AVAILABLE:
+                partitioned_param.data.copy_(src.data)
+            else:
+                fp16_buffer = self.fp16_groups[i][0].nvme_swapper.get_buffer(param, partitioned_param.ds_numel)
+                fp16_buffer.data.copy_(src.data)
+                partitioned_param.status = PartitionedParamStatus.AVAILABLE
+                swap_out_params.append(param)
+            offset += partitioned_param.ds_numel
+
+        if len(swap_out_params):
+            swap_out_params[0].nvme_swapper.synchronize_writes()
+            swap_out_params[0].nvme_swapper.swap_out_and_release(
+                swap_out_params,
+                async_op=True,
+                force_buffer_release=True)
+
+
 
     def _partitioned_params_swap_out(self, i):
         swap_out_params = []
@@ -1627,6 +1658,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 swap_out_params,
                 async_op=True,
                 force_buffer_release=True)
+
 
     def initialize_optimizer_states(self):
         num_subgroups = len(self.fp16_groups)
@@ -2686,12 +2718,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         # get rid of the fp32 gradients. Not needed anymore
         self.fp32_partitioned_groups_flat[sub_group_id].grad = None
 
+
     def _unflatten_partitioned_parameters(self, sub_group_id):
         updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
                                         self.fp16_partitioned_groups[sub_group_id])
 
         for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
             partitioned_param.data = q.data
+
 
     def _overflow_clean_up(self, prev_scale):
         see_memory_usage('After overflow before clearing gradients', force=False)

@@ -13,7 +13,7 @@ import torch.distributed as dist
 from deepspeed.utils.logging import logger
 from deepspeed.ops.aio import AsyncIOBuilder
 from .constants import *
-from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, print_object
+from .utils import SwapBufferManager, swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object
 from ..zero.offload_constants import *
 
 
@@ -47,6 +47,9 @@ class AsyncPartitionedParameterSwapper(object):
 
         #mapping from pram_id to buffer id
         self.param_id_to_buffer_id = {}
+
+        # mapping from param_id to swap buffer
+        self.param_id_to_swap_buffer = {}
 
         #number of elements in the param
         self.param_id_to_numel = {}
@@ -129,15 +132,13 @@ class AsyncPartitionedParameterSwapper(object):
         assert False, "Either param or numel must be provided"
 
     def get_path(self, param, must_exist=False):
-        paths, _ = self._get_paths([param], must_exist=must_exist)
+        paths = self._get_swap_paths([param], must_exist=must_exist)
         return paths[0]
 
-    def _get_paths(self, params, must_exist=False):
+    def _get_swap_paths(self, params, must_exist=False):
         paths = []
-        tensors = []
         for param in params:
             param_id = param.ds_id
-
             if param_id in self.id_to_path.keys():
                 param_path = self.id_to_path[param_id]
             else:
@@ -147,32 +148,53 @@ class AsyncPartitionedParameterSwapper(object):
 
                 self.id_to_path[param_id] = param_path
             paths.append(param_path)
-            tensors.append(param.ds_tensor)
-        return paths, tensors
+
+        return paths
+
+
+    def _get_swap_buffers(self, params):
+        buffers = []
+        for param in params:
+            param_id = param.ds_id
+            assert param_id in self.param_id_to_swap_buffer.keys(), \
+            f'param {param_id} has not been assigned a swap buffer'
+            buffers.append(self.param_id_to_swap_buffer[param_id])
+
+        return buffers
+
 
     def _track_numel(self, params):
         for param in params:
             assert param.ds_tensor is not None, "Partitioned tensor is None"
             self.param_id_to_numel[param.ds_id] = param.ds_tensor.ds_numel
 
+
     def _allocate_and_return_buffers_for_swap_in(self, params):
-        buffers = []
+        compute_buffers = []
+        swap_buffers = []
+
         for param in params:
             param_id = param.ds_id
             assert param_id in self.param_id_to_numel.keys(), f" Number of elements in param {param_id} is unknown"
             assert param_id not in self.param_id_to_buffer_id.keys(), f"param {param_id} already assigned swap buffer id {self.param_id_to_buffer_id[param_id]}"
+            assert param_id not in self.param_id_to_swap_buffer.keys(), f"param {param_id} has already been assigned a swap buffer"
 
             buffer_id = self.available_buffer_ids.pop()
             print_rank_0(
                 f"param {param.ds_id} is assigned swap in buffer id {buffer_id}  ")
             self.param_id_to_buffer_id[param_id] = buffer_id
-            buffer = self.buffers.narrow(
+            aligned_swap_numel = self._io_aligned_numel(self.param_id_to_numel[param_id])
+            swap_buffer = self.buffers.narrow(
                 0,
                 int(buffer_id * self.aligned_elements_per_buffer),
-                self._io_aligned_numel(self.param_id_to_numel[param_id]))
-            buffers.append(buffer)
+                aligned_swap_numel)
 
-        return buffers
+            self.param_id_to_swap_buffer[param_id] = swap_buffer
+            compute_buffer = swap_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
+            compute_buffers.append(compute_buffer)
+            swap_buffers.append(swap_buffer)
+
+        return compute_buffers, swap_buffers
 
     #waits for inflight nvme write to complete
     def synchronize_writes(self):
@@ -193,7 +215,9 @@ class AsyncPartitionedParameterSwapper(object):
         self.pending_reads = 0
 
         for param, swap_in_buffer in zip(self.inflight_params, self.inflight_swap_in_buffers):
-            param.ds_tensor.data = swap_in_buffer.data
+            param_id = param.ds_id
+            compute_buffer = swap_in_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
+            param.ds_tensor.data = compute_buffer.data
             param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
 
         self.available_params.update([param.ds_id for param in self.inflight_params])
@@ -217,6 +241,7 @@ class AsyncPartitionedParameterSwapper(object):
 
                 self.available_buffer_ids.append(buffer_id)
                 del self.param_id_to_buffer_id[param_id]
+                del self.param_id_to_swap_buffer[param_id]
                 print_rank_0(f"param {param.ds_id} releases buffer id {buffer_id}  ")
 
                 if param_id in self.available_params:
@@ -229,8 +254,8 @@ class AsyncPartitionedParameterSwapper(object):
     #writes from in memory to nvme. Does not release the buffers
     def _swap_out(self, params, async_op=True):
 
-        swap_out_paths, swap_out_params = self._get_paths(params)
-
+        swap_out_paths = self._get_swap_paths(params)
+        swap_out_params = self._get_swap_buffers(params)
         self._track_numel(params)
 
         swap_out_tensors(self.aio_write_handle, swap_out_params, swap_out_paths)
@@ -251,7 +276,7 @@ class AsyncPartitionedParameterSwapper(object):
     def swap_in(self, params, async_op=True, swap_in_buffers=None):
 
         assert all([param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE for param in params]), "Some params are already available or in flight"
-        swap_in_paths, _ = self._get_paths(params)
+        swap_in_paths = self._get_swap_paths(params)
 
         if swap_in_buffers is None:
             if len(self.available_buffer_ids) < len(swap_in_paths):
@@ -266,13 +291,13 @@ class AsyncPartitionedParameterSwapper(object):
                     force=True)
 
             assert len(swap_in_paths) <= len(self.available_buffer_ids), f"Not enough buffers {len(self.available_buffer_ids)} for swapping {len(swap_in_paths)}"
-            swap_in_buffers = self._allocate_and_return_buffers_for_swap_in(params)
+            compute_buffers, swap_in_buffers = self._allocate_and_return_buffers_for_swap_in(params)
 
         swap_in_tensors(self.aio_read_handle, swap_in_buffers, swap_in_paths)
 
         self.inflight_params.extend(params)
         self.inflight_swap_in_buffers.extend(swap_in_buffers)
-        self.inflight_numel += sum([t.numel() for t in swap_in_buffers])
+        self.inflight_numel += sum([t.numel() for t in compute_buffers])
 
         for param in params:
             param.ds_tensor.status = PartitionedParamStatus.INFLIGHT
@@ -289,13 +314,16 @@ class AsyncPartitionedParameterSwapper(object):
         self.param_id_to_numel[param_id] = numel
         buffer_id = self.available_buffer_ids.pop()
         self.param_id_to_buffer_id[param_id] = buffer_id
-
-        buffer = self.buffers.narrow(
+        aligned_swap_numel = self._io_aligned_numel(self.param_id_to_numel[param_id])
+        swap_buffer = self.buffers.narrow(
             0,
             int(buffer_id * self.aligned_elements_per_buffer),
-            self._io_aligned_numel(self.param_id_to_numel[param_id]))
+            aligned_swap_numel)
+
+        self.param_id_to_swap_buffer[param_id] = swap_buffer
+        compute_buffer = swap_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
         print_rank_0(f"param {param.ds_id} is assigned swap in buffer id {buffer_id}")
-        return buffer
+        return compute_buffer
 
     def reserve_available_buffers(self):
         buffers = []
