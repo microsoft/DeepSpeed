@@ -13,7 +13,7 @@ import torch.distributed as dist
 from deepspeed.utils.logging import logger
 from deepspeed.ops.aio import AsyncIOBuilder
 from .constants import *
-from .utils import SwapBufferManager, swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object
+from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object, SwapBufferPool
 from ..zero.offload_constants import *
 
 
@@ -66,6 +66,10 @@ class AsyncPartitionedParameterSwapper(object):
         self.available_params = set()
         self.available_numel = 0
 
+        # for swapping out from partitioned fp32 params
+        self.partitioned_swap_buffer = None
+        self.partitioned_swap_pool = None
+
         self.invalid_buffer = torch.tensor(1).half()
 
         if dist.get_rank() == 0:
@@ -101,7 +105,6 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
-
         self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
                                        self.param_buffer_count),
                                    dtype=torch.half,
@@ -151,7 +154,6 @@ class AsyncPartitionedParameterSwapper(object):
 
         return paths
 
-
     def _get_swap_buffers(self, params):
         buffers = []
         for param in params:
@@ -162,12 +164,10 @@ class AsyncPartitionedParameterSwapper(object):
 
         return buffers
 
-
     def _track_numel(self, params):
         for param in params:
             assert param.ds_tensor is not None, "Partitioned tensor is None"
             self.param_id_to_numel[param.ds_id] = param.ds_tensor.ds_numel
-
 
     def _allocate_and_return_buffers_for_swap_in(self, params):
         compute_buffers = []
@@ -216,7 +216,9 @@ class AsyncPartitionedParameterSwapper(object):
 
         for param, swap_in_buffer in zip(self.inflight_params, self.inflight_swap_in_buffers):
             param_id = param.ds_id
-            compute_buffer = swap_in_buffer.narrow(0, 0, self.param_id_to_numel[param_id])
+            compute_buffer = swap_in_buffer.narrow(0,
+                                                   0,
+                                                   self.param_id_to_numel[param_id])
             param.ds_tensor.data = compute_buffer.data
             param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
 
@@ -309,8 +311,11 @@ class AsyncPartitionedParameterSwapper(object):
 
     #assign a buffer to a param and return the buffer
     def get_buffer(self, param, numel):
-        assert numel < self.elements_per_buffer, f"More elements {numel} than buffer size {self.elements_per_buffer}"
         param_id = param.ds_id
+
+        assert self.available_swap_in_buffers() > 0, f"No swap buffers to allocate for fp16 param {param_id} of numel = {numel}"
+        assert numel < self.elements_per_buffer, f"More elements {numel} than buffer size {self.elements_per_buffer}"
+
         self.param_id_to_numel[param_id] = numel
         buffer_id = self.available_buffer_ids.pop()
         self.param_id_to_buffer_id[param_id] = buffer_id
@@ -340,9 +345,36 @@ class AsyncPartitionedParameterSwapper(object):
     def release_reserved_buffers(self):
         for id in self.reserved_buffer_ids:
             self.available_buffer_ids.append(id)
-
         self.reserved_buffer_ids = []
 
     def _io_aligned_numel(self, numel):
         remainder = numel % self.numel_alignment
         return numel if remainder == 0 else (numel + self.numel_alignment - remainder)
+
+    def reserve_partitioned_swap_space(self, partition_num_elems):
+        aligned_numel = sum(
+            [self._io_aligned_numel(numel) for numel in partition_num_elems])
+        self.partitioned_swap_buffer = torch.zeros(aligned_numel,
+                                                   device='cpu',
+                                                   dtype=torch.half).pin_memory()
+        self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
+
+    def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):
+        assert self.partitioned_swap_buffer is not None, f'partitioned swap buffers for fp16 params not initialized'
+        assert self.partitioned_swap_pool is not None, f'partitioned swap pool for fp16 params not initialized'
+        assert len(dst_fp16_params) == len(src_fp32_params), \
+        f'mismatch in number of fp16 params {len(dst_fp16_params)} and fp32 params {len(src_fp32_params)}'
+
+        fp16_swap_paths = self._get_swap_paths(dst_fp16_params, must_exist=True)
+        self.synchronize_writes()
+        self.partitioned_swap_pool.reset()
+        for i, fp32_tensor in enumerate(src_fp32_params):
+            swap_tensor, _ = self.partitioned_swap_pool.insert_tensor(
+                fp32_tensor,
+                fp16_swap_paths[i],
+                self._io_aligned_numel(fp32_tensor.numel())
+            )
+            assert swap_tensor is not None
+            dst_fp16_params[i].ds_tensor.status = PartitionedParamStatus.AVAILABLE
+
+        self.partitioned_swap_pool.swap_out(self.aio_write_handle)
