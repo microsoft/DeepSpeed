@@ -68,7 +68,7 @@ def test_curriculum_scheduler_fixed_discrete(tmpdir):
             true_seqlen = 5
             if n + 1 in ground_truths:
                 true_seqlen = ground_truths[n + 1]
-            # print('at step {} loss {} the difficulty is {}'.format(n+1, loss.item(), difficulty))
+            print('at step {} the seqlen is {}'.format(n + 1, seqlen))
             assert seqlen == true_seqlen, f"Incorrect curriculum schedule"
 
     _test_curriculum_scheduler_fixed_discrete(args=args,
@@ -107,7 +107,7 @@ def test_curriculum_scheduler_fixed_linear(tmpdir):
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
-    ground_truths = {1: 2, 2: 2, 3: 4, 4: 4, 5: 6, 6: 6, 7: 8, 8: 8, 9: 10, 10: 10}
+    ground_truths = {1: 2, 2: 4, 3: 4, 4: 6, 5: 6, 6: 8, 7: 8, 8: 10, 9: 10, 10: 10}
     model = Curriculum_SimpleModel(hidden_dim)
 
     @distributed_test(world_size=[1, 2])
@@ -125,6 +125,7 @@ def test_curriculum_scheduler_fixed_linear(tmpdir):
             model.step()
             if n + 1 in ground_truths:
                 true_seqlen = ground_truths[n + 1]
+                print('at step {} the seqlen is {}'.format(n + 1, seqlen))
                 assert seqlen == true_seqlen, f"Incorrect curriculum schedule"
 
     _test_curriculum_scheduler_fixed_linear(args=args,
