@@ -149,6 +149,8 @@ class DeepSpeedEngine(Module):
         # Configure distributed model
         self._configure_distributed_model(model)
 
+        self.pipeline_parallelism = isinstance(self.module, PipelineModule)
+
         see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
 
         # Configure wall clock timer
@@ -1026,7 +1028,8 @@ class DeepSpeedEngine(Module):
         # Communicate only at gradient accumulation boundaries
         elif self.is_gradient_accumulation_boundary():
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-                self.optimizer.reduce_gradients()
+                self.optimizer.reduce_gradients(
+                    pipeline_parallel=self.pipeline_parallelism)
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 

@@ -582,7 +582,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         flat_tensors = self.flatten(aligned_tensor_list)
         return flat_tensors
 
-    def reduce_gradients(self):
+    def reduce_gradients(self, pipeline_parallel=False):
         postscale_gradients = self.postscale_gradients
         gradient_predivide_factor = self.gradient_predivide_factor
         gradient_average = self.gradient_average

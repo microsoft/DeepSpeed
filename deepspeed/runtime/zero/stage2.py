@@ -423,9 +423,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
     #################### ZeRO Stage 1 - reduce gradients ####################
     #########################################################################
 
-    def reduce_gradients(self):
+    def reduce_gradients(self, pipeline_parallel=False):
         world_size = dist.get_world_size(self.dp_process_group)
         my_rank = dist.get_rank(self.dp_process_group)
+
+        # with PP we must create ipg buffer, since backward is handled outside zero
+        if pipeline_parallel and self.contiguous_gradients:
+            self.ipg_buffer = []
+            buf_0 = torch.empty(int(self.reduce_bucket_size),
+                                dtype=self.dtype,
+                                device=torch.cuda.current_device())
+            self.ipg_buffer.append(buf_0)
+            self.ipg_index = 0
 
         if not self.overlap_comm:
             for i, group in enumerate(self.fp16_groups):
