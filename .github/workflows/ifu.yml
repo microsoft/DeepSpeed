@@ -30,10 +30,14 @@ jobs:
           git merge upstream/master 
           # Since we use our own fork of DeepSpeedExamples, ignore theirs
           git checkout HEAD DeepSpeedExamples
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
 #          token: ${{ secrets.PAT }}
-          branch: IFU-master-${{ steps.date.outputs.date }}
-          title: IFU-master-${{ steps.date.outputs.date }}
+          branch: IFU-${{ steps.extract_branch.outputs.branch }}-${{ steps.date.outputs.date }}
+          title: IFU-${{ steps.extract_branch.outputs.branch }}-${{ steps.date.outputs.date }}
           assignees: rraminen
