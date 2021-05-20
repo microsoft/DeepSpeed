@@ -8,6 +8,7 @@ import torch.distributed as dist
 import math
 from torch._six import inf
 from torch.autograd import Variable
+from packaging import version as pkg_version
 
 import collections
 
@@ -17,6 +18,7 @@ from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
+from deepspeed.git_version_info import version
 
 #Toggle this to true to enable correctness test
 #with gradient partitioning and without
@@ -96,7 +98,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
-                 ignore_unused_parameters=True):
+                 ignore_unused_parameters=True,
+                 partition_grads=True):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -120,6 +123,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
+        # ZeRO stage 1 (False) or 2 (True)
+        self.partition_gradients = partition_grads
+
         self.timers = timers
 
         self.reduce_scatter = reduce_scatter
@@ -136,6 +142,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
+        self.is_gradient_accumulation_boundary = True
+
         if mpu is None:
             self.model_parallel_group = None
             self.model_parallel_rank = 0
@@ -151,6 +159,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = 0
         self.ignore_unused_parameters = ignore_unused_parameters
+
+        self.extra_large_param_to_reduce = None
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -191,12 +201,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
 
+        self.round_robin_fp16_groups = []
+        self.round_robin_fp6_indices = []
+
         # padding on each partition for alignment purposes
         self.groups_padding = []
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
+            # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
             self.fp16_groups.append(param_group['params'])
+
             # Record padding required to align group to world size
             if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
                 padding = get_alignment_padding(self.fp16_groups[i],
@@ -213,10 +228,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
             move_to_cpu(self.fp16_groups[i])
             see_memory_usage(f"After moving param group {i} to CPU")
 
+            # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
+            # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
+            # For example, rather than 3 gradients (g_n+2, g_n+1, g_n) that are reduced consecutively belonging
+            # to the same rank, instead they will belong to 3 ranks (r_m+2, r_m+1, r_m).
+            round_robin_tensors, round_robin_indices = self._round_robin_reorder(
+                self.fp16_groups[i],
+                dist.get_world_size(group=self.dp_process_group)
+            )
+            self.round_robin_fp16_groups.append(round_robin_tensors)
+            self.round_robin_fp6_indices.append(round_robin_indices)
+
             #create flat buffer in CPU and move to GPU
             self.fp16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
-                    self.fp16_groups[i],
+                    self.round_robin_fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU")
@@ -226,10 +252,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     f"After Flattening and after emptying param group {i} cache")
 
             # set model fp16 weight to slices of flattened buffer
-            updated_params = self.unflatten(self.fp16_groups_flat[i],
-                                            self.fp16_groups[i])
-            for p, q in zip(self.fp16_groups[i], updated_params):
-                p.data = q.data
+            self._update_model_fp16_weights(i)
 
             #divide the flat weights into near equal partition equal to the data parallel degree
             #each process will compute on a different part of the partition
@@ -249,7 +272,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(
                 group=self.dp_process_group)
-            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(self.fp16_groups[i], partition_size, partition_id)
+            params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(
+                self.round_robin_fp16_groups[i],
+                partition_size,
+                partition_id)
 
             self.partition_size.append(partition_size)
             self.params_in_partition.append(params_in_partition)
@@ -263,6 +289,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reduction_stream = torch.cuda.Stream()
         self.cpu_computation_stream = torch.cuda.Stream()
         self.migration_stream = torch.cuda.Stream()
+        self.copy_grad_stream = torch.cuda.Stream()
         self.callback_queued = False
 
         self.param_dict = {}
@@ -356,7 +383,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.reset_partition_gradient_structures()
 
         #creates backward hooks for gradient partitioning
-        self.create_reduce_and_remove_grad_hooks()
+        if self.partition_gradients or self.overlap_comm:
+            self.create_reduce_and_remove_grad_hooks()
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if self.dtype == torch.float or not dynamic_loss_scale:
@@ -383,6 +411,36 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer")
 
+    def _update_model_fp16_weights(self, group_index):
+        updated_params = self.unflatten(self.fp16_groups_flat[group_index],
+                                        self.round_robin_fp16_groups[group_index])
+        for p, q in zip(self.round_robin_fp16_groups[group_index], updated_params):
+            p.data = q.data
+
+        # set model fp16 weight to slices of reordered flattened buffer
+        for param_index, param in enumerate(self.fp16_groups[group_index]):
+            new_index = self.round_robin_fp6_indices[group_index][param_index]
+            param.data = self.round_robin_fp16_groups[group_index][new_index].data
+
+    def _round_robin_reorder(self, tensor_list, num_partitions):
+        partition_tensors = {}
+
+        for i, tensor in enumerate(tensor_list):
+            j = i % num_partitions
+            if not j in partition_tensors:
+                partition_tensors[j] = []
+            partition_tensors[j].append((i, tensor))
+
+        reordered_tensors = []
+        reordered_indices = {}
+
+        for partition_index in partition_tensors.keys():
+            for i, (original_index, tensor) in enumerate(partition_tensors[partition_index]):
+                reordered_indices[original_index] = len(reordered_tensors)
+                reordered_tensors.append(tensor)
+
+        return reordered_tensors, reordered_indices
+
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
             self.ipg_buffer = None
@@ -407,6 +465,31 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 group.grad = None
 
         return
+
+    #########################################################################
+    #################### ZeRO Stage 1 - reduce gradients ####################
+    #########################################################################
+
+    def reduce_gradients(self, pipeline_parallel=False):
+        world_size = dist.get_world_size(self.dp_process_group)
+        my_rank = dist.get_rank(self.dp_process_group)
+
+        # with PP we must create ipg buffer, since backward is handled outside zero
+        if pipeline_parallel and self.contiguous_gradients:
+            self.ipg_buffer = []
+            buf_0 = torch.empty(int(self.reduce_bucket_size),
+                                dtype=self.dtype,
+                                device=torch.cuda.current_device())
+            self.ipg_buffer.append(buf_0)
+            self.ipg_index = 0
+
+        if not self.overlap_comm:
+            for i, group in enumerate(self.fp16_groups):
+                for param in group:
+                    self.reduce_ready_partitions_and_remove_grads(param, i)
+
+        # reduce any pending grads in either hook/non-hook case
+        self.overlapping_partition_gradients_reduce_epilogue()
 
     #########################################################################
     #########################ZeRO Partition Gradients########################
@@ -633,8 +716,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
             Gradient computed twice for this partition. \
             Multiple gradient reduction is currently not supported"
 
-        #keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
-        if self.contiguous_gradients:
+        if param.numel() > self.reduce_bucket_size:
+            self.extra_large_param_to_reduce = param
+
+        elif self.contiguous_gradients:
+            #keeping the gradients contiguous to prevent memory fragmentation, and avoid flattening
             new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
                 0,
                 self.elements_in_ipg_bucket,
@@ -966,11 +1052,20 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def reduce_ipg_grads(self):
         if self.overlap_comm:
             stream = self.reduction_stream
+        elif self.cpu_offload:
+            stream = self.copy_grad_stream
         else:
             stream = torch.cuda.current_stream()
 
         if self.contiguous_gradients:
-            self.average_tensor(self.ipg_buffer[self.ipg_index])
+            if self.extra_large_param_to_reduce is not None:
+                assert len(self.params_in_ipg_bucket) == 1, "more than 1 param in ipg bucket, this shouldn't happen"
+                _, _, param_id = self.params_in_ipg_bucket[0]
+                assert self.get_param_id(self.extra_large_param_to_reduce) == param_id, "param in ipg bucket does not match extra-large param"
+                self.average_tensor(self.extra_large_param_to_reduce.grad.view(-1))
+                self.extra_large_param_to_reduce = None
+            else:
+                self.average_tensor(self.ipg_buffer[self.ipg_index])
         else:
             self.buffered_reduce_fallback(
                 None,
@@ -1005,7 +1100,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
+        if self.partition_gradients or self.is_gradient_accumulation_boundary:
+            self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
         def are_all_related_partitions_reduced(params_id):
@@ -1521,10 +1617,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
-            updated_params = self.unflatten(self.fp16_groups_flat[i],
-                                            self.fp16_groups[i])
-            for p, q in zip(self.fp16_groups[i], updated_params):
-                p.data = q.data
+            self._update_model_fp16_weights(i)
 
         self.log_timers(timer_names)
         see_memory_usage('After zero_optimizer step')
@@ -1631,17 +1724,16 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload:
             torch.cuda.current_stream().wait_stream(self.migration_stream)
 
-        #TODO: we need to revist this and remove the magic 4.5x multiplier here
         if self.contiguous_gradients:
             self.ipg_buffer = []
-            buf_0 = torch.empty(int(self.reduce_bucket_size * 4.5),
+            buf_0 = torch.empty(int(self.reduce_bucket_size),
                                 dtype=self.dtype,
                                 device=torch.cuda.current_device())
             self.ipg_buffer.append(buf_0)
 
             # Use double buffers to avoid data access conflict when overlap_comm is enabled.
             if self.overlap_comm:
-                buf_1 = torch.empty(int(self.reduce_bucket_size * 4.5),
+                buf_1 = torch.empty(int(self.reduce_bucket_size),
                                     dtype=self.dtype,
                                     device=torch.cuda.current_device())
                 self.ipg_buffer.append(buf_1)
@@ -1738,6 +1830,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
         state_dict['partition_count'] = self.partition_count
+
+        state_dict['ds_version'] = version
 
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
@@ -1857,6 +1951,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.loss_scaler = state_dict_list[0]['loss_scaler']
         self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
         self.overflow = state_dict_list[0]['overflow']
+
+        # zero stage 1 mode
+        if not self.partition_gradients:
+            required_version = pkg_version.parse("0.3.17")
+            ckpt_version = state_dict_list[0].get("ds_version", False)
+            error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
+                "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
+                "please set 'legacy_stage1': true in your zero config json. This old version of " \
+                "stage 1 will be removed in v0.4.0."
+
+            assert ckpt_version, f"Empty ds_version! {error_str}"
+            assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
 
         if load_optimizer_states:
             self._restore_base_optimizer_state(state_dict_list)
