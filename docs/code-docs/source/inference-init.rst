@@ -1,4 +1,4 @@
-Inference Initialization
+Inference Setup
 -----------------------
 The entrypoint for inference with DeepSpeed is ``deepspeed.init_inference()``. 
 
