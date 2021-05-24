@@ -201,7 +201,10 @@ class DeepSpeedSelfAttentionFunction(Function):
                                             dim=-2)
             if unfused_mode:
                 mixed_query = _transpose_for_scores(mixed_query, False, True)
-                key_layer1 = _transpose_for_scores(key_layer, True, True) / norm_factor
+                key_layer1 = _transpose_for_scores(
+                    key_layer,
+                    True,
+                    True) / (norm_factor if config.scale_attention else 1.0)
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
             if layer_past is None:
