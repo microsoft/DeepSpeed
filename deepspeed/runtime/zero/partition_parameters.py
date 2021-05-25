@@ -640,7 +640,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition_param(self, param, buffer=None, has_been_updated=False):
         assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot parititon a param in flight"
-
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
         global reuse_buffers
         #print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
         if param.ds_status is ZeroParamStatus.AVAILABLE:
@@ -679,7 +681,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 return
 
             tensor_size = self._aligned_size(param)
-            partition_size = tensor_size // self.world_size
+            partition_size = tensor_size // world_size
 
             if param.ds_tensor is None:
                 final_location = None
@@ -711,7 +713,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
                 param.ds_tensor.final_location = final_location
 
-            start = partition_size * self.rank
+            start = partition_size * rank
             end = start + partition_size
 
             one_dim_param = param.contiguous().view(-1)
@@ -774,10 +776,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             )
 
     def _allgather_param(self, param, async_op=False, hierarchy=0):
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
 
         partition_size = param.ds_tensor.ds_numel
 
-        tensor_size = partition_size * self.world_size
+        tensor_size = partition_size * world_size
         aligned_param_size = self._aligned_size(param)
         assert tensor_size == aligned_param_size, f'param id {param.ds_id} aligned size {aligned_param_size} does not match tensor size {tensor_size}'
 
@@ -807,15 +812,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #            param.data = replicated_tensor.data
         #            return None
         partitions = []
-        for i in range(self.world_size):
+        for i in range(world_size):
             partitions.append(flat_tensor.narrow(0, partition_size * i, partition_size))
 
-            if i == torch.distributed.get_rank(group=self.ds_process_group):
+            if i == torch.distributed.get_rank(group=group):
                 partitions[i].data.copy_(param.ds_tensor.data, non_blocking=True)
 
         handle = torch.distributed.all_gather(partitions,
-                                              partitions[self.rank],
-                                              group=self.ds_process_group,
+                                              partitions[rank],
+                                              group=group,
                                               async_op=async_op)
 
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
@@ -823,23 +828,27 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return handle
 
     def _allgather_params(self, param_list, hierarchy=0):
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
+
         if len(param_list) == 0:
             return
 
         partition_size = sum([param.ds_tensor.ds_numel for param in param_list])
 
-        tensor_size = partition_size * self.world_size
+        tensor_size = partition_size * world_size
         flat_tensor = torch.empty(tensor_size,
                                   dtype=param_list[0].dtype,
                                   device=self.local_device)
         flat_tensor.requres_grad = False
         partitions = []
-        for i in range(self.world_size):
+        for i in range(world_size):
             start = partition_size * i
 
             partitions.append(flat_tensor.narrow(0, start, partition_size))
 
-            if i == self.rank:
+            if i == rank:
                 offset = 0
                 for param in param_list:
                     param_numel = param.ds_tensor.ds_numel
@@ -851,8 +860,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     offset += param_numel
 
         torch.distributed.all_gather(partitions,
-                                     partitions[self.rank],
-                                     group=self.ds_process_group,
+                                     partitions[rank],
+                                     group=group,
                                      async_op=False)
         param_offset = 0
 
@@ -863,7 +872,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                             dtype=param.dtype,
                                             device=self.local_device)
 
-            for i in range(self.world_size):
+            for i in range(world_size):
 
                 start = i * partition_size
 
@@ -885,6 +894,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return None
 
     def _reduce_scatter_gradients(self, param_list):
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
+
         #print_rank_0([param.grad for param in param_list])
         #assert any([param.grad is None for param in param_list]), "None gradients cannot be reduce scattered"
 
@@ -903,7 +916,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # For these ranks the output of reduce scatter is a separate buffer and needs
             # to be copied in
             partition_size = param.ds_tensor.ds_numel
-            start = self.rank * partition_size
+            start = rank * partition_size
             end = start + partition_size
             #print_rank_0("REduce scatter was executed for praam {param.ds_id}")
             if start < param.ds_numel and end > param.ds_numel:
@@ -916,14 +929,17 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                                         elements))
 
     def _reduce_scatter_gradient(self, param):
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
 
         partition_size = param.ds_tensor.ds_numel
         #output = torch.empty(partition_size, dtype=param.dtype, device=param.device)
 
-        total_size = partition_size * self.world_size
+        total_size = partition_size * world_size
         input_list = []
 
-        for i in range(self.world_size):
+        for i in range(world_size):
 
             start = i * partition_size
             end = start + partition_size
@@ -947,10 +963,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #print("after reduce scatter gradients")
             input_list.append(input)
 
-        rank = torch.distributed.get_rank(group=self.ds_process_group)
         handle = torch.distributed.reduce_scatter(input_list[rank],
                                                   input_list,
-                                                  group=self.ds_process_group,
+                                                  group=group,
                                                   async_op=True)
 
         return handle, input_list[rank]
@@ -965,6 +980,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                      accumulate=accumulate)
 
     def _partition_gradient(self, param, partition_buffer=None, accumulate=False):
+        rank = self.rank
+        world_size = self.world_size
+        group = self.ds_process_group
+
         #import pdb;pdb.set_trace()
         # param.grad=None
         # param.grad.test()
@@ -982,7 +1001,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         else:
             assert partition_buffer.numel() >= partition_size, f"The partition buffer size {partition_buffer.numel()} should match the size of param.ds_tensor {partition_size}"
 
-        rank = torch.distributed.get_rank(group=self.ds_process_group)
         start = partition_size * rank
         end = start + partition_size
 
