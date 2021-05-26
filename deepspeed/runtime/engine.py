@@ -970,6 +970,7 @@ class DeepSpeedEngine(Module):
             kwargs.update(self.progressive_layer_drop.get_state())
 
         if self.module.training and self.curriculum_enabled():
+            self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
             if self.curriculum_params()["curriculum_type"] == "seqlen":
                 kwargs.update(
                     {"seqlen": self.curriculum_scheduler.get_current_difficulty()})
@@ -1192,10 +1193,6 @@ class DeepSpeedEngine(Module):
         if self.is_gradient_accumulation_boundary():
             if self.progressive_layer_drop:
                 self.progressive_layer_drop.update_state(self.global_steps)
-            if self.curriculum_enabled():
-                # +2 because the global_steps+1 is the current step and we want
-                # to compute the difficulty of next step
-                self.curriculum_scheduler.update_difficulty(self.global_steps + 2)
 
             self._take_model_step(lr_kwargs)
 
