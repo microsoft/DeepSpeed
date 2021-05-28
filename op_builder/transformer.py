@@ -55,6 +55,3 @@ class TransformerBuilder(CUDAOpBuilder):
             ]
             args += self.compute_capability_args()
         return args
-
-    def cxx_args(self):
-        return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
