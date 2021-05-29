@@ -1138,6 +1138,9 @@ class DeepSpeedEngine(Module):
                 f'Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed'
             )
 
+        # Cache input loss so that loss scaling is not exposed to client logic
+        unmodified_loss = loss
+
         # scale loss w.r.t. gradient accumulation if needed
         if self.gradient_accumulation_steps() > 1:
             loss = self._scale_loss_by_gas(loss.float())
@@ -1210,7 +1213,8 @@ class DeepSpeedEngine(Module):
             # loss.data = None
             pass
 
-        return loss
+        # TODO: Revist rationale of a return value for backward() since other frameworks (e.g., torch) don't do this.
+        return unmodified_loss
 
     def is_gradient_accumulation_boundary(self):
         """Query whether the current micro-batch is at the boundary of
