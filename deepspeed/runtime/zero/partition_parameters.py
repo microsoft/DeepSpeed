@@ -621,6 +621,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         group_specific_params[group] = [param]
 
         if not async_op:
+            ret_value = None
             for group, param_list in group_specific_params.items():
                 ret_value = self._allgather_params(param_list,
                                                    group=group,
