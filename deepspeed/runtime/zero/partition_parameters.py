@@ -410,9 +410,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         else:
             self.ds_process_group = data_parallel_group
 
-        self.rank = torch.distributed.get_rank(group=self.ds_process_group)
-        self.world_size = torch.distributed.get_world_size(group=self.ds_process_group)
-
         #Local device is the device where the parameters are consumed
         #It is the device where parameters are fully instantiated using allgather
         self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
@@ -579,8 +576,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         return param.ds_numel + self._padding_size(param)
 
     def _padding_size(self, param):
-        remainder = param.ds_numel % self.world_size
-        return (self.world_size - remainder) if remainder else 0
+        world_size = torch.distributed.get_world_size(group=param.ds_process_group)
+        remainder = param.ds_numel % world_size
+        return (world_size - remainder) if remainder else 0
 
     def _partitioned_size(self, param):
         return param.ds_tensor.ds_numel
@@ -606,7 +604,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self._ensure_availability_of_partitioned_params(param_list)
 
         handles = []
-        all_gather_list = []
+        group_specific_params = {}
         for param in param_list:
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
                 if async_op:
@@ -616,12 +614,19 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     param.ds_status = ZeroParamStatus.INFLIGHT  # if async_op else ZeroParamStatus.AVAILABLE
                     handles.append(handle)
                 else:
-                    all_gather_list.append(param)
+                    group = param.ds_process_group
+                    if group in group_specific_params.keys():
+                        group_specific_params[group].append(param)
+                    else:
+                        group_specific_params[group] = [param]
 
         if not async_op:
-            ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
-            for param in all_gather_list:
-                param.ds_status = ZeroParamStatus.AVAILABLE
+            for group, param_list in group_specific_params.items():
+                ret_value = self._allgather_params(param_list,
+                                                   group=group,
+                                                   hierarchy=hierarchy)
+                for param in param_list:
+                    param.ds_status = ZeroParamStatus.AVAILABLE
             return ret_value
 
         return handles
@@ -640,9 +645,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition_param(self, param, buffer=None, has_been_updated=False):
         assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot parititon a param in flight"
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
+        rank = torch.distributed.get_rank(group=param.ds_process_group)
+        world_size = torch.distributed.get_world_size(group=param.ds_process_group)
         global reuse_buffers
         #print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
         if param.ds_status is ZeroParamStatus.AVAILABLE:
@@ -776,9 +780,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             )
 
     def _allgather_param(self, param, async_op=False, hierarchy=0):
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
+        rank = torch.distributed.get_rank(group=param.ds_process_group)
+        world_size = torch.distributed.get_world_size(group=param.ds_process_group)
+        group = param.ds_process_group
 
         partition_size = param.ds_tensor.ds_numel
 
@@ -827,11 +831,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.data = replicated_tensor.data
         return handle
 
-    def _allgather_params(self, param_list, hierarchy=0):
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
-
+    def _allgather_params(self, param_list, group, hierarchy=0):
+        rank = torch.distributed.get_rank(group=group)
+        world_size = torch.distributed.get_world_size(group=group)
         if len(param_list) == 0:
             return
 
@@ -893,10 +895,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         return None
 
-    def _reduce_scatter_gradients(self, param_list):
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
+    def _reduce_scatter_gradients(self, param_list, group):
+        rank = torch.distributed.get_rank(group=group)
+        world_size = torch.distributed.get_world_size(group=group)
 
         #print_rank_0([param.grad for param in param_list])
         #assert any([param.grad is None for param in param_list]), "None gradients cannot be reduce scattered"
@@ -929,9 +930,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                                         elements))
 
     def _reduce_scatter_gradient(self, param):
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
+        rank = torch.distributed.get_rank(group=param.ds_process_group)
+        world_size = torch.distributed.get_world_size(group=param.ds_process_group)
+        group = param.ds_process_group
 
         partition_size = param.ds_tensor.ds_numel
         #output = torch.empty(partition_size, dtype=param.dtype, device=param.device)
@@ -980,10 +981,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                      accumulate=accumulate)
 
     def _partition_gradient(self, param, partition_buffer=None, accumulate=False):
-        rank = self.rank
-        world_size = self.world_size
-        group = self.ds_process_group
-
+        rank = torch.distributed.get_rank(group=param.ds_process_group)
         #import pdb;pdb.set_trace()
         # param.grad=None
         # param.grad.test()
