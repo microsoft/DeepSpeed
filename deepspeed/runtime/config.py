@@ -2,6 +2,8 @@
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
+import os
+from typing import Union
 
 import torch
 import json
@@ -9,7 +11,7 @@ import copy
 
 from .constants import *
 from .fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, DELAYED_SHIFT, MIN_LOSS_SCALE
-from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys
+from .config_utils import get_scalar_param, dict_raise_error_on_duplicate_keys, ScientificNotationEncoder
 from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
@@ -24,17 +26,21 @@ from ..elasticity.constants import ELASTICITY, IGNORE_NON_ELASTIC_BATCH_INFO, \
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 
+from .swap_tensor.aio_config import get_aio_config
+
 TENSOR_CORE_ALIGN_SIZE = 8
 
 ADAM_OPTIMIZER = 'adam'
 ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
     ADAM_OPTIMIZER,
     ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
+    ONEBIT_LAMB_OPTIMIZER,
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -175,6 +181,42 @@ def get_gradient_predivide_factor(param_dict):
     return get_scalar_param(param_dict,
                             GRADIENT_PREDIVIDE_FACTOR,
                             GRADIENT_PREDIVIDE_FACTOR_DEFAULT)
+
+
+def get_quantize_enabled(param_dict):
+    if QUANTIZE_TRAINING in param_dict.keys():
+        return get_scalar_param(param_dict[QUANTIZE_TRAINING],
+                                QUANTIZE_TRAINING_ENABLED,
+                                QUANTIZE_TRAINING_ENABLED_DEFAULT)
+    else:
+        return False
+
+
+def get_quantize_training(param_dict):
+    if QUANTIZE_TRAINING in param_dict.keys():
+        return ((param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][TARGET_BITS]), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][START_BITS] if START_BITS in param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS].keys() else QUANTIZE_START_BITS_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][QUANTIZE_PERIOD] if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_PERIOD_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][SCHEDULE_OFFSET] if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() and SCHEDULE_OFFSET in param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE].keys() else QUANTIZE_OFFSET_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZE_GROUPS] if QUANTIZE_GROUPS in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_GROUPS_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE][FP16_MIXED_QUANTIZE_ENABLED] if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys() and FP16_MIXED_QUANTIZE_ENABLED in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else FP16_MIXED_QUANTIZE_ENABLED_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE][QUANTIZE_CHANGE_RATIO] if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys() and QUANTIZE_CHANGE_RATIO in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else QUANTIZE_CHANGE_RATIO_DEFAULT), \
+                (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and QUANTIZE_TYPE in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys() and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_TYPE] == QUANTIZE_ASYMMETRIC else QUANTIZE_TYPE_DEFAULT), \
+                (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and QUANTIZE_ROUNDING in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys() and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_ROUNDING] == STOCHASTIC_ROUNDING else QUANTIZE_ROUNDING_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZE_VERBOSE] if QUANTIZE_VERBOSE in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_VERBOSE_DEFAULT), \
+                (param_dict[QUANTIZE_TRAINING][QUANTIZER_KERNEL] if QUANTIZER_KERNEL in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZER_KERNEL_DEFAULT))
+    else:
+        return (QUANTIZE_TARGET_BITS_DEFAULT, \
+                QUANTIZE_START_BITS_DEFAULT, \
+                QUANTIZE_PERIOD_DEFAULT, \
+                QUANTIZE_OFFSET_DEFAULT, \
+                QUANTIZE_GROUPS_DEFAULT, \
+                FP16_MIXED_QUANTIZE_ENABLED_DEFAULT, \
+                QUANTIZE_CHANGE_RATIO_DEFAULT, \
+                QUANTIZE_TYPE_DEFAULT, \
+                QUANTIZE_ROUNDING_DEFAULT, \
+                QUANTIZE_VERBOSE_DEFAULT, \
+                QUANTIZER_KERNEL_DEFAULT)
 
 
 def get_steps_per_print(param_dict):
@@ -462,6 +504,100 @@ def get_tensorboard_enabled(param_dict):
         return False
 
 
+def get_eigenvalue_config(param_dict):
+    if get_quantize_enabled(param_dict):
+        param_dict = param_dict[QUANTIZE_TRAINING]
+        return (get_eigenvalue_enabled(param_dict), \
+                get_eigenvalue_verbose(param_dict), \
+                get_eigenvalue_max_iter(param_dict), \
+                get_eigenvalue_tol(param_dict), \
+                get_eigenvalue_stability(param_dict), \
+                get_eigenvalue_gas_boundary_resolution(param_dict), \
+                get_eigenvalue_layer_name(param_dict), \
+                get_eigenvalue_layer_num(param_dict))
+    else:
+        return (EIGENVALUE_ENABLED_DEFAULT, \
+                EIGENVALUE_VERBOSE_DEFAULT, \
+                EIGENVALUE_MAX_ITER_DEFAULT, \
+                EIGENVALUE_TOL_DEFAULT, \
+                EIGENVALUE_STABILITY_DEFAULT, \
+                EIGENVALUE_GAS_BOUNDARY_RESOLUTION_DEFAULT, \
+                EIGENVALUE_LAYER_NAME_DEFAULT, \
+                EIGENVALUE_LAYER_NUM_DEFAULT)
+
+
+def get_eigenvalue_enabled(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_ENABLED,
+                                EIGENVALUE_ENABLED_DEFAULT)
+    else:
+        return EIGENVALUE_ENABLED_DEFAULT
+
+
+def get_eigenvalue_verbose(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_VERBOSE,
+                                EIGENVALUE_VERBOSE_DEFAULT)
+    else:
+        return EIGENVALUE_VERBOSE_DEFAULT
+
+
+def get_eigenvalue_max_iter(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_MAX_ITER,
+                                EIGENVALUE_MAX_ITER_DEFAULT)
+    else:
+        return EIGENVALUE_MAX_ITER_DEFAULT
+
+
+def get_eigenvalue_tol(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_TOL,
+                                EIGENVALUE_TOL_DEFAULT)
+    else:
+        return EIGENVALUE_TOL_DEFAULT
+
+
+def get_eigenvalue_stability(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_STABILITY,
+                                EIGENVALUE_STABILITY_DEFAULT)
+    else:
+        return EIGENVALUE_STABILITY_DEFAULT
+
+
+def get_eigenvalue_gas_boundary_resolution(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_GAS_BOUNDARY_RESOLUTION,
+                                EIGENVALUE_GAS_BOUNDARY_RESOLUTION_DEFAULT)
+    else:
+        return EIGENVALUE_GAS_BOUNDARY_RESOLUTION_DEFAULT
+
+
+def get_eigenvalue_layer_name(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_LAYER_NAME,
+                                EIGENVALUE_LAYER_NAME_DEFAULT)
+    else:
+        return EIGENVALUE_LAYER_NAME_DEFAULT
+
+
+def get_eigenvalue_layer_num(param_dict):
+    if EIGENVALUE in param_dict.keys():
+        return get_scalar_param(param_dict[EIGENVALUE],
+                                EIGENVALUE_LAYER_NUM,
+                                EIGENVALUE_LAYER_NUM_DEFAULT)
+    else:
+        return EIGENVALUE_LAYER_NUM_DEFAULT
+
+
 def get_tensorboard_output_path(param_dict):
     if get_tensorboard_enabled(param_dict):
         return get_scalar_param(param_dict[TENSORBOARD],
@@ -517,17 +653,19 @@ class DeepSpeedConfigWriter:
 
 
 class DeepSpeedConfig(object):
-    def __init__(self, json_file, mpu=None, param_dict=None):
+    def __init__(self, config: Union[str, dict], mpu=None):
         super(DeepSpeedConfig, self).__init__()
-
-        if param_dict is None:
+        if isinstance(config, dict):
+            self._param_dict = config
+        elif os.path.exists(config):
             self._param_dict = json.load(
-                open(json_file,
+                open(config,
                      'r'),
                 object_pairs_hook=dict_raise_error_on_duplicate_keys)
         else:
-            self._param_dict = param_dict
-
+            raise ValueError(
+                f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
+            )
         try:
             self.global_rank = torch.distributed.get_rank()
             if mpu is None:
@@ -624,6 +762,19 @@ class DeepSpeedConfig(object):
         self.initial_dynamic_scale = get_initial_dynamic_scale(param_dict)
         self.dynamic_loss_scale_args = get_dynamic_loss_scale_args(param_dict)
 
+        self.quantize_training_enabled = get_quantize_enabled(param_dict)
+        self.quantize_target_bits, \
+            self.quantize_start_bits, \
+            self.quantize_period, \
+            self.quantize_offset, \
+            self.quantize_groups, \
+            self.fp16_mixed_quantize, \
+            self.quantize_change_rate, \
+            self.quantize_type, \
+            self.quantize_rounding, \
+            self.quantize_verbose, \
+            self.use_quantizer_kernel = get_quantize_training(param_dict)
+
         self.optimizer_name = get_optimizer_name(param_dict)
         if self.optimizer_name is not None and \
             self.optimizer_name.lower() in DEEPSPEED_OPTIMIZERS:
@@ -638,12 +789,22 @@ class DeepSpeedConfig(object):
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)
 
-        self.wall_clock_breakdown = get_wall_clock_breakdown(param_dict)
         self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
+        self.wall_clock_breakdown = get_wall_clock_breakdown(
+            param_dict) | self.flops_profiler_config.enabled
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
+
+        self.eigenvalue_enabled, \
+            self.eigenvalue_verbose, \
+            self.eigenvalue_max_iter, \
+            self.eigenvalue_tol, \
+            self.eigenvalue_stability, \
+            self.eigenvalue_gas_boundary_resolution, \
+            self.eigenvalue_layer_name, \
+            self.eigenvalue_layer_num = get_eigenvalue_config(param_dict)
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)
@@ -655,6 +816,8 @@ class DeepSpeedConfig(object):
         validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
         self.checkpoint_tag_validation_enabled = validation_mode != ValidationMode.IGNORE
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
+
+        self.aio_config = get_aio_config(param_dict)
 
     def _batch_assertion(self):
 
@@ -744,6 +907,7 @@ class DeepSpeedConfig(object):
             json.dumps(self._param_dict,
                        sort_keys=True,
                        indent=4,
+                       cls=ScientificNotationEncoder,
                        separators=(',',
                                    ':'))))
 
@@ -754,11 +918,7 @@ class DeepSpeedConfig(object):
             GRADIENT_ACCUMULATION_STEPS)
 
         if self.zero_enabled:
-            assert self.fp16_enabled, "DeepSpeedConfig: ZeRO is only supported if fp16 is enabled"
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
-            #if self.zero_config.cpu_offload is True:
-            #    assert self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "DeepSpeedConfig: cpu-offload supported ZeRO stage is {}".format(ZERO_OPTIMIZATION_GRADIENTS)
-            #assert self.gradient_accumulation_steps == 1, "DeepSpeedConfig: {}is not supported for {}".format(GRADIENT_ACCUMULATION_STEPS, ZERO_OPTIMIZATION_CPU_OFFLOAD)
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled

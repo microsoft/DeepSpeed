@@ -22,6 +22,10 @@ from deepspeed.utils import logger
 from numpy import prod
 
 
+def noop_decorator(func):
+    return func
+
+
 def ensure_directory_exists(filename):
     """Create the directory path to ``filename`` if it does not already exist.
 
@@ -33,6 +37,11 @@ def ensure_directory_exists(filename):
 
 
 def set_random_seed(seed):
+    """Set the random seed for common PRNGs used during training: random, numpy, and torch.
+
+    Args:
+        seed (int): the seed to use
+    """
     import numpy
     import random
     random.seed(seed)
@@ -64,10 +73,15 @@ def move_to_device(item, device):
 
 class CheckOverflow(object):
     '''Checks for overflow in gradient across parallel process'''
-    def __init__(self, param_groups=None, mpu=None, zero_reduce_scatter=False):
+    def __init__(self,
+                 param_groups=None,
+                 mpu=None,
+                 zero_reduce_scatter=False,
+                 deepspeed=None):
         self.mpu = mpu
         self.params = [] if param_groups else None
         self.zero_reduce_scatter = zero_reduce_scatter
+        self.deepspeed = deepspeed
         if param_groups:
             for group in param_groups:
                 for param in group:
@@ -125,9 +139,24 @@ class CheckOverflow(object):
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=torch.distributed.group.WORLD)
         elif self.mpu is not None:
+            if self.deepspeed is not None:
+                using_pipeline = hasattr(self.deepspeed,
+                                         'pipeline_enable_backward_allreduce')
+                if (using_pipeline
+                        and self.deepspeed.pipeline_enable_backward_allreduce is False
+                    ) or (not using_pipeline
+                          and self.deepspeed.enable_backward_allreduce is False):
+                    torch.distributed.all_reduce(
+                        overflow_gpu,
+                        op=torch.distributed.ReduceOp.MAX,
+                        group=self.mpu.get_data_parallel_group())
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
+        elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
+            torch.distributed.all_reduce(overflow_gpu,
+                                         op=torch.distributed.ReduceOp.MAX,
+                                         group=torch.distributed.group.WORLD)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
