@@ -14,7 +14,7 @@ import time
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
 PipeTopo = PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
-from common import distributed_test, skipIfRocm
+from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
 from test_pipe import AlexNetPipe, train_cifar
 
@@ -25,7 +25,6 @@ if TORCH_MAJOR < 1 or TORCH_MINOR < 8:
                 allow_module_level=True)
 
 
-@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -69,7 +68,6 @@ def test_onebitadam_fp16_basic(tmpdir):
     _test_onebitadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_fp32_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -109,7 +107,6 @@ def test_onebitadam_fp32_basic(tmpdir):
     _test_onebitadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_exp_avg_mask(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -171,7 +168,6 @@ def test_onebitadam_exp_avg_mask(tmpdir):
     _test_onebitadam_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_onebitadam_checkpointing(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -853,7 +849,6 @@ def test_onebitlamb_fp16_pipeline(topo, tmpdir):
     _helper(topo, tmpdir)
 
 
-@skipIfRocm("Skipped for now as cupy is not available on ROCm")
 def test_compressed_allreduce_basic(tmpdir):
     @distributed_test(world_size=[1, 2])
     def _test_compressed_allreduce_basic():
