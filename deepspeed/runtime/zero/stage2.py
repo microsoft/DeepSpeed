@@ -2002,7 +2002,6 @@ def _handle_overflow(cpu_sum, x, i):
         )
 
 
-
 def estimate_zero2_mem_needs(total_params,
                              num_gpus_per_node=1,
                              num_nodes=1,
@@ -2090,8 +2089,7 @@ def estimate_zero2_mem_needs_all_cold(total_params,
     print(
         "Estimated memory needed for params, optim states and gradients for a:\n"
         f"HW: Setup with {num_nodes} {nodes_str}, {num_gpus_per_node} {gpus_str} per node.\n"
-        f"SW: Model with {int(total_params/1e6)}M total params."
-    )
+        f"SW: Model with {int(total_params/1e6)}M total params.")
     print("  per CPU  |  per GPU |   Options")
     for cpu_offload in [True, False]:
         cpu_mem, gpu_mem = estimate_zero2_mem_needs(

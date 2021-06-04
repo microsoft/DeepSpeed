@@ -3404,4 +3404,5 @@ def estimate_zero3_mem_needs_all_cold(total_params,
                 options_str = format_options(cpu_offload=cpu_offload,
                                              cpu_offload_params=cpu_offload_params,
                                              zero_init=zero_init)
-                print(f" {cpu_mem/2**30:7.2f}GB | {gpu_mem/2**30:6.2f}GB | {options_str}")
+                print(
+                    f" {cpu_mem/2**30:7.2f}GB | {gpu_mem/2**30:6.2f}GB | {options_str}")
