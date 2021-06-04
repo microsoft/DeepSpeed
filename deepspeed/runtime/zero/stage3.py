@@ -3359,8 +3359,8 @@ def estimate_zero3_mem_needs_all_cold(total_params,
     If it's a hypothetical model, use this function where you have to pass
     the ``total_params`` and ``largest_layer_params`` explicitly.
 
-    If you have an actual model object, use ``estimate_zero3_mem_needs_all_live`` and everything will be derived
-    automatically.
+    If you have an actual model object, use ``estimate_zero3_mem_needs_all_live`` and everything
+    will be derived automatically.
 
     Args:
         - ``total_params``: total  model params
@@ -3390,11 +3390,18 @@ def estimate_zero3_mem_needs_all_cold(total_params,
             if not cpu_offload and cpu_offload_params:
                 continue
             for zero_init in [True, False]:
-                cpu_mem, gpu_mem, largest_layer_memory = estimate_zero3_mem_needs(total_params=total_params,
-                                      largest_layer_params=largest_layer_params, num_gpus_per_node=num_gpus_per_node, num_nodes=num_nodes, cpu_offload=cpu_offload, cpu_offload_params=cpu_offload_params, zero_init=zero_init, additional_buffer_factor=additional_buffer_factor)
+                cpu_mem, gpu_mem, largest_layer_memory = estimate_zero3_mem_needs(
+                    total_params=total_params,
+                    largest_layer_params=largest_layer_params,
+                    num_gpus_per_node=num_gpus_per_node,
+                    num_nodes=num_nodes,
+                    cpu_offload=cpu_offload,
+                    cpu_offload_params=cpu_offload_params,
+                    zero_init=zero_init,
+                    additional_buffer_factor=additional_buffer_factor
+                )
 
                 options_str = format_options(cpu_offload=cpu_offload,
                                              cpu_offload_params=cpu_offload_params,
                                              zero_init=zero_init)
-                print(
-                    f" {cpu_mem/2**30:7.2f}GB | {gpu_mem/2**30:6.2f}GB | {options_str}")
+                print(f" {cpu_mem/2**30:7.2f}GB | {gpu_mem/2**30:6.2f}GB | {options_str}")
