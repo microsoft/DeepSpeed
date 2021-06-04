@@ -1,6 +1,108 @@
 Memory Requirements
 -----------------------
 
+
+API To Estimate Memory Usage
+============================
+
+ZeRO2:
+
+.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_mem_needs_all_live
+
+.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_mem_needs_all_cold
+
+Examples:
+
+Let's try a 3B model with just 1 node with 8 gpus, using live model:
+
+.. code-block:: bash
+
+    python -c 'from transformers import AutoModel; \
+    from deepspeed.runtime.zero.stage2 import estimate_zero2_mem_needs_all_live; \
+    model = AutoModel.from_pretrained("t5-3b"); \
+    estimate_zero2_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
+    Estimated memory needed for params, optim states and gradients for a:
+    HW: Setup with 1 node, 8 GPUs per node.
+    SW: Model with 2851M total params.
+      per CPU  |  per GPU |   Options
+      127.48GB |   5.31GB | cpu_offload=1
+      127.48GB |  15.93GB | cpu_offload=0
+
+Now, without the actual model, which requires us to know ``total_params`` and
+``largest_layer_params``, but we got those from the run above, so future estimators are now much
+faster as we don't need to load the model.
+
+.. code-block:: bash
+
+    python -c 'from deepspeed.runtime.zero.stage2 import estimate_zero2_mem_needs_all_cold; \
+    estimate_zero2_mem_needs_all_cold(total_params=2851e6, num_gpus_per_node=8, num_nodes=1)'
+    Estimated memory needed for params, optim states and gradients for a:
+    HW: Setup with 1 node, 8 GPUs per node.
+    SW: Model with 2851M total params.
+      per CPU  |  per GPU |   Options
+      127.45GB |   5.31GB | cpu_offload=1
+      127.45GB |  15.93GB | cpu_offload=0
+
+There is a slight difference due to rounding - the actual live model has a few more params
+
+
+ZeRO3:
+
+.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_mem_needs_all_live
+
+.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_mem_needs_all_cold
+
+Examples:
+
+Let's try a 3B model with just 1 node with 8 gpus, using live model:
+
+.. code-block:: bash
+
+    python -c 'from transformers import AutoModel; \
+    from deepspeed.runtime.zero.stage3 import estimate_zero3_mem_needs_all_live; \
+    model = AutoModel.from_pretrained("t5-3b"); \
+    estimate_zero3_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
+
+    Estimated memory needed for params, optim states and gradients for a:
+    HW: Setup with 1 node, 8 GPUs per node.
+    SW: Model with 2851M total params, 32M largest layer params.
+      per CPU  |  per GPU |   Options
+       71.71GB |   0.12GB | cpu_offload=1, cpu_offload_params=1, zero_init=1
+      127.48GB |   0.12GB | cpu_offload=1, cpu_offload_params=1, zero_init=0
+       63.74GB |   0.79GB | cpu_offload=1, cpu_offload_params=0, zero_init=1
+      127.48GB |   0.79GB | cpu_offload=1, cpu_offload_params=0, zero_init=0
+        1.47GB |   6.10GB | cpu_offload=0, cpu_offload_params=0, zero_init=1
+      127.48GB |   6.10GB | cpu_offload=0, cpu_offload_params=0, zero_init=0
+
+Now, without the actual model, which requires us to know ``total_params`` and
+``largest_layer_params``, but we got those from the run above, so future estimators are now much
+faster as we don't need to load the model.
+
+.. code-block:: bash
+
+    python -c 'from deepspeed.runtime.zero.stage3 import estimate_zero3_mem_needs_all_cold; \
+    estimate_zero3_mem_needs_all_cold(total_params=2851e6, largest_layer_params=32e6, num_gpus_per_node=8, num_nodes=1)'
+
+    Estimated memory needed for params, optim states and gradients for a:
+    HW: Setup with 1 node, 8 GPUs per node.
+    SW: Model with 2851M total params, 32M largest layer params.
+      per CPU  |  per GPU |   Options
+       71.69GB |   0.12GB | cpu_offload=1, cpu_offload_params=1, zero_init=1
+      127.45GB |   0.12GB | cpu_offload=1, cpu_offload_params=1, zero_init=0
+       63.72GB |   0.78GB | cpu_offload=1, cpu_offload_params=0, zero_init=1
+      127.45GB |   0.78GB | cpu_offload=1, cpu_offload_params=0, zero_init=0
+        1.43GB |   6.09GB | cpu_offload=0, cpu_offload_params=0, zero_init=1
+      127.45GB |   6.09GB | cpu_offload=0, cpu_offload_params=0, zero_init=0
+
+There is a slight difference due to rounding - the actual live model has a few more params
+
+
+
+Discussion
+==========
+
+Let's look in detail how the memory estimator API calculates these numbers and also discuss some additional numbers that aren't covered by the API.
+
 In the following discussion:
 
 - ``params`` - total number of model params, which can be calculated as:
@@ -182,3 +284,5 @@ Now there are 2 sub-cases:
 **Activation Memory**
 
 XXX: For Transformers is probably around (2* seq * attn_heads + 16 * hidden_size) * sequence * batch/gpu
+
+This needs to be completed.
