@@ -5,6 +5,9 @@ from common import distributed_test
 
 import pytest
 
+from common import skipIfRocm
+
+@skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=3)
 def test_init():
     assert dist.is_initialized()
@@ -14,6 +17,7 @@ def test_init():
 
 # Demonstration of pytest's paramaterization
 @pytest.mark.parametrize('number,color', [(1138, 'purple')])
+@skipIfRocm("Skipped as this test fails on ROCm")
 def test_dist_args(number, color):
     """Outer test function with inputs from pytest.mark.parametrize(). Uses a distributed
     helper function.

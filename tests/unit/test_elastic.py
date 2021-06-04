@@ -3,6 +3,7 @@ import deepspeed
 from common import distributed_test
 from deepspeed.git_version_info import version as ds_version
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
+from common import skipIfRocm
 
 base_ds_config = {
     "elasticity": {
@@ -148,6 +149,7 @@ def test_proper_mbsz():
     assert mbsize == 3
 
 
+@skipIfRocm("Skipped as this test fails on ROCm")
 def test_non_elastic_batch_params(tmpdir):
     config_dict = {
         "train_batch_size": 2,

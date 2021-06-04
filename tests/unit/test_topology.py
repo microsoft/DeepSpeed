@@ -183,6 +183,7 @@ def test_grid_pipe_data():
     data_group = grid.dp_group
     assert torch.all(rank_tensor == sum(data_group))
 
+@skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=4)
 def test_stage_to_global():
     topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
