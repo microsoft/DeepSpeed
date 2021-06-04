@@ -3,12 +3,19 @@ Copyright 2020 The Microsoft DeepSpeed Team
 
 DeepSpeed library
 
-Create a new wheel via the following command: python setup.py bdist_wheel
+To build wheel on Windows:
+    1. Install pytorch, such as pytorch 1.8 + cuda 11.1
+    2. Install visual cpp build tool
+    3. Launch cmd console with Administrator privilege for creating required symlink folders
+
+Create a new wheel via the following command:
+    python setup.py bdist_wheel
 
 The wheel will be located at: dist/*.whl
 """
 
 import os
+import sys
 import shutil
 import subprocess
 import warnings
@@ -69,14 +76,19 @@ if not torch.cuda.is_available():
 
 ext_modules = []
 
-# Default to pre-install kernels to false so we rely on JIT
-BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', 0))
+# Default to pre-install kernels to false so we rely on JIT on Linux, opposite on Windows.
+BUILD_OP_PLATFORM = 1 if sys.platform == "win32" else 0
+BUILD_OP_DEFAULT = int(os.environ.get('DS_BUILD_OPS', BUILD_OP_PLATFORM))
 print(f"DS_BUILD_OPS={BUILD_OP_DEFAULT}")
 
 
 def command_exists(cmd):
-    result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-    return result.wait() == 0
+    if sys.platform == "win32":
+        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+        return result.wait() == 1
+    else:
+        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+        return result.wait() == 0
 
 
 def op_enabled(op_name):
@@ -119,6 +131,21 @@ if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
 else:
     git_hash = "unknown"
     git_branch = "unknown"
+
+
+def create_dir_symlink(src, dest):
+    if not os.path.islink(dest):
+        if os.path.exists(dest):
+            os.remove(dest)
+        assert not os.path.exists(dest)
+        os.symlink(src, dest)
+
+
+if sys.platform == "win32":
+    # This creates a symbolic links on Windows.
+    # It needs Administrator privilege to create symlinks on Windows.
+    create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
+    create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
 
 # Parse the DeepSpeed version string from version.txt
 version_str = open('version.txt', 'r').read().strip()

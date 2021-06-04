@@ -17,14 +17,29 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
+from deepspeed.runtime.utils import noop_decorator
 
 tensor_map = {}
+
+
+def print_rank_0(message, debug=False, force=False):
+    if torch.distributed.get_rank() == 0 and (debug or force):
+        print(message)
+
+
+try:
+    autocast_custom_fwd = torch.cuda.amp.custom_fwd
+    autocast_custom_bwd = torch.cuda.amp.custom_bwd
+except (ImportError, AttributeError) as exp:
+    autocast_custom_fwd = noop_decorator
+    autocast_custom_bwd = noop_decorator
 
 
 class LinearFunctionForZeroStage3(torch.autograd.Function):
 
     # Note that both forward and backward are @staticmethods
     @staticmethod
+    @autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
         #print("In ZeRO Linear Function")
@@ -46,10 +61,12 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             if bias is not None:
                 output += bias
             ret = output
+
         return ret
 
     # This function has only a single output, so it gets only one gradient
     @staticmethod
+    @autocast_custom_bwd
     def backward(ctx, grad_output):
         # This is a pattern that is very convenient - at the top of backward
         # unpack saved_tensors and initialize all gradients w.r.t. inputs to
