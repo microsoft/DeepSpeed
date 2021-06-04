@@ -34,15 +34,6 @@ The big question is how big of a model you can fit on the hardware you have? Or 
 
 * ZeRO-3:
 
-   - case 1: ``"cpu_offload": false, "cpu_offload_params": false`` - 18 * params / total number of gpus across all nodes
-   - case 2: ``"cpu_offload": true, "cpu_offload_params": true``- The main limit here is general RAM. For GPU it is just a few GB, and the practical limit is the size of the params of the single biggest layer after it has been gathered on a single GPU.
-   - case 3: ``"cpu_offload": true, "cpu_offload_params": false``- 2 * params / total number of gpus across all nodes
-
-Proposal to rewrite the above.
-
-
-* ZeRO-3:
-
 largest_layer_memory = 4*largest_layer_params - GPU memory needed to gather the largest layer on a single GPU. 2 bytes fp16 params are gathered and 2 bytes fp16 grads are computed (total 4x). The optimizer states and fp32 parameters are updated in partitioned form and copied to fp16 params in partitioned form. This happens during the optimizer step. After that the fp16 params are sufficient.
 
    - case 1: ``"cpu_offload": false, "cpu_offload_params": false`` - largest_layer_memory + 18 * params / total number of gpus across all nodes
