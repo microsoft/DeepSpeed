@@ -271,7 +271,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = cls._old_init
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
             _disable_class(subclass)
 
         # Replace .__init__() for future subclasses of torch.nn.Module
