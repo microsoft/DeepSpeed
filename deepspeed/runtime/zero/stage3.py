@@ -397,7 +397,9 @@ class PartitionedParameterCoordinator(object):
     def fetch_sub_module(self, sub_module):
         partitioned_params = []
         params_in_flight = False
-        print_rank_0(f"{'--' * self.hierarchy}Fetching params in module {sub_module.__class__.__name__}")
+        print_rank_0(
+            f"{'--' * self.hierarchy}Fetching params in module {sub_module.__class__.__name__}"
+        )
         params_to_fetch = [
             param for _,
             param in sub_module.named_parameters(recurse=False)
