@@ -110,7 +110,8 @@ class PipelineEngine(DeepSpeedEngine):
         self.is_model_parallel = self.grid.model_parallel_size > 1
 
         # Partition input/output buffers
-        self.is_pipe_partitioned = self.is_model_parallel
+        # XXX temporarily disable while I revert some partition hacks.
+        self.is_pipe_partitioned = False #self.is_model_parallel
         self.is_grad_partitioned = False
 
         model_parameters = filter(lambda p: p.requires_grad, self.module.parameters())

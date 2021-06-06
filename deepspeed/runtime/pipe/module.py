@@ -585,7 +585,10 @@ class PipelineModule(nn.Module):
         self._synchronize_tied_weights()
 
     def _is_checkpointable(self, funcs):
-        if self.__class__.__name__ == 'GPT2ModelPipe':
+        # This is an unfortunate hack related to torch and deepspeed activation checkpoint implementations.
+        # Some layers like torch.nn.Embedding will not receive grads if checkpointed, which breaks things.
+        # I presume it's related to the discrete inputs that cannot require_grad? Need to revisit.
+        if self.__class__.__name__ in ('GPTModelPipe', 'GPT2ModelPipe'):
             return all('ParallelTransformerLayerPipe' in f.__class__.__name__
                        for f in funcs)
 

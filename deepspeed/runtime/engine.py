@@ -1275,7 +1275,14 @@ class DeepSpeedEngine(Module):
             self.skipped_steps += 1
         else:
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step(**(lr_kwargs or {}))
+                try:
+                    self.lr_scheduler.step(**(lr_kwargs or {}))
+                except TypeError:
+                    # XXX Hack to work with Megatron 2.0 and DeepSpeed pipelines.
+                    # We don't currently have a way to specify lr_kwargs from
+                    # pipe_engine.train_batch()
+                    self.lr_scheduler.step(increment=self.train_batch_size())
+
 
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
