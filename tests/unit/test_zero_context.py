@@ -282,17 +282,18 @@ def test_stage_3_output_type(output_type):
             engine.backward(loss)
             engine.step()
 
+
 class ConvX(torch.nn.Conv1d):
     def __init__(self, *args):
         super().__init__(*args)
         # This would not be partitioned before bugfix 5ca8167
         self.param_in = torch.nn.Parameter(torch.FloatTensor(5).uniform_())
-        
+
     def forward(self, x):
         return x
-    
-class ConvNet(torch.nn.Module):
 
+
+class ConvNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = ConvX(1, 3, 4)
@@ -302,10 +303,9 @@ class ConvNet(torch.nn.Module):
         return x
 
 
-
 def test_subclass_param():
     with deepspeed.zero.Init(config=config):
         model = ConvNet()
-    
+
     assert model.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
     assert model.conv1.param_in.ds_status == ZeroParamStatus.NOT_AVAILABLE
