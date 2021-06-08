@@ -12,6 +12,7 @@ import deepspeed
 
 @pytest.mark.parametrize('find_unused_parameters', [False, True])
 def test_stage2_find_unused_parameters(tmpdir, find_unused_parameters):
+    pytest.skip('skip for now')
     use_cpu_offload = True
 
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
