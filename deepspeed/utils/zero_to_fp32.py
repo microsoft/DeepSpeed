@@ -50,9 +50,10 @@ def get_optim_files(checkpoint_dir):
 
 
 def parse_model_state(file):
-    state_dict = torch.load(file)
 
-    buffers = {}
+    # load to cpu
+    device = torch.device('cpu')
+    state_dict = torch.load(file, map_location=device)
 
     if "buffer_names" not in state_dict:
         raise ValueError(f"{file} is not a model state checkpoint")
@@ -60,7 +61,12 @@ def parse_model_state(file):
     if debug:
         print(buffer_names)
 
-    buffers = {k: v.cpu() for k, v in state_dict["module"].items() if k in buffer_names}
+    # recover just the buffers while restoring them to fp32 if they were saved in fp16
+    buffers = {
+        k: v.float()
+        for k,
+        v in state_dict["module"].items() if k in buffer_names
+    }
     return buffers
 
 
