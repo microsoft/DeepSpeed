@@ -26,7 +26,7 @@ def get_model_state_file(checkpoint_dir):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
     # there should be only one file
-    file = f"{checkpoint_dir}/zero_pp_rank_0_mp_rank_00_model_states.pt"
+    file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
 
     if not os.path.exists(file):
         raise FileNotFoundError(f"can't find '{file}' in directory '{checkpoint_dir}'")
@@ -40,7 +40,7 @@ def get_optim_files(checkpoint_dir):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
     # XXX: need to test that this simple glob rule works for multi-node setup too
-    optim_files = sorted(glob.glob(f"{checkpoint_dir}/*_optim_states.pt"))
+    optim_files = sorted(glob.glob(os.path.join(checkpoint_dir, "*_optim_states.pt")))
 
     if len(optim_files) == 0:
         raise FileNotFoundError(
