@@ -52,9 +52,8 @@ __global__ void attn_softmax_v2(__half* vals,
     int lane = threadIdx.x & 0x1f;
     int warp_num = blockDim.x >> 5;
 
-    int reduce_blocks = reduceWidth >> 5;    
+    int reduce_blocks = reduceWidth >> 5;
     int seq_lane = threadIdx.x % reduceWidth;
-
 
     __shared__ float partialSum[MAX_WARP_NUM];
 
@@ -141,27 +140,26 @@ __global__ void attn_softmax_v2(__half* vals,
             max_val = (temp > max_val ? temp : max_val);
         }
 
-        if (reduceWidth > WARP_SIZE) 
-        {
+        if (reduceWidth > WARP_SIZE) {
             if (lane == 0) partialSum[wid] = max_val;
             b.sync();
-    
+
             if (lane < warp_num) max_val = partialSum[lane];
-    
+
             b.sync();
 
             for (int i = 1; i < reduce_blocks; i *= 2) {
                 auto temp = g.shfl_xor(max_val, i);
                 max_val = (temp > max_val ? temp : max_val);
             }
-    
+
             max_val = g.shfl(max_val, threadIdx.x / WARP_SIZE);
         }
 
         float sum = 0;
         for (int i = 0; i < iterations; i++) {
-            low_data[i].x  = __expf(low_data[i].x  - max_val);
-            low_data[i].y  = __expf(low_data[i].y  - max_val);
+            low_data[i].x = __expf(low_data[i].x - max_val);
+            low_data[i].y = __expf(low_data[i].y - max_val);
             high_data[i].x = __expf(high_data[i].x - max_val);
             high_data[i].y = __expf(high_data[i].y - max_val);
 
@@ -170,13 +168,12 @@ __global__ void attn_softmax_v2(__half* vals,
 
         for (int i = 1; i < WARP_SIZE; i *= 2) sum += g.shfl_xor(sum, i);
 
-        if (reduceWidth > WARP_SIZE) 
-        {
+        if (reduceWidth > WARP_SIZE) {
             if (lane == 0) partialSum[wid] = sum;
             b.sync();
-    
+
             if (lane < warp_num) sum = partialSum[lane];
-    
+
             b.sync();
 
             for (int i = 1; i < reduce_blocks; i *= 2) { sum += g.shfl_xor(sum, i); }
@@ -228,9 +225,8 @@ __global__ void attn_softmax_v2(float* vals,
     int lane = threadIdx.x & 0x1f;
     int warp_num = blockDim.x >> 5;
 
-    int reduce_blocks = reduceWidth >> 5;    
+    int reduce_blocks = reduceWidth >> 5;
     int seq_lane = threadIdx.x % reduceWidth;
-
 
     __shared__ float partialSum[MAX_WARP_NUM];
 
@@ -311,20 +307,19 @@ __global__ void attn_softmax_v2(float* vals,
             max_val = (temp > max_val ? temp : max_val);
         }
 
-        if (reduceWidth > WARP_SIZE) 
-        {
+        if (reduceWidth > WARP_SIZE) {
             if (lane == 0) partialSum[wid] = max_val;
             b.sync();
-    
+
             if (lane < warp_num) max_val = partialSum[lane];
-    
+
             b.sync();
 
             for (int i = 1; i < reduce_blocks; i *= 2) {
                 auto temp = g.shfl_xor(max_val, i);
                 max_val = (temp > max_val ? temp : max_val);
             }
-    
+
             max_val = g.shfl(max_val, threadIdx.x / WARP_SIZE);
         }
 
@@ -340,13 +335,12 @@ __global__ void attn_softmax_v2(float* vals,
 
         for (int i = 1; i < WARP_SIZE; i *= 2) sum += g.shfl_xor(sum, i);
 
-        if (reduceWidth > WARP_SIZE) 
-        {
+        if (reduceWidth > WARP_SIZE) {
             if (lane == 0) partialSum[wid] = sum;
             b.sync();
-    
+
             if (lane < warp_num) sum = partialSum[lane];
-    
+
             b.sync();
 
             for (int i = 1; i < reduce_blocks; i *= 2) { sum += g.shfl_xor(sum, i); }
@@ -389,10 +383,10 @@ void launch_attn_softmax_v2(T* vals,
                             cudaStream_t stream)
 {
     int total_count = batch_size * heads * num_seq;
-    dim3 grid_dim((total_count - 1) / (WARP_SIZE / ((sequence_length-1) / ATTN_THREADS + 1)) + 1);
+    dim3 grid_dim((total_count - 1) / (WARP_SIZE / ((sequence_length - 1) / ATTN_THREADS + 1)) + 1);
     dim3 block_dim(ATTN_THREADS);
 
-    const int reduce_width = ((sequence_length-1) / ATTN_THREADS + 1) * WARP_SIZE;
+    const int reduce_width = ((sequence_length - 1) / ATTN_THREADS + 1) * WARP_SIZE;
     const int iterations = (sequence_length - 1) / (reduce_width << 2) + 1;
 
     if (sequence_length <= 32768)
@@ -406,7 +400,7 @@ void launch_attn_softmax_v2(T* vals,
                                                             heads,
                                                             sequence_length,
                                                             num_seq,
-                                                            scale, 
+                                                            scale,
                                                             iterations,
                                                             reduce_width);
     else
