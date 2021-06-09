@@ -304,6 +304,7 @@ class ConvNet(torch.nn.Module):
 
 
 def test_subclass_param():
+    setup_serial_env()
     with deepspeed.zero.Init(config=config):
         model = ConvNet()
 
