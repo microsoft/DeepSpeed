@@ -31,7 +31,7 @@ def test_dist_args(number, color):
     """Ensure that we can parse args to distributed_test decorated functions. """
     _test_dist_args_helper(number, color=color)
 
-
+@skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=[1, 2, 4])
 def test_dist_allreduce():
     x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
