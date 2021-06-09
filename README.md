@@ -98,7 +98,7 @@ installation instructions](https://www.deepspeed.ai/tutorials/advanced-install/)
 
 On Windows you can build wheel with following steps, currently only inference mode is supported.
 1. Install pytorch, such as pytorch 1.8 + cuda 11.1
-2. Install latest visual cpp build tool
+2. Install visual cpp build tools, such as VS2019 C++ x64/x86 build tools
 3. Launch cmd console with Administrator privilege for creating required symlink folders
 4. Run `python setup.py bdist_wheel` to build wheel in `dist` folder
 
