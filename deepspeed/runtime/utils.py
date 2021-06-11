@@ -87,7 +87,6 @@ def bwc_tensor_model_parallel_rank(mpu=None):
         return mpu.get_model_parallel_rank()
 
 
-
 def move_to_device(item, device):
     """
     Move tensor onto device. Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
