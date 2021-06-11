@@ -1640,7 +1640,8 @@ class DeepSpeedEngine(Module):
                         tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
-                        load_lr_scheduler_states=True):
+                        load_lr_scheduler_states=True,
+                        finetune=False):
         """Load training checkpoint
 
         Arguments:
@@ -1671,7 +1672,8 @@ class DeepSpeedEngine(Module):
                                                          tag,
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
-                                                         load_lr_scheduler_states=load_lr_scheduler_states)
+                                                         load_lr_scheduler_states=load_lr_scheduler_states,
+                                                         finetune=finetune)
 
         if self.zero_optimization() and load_path is not None:
             self._load_zero_checkpoint(load_dir,
@@ -1685,7 +1687,8 @@ class DeepSpeedEngine(Module):
                          tag,
                          load_module_strict=True,
                          load_optimizer_states=True,
-                         load_lr_scheduler_states=True):
+                         load_lr_scheduler_states=True,
+                         finetune=False):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
@@ -1719,10 +1722,11 @@ class DeepSpeedEngine(Module):
             self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
         self.csr_tensor_module_names = checkpoint['csr_tensor_module_names']
-        self.global_steps = checkpoint['global_steps']
-        self.global_samples = checkpoint.get('global_samples',
-                                             self.global_steps * self.train_batch_size())
-        self.skipped_steps = checkpoint['skipped_steps']
+        if not finetune:
+            self.global_steps = checkpoint['global_steps']
+            self.global_samples = checkpoint.get('global_samples',
+                                                 self.global_steps * self.train_batch_size())
+            self.skipped_steps = checkpoint['skipped_steps']
         self.loaded_checkpoint_mp_world_size = checkpoint['mp_world_size']
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
         deepspeed_states = [
