@@ -983,7 +983,7 @@ class PipelineEngine(DeepSpeedEngine):
                 s = list(outputs.size())
                 self.grad_layer = self._allocate_buffer(s, num_buffers=1)[0]
             else:
-                sizes = [list(t.size()) for t in outputs]# if t.is_floating_point()]
+                sizes = [list(t.size()) for t in outputs]  # if t.is_floating_point()]
                 self.grad_layer = self._allocate_buffers(sizes, num_buffers=1)[0]
 
         if isinstance(self.grad_layer, torch.Tensor):
@@ -997,7 +997,7 @@ class PipelineEngine(DeepSpeedEngine):
                                               dtype=torch.long,
                                               device=self.device)
                 p2p.recv(buffer, self.next_stage)
-            
+
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
 
