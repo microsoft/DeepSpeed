@@ -210,6 +210,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
                 f(module, *args, **kwargs)
+                module.float()
                 self._post_init_method(module)
                 print_rank_0(
                     f'After initializing followed by post init for {module.__class__.__name__}',
@@ -1112,9 +1113,11 @@ class GatheredParameters:
         """
 
         self.enabled = enabled
+        
         if not enabled:
             return
 
+        
         if not isinstance(params, list):
             params = [params]
 
@@ -1142,7 +1145,7 @@ class GatheredParameters:
         if not self.enabled:
             return
         self.params[0].all_gather(param_list=self.params)
-
+        
     def __exit__(self, *exc):
         if not self.enabled:
             return

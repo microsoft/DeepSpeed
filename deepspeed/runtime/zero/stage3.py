@@ -34,7 +34,7 @@ pg_correctness_test = False
 FWD_MODULE_STACK = list()
 
 
-def print_rank_0(message, debug=False, force=False):
+def print_rank_0(message, debug=True, force=False):
     if torch.distributed.get_rank() == 0 and (debug or force):
         logger.info(message)
 
@@ -537,14 +537,16 @@ class PreBackwardFunction(torch.autograd.Function):
         ctx.module = module
         ctx.pre_backward_function = pre_backward_function
         module.applied_pre_backward = False
-        #print(f"After Forward: {ctx.module.__class__.__name__}")
+        print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
 
     @staticmethod
     def backward(ctx, *args):
-        #print(f"Before Backward: {ctx.module.__class__.__name__}")
+        print(f"Before Backward: {ctx.module.__class__.__name__}")
+        #print(f"Before pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
         ctx.pre_backward_function(ctx.module)
+        #print(f"After pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
         return (None, None) + args
 
 
@@ -559,8 +561,8 @@ class PostBackwardFunction(torch.autograd.Function):
             #    ctx.view=True
             #    print(f"Warning view tensor for input to module : {module.__class__.__name__}. Backward hooks may not trigger properly")
             #assert len(module.parameters(recurse=False)), "The input tensor to the module is a view, and autograd Function or register_hook is not triggered with view tensors."
-            #if module.ds_grads_remaining == 0:
-            #    print(f"Before Forward: {ctx.module.__class__.__name__}")
+            if module.ds_grads_remaining == 0:
+                print(f"Before Forward: {ctx.module.__class__.__name__}")
             module.ds_grads_remaining += 1
             ctx.pre_backward_function = pre_backward_function
         output = output.detach()
@@ -571,7 +573,7 @@ class PostBackwardFunction(torch.autograd.Function):
         ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
         if ctx.module.ds_grads_remaining == 0:
             ctx.pre_backward_function(ctx.module)
-            #print(f"After Backward: {ctx.module.__class__.__name__}")
+            print(f"After Backward: {ctx.module.__class__.__name__}")
         return (None, None) + args
 
 
@@ -1416,8 +1418,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._register_hooks_recursively(child, count=count)
 
         def _pre_forward_module_hook(module, *args):
+            #print(f"Before pre_forward_function {module}, {[(param.ds_status, param.shape) for param in module.parameters(recurse=False)]}")
             self.pre_sub_module_forward_function(module)
-
+            #print(f"After pre_forward_function {module}, {[(param.ds_status, param.shape) for param in module.parameters(recurse=False)]}")
+            
         def _post_forward_module_hook(module, input, output):
             global FWD_MODULE_STACK
             FWD_MODULE_STACK.pop()

@@ -39,9 +39,11 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
 
     # Note that both forward and backward are @staticmethods
     @staticmethod
-    @autocast_custom_fwd
+    #@autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
+        print(f"forward input {(input.shape, input.dtype)}, weight {(weight.shape, weight.dtype)}, bias {(bias.shape, bias.dtype) if bias is not None else None}")
+        
         #print("In ZeRO Linear Function")
 
         weight_id = id(weight)
@@ -52,7 +54,9 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
 
         tensor_map[weight_id] = weight
         tensor_map[bias_id] = bias
-
+        weight = weight.type_as(input)
+        if bias is not None:
+            bias = bias.type_as(input)
         if input.dim() == 2 and bias is not None:
             # fused op is marginally faster
             ret = torch.addmm(bias, input, weight.t())
@@ -66,7 +70,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
 
     # This function has only a single output, so it gets only one gradient
     @staticmethod
-    @autocast_custom_bwd
+    #@autocast_custom_bwd
     def backward(ctx, grad_output):
         # This is a pattern that is very convenient - at the top of backward
         # unpack saved_tensors and initialize all gradients w.r.t. inputs to
@@ -74,11 +78,13 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         # ignored, the return statement is simple even when the function has
         # optional inputs.
         #input, weight, bias = ctx.saved_tensors
-
+        print(f"In backward linear begin")
         input, weight_id, bias_id = ctx.saved_tensors
         weight = tensor_map[weight_id.item()]
         bias = tensor_map[bias_id.item()]
-
+        weight = weight.type_as(input)
+        if bias is not None:
+            bias=bias.type_as(input)
         grad_input = grad_weight = grad_bias = None
 
         #print(f"backward shaped grad_output {grad_output.shape}, input {input.shape}, weight {weight.shape} and bias {bias.shape if bias is not None else None}")
@@ -106,7 +112,13 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             grad_bias = grad_output.sum(0)
             #print("Done computing grad bias")
             #print("needs bias")
-        #print(f"backward shaped grad_input {grad_input.shape}, grad_weight {grad_weight.shape}, grad_bias {grad_bias.shape if grad_bias is not None else None}")
+        grad_input = grad_input.type_as(input)
+        grad_weight = grad_weight.float()
+        if grad_bias is not None:
+            grad_bias = grad_bias.float()
+        print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
+        #print(f"In backward linear end")
+        
         return grad_input, grad_weight, grad_bias
 
 

@@ -186,7 +186,7 @@ class FP16_UnfusedOptimizer(object):
                                                   device=fp32_param.device)
                 else:
                     fp32_param.grad = fp16_param.grad.to(fp32_param.dtype)
-
+        print(f"Norm: : {norm_groups}")
         self.unscale_and_clip_grads(norm_groups)
 
         self.optimizer.step()

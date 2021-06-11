@@ -251,6 +251,7 @@ class FP16_Optimizer(object):
         all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
         self.stop_timers([COMPUTE_NORM])
 
+        print(f"Norm: : {all_groups_norm}")
         self.start_timers([UNSCALE_AND_CLIP])
         self.unscale_and_clip_grads(grads_groups_flat, [all_groups_norm])
         self.stop_timers([UNSCALE_AND_CLIP])
