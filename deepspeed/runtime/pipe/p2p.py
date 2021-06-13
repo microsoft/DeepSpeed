@@ -2,6 +2,10 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
+import pickle
+import typing
+
+import torch
 import torch.distributed as dist
 
 _groups = None
@@ -16,8 +20,6 @@ def init_process_groups(grid):
 
     assert _grid.pipe_parallel_size > 1, "There is no pipeline parallelism"
 
-    _groups = [dist.new_group(ranks=group) for group in _grid.p2p_groups]
-
 
 def _is_valid_send_recv(src_stage, dest_stage):
     first_stage = 0
@@ -30,61 +32,84 @@ def _is_valid_send_recv(src_stage, dest_stage):
 
 def send(tensor, dest_stage, async_op=False):
     global _groups
-
-    async_op = False
+    assert async_op == False, "Doesnt support async_op true"
     src_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
-    group = _get_send_recv_group(src_stage, dest_stage)
-    src_rank = _grid.stage_to_global(stage_id=src_stage)
-
-    return dist.broadcast(tensor, src_rank, group=group, async_op=async_op)
+    dest_rank = _grid.stage_to_global(stage_id=dest_stage)
+    return dist.send(tensor, dest_rank)
 
 
 def recv(tensor, src_stage, async_op=False):
-
     global _groups
-
-    async_op = False
+    assert async_op == False, "Doesnt support async_op true"
     dest_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
-    group = _get_send_recv_group(src_stage, dest_stage)
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-
-    return dist.broadcast(tensor, src_rank, group=group, async_op=async_op)
-
-
-def barrier(stage_id):
-    global _groups, _grid
-    group_id = _grid.stage_to_global(stage_id=stage_id)
-    if (dist.get_rank() >= 0):
-        print("Barrier Group ID", group_id)
-        print("Barrier Group", _grid.p2p_groups[group_id])
-    dist.barrier(group=_groups[group_id])
-    if (dist.get_rank() >= 0):
-        print("Exiting Barrier ", group_id)
+    return dist.recv(tensor, src_rank)
 
 
-def _get_send_recv_group(src_stage, dest_stage):
-    '''the group id is always the smaller rank unless its a wrap around'''
+def send_obj(msg: typing.Any, dest: int):
+    """Send an arbitrary python object to ``dest``.
 
-    stage_id = None
+    Note: ``msg`` must be pickleable.
 
-    first_stage = 0
-    last_stage = _grid.pipe_parallel_size - 1
+    WARN: This incurs a CPU -> GPU transfer and should be used sparingly
+    for performance reasons.
 
-    if (src_stage == first_stage and dest_stage == last_stage
-            or dest_stage == first_stage and src_stage == last_stage):
-        stage_id = last_stage
-    elif src_stage > dest_stage:
-        stage_id = dest_stage
-    else:
-        stage_id = src_stage
-    '''group_id corresponds to group of [group_id, group_id+1]
-     unless group_id is the rank of the last stage
-     in which case group_id correspods to group[group_id-num_stages+1, group_id]
-     '''
-    group_id = _grid.stage_to_global(stage_id=stage_id)
+    Args:
+        msg (typing.Any): The object to send.
+        dest (int): Destination rank.
+    """
+    # serialize the message
+    msg = pickle.dumps(msg)
+    # construct a tensor to send
+    msg = torch.ByteTensor(torch.ByteStorage.from_buffer(msg)).cuda()
 
-    return _groups[group_id]
+    # Send meta and message
+    length_tensor = torch.tensor([len(msg)], dtype=torch.long).cuda()
+    dist.send(length_tensor, dst=dest)
+    dist.send(msg, dst=dest)
+
+
+def recv_obj(sender: int) -> typing.Any:
+    """Receive an arbitrary python object from ``sender``.
+
+    WARN: This incur a CPU <-> GPU transfers and should be used sparingly
+    for performance reasons.
+
+    Args:
+        sender (int): The rank sending the message.
+    """
+    # Get message meta
+    length = torch.tensor([0], dtype=torch.long).cuda()
+    dist.recv(length, src=sender)
+
+    # Receive and deserialize
+    msg = torch.empty(length.item(), dtype=torch.uint8).cuda()
+    dist.recv(msg, src=sender)
+
+    msg = pickle.loads(msg.cpu().numpy().tobytes())
+
+    def _to(x):
+        """Recursively move to the current device."""
+        if torch.is_tensor(x):
+            return x.cuda()
+        if isinstance(x, (tuple, list)):
+            ret = [_to(x_) for x_ in x]
+            if isinstance(x, tuple):
+                ret = tuple(ret)
+            return ret
+        # handle kwargs
+        if isinstance(x, dict):
+            ret = dict()
+            for key, val in x.items():
+                ret[_to(key)] = _to(val)
+            return ret
+
+        # Anything else is a no-op
+        return x
+
+    msg = _to(msg)
+    return msg
