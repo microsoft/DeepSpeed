@@ -71,6 +71,7 @@ DeepSpeed inference can be used in conjunction with HuggingFace `pipeline`. Belo
 
 ```python
 # Filename: gpt-neo-2.7b-generation.py
+import os
 import deepspeed
 import torch
 import transformers
