@@ -12,6 +12,8 @@ _groups = None
 _grid = None
 
 
+_async = []
+
 #initializes adjacent process groups
 #run this only after torch.distributed.init_process_group() has been called
 def init_process_groups(grid):
@@ -30,25 +32,44 @@ def _is_valid_send_recv(src_stage, dest_stage):
     "Functionality currently limited to send and receive between adjacent ranks only"
 
 
-def send(tensor, dest_stage, async_op=False):
+def send(tensor, dest_stage, async_op=True):
     global _groups
-    assert async_op == False, "Doesnt support async_op true"
+    #assert async_op == False, "Doesnt support async_op true"
     src_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
     dest_rank = _grid.stage_to_global(stage_id=dest_stage)
-    return dist.send(tensor, dest_rank)
+    if async_op:
+        global _async
+        op = dist.isend(tensor, dest_rank)
+        _async.append(op)
+    else:
+        return dist.send(tensor, dest_rank)
 
 
-def recv(tensor, src_stage, async_op=False):
+def recv(tensor, src_stage, async_op=True):
     global _groups
-    assert async_op == False, "Doesnt support async_op true"
+    #assert async_op == False, "Doesnt support async_op true"
     dest_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
     src_rank = _grid.stage_to_global(stage_id=src_stage)
-    return dist.recv(tensor, src_rank)
 
+    if async_op:
+        global _async
+        op = dist.irecv(tensor, src_rank)
+        _async.append(op)
+    else:
+        return dist.recv(tensor, src_rank)
+
+
+def wait():
+    global _async
+    for op in _async:
+        op.wait()
+    _async = []
+
+    torch.cuda.synchronize()
 
 def send_obj(msg: typing.Any, dest: int):
     """Send an arbitrary python object to ``dest``.
