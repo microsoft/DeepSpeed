@@ -83,10 +83,10 @@ generator = pipeline('text-generation', model='EleutherAI/gpt-neo-2.7B', device=
 
 
 
-deepspeed.init_inference(generator.model,
-                         mp_size=world_size,
-                         dtype=torch.float,
-                         replace_method='auto')
+generator.model = deepspeed.init_inference(generator.model,
+                                           mp_size=world_size,
+                                           dtype=torch.float,
+                                           replace_method='auto')
 
 string = generator("DeepSpeed is", do_sample=True, min_length=50)
 if torch.distributed.get_rank() == 0:
