@@ -32,7 +32,7 @@ def _is_valid_send_recv(src_stage, dest_stage):
     "Functionality currently limited to send and receive between adjacent ranks only"
 
 
-def send(tensor, dest_stage, async_op=True):
+def send(tensor, dest_stage, async_op=False):
     global _groups
     #assert async_op == False, "Doesnt support async_op true"
     src_stage = _grid.get_stage_id()
@@ -47,7 +47,7 @@ def send(tensor, dest_stage, async_op=True):
         return dist.send(tensor, dest_rank)
 
 
-def recv(tensor, src_stage, async_op=True):
+def recv(tensor, src_stage, async_op=False):
     global _groups
     #assert async_op == False, "Doesnt support async_op true"
     dest_stage = _grid.get_stage_id()
