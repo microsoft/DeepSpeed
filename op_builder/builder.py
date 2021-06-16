@@ -19,7 +19,9 @@ DEFAULT_COMPUTE_CAPABILITIES = "6.0;6.1;7.0"
 try:
     import torch
 except ImportError:
-    print(f"{WARNING} unable to import torch, please install it.")
+    print(
+        f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
+    )
 
 
 def installed_cuda_version():
