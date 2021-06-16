@@ -1125,7 +1125,11 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    def backward(self, loss, allreduce_gradients=True, release_loss=False, retain_graph=False):
+    def backward(self,
+                 loss,
+                 allreduce_gradients=True,
+                 release_loss=False,
+                 retain_graph=False):
         r"""Execute backward pass on the loss
 
         Arguments:
