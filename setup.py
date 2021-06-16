@@ -62,7 +62,8 @@ extras_require['all'] = list(all_extras)
 cmdclass = {}
 
 # For any pre-installed ops force disable ninja
-cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+if torch_available:
+    cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
