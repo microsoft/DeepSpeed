@@ -181,7 +181,7 @@ else:
 torch_version = ".".join([TORCH_MAJOR, TORCH_MINOR])
 # Set cuda_version to 0.0 if cpu-only
 cuda_version = "0.0"
-if torch.version.cuda is not None:
+if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
 torch_info = {"version": torch_version, "cuda_version": cuda_version}
 
