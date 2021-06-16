@@ -69,8 +69,8 @@ if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]
     TORCH_MINOR = torch.__version__.split('.')[1]
 else:
-    TORCH_MAJOR = 0
-    TORCH_MINOR = 0
+    TORCH_MAJOR = "0"
+    TORCH_MINOR = "0"
 
 if torch_available and not torch.cuda.is_available():
     # Fix to allow docker builds, similar to https://github.com/NVIDIA/apex/issues/486
