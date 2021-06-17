@@ -42,7 +42,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
     #@autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
-        print(f"forward input {(input.shape, input.dtype)}, weight {(weight.shape, weight.dtype)}, bias {(bias.shape, bias.dtype) if bias is not None else None}")
+        #print(f"forward input {(input.shape, input.dtype)}, weight {(weight.shape, weight.dtype)}, bias {(bias.shape, bias.dtype) if bias is not None else None}")
         
         #print("In ZeRO Linear Function")
 
@@ -78,7 +78,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         # ignored, the return statement is simple even when the function has
         # optional inputs.
         #input, weight, bias = ctx.saved_tensors
-        print(f"In backward linear begin")
+        #print(f"In backward linear begin")
         input, weight_id, bias_id = ctx.saved_tensors
         weight = tensor_map[weight_id.item()]
         bias = tensor_map[bias_id.item()]
@@ -116,7 +116,92 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         grad_weight = grad_weight.float()
         if grad_bias is not None:
             grad_bias = grad_bias.float()
-        print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
+        #print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
+        #print(f"In backward linear end")
+        
+        return grad_input, grad_weight, grad_bias
+
+
+class LinearNoTransposeFunctionForZeroStage3(torch.autograd.Function):
+
+    # Note that both forward and backward are @staticmethods
+    @staticmethod
+    #@autocast_custom_fwd
+    # bias is an optional argument
+    def forward(ctx, input, weight, bias=None):
+        
+        weight_id = id(weight)
+        bias_id = id(bias)
+
+        #ctx.save_for_backward(input, weight, bias)
+        ctx.save_for_backward(input, torch.tensor(weight_id), torch.tensor(bias_id))
+
+        tensor_map[weight_id] = weight
+        tensor_map[bias_id] = bias
+        weight = weight.type_as(input)
+        if bias is not None:
+            bias = bias.type_as(input)
+        if input.dim() == 2 and bias is not None:
+            # fused op is marginally faster
+            ret = torch.addmm(bias, input, weight)
+        else:
+            output = input.matmul(weight)
+            if bias is not None:
+                output += bias
+            ret = output
+
+        return ret
+
+    # This function has only a single output, so it gets only one gradient
+    @staticmethod
+    #@autocast_custom_bwd
+    def backward(ctx, grad_output):
+        # This is a pattern that is very convenient - at the top of backward
+        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
+        # None. Thanks to the fact that additional trailing Nones are
+        # ignored, the return statement is simple even when the function has
+        # optional inputs.
+        #input, weight, bias = ctx.saved_tensors
+        #print(f"In backward linear begin")
+        input, weight_id, bias_id = ctx.saved_tensors
+        weight = tensor_map[weight_id.item()]
+        bias = tensor_map[bias_id.item()]
+        weight = weight.type_as(input)
+        if bias is not None:
+            bias=bias.type_as(input)
+        grad_input = grad_weight = grad_bias = None
+
+        #print(f"backward shaped grad_output {grad_output.shape}, input {input.shape}, weight {weight.shape} and bias {bias.shape if bias is not None else None}")
+        # These needs_input_grad checks are optional and there only to
+        # improve efficiency. If you want to make your code simpler, you can
+        # skip them. Returning gradients for inputs that don't require it is
+        # not an error.
+        if ctx.needs_input_grad[0]:
+            #print(f"Computing grad input weight {weight.shape} grad_output {grad_output.shape}")
+            grad_input = grad_output.matmul(weight.t())
+            #print(f"Computed grad input {grad_input.shape}")
+        if ctx.needs_input_grad[1]:
+            #print("Computing grad weight")
+            dim = grad_output.dim()
+            if dim > 2:
+                grad_weight = grad_output.reshape(-1,
+                                                  grad_output.shape[-1]).t().matmul(
+                                                      input.reshape(-1,
+                                                                    input.shape[-1]))
+            else:
+                grad_weight = grad_output.t().matmul(input)
+            grad_weight = grad_weight.t()
+            #print(f"Computed grad weight grad_weight {grad_weight.shape}")
+        if bias is not None and ctx.needs_input_grad[2]:
+            #print("Computing grad bias")
+            grad_bias = grad_output.sum(0)
+            #print("Done computing grad bias")
+            #print("needs bias")
+        grad_input = grad_input.type_as(input)
+        grad_weight = grad_weight.float()
+        if grad_bias is not None:
+            grad_bias = grad_bias.float()
+        #print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
         #print(f"In backward linear end")
         
         return grad_input, grad_weight, grad_bias

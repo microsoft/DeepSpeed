@@ -549,7 +549,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_list = [cls]
                 if isinstance(partition_buffers, torch.Tensor):
                     partition_buffers = [partition_buffers]
-
             self._partition_gradients(param_list,
                                       partition_buffers=partition_buffers,
                                       accumulate=accumulate)
@@ -973,6 +972,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f"Partitioning param {param.ds_id} gradient of size {param.grad.numel()} type {param.grad.dtype} part_size {param.ds_tensor.ds_numel}"
         )
         see_memory_usage("Before partitioning gradients", force=False)
+        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}", force=False)
         partition_size = param.ds_tensor.ds_numel
 
         if partition_buffer is None:
@@ -1027,7 +1027,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         #print("after partition gradients")
         param.grad.data = dest_tensor_full_buffer.data
+
         see_memory_usage("After partitioning gradients", force=False)
+        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}", force=False)
 
 
 class GatheredParameters:
