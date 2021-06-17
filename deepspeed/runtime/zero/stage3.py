@@ -211,8 +211,8 @@ class PrefetchCoordinator(object):
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != self.sub_module_trace[self.step_id]:
             print_rank_0(
-                f"Tracing failed. Prefetching is disabled at sub-module: {sub_module.id}"
-            )
+                f"Tracing failed. Prefetching is disabled at sub-module: {sub_module.id}",
+                force=True)
             return []
 
         params_to_prefetch = []
@@ -440,10 +440,12 @@ class PartitionedParameterCoordinator(object):
 
         for _, param in sub_module.named_parameters(recurse=False):
             param.ds_status = ZeroParamStatus.AVAILABLE
-            print_rank_0(
-                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
-                force=False)
-        #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
+
+
+#            print_rank_0(
+#                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
+#                force=False)
+#print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
 
     def release_sub_module(self, sub_module):
         self.hierarchy -= 1
@@ -641,6 +643,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
+        self.timer_names = set()
 
         if not all(is_zero_param(p) for p in module.parameters()):
             group = None
@@ -1371,7 +1374,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
-        self._register_hooks_recursively(self.module)
 
         #reset step at the beginning of forward
         def _pre_forward_hook(module, *args):
@@ -1379,13 +1381,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         #reset step if in inference mode
         def _end_of_forward_hook(module, *args):
-
             if not torch._C.is_grad_enabled():
                 self.param_coordinator.reset_step()
 
         #likely one of them should be enough but just to be safe
-        self.module.register_forward_hook(_end_of_forward_hook)
         self.module.register_forward_pre_hook(_pre_forward_hook)
+        self._register_hooks_recursively(self.module)
+        self.module.register_forward_hook(_end_of_forward_hook)
 
         # Add top todule to stack trace
         global FWD_MODULE_STACK
@@ -1520,18 +1522,28 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
+        FORWARD_FETCH = 'forward_fetch'
+        FORWARD_PREFETCH = 'forward_prefetch'
 
         self.param_coordinator.record_trace(sub_module)
 
+        self.timer_names.add(FORWARD_FETCH)
+        self.start_timers([FORWARD_FETCH])
         self.param_coordinator.fetch_sub_module(sub_module)
+        self.stop_timers([FORWARD_FETCH])
+
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
             force=False)
 
+        self.timer_names.add(FORWARD_PREFETCH)
+        self.start_timers([FORWARD_PREFETCH])
         self.param_coordinator.prefetch_next_sub_modules(
             sub_module,
             numel=self.prefetch_elements,
             nvme=self.params_in_nvme_and_cpu)
+        self.stop_timers([FORWARD_PREFETCH])
+
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after prefetch",
             force=False)
@@ -1551,11 +1563,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def pre_sub_module_backward_function(self, sub_module):
         self.param_coordinator.record_trace(sub_module)
+        BACKWARD_FETCH = 'backward_fetch'
+        BACKWARD_PREFETCH = 'backward_prefetch'
 
+        self.timer_names.add(BACKWARD_FETCH)
+        self.start_timers([BACKWARD_FETCH])
         self.param_coordinator.fetch_sub_module(sub_module)
+        self.stop_timers([BACKWARD_FETCH])
 
+        self.timer_names.add(BACKWARD_PREFETCH)
+        self.start_timers([BACKWARD_PREFETCH])
         self.param_coordinator.prefetch_next_sub_modules(sub_module,
                                                          numel=self.prefetch_elements)
+        self.stop_timers([BACKWARD_PREFETCH])
 
         self.param_coordinator.increment_step(sub_module)
 
@@ -2539,7 +2559,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             return
 
         for name in timer_names:
-            self.timers(name).stop()
+            self.timers(name).stop(reset=False)
 
     def _pre_step(self):
         self.micro_step_id = INITIAL_MICRO_STEP_ID
@@ -2716,6 +2736,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def _post_step(self, timer_names=set()):
         if self.offload_optimizer:
             self.reset_cpu_buffers()
+        else:
+            self.averaged_gradients = {}
 
         #Gathering persisting parameters
         if len(self.persistent_parameters) > 0:
@@ -2749,20 +2771,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self._overflow_check_and_loss_scale_update():
             if self.swap_optimizer:
                 self.optimizer_swapper.log_timers()
+
+            self.log_timers(self.timer_names)
             return
 
         norm_groups = self._get_norm_groups()
 
-        timer_names = set()
-
-        timer_names.add('optimizer_step')
+        self.timer_names.add('optimizer_step')
         self.start_timers(['optimizer_step'])
 
         #update parameters one sub group at a time
         for sub_group_id, group in enumerate(self.fp16_groups):
 
             #prepare optimizer states, gradients and fp32 parameters for update
-            self._prepare_sub_group(sub_group_id, timer_names)
+            self._prepare_sub_group(sub_group_id, self.timer_names)
 
             #scale the fp32 gradients
             self.unscale_and_clip_grads(sub_group_id, norm_groups)
@@ -2774,11 +2796,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._reassign_or_swap_out_partitioned_parameters(sub_group_id)
 
             #release memory or swap out optimizer states of fp32 parameters
-            self._release_sub_group(sub_group_id, timer_names)
+            self._release_sub_group(sub_group_id, self.timer_names)
 
         self.stop_timers(['optimizer_step'])
 
-        self._post_step(timer_names)
+        self._post_step(self.timer_names)
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
