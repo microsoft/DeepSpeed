@@ -1721,14 +1721,16 @@ class DeepSpeedEngine(Module):
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
         deepspeed_states = [
             'module',
-            'optimizer',
-            'lr_scheduler',
             'csr_tensor_module_names',
             'skipped_steps',
             'global_steps',
             'dp_world_size',
             'mp_world_size'
         ]
+        if load_lr_scheduler_states:
+            deepspeed_states.append('lr_scheduler')
+        if load_optimizer_states:
+            deepspeed_states.append('optimizer')
         client_state = {
             key: value
             for key,
