@@ -340,10 +340,8 @@ class PartitionedParameterCoordinator(object):
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
     def prefetch_next_sub_modules(self, sub_module, numel=5000000, nvme=False):
-
-        params_to_prefetch = []
         if not self.prefetch_coordinator.trace_completed:
-            return params_to_prefetch
+            return
 
         # prefetch if there is no current prefetching in flight
         if not self.in_flight_handles and self.total_available_parameter_numel < self.max_available_parameters_in_numel:
@@ -361,10 +359,10 @@ class PartitionedParameterCoordinator(object):
             if nvme:
                 self._prefetch_nvme_param_partitions(sub_module, params_to_prefetch)
 
-        self._print_prefetch_elements_info(sub_module, params_to_prefetch)
-        print_rank_0(
-            f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {self.total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-            force=False)
+            self._print_prefetch_elements_info(sub_module, params_to_prefetch)
+            print_rank_0(
+                f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {self.total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                force=False)
 
     def _print_prefetch_elements_info(self, sub_module, params_to_prefetch):
         sub_module_numel = 0.0
