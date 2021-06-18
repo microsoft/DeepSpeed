@@ -36,6 +36,8 @@ class PartitionedParamStatus(Enum):
 class AsyncPartitionedParameterSwapper(object):
     def __init__(self, ds_config):
 
+        self.dtype = torch.half if ds_config.fp16_enabled else torch.float
+
         aio_op = AsyncIOBuilder().load(verbose=False)
         self.aio_handle = aio_op.aio_handle
 
@@ -89,7 +91,7 @@ class AsyncPartitionedParameterSwapper(object):
                                         f'rank{dist.get_rank()}')
         os.makedirs(self.swap_folder, exist_ok=True)
 
-        self.swap_element_size = torch.tensor([], dtype=torch.half).element_size()
+        self.swap_element_size = torch.tensor([], dtype=self.dtype).element_size()
 
         self.aio_config = ds_config.aio_config
 
@@ -107,7 +109,7 @@ class AsyncPartitionedParameterSwapper(object):
         self.reserved_buffer_ids = []
         self.buffers = torch.empty(int(self.aligned_elements_per_buffer *
                                        self.param_buffer_count),
-                                   dtype=torch.half,
+                                   dtype=self.dtype,
                                    pin_memory=True,
                                    requires_grad=False)
 
@@ -294,13 +296,16 @@ class AsyncPartitionedParameterSwapper(object):
 
             assert len(swap_in_paths) <= len(self.available_buffer_ids), f"Not enough buffers {len(self.available_buffer_ids)} for swapping {len(swap_in_paths)}"
             compute_buffers, swap_in_buffers = self._allocate_and_return_buffers_for_swap_in(params)
+            self.inflight_numel += sum([t.numel() for t in compute_buffers])
+
+        else:
+            self.inflight_numel += sum([p.ds_tensor.ds_numel for p in params])
 
         swap_in_tensors(self.aio_read_handle, swap_in_buffers, swap_in_paths)
 
         self.inflight_params.extend(params)
         self.inflight_swap_in_buffers.extend(swap_in_buffers)
-        self.inflight_numel += sum([t.numel() for t in compute_buffers])
-
+        
         for param in params:
             param.ds_tensor.status = PartitionedParamStatus.INFLIGHT
 
@@ -356,7 +361,7 @@ class AsyncPartitionedParameterSwapper(object):
             [self._io_aligned_numel(numel) for numel in partition_num_elems])
         self.partitioned_swap_buffer = torch.zeros(aligned_numel,
                                                    device='cpu',
-                                                   dtype=torch.half).pin_memory()
+                                                   dtype=self.dtype).pin_memory()
         self.partitioned_swap_pool = SwapBufferPool([self.partitioned_swap_buffer])
 
     def swap_out_partitioned_params(self, dst_fp16_params, src_fp32_params):

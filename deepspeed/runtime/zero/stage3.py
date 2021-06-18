@@ -802,17 +802,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
-        see_memory_usage("Before creating fp32 partitions", force=False)
+        see_memory_usage("Before creating fp32 partitions", force=True)
         self._create_fp32_partitions()
-        see_memory_usage("After creating fp32 partitions", force=False)
+        see_memory_usage("After creating fp32 partitions", force=True)
         dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
 
-        see_memory_usage("Before initializing optimizer states", force=False)
+        see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states", force=False)
+        see_memory_usage("After initializing optimizer states", force=True)
         dist.barrier()
 
         if dist.get_rank() == 0:
@@ -1112,7 +1112,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     max_partition_numel = total_elements
 
                 print_rank_0(
-                    f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
+                    f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.float().norm().item() for param in self.fp16_groups[i]]}"
                 )
 
                 # Record padding required to align group to world size (only applies to last rank)
