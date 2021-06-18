@@ -34,12 +34,12 @@ struct BertGemmAlgos {
 template <typename T>
 class BertTransformerLayer {
 public:
-    BertTransformerLayer(int layer_id,
-                         int batch_size,
-                         int hidden_size,
-                         int num_heads,
-                         int intermediate_size,
-                         int seq_length,
+    BertTransformerLayer(unsigned int layer_id,
+                         unsigned int batch_size,
+                         unsigned int hidden_size,
+                         unsigned int num_heads,
+                         unsigned int intermediate_size,
+                         unsigned int seq_length,
                          float attn_dropout_ratio,
                          float hidden_output_dropout_ratio,
                          float layer_norm_eps,
@@ -128,13 +128,13 @@ public:
                                 T* attn_layer_norm_var,
                                 T* attn_layer_norm_mean);
 
-    inline int GetBatchSize() const { return _batch_size; }
-    inline int GetNumHeads() const { return _heads; }
-    inline int GetSeqLength() const { return _seq_length; }
-    inline int GetIntermediateSize() const { return _intermediate_size; }
+    inline unsigned int GetBatchSize() const { return _batch_size; }
+    inline unsigned int GetNumHeads() const { return _heads; }
+    inline unsigned int GetSeqLength() const { return _seq_length; }
+    inline unsigned int GetIntermediateSize() const { return _intermediate_size; }
 
-    void SetSeqLength(int seq_len);
-    inline int GetHiddenSize() const { return _hidden_size; }
+    void SetSeqLength(unsigned int seq_len);
+    inline unsigned int GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
     inline bool IsTrainingMode() const { return _training; }
     inline bool GeluCheckpoint() const { return _gelu_checkpoint; }
@@ -144,13 +144,13 @@ private:
     size_t getWorkspaceSize(int maxBatchSize) const;
 
     // Params
-    int _layer_id;
-    int _batch_size;
-    int _hidden_size;
-    int _heads;
-    int _size_per_head;
-    int _intermediate_size;
-    int _seq_length;
+    unsigned int _layer_id;
+    unsigned int _batch_size;
+    unsigned int _hidden_size;
+    unsigned int _heads;
+    unsigned int _size_per_head;
+    unsigned int _intermediate_size;
+    unsigned int _seq_length;
 
     bool _pre_or_postLayerNorm;
 

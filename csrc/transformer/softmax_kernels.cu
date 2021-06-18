@@ -571,6 +571,12 @@ void launch_attn_softmax_backward_v2(T* out_grad,
     else if (seq_length <= 2048)
         softmax_backward_kernel_v2<T, 64>
             <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
+    else if (seq_length <= 4096)
+        softmax_backward_kernel_v2<T, 128>
+            <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
+    else if (seq_length <= 8192)
+        softmax_backward_kernel_v2<T, 256>
+            <<<grid_dim, block_dim, 0, stream>>>(out_grad, soft_inp, seq_length);
     else
         throw std::runtime_error(
             std::string("Special sequence length found in softmax backward, seq_length: ") +
