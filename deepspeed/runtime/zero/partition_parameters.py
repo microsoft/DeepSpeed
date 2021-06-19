@@ -434,6 +434,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         self._validate_remote_device(remote_device, config)
 
+        self.avaliable_parameter_numel = 0
+
         #Remote device is the device where parameter partiitons are stored
         #It can be same as local_device or it could be CPU or NVMe.
         self.remote_device = self.local_device if remote_device is None else remote_device
@@ -507,6 +509,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Stores the number of elements in the original parameter without padding
         param.ds_numel = param.numel()
 
+        # Update status book keeping
+        self._update_param_status(new_status=ZeroParamStatus.AVAILABLE,
+                                  old_status=ZeroParamStatus.NOT_AVAILABLE,
+                                  numel=param.ds_numel)
+
         # Stores the partitioned copy of the tensor
         param.ds_tensor = None
 
@@ -577,6 +584,22 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def partitioned_size():
             return self._partitioned_size(param)
 
+        def update_status(new_status, param_list=None, hierarchy=0):
+            cls = param
+            if param_list is None:
+                param_list = [cls]
+            self._update_status(param_list, new_status)
+
+        def get_available_parameter_numel():
+            return self._get_available_parameter_numel()
+
+        def synchronize_communication(param_list=None, handle_list=None, hierarchy=0):
+            cls = param
+            if param_list is None:
+                param_list = [cls]
+
+            self._synchronize_communication(param_list, handle_list)
+
         # Collectives for gathering and partitioning parameters
         param.all_gather = all_gather
         param.partition = partition
@@ -589,6 +612,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.aligned_size = aligned_size
         param.padding_size = padding_size
         param.partitioned_size = partitioned_size
+
+        # Status utilities
+        param.update_status = update_status
+        param.get_available_parameter_numel = get_available_parameter_numel
+        param.synchronize_communication = synchronize_communication
 
     def _aligned_size(self, param):
         return param.ds_numel + self._padding_size(param)
@@ -628,15 +656,26 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     handle = self._allgather_param(param,
                                                    async_op=async_op,
                                                    hierarchy=hierarchy)
-                    param.ds_status = ZeroParamStatus.INFLIGHT  # if async_op else ZeroParamStatus.AVAILABLE
+                    #param.ds_status = ZeroParamStatus.INFLIGHT  # if async_op else ZeroParamStatus.AVAILABLE
+                    param.update_status(ZeroParamStatus.INFLIGHT)
                     handles.append(handle)
                 else:
                     all_gather_list.append(param)
 
         if not async_op:
             ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
+            avail_params = []
+            status_params = []
             for param in all_gather_list:
-                param.ds_status = ZeroParamStatus.AVAILABLE
+                avail_params.append(param.ds_id)
+                status_params.append(param.ds_status)
+                #param.ds_status = ZeroParamStatus.AVAILABLE
+                param.update_status(ZeroParamStatus.AVAILABLE)
+
+            print_rank_0(
+                f'_all_gather marks available params = {avail_params} status = {status_params}',
+                force=False)
+
             return ret_value
 
         return handles
@@ -646,7 +685,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #print_rank_0(f"Before Partitioning Param {param.ds_id}")
             #self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
-            param.ds_status = ZeroParamStatus.NOT_AVAILABLE
+            #param.ds_status = ZeroParamStatus.NOT_AVAILABLE
+            param.update_status(ZeroParamStatus.NOT_AVAILABLE)
             #if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
@@ -1042,6 +1082,34 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #print("after partition gradients")
         param.grad.data = dest_tensor_full_buffer.data
         see_memory_usage("After partitioning gradients", force=False)
+
+    def _update_status(self, param_list, new_status):
+        if len(param_list) == 0:
+            return
+
+        for param in param_list:
+            assert param.ds_status != new_status, f"Detected redundant status update, param = {param.ds_id} status = {param.ds_status}"
+            old_status = param.ds_status
+            param.ds_status = new_status
+            self._update_param_status(new_status, old_status, param.ds_numel)
+
+    def _update_param_status(self, new_status, old_status, numel):
+        if old_status == ZeroParamStatus.AVAILABLE:
+            self.avaliable_parameter_numel -= numel
+            assert self.avaliable_parameter_numel >= 0, f'available_parameter numel is negative: {self.avaliable_parameter_numel}'
+
+        if new_status == ZeroParamStatus.AVAILABLE:
+            self.avaliable_parameter_numel += numel
+
+    def _get_available_parameter_numel(self):
+        return self.avaliable_parameter_numel
+
+    def _synchronize_communication(self, param_list, handle_list):
+        for param, handle in zip(param_list, handle_list):
+            if handle is not None:
+                handle.wait()
+
+        self._update_status(param_list=param_list, new_status=ZeroParamStatus.AVAILABLE)
 
 
 class GatheredParameters:
