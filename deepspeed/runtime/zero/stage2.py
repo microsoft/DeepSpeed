@@ -2002,11 +2002,11 @@ def _handle_overflow(cpu_sum, x, i):
         )
 
 
-def estimate_zero2_mem_needs(total_params,
-                             num_gpus_per_node=1,
-                             num_nodes=1,
-                             cpu_offload=True,
-                             additional_buffer_factor=1.5):
+def estimate_zero2_model_states_mem_needs(total_params,
+                                          num_gpus_per_node=1,
+                                          num_nodes=1,
+                                          cpu_offload=True,
+                                          additional_buffer_factor=1.5):
 
     total_gpus = num_nodes * num_gpus_per_node
 
@@ -2028,10 +2028,10 @@ def model_to_params(model):
     return total_params
 
 
-def estimate_zero2_mem_needs_all_live(model,
-                                      num_gpus_per_node=1,
-                                      num_nodes=1,
-                                      additional_buffer_factor=1.5):
+def estimate_zero2_model_states_mem_needs_all_live(model,
+                                                   num_gpus_per_node=1,
+                                                   num_nodes=1,
+                                                   additional_buffer_factor=1.5):
     """
     Print out estimates on memory usage requirements for ZeRO 2 params, optim states and gradients
     for a given ``model`` and hardware setup.
@@ -2039,7 +2039,7 @@ def estimate_zero2_mem_needs_all_live(model,
     If you have an actual model object, use this function and everything will be derived
     automatically.
 
-    If it's a hypothetical model, use ``estimate_zero2_mem_needs_all_cold`` where you have to pass
+    If it's a hypothetical model, use ``estimate_zero2_model_states_mem_needs_all_cold`` where you have to pass
     the ``total_params`` explicitly.
 
     Args:
@@ -2052,16 +2052,17 @@ def estimate_zero2_mem_needs_all_live(model,
 
     total_params = model_to_params(model)
 
-    estimate_zero2_mem_needs_all_cold(total_params=total_params,
-                                      num_gpus_per_node=num_gpus_per_node,
-                                      num_nodes=num_nodes,
-                                      additional_buffer_factor=additional_buffer_factor)
+    estimate_zero2_model_states_mem_needs_all_cold(
+        total_params=total_params,
+        num_gpus_per_node=num_gpus_per_node,
+        num_nodes=num_nodes,
+        additional_buffer_factor=additional_buffer_factor)
 
 
-def estimate_zero2_mem_needs_all_cold(total_params,
-                                      num_gpus_per_node=1,
-                                      num_nodes=1,
-                                      additional_buffer_factor=1.5):
+def estimate_zero2_model_states_mem_needs_all_cold(total_params,
+                                                   num_gpus_per_node=1,
+                                                   num_nodes=1,
+                                                   additional_buffer_factor=1.5):
     """
     Print out estimates on memory usage requirements for ZeRO 2 params, optim states and gradients
     for a given ``model`` and hardware setup.
@@ -2069,7 +2070,7 @@ def estimate_zero2_mem_needs_all_cold(total_params,
     If it's a hypothetical model, use this function where you have to pass
     the ``total_params`` and ``largest_layer_params`` explicitly.
 
-    If you have an actual model object, use ``estimate_zero2_mem_needs_all_live`` and everything
+    If you have an actual model object, use ``estimate_zero2_model_states_mem_needs_all_live`` and everything
     will be derived automatically.
 
     Args:
@@ -2092,7 +2093,7 @@ def estimate_zero2_mem_needs_all_cold(total_params,
         f"SW: Model with {int(total_params/1e6)}M total params.")
     print("  per CPU  |  per GPU |   Options")
     for cpu_offload in [True, False]:
-        cpu_mem, gpu_mem = estimate_zero2_mem_needs(
+        cpu_mem, gpu_mem = estimate_zero2_model_states_mem_needs(
             total_params=total_params,
             num_gpus_per_node=num_gpus_per_node,
             num_nodes=num_nodes,

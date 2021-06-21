@@ -7,9 +7,9 @@ API To Estimate Memory Usage
 
 ZeRO2:
 
-.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_mem_needs_all_live
+.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_model_states_mem_needs_all_live
 
-.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_mem_needs_all_cold
+.. autofunction:: deepspeed.runtime.zero.stage2.estimate_zero2_model_states_mem_needs_all_cold
 
 Examples:
 
@@ -18,9 +18,9 @@ Let's try a 3B model with just 1 node with 8 gpus, using live model:
 .. code-block:: bash
 
     python -c 'from transformers import AutoModel; \
-    from deepspeed.runtime.zero.stage2 import estimate_zero2_mem_needs_all_live; \
+    from deepspeed.runtime.zero.stage2 import estimate_zero2_model_states_mem_needs_all_live; \
     model = AutoModel.from_pretrained("t5-3b"); \
-    estimate_zero2_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
+    estimate_zero2_model_states_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
     Estimated memory needed for params, optim states and gradients for a:
     HW: Setup with 1 node, 8 GPUs per node.
     SW: Model with 2851M total params.
@@ -34,8 +34,8 @@ faster as we don't need to load the model.
 
 .. code-block:: bash
 
-    python -c 'from deepspeed.runtime.zero.stage2 import estimate_zero2_mem_needs_all_cold; \
-    estimate_zero2_mem_needs_all_cold(total_params=2851e6, num_gpus_per_node=8, num_nodes=1)'
+    python -c 'from deepspeed.runtime.zero.stage2 import estimate_zero2_model_states_mem_needs_all_cold; \
+    estimate_zero2_model_states_mem_needs_all_cold(total_params=2851e6, num_gpus_per_node=8, num_nodes=1)'
     Estimated memory needed for params, optim states and gradients for a:
     HW: Setup with 1 node, 8 GPUs per node.
     SW: Model with 2851M total params.
@@ -48,9 +48,9 @@ There is a slight difference due to rounding - the actual live model has a few m
 
 ZeRO3:
 
-.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_mem_needs_all_live
+.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_model_states_mem_needs_all_live
 
-.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_mem_needs_all_cold
+.. autofunction:: deepspeed.runtime.zero.stage3.estimate_zero3_model_states_mem_needs_all_cold
 
 Examples:
 
@@ -59,9 +59,9 @@ Let's try a 3B model with just 1 node with 8 gpus, using live model:
 .. code-block:: bash
 
     python -c 'from transformers import AutoModel; \
-    from deepspeed.runtime.zero.stage3 import estimate_zero3_mem_needs_all_live; \
+    from deepspeed.runtime.zero.stage3 import estimate_zero3_model_states_mem_needs_all_live; \
     model = AutoModel.from_pretrained("t5-3b"); \
-    estimate_zero3_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
+    estimate_zero3_model_states_mem_needs_all_live(model, num_gpus_per_node=8, num_nodes=1)'
 
     Estimated memory needed for params, optim states and gradients for a:
     HW: Setup with 1 node, 8 GPUs per node.
@@ -80,8 +80,8 @@ faster as we don't need to load the model.
 
 .. code-block:: bash
 
-    python -c 'from deepspeed.runtime.zero.stage3 import estimate_zero3_mem_needs_all_cold; \
-    estimate_zero3_mem_needs_all_cold(total_params=2851e6, largest_layer_params=32e6, num_gpus_per_node=8, num_nodes=1)'
+    python -c 'from deepspeed.runtime.zero.stage3 import estimate_zero3_model_states_mem_needs_all_cold; \
+    estimate_zero3_model_states_mem_needs_all_cold(total_params=2851e6, largest_layer_params=32e6, num_gpus_per_node=8, num_nodes=1)'
 
     Estimated memory needed for params, optim states and gradients for a:
     HW: Setup with 1 node, 8 GPUs per node.
