@@ -4,7 +4,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import time
-import torch
 import importlib
 from pathlib import Path
 import subprocess
@@ -16,6 +15,13 @@ WARNING = f"{YELLOW} [WARNING] {END}"
 
 DEFAULT_TORCH_EXTENSION_PATH = "/tmp/torch_extensions"
 DEFAULT_COMPUTE_CAPABILITIES = "6.0;6.1;7.0"
+
+try:
+    import torch
+except ImportError:
+    print(
+        f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
+    )
 
 
 def installed_cuda_version():
@@ -363,6 +369,18 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O2']
         else:
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+
+    def nvcc_args(self):
+        args = [
+            '-O3',
+            '--use_fast_math',
+            '-std=c++17' if sys.platform == "win32" else '-std=c++14',
+            '-U__CUDA_NO_HALF_OPERATORS__',
+            '-U__CUDA_NO_HALF_CONVERSIONS__',
+            '-U__CUDA_NO_HALF2_OPERATORS__'
+        ]
+
+        return args + self.compute_capability_args()
 
     def libraries_args(self):
         if sys.platform == "win32":
