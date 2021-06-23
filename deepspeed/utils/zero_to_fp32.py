@@ -21,7 +21,6 @@ debug = 0
 
 
 def get_model_state_file(checkpoint_dir):
-
     if not os.path.isdir(checkpoint_dir):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
@@ -35,10 +34,6 @@ def get_model_state_file(checkpoint_dir):
 
 
 def get_optim_files(checkpoint_dir):
-
-    if not os.path.isdir(checkpoint_dir):
-        raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
-
     # XXX: need to test that this simple glob rule works for multi-node setup too
     optim_files = sorted(glob.glob(os.path.join(checkpoint_dir, "*_optim_states.pt")))
 
@@ -50,7 +45,6 @@ def get_optim_files(checkpoint_dir):
 
 
 def parse_model_state(file):
-
     # load to cpu
     device = torch.device('cpu')
     state_dict = torch.load(file, map_location=device)
@@ -109,20 +103,18 @@ def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     return partitioned_numel, padding_numel
 
 
-def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir, output_file):
+def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     """
-    Convert zero 2 or 3 checkpoint into a single fp32 consolidated state_dict file that can be
-    loaded with ``torch.load(file)`` and used for training without DeepSpeed.
+    Returns fp32 state_dict reconstructed from ds checkpoint
 
     Args:
-        - ``checkpoint_dir``: path to the deepspeed checkpoint folder
-        - ``output_file``: path to the pytorch fp32 state_dict output file (e.g. path/pytorch_model.bin)
+        - ``ds_checkpoint_dir``: path to the deepspeed checkpoint folder (where the optimizer files are)
 
     """
-    print(f"Processing zero checkpoint '{checkpoint_dir}'")
+    print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
-    model_file = get_model_state_file(checkpoint_dir)
-    optim_files = get_optim_files(checkpoint_dir)
+    model_file = get_model_state_file(ds_checkpoint_dir)
+    optim_files = get_optim_files(ds_checkpoint_dir)
     buffers = parse_model_state(model_file)
     zero_stage, world_size, param_shapes, fp32_flat_groups = parse_optim_states(optim_files)
     print(
@@ -189,9 +181,57 @@ def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir, output_file):
                 0).view(shape)
             offset += partitioned_numel + partitioned_padding_numel
 
-    # the job is done
-    print(f"Saving fp32 state dict to {output_file} (total_numel={total_numel})")
+    if debug:
+        print(f"Reconstructed fp32 state dict with total_numel={total_numel}")
 
+    return state_dict
+
+
+def get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag=None):
+    """
+    Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be
+    loaded with ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example via a model hub.
+
+    Args:
+        - ``checkpoint_dir``: path to the desired checkpoint folder
+        - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in 'latest' file. e.g., ``global_step14``
+
+    Returns:
+        - pytorch ``state_dict``
+
+    """
+    if tag is None:
+        latest_path = os.path.join(checkpoint_dir, 'latest')
+        if os.path.isfile(latest_path):
+            with open(latest_path, 'r') as fd:
+                tag = fd.read().strip()
+        else:
+            raise ValueError(f"Unable to find 'latest' file at {latest_path}")
+
+    ds_checkpoint_dir = os.path.join(checkpoint_dir, tag)
+
+    if not os.path.isdir(ds_checkpoint_dir):
+        raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
+
+    return _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir)
+
+
+def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir,
+                                                   output_file,
+                                                   tag=None):
+    """
+    Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
+    loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
+
+    Args:
+        - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)
+        - ``output_file``: path to the pytorch fp32 state_dict output file (e.g. path/pytorch_model.bin)
+        - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in 'latest' file. e.g., ``global_step14``
+
+    """
+
+    state_dict = get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag)
+    print(f"Saving fp32 state dict to {output_file}")
     torch.save(state_dict, output_file)
 
 
@@ -201,13 +241,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "checkpoint_dir",
         type=str,
-        help=
-        "path to the deepspeed checkpoint folder, e.g., path/checkpoint-1/global_step1")
+        help="path to the desired checkpoint folder, e.g., path/checkpoint-12")
     parser.add_argument(
         "output_file",
         type=str,
         help=
-        "path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-1/pytorch_model.bin)"
+        "path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)"
     )
     args = parser.parse_args()
 
