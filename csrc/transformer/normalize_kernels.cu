@@ -121,7 +121,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                __half* means,
                                                int row_stride)
 {
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
@@ -404,7 +404,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                __half* vars,
                                                int row_stride)
 {
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
 
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;

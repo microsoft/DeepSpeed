@@ -142,7 +142,7 @@ __global__ void attn_softmax(__half* vals,
                              int seq_length,
                              int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
     __shared__ float partialSum[MAX_WARP_NUM];
 
     int warp_num = blockDim.x >> 5;
