@@ -124,7 +124,7 @@ RUN pip install psutil \
                 numpy \
                 sklearn \
                 scikit-learn \
-                mpi4py
+                mpi4py 
 
 ##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port
@@ -149,6 +149,15 @@ RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
 ##############################################################################
 RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
         rm -rf /usr/lib/python3/dist-packages/PyYAML-*
+
+##############################################################################
+## CuPy installation
+###############################################################################
+RUN git clone https://github.com/ROCmSoftwarePlatform/cupy ${STAGE_DIR}/cupy
+RUN cd ${STAGE_DIR}/cupy && \
+        git submodule update --init && \
+        CUPY_INSTALL_USE_HIP=1 ROCM_HOME=/opt/rocm pip install -e . --no-cache-dir -vvvv
+RUN rm -rf ${STAGE_DIR}/cupy
 
 ##############################################################################
 ## Add deepspeed user
