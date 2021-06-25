@@ -432,7 +432,7 @@ class PartitionedParameterCoordinator(object):
         self.hierarchy += 1
 
         # parameters are partitioned and need to be allgathered
-        self._all_gather(partitioned_params, async_op=True)
+        self._all_gather(partitioned_params, async_op=False)
 
         # parameters are inflight and communication needs to be completed
         if partitioned_params or params_in_flight:
@@ -441,7 +441,7 @@ class PartitionedParameterCoordinator(object):
         for _, param in sub_module.named_parameters(recurse=False):
             param.ds_status = ZeroParamStatus.AVAILABLE
             print_rank_0(
-                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
+                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device}",
                 force=False)
         #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
 

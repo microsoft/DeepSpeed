@@ -634,7 +634,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     all_gather_list.append(param)
 
         if not async_op:
-            ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
+            # ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
+            ret_value = self._allgather_params_split_launch(all_gather_list, hierarchy=hierarchy)
+
             for param in all_gather_list:
                 param.ds_status = ZeroParamStatus.AVAILABLE
             return ret_value
@@ -836,6 +838,61 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
         param.data = replicated_tensor.data
         return handle
+    
+    def _allgather_params_split_launch(self, param_list, hierarchy=0):
+        """ blocking call
+        avoid explicit memory copy in _allgather_params
+        """
+        if len(param_list) == 0:
+            return
+        # collect local tensors and partition sizes
+        partition_sizes = []
+        local_tensors = []
+        for param in param_list:
+            partition_sizes.append(param.ds_tensor.ds_numel)
+            local_tensors.append(param.ds_tensor)
+        
+        # allocate memory for allgather params
+        allgather_params = []
+        for psize in partition_sizes:
+            tensor_size = psize * self.world_size
+            flat_tensor = torch.empty(tensor_size,
+                                        dtype=param_list[0].dtype,
+                                        device=self.local_device).view(-1)
+            flat_tensor.requres_grad = False
+            allgather_params.append(flat_tensor)
+        
+        # launch 
+        launch_handles = []
+        # backend = get_backend(self.ds_process_group)
+        # with _batch_p2p_manager(backend):
+        for param_idx, param in enumerate(param_list):
+            output_list = []
+            for i in range(self.world_size):
+                psize = partition_sizes[param_idx]
+                partition = allgather_params[param_idx].narrow(0, i * psize, psize)
+                output_list.append(partition)
+
+            input_tensor = local_tensors[param_idx].view(-1)
+            h = torch.distributed.all_gather(output_list, 
+                            input_tensor,
+                            group=self.ds_process_group,
+                            async_op=True)
+            launch_handles.append(h)
+        
+        # Wait ensures the operation is enqueued, but not necessarily complete.
+        launch_handles[-1].wait()
+
+        # assign to param.data (not copy)
+        for i, param in enumerate(param_list):
+            gathered_tensor = allgather_params[i]
+            param.data = gathered_tensor.narrow(
+                0, 0, param.ds_numel).view(param.ds_shape).data
+
+        # guarantee the communication to be completed
+        torch.cuda.synchronize()
+
+        return None
 
     def _allgather_params(self, param_list, hierarchy=0):
         if len(param_list) == 0:
