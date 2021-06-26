@@ -52,9 +52,6 @@ class SDLoaderBase(ABC):
         num_ckpt = len(self.ckpt_list)
         idx = mp_rank * num_ckpt // mp_world_size
 
-        logger.info(
-            f'mp_world_size: {mp_world_size}, mp_rank: {mp_rank}, module_key: {module_key}'
-        )
         """ We have multiple cases to handle here for both training and inference:
             1. PipeModule loading mp_rank_*.pt files, is_pipe_parallel=True, module_key is not None
                 a. if no mp_size/pp_size resizing occurs, for both training & inference, loading
