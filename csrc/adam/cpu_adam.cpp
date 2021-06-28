@@ -342,8 +342,9 @@ int create_adam_optimizer(int optimizer_id,
 #endif
 #endif
 
-        std::cout << "Adam Optimizer #" << optimizer_id << " is created with " << avx_type
-                  << " arithmetic capability." << std::endl;
+        printf("Adam Optimizer #%d is created with %s arithmetic capability.\n",
+               optimizer_id,
+               avx_type.c_str());
         printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
                alpha,
                betta1,
