@@ -15,7 +15,7 @@ from torch.nn.modules import Module
 from torch.distributed.distributed_c10d import _get_global_rank
 from tensorboardX import SummaryWriter
 
-from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.runtime.utils import see_memory_usage, get_grad_norm
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -1113,21 +1113,41 @@ class DeepSpeedEngine(Module):
         for param_name, param in self.module.named_parameters():
             param.grad = None
 
-    def clip_fp32_gradients(self):
-        torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
-                                       max_norm=self.gradient_clipping())
+    #gradient clipping with model parallelism support
+    def clip_gradients(self, parameters, max_norm=1.0):
+        total_norm = get_grad_norm(parameters, mpu=self.mpu)
+
+        # compute combined scale factor for this group
+        clip_scale = 1.0
+        if max_norm > 0 and total_norm > max_norm:
+            clip_scale = (total_norm + 1e-8) / max_norm
+            
+        for param in parameters:
+            if param.grad is not None:
+                param.grad.data.mul_(1. / clip_scale)
+
+        return clip_scale
+
+    # def clip_fp32_gradients(self):
+    #     torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
+    #                                    max_norm=self.gradient_clipping())
 
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
             if not (self.fp16_enabled() or self.amp_enabled()
                     or self.zero_optimization()):
-                self.clip_fp32_gradients()
+                parameters_to_clip = self.module.parameters()
+                #self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
                 # https://nvidia.github.io/apex/advanced.html#gradient-clipping
-                master_params = amp.master_params(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(parameters=master_params,
-                                               max_norm=self.gradient_clipping())
+                # master_params = amp.master_params(self.optimizer)
+                # torch.nn.utils.clip_grad_norm_(parameters=master_params,
+                #                                max_norm=self.gradient_clipping())
+                parameters_to_clip = amp.master_params(self.optimizer)
+                
+            self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
+
         self.optimizer.step()
 
         #zero grad in basic optimizer could be unreliable and may not exhibit
