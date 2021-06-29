@@ -20,9 +20,7 @@ __global__ void attn_softmax(float* vals,
     int block_width = blockStride * seq_length;
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
-    cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
-    g.tiled_partition(b, tbSize);
+    cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
 
     int batch = blockIdx.x;
     int row = blockIdx.y;
@@ -144,7 +142,7 @@ __global__ void attn_softmax(__half* vals,
                              int seq_length,
                              int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
     __shared__ float partialSum[MAX_WARP_NUM];
 
     int warp_num = blockDim.x >> 5;
@@ -153,9 +151,7 @@ __global__ void attn_softmax(__half* vals,
     int block_width = blockStride * seq_length;
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
-    cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
-    g.tiled_partition(b, tbSize);
+    cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
 
     int batch = blockIdx.x;
     int row = blockIdx.y;
@@ -449,9 +445,7 @@ __global__ void softmax_backward_kernel(T* out_grad, const T* soft_inp, int seq_
                           : MAX_THREAD_ITERATIONS);
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
-    cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
-    g.tiled_partition(b, tbSize);
+    cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -526,9 +520,7 @@ __global__ void softmax_backward_kernel_v2(T* grad /* input & output*/,
     }
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
-    cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
-    g.tiled_partition(b, WARP_SIZE);
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
     for (int i = 1; i < WARP_SIZE; i <<= 1) sum += g.shfl_xor(sum, i);
 
