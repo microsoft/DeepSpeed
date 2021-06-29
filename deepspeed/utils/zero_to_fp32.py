@@ -25,7 +25,10 @@ def get_model_state_file(checkpoint_dir):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
     # there should be only one file
-    file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
+    if zero_stage == 2:
+        file = os.path.join(checkpoint_dir, "mp_rank_00_model_states.pt")
+    elif zero_stage == 3:
+        file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
 
     if not os.path.exists(file):
         raise FileNotFoundError(f"can't find '{file}' in directory '{checkpoint_dir}'")
@@ -113,12 +116,13 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     """
     print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
-    model_file = get_model_state_file(ds_checkpoint_dir)
     optim_files = get_optim_files(ds_checkpoint_dir)
-    buffers = parse_model_state(model_file)
     zero_stage, world_size, param_shapes, fp32_flat_groups = parse_optim_states(optim_files)
     print(
         f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
+
+    model_file = get_model_state_file(ds_checkpoint_dir, zero_stage)
+    buffers = parse_model_state(model_file)
 
     # Reconstruction protocol:
     #
