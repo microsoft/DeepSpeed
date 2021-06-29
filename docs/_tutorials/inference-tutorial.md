@@ -74,7 +74,6 @@ DeepSpeed inference can be used in conjunction with HuggingFace `pipeline`. Belo
 import os
 import deepspeed
 import torch
-import transformers
 from transformers import pipeline
 
 local_rank = int(os.getenv('LOCAL_RANK', '0'))
@@ -112,7 +111,6 @@ DeepSpeed inference supports fp32, fp16 and int8 parameters. The appropriate dat
 
 ```python
 import deepspeed
-import deepspeed.module_inject as module_inject
 model = deepspeed.init_inference(model,
                                  checkpoint='./checkpoint.json',
                                  dtype=torch.int8,
