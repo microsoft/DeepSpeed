@@ -20,7 +20,7 @@ import deepspeed
 debug = 0
 
 
-def get_model_state_file(checkpoint_dir):
+def get_model_state_file(checkpoint_dir, zero_stage):
     if not os.path.isdir(checkpoint_dir):
         raise FileNotFoundError(f"Directory '{checkpoint_dir}' doesn't exist")
 
