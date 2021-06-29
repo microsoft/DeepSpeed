@@ -258,6 +258,7 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
 # 3-128-54-2-24-False-True-0.2
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
                          [
+                             (4,2048,512,32,24,True,True, 0.05),
                              (8,1600,128,25,3,True,True, 0.05),
                              (8,160,128,2,3,True,True, 0.1),
                              (8,1600,128,2,3,True,True, 0.05),
