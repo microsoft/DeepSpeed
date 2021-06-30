@@ -898,8 +898,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         # we may have a way of fusing dynamic scale. Do not support for now
         if self.dtype == torch.float or not dynamic_loss_scale:
             loss_scale_value = 1.0 if self.dtype == torch.float else static_loss_scale
+            #loss_scale_value = static_loss_scale
 
             self.dynamic_loss_scale = False
+            #print(f"Loss scale value {loss_scale_value}")
+            #exit(0)
             self.loss_scaler = LossScaler(scale=loss_scale_value)
             cur_iter = 0
         else:
@@ -2827,6 +2830,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         for norm in norm_groups:
             total_norm += norm**2.0
         total_norm = math.sqrt(total_norm)
+
+        #print(f"Total norm with loss scaling: {total_norm}")
 
         # compute combined scale factor for this group
         combined_scale = self.loss_scale

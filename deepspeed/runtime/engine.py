@@ -1137,6 +1137,8 @@ class DeepSpeedEngine(Module):
             if not (self.fp16_enabled() or self.amp_enabled()
                     or self.zero_optimization()):
                 parameters_to_clip = self.module.parameters()
+                self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
+
                 #self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
@@ -1144,9 +1146,8 @@ class DeepSpeedEngine(Module):
                 # master_params = amp.master_params(self.optimizer)
                 # torch.nn.utils.clip_grad_norm_(parameters=master_params,
                 #                                max_norm=self.gradient_clipping())
-                parameters_to_clip = amp.master_params(self.optimizer)
-                
-            self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
+                parameters_to_clip = amp.master_params(self.optimizer)                
+                self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
 
         self.optimizer.step()
 
