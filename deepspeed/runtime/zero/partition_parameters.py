@@ -1096,7 +1096,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             return
 
         for param in param_list:
-            assert param.ds_status != new_status, f"Detected redundant status update, param = {param.ds_id} status = {param.ds_status}"
+            #assert param.ds_status != new_status, f"Detected redundant status update, param = {param.ds_id} status = {param.ds_status}"
             old_status = param.ds_status
             param.ds_status = new_status
             self._update_param_status(new_status, old_status, param.ds_numel)
