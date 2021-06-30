@@ -56,7 +56,7 @@ def parse_model_state(file):
         raise ValueError(f"{file} is not a model state checkpoint")
     buffer_names = state_dict["buffer_names"]
     if debug:
-        print(buffer_names)
+        print("Found buffers:", buffer_names)
 
     # recover just the buffers while restoring them to fp32 if they were saved in fp16
     buffers = {
@@ -265,6 +265,9 @@ if __name__ == "__main__":
         help=
         "path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)"
     )
+    parser.add_argument("-d", "--debug", action='store_true', help="enable debug")
     args = parser.parse_args()
+
+    debug = args.debug
 
     convert_zero_chkpt_to_fp32_consolid_state_dict(args.checkpoint_dir, args.output_file)
