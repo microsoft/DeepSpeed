@@ -38,6 +38,7 @@ from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.eigenvalue import Eigenvalue
 
@@ -121,6 +122,9 @@ class DeepSpeedEngine(Module):
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
+
+        # for debug purposes - can then debug print: debug_get_module_name(module)
+        debug_extract_module_and_param_names(model)
 
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
@@ -928,7 +932,7 @@ class DeepSpeedEngine(Module):
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
-            print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
+            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage3(
                 self.module,
@@ -1915,6 +1919,7 @@ class DeepSpeedEngine(Module):
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
         state = dict(module=self.module_state_dict(),
+                     buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not self.zero_optimization() else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
@@ -1933,6 +1938,27 @@ class DeepSpeedEngine(Module):
         #logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
         self._curr_save_path = None
+
+    def _get_buffer_names(self):
+        buffer_names = []
+
+        # we save buffer names so that we could extract later the real buffers from the saved
+        # state_dict["module"] in the non-zero checkpoint - the buffers are already there but they
+        # are intermixed with param placeholders
+
+        # have to traverse the tree to be able to skip non-persistent buffers
+        def get_layer_named_buffers(module, prefix=""):
+            for name, buf in module.named_buffers(recurse=False):
+                if buf is not None and name not in module._non_persistent_buffers_set:
+                    buffer_names.append(prefix + name)
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_named_buffers(child, prefix + name + ".")
+
+        get_layer_named_buffers(self.module, prefix="")
+
+        return buffer_names
 
     def _get_param_shapes(self):
         param_shapes = OrderedDict()
