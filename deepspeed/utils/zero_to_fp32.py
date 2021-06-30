@@ -5,17 +5,17 @@
 # the future. Once extracted, the weights don't require DeepSpeed and can be used in any
 # application.
 #
-# example: python zero_to_fp32.py global_step1 pytorch_model.bin
+# example: python zero_to_fp32.py . pytorch_model.bin
 
 import argparse
 import torch
 import glob
 import os
 from collections import OrderedDict
-import deepspeed
 
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
 # DeepSpeed data structures it has to be available in the current python environment.
+import deepspeed
 
 debug = 0
 
@@ -67,7 +67,9 @@ def parse_model_state(file):
     return buffers
 
 
-def parse_optim_states(files):
+def parse_optim_states(files, ds_checkpoint_dir):
+
+    total_files = len(files)
     state_dicts = []
     for f in files:
         state_dicts.append(torch.load(f))
@@ -77,6 +79,11 @@ def parse_optim_states(files):
     zero_stage = state_dicts[0]['optimizer_state_dict']["zero_stage"]
     world_size = state_dicts[0]['optimizer_state_dict']["partition_count"]
     param_shapes = state_dicts[0]["param_shapes"]
+
+    if world_size != total_files:
+        raise ValueError(
+            f"Expected {world_size} of '*_optim_states.pt' under '{ds_checkpoint_dir}' but got {total_files} files"
+        )
 
     # the groups are named differently in each stage
     if zero_stage == 2:
@@ -117,7 +124,7 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
     optim_files = get_optim_files(ds_checkpoint_dir)
-    zero_stage, world_size, param_shapes, fp32_flat_groups = parse_optim_states(optim_files)
+    zero_stage, world_size, param_shapes, fp32_flat_groups = parse_optim_states(optim_files, ds_checkpoint_dir)
     print(
         f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
 
