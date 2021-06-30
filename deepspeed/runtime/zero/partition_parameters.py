@@ -10,6 +10,8 @@ from enum import Enum
 import functools
 import itertools
 
+from deepspeed.ops.communication import communication as ds_comm
+
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 
@@ -635,7 +637,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         if not async_op:
             # ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
-            ret_value = self._allgather_params_split_launch(all_gather_list, hierarchy=hierarchy)
+            # ret_value = self._allgather_params_split_launch(all_gather_list, hierarchy=hierarchy)
+            ret_value = self._allgather_params_with_custom_op(all_gather_list, hierarchy)
 
             for param in all_gather_list:
                 param.ds_status = ZeroParamStatus.AVAILABLE
@@ -838,7 +841,52 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
         param.data = replicated_tensor.data
         return handle
-    
+
+    def _allgather_params_with_custom_op(self, param_list, hierarchy=0):
+        """ using customized allgather op to avoid redundant cudaMemcpy
+        Note: the torch.distributed.allgather has extra copy: 
+        https://github.com/pytorch/pytorch/blob/v1.9.0/torch/lib/c10d/ProcessGroupNCCL.cpp#L1469
+        """
+        if len(param_list) == 0:
+            return
+        # collect local tensors and partition sizes
+        partition_sizes = []
+        local_tensors = []
+        for param in param_list:
+            partition_sizes.append(param.ds_tensor.ds_numel)
+            local_tensors.append(param.ds_tensor)
+
+        # allocate memory for allgather params
+        allgather_output_params = []
+        for psize in partition_sizes:
+            tensor_size = psize * self.world_size
+            flat_tensor = torch.empty(tensor_size,
+                                        dtype=param_list[0].dtype,
+                                        device=self.local_device).view(-1)
+            flat_tensor.requres_grad = False
+            allgather_output_params.append(flat_tensor)
+
+        # suppose to set the communication stream outside of this function
+        comm_stream = torch.cuda.current_stream()
+
+        # the handle is a wrapper of the start and the end events
+        comm_handle = ds_comm.inplace_allgather(allgather_output_params,
+                                                local_tensors,
+                                                self.ds_process_group,
+                                                comm_stream)
+
+        # assign to param.data (not copy)
+        for i, param in enumerate(param_list):
+            gathered_tensor = allgather_output_params[i]
+            param.data = gathered_tensor.narrow(
+                0, 0, param.ds_numel).view(param.ds_shape).data
+
+        # this synchronize on cuda.Event
+        comm_handle.synchronize()
+
+        return None
+
+
     def _allgather_params_split_launch(self, param_list, hierarchy=0):
         """ blocking call
         avoid explicit memory copy in _allgather_params
@@ -851,7 +899,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param in param_list:
             partition_sizes.append(param.ds_tensor.ds_numel)
             local_tensors.append(param.ds_tensor)
-        
+
         # allocate memory for allgather params
         allgather_params = []
         for psize in partition_sizes:
@@ -861,8 +909,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                         device=self.local_device).view(-1)
             flat_tensor.requres_grad = False
             allgather_params.append(flat_tensor)
-        
-        # launch 
+
+        # launch
         launch_handles = []
         # backend = get_backend(self.ds_process_group)
         # with _batch_p2p_manager(backend):
@@ -874,12 +922,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 output_list.append(partition)
 
             input_tensor = local_tensors[param_idx].view(-1)
-            h = torch.distributed.all_gather(output_list, 
+            h = torch.distributed.all_gather(output_list,
                             input_tensor,
                             group=self.ds_process_group,
                             async_op=True)
             launch_handles.append(h)
-        
+
         # Wait ensures the operation is enqueued, but not necessarily complete.
         launch_handles[-1].wait()
 

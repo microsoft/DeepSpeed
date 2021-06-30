@@ -110,7 +110,7 @@ def _custom_allgather_once(output_tensors, input_tensors, comm_stream):
     pg_name = _pg_names[default_pg]
 
     with torch.cuda.stream(comm_stream):
-        res = ds_coll_comm.inplace_allgather(output_tensors,
+        res = ds_coll_comm._inplace_allgather(output_tensors,
                                              input_tensors,
                                              default_pg,
                                              pg_name)

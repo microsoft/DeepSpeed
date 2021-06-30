@@ -211,5 +211,5 @@ int inplaceAllgather(std::vector<at::Tensor>& output_tensors,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("inplace_allgather", &inplaceAllgather, "inplace all-gather (without memcpy)");
+    m.def("_inplace_allgather", &inplaceAllgather, "inplace all-gather (without memcpy)");
 }
