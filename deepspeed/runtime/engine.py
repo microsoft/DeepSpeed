@@ -1985,7 +1985,8 @@ class DeepSpeedEngine(Module):
                        ds_config=self.config,
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
-        self._copy_recovery_script(save_path)
+        if self.global_rank == 0:
+            self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
     def _zero3_consolidated_fp16_state_dict(self):
