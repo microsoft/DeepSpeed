@@ -38,6 +38,7 @@ from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.eigenvalue import Eigenvalue
 
@@ -121,6 +122,9 @@ class DeepSpeedEngine(Module):
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
+
+        # for debug purposes - can then debug print: debug_get_module_name(module)
+        debug_extract_module_and_param_names(model)
 
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
@@ -562,6 +566,14 @@ class DeepSpeedEngine(Module):
         # environment variable is set. We must align args.local_rank to this value for
         # backwards compatability with scripts relying on [args|self].local_rank containing
         # the correct local rank info. _do_args_sanity_check will ensure this is the case.
+
+        if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+            ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
+            local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
+            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({mpi_local_rank}), " \
+                "not sure how to proceed as we're seeing conficting local rank info."
+            os.environ['LOCAL_RANK'] = local_rank
+
         self.local_rank = int(os.environ['LOCAL_RANK'])
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
@@ -581,8 +593,10 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        assert "LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment variable, it is set by the deepspeed launcher, " \
-            "deepspeed.init_distributed, or the torch.distributed launcher. If using a different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
+        assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
+            "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch.distributed launcher. If using a " \
+            "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
+
         if hasattr(args, 'local_rank') and args.local_rank != None:
             assert isinstance(args.local_rank, int), f"args.local_rank of {args.local_rank} is an unknown type {type(args.local_rank)}"
             if args.local_rank >= 0:
@@ -638,7 +652,7 @@ class DeepSpeedEngine(Module):
                         p in self.module.named_parameters() if p.dtype != torch.half
                     ]
                     raise ValueError(
-                        "fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
+                        f"fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
                     )
             self.module.half()
         else:
@@ -649,7 +663,7 @@ class DeepSpeedEngine(Module):
                     p in self.module.named_parameters() if p.dtype != torch.float
                 ]
                 raise ValueError(
-                    "fp32 is enabled but the following parameters have dtype that is not fp32: {', '.join(names)}"
+                    f"fp32 is enabled but the following parameters have dtype that is not fp32: {', '.join(names)}"
                 )
 
         if not self.dont_change_device:
@@ -768,6 +782,7 @@ class DeepSpeedEngine(Module):
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Adam is not compatible with ZeRO"
             from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
@@ -775,6 +790,7 @@ class DeepSpeedEngine(Module):
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
         elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Lamb is not compatible with ZeRO"
             from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
             optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
@@ -916,7 +932,7 @@ class DeepSpeedEngine(Module):
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
-            print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
+            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage3(
                 self.module,
@@ -1909,6 +1925,7 @@ class DeepSpeedEngine(Module):
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
         state = dict(module=self.module_state_dict(),
+                     buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not self.zero_optimization() else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
@@ -1927,6 +1944,27 @@ class DeepSpeedEngine(Module):
         #logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
         self._curr_save_path = None
+
+    def _get_buffer_names(self):
+        buffer_names = []
+
+        # we save buffer names so that we could extract later the real buffers from the saved
+        # state_dict["module"] in the non-zero checkpoint - the buffers are already there but they
+        # are intermixed with param placeholders
+
+        # have to traverse the tree to be able to skip non-persistent buffers
+        def get_layer_named_buffers(module, prefix=""):
+            for name, buf in module.named_buffers(recurse=False):
+                if buf is not None and name not in module._non_persistent_buffers_set:
+                    buffer_names.append(prefix + name)
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_named_buffers(child, prefix + name + ".")
+
+        get_layer_named_buffers(self.module, prefix="")
+
+        return buffer_names
 
     def _get_param_shapes(self):
         param_shapes = OrderedDict()

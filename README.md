@@ -4,7 +4,7 @@
 [![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Microsoft/DeepSpeed/blob/master/LICENSE)
 [![Downloads](https://pepy.tech/badge/deepspeed/month)](https://pepy.tech/project/deepspeed)
 
-### 03/2021: DeepSpeed is hiring! Come join us: [SDE 2](https://careers.microsoft.com/us/en/job/1013160/Software-Engineer-2), [Sr. SDE](https://careers.microsoft.com/us/en/job/1017151/Senior-Software-Engineer), [Sr. Researcher](https://careers.microsoft.com/us/en/job/1016440/Senior-Researcher)
+### DeepSpeed is hiring! Come join us: [SDE 2](https://careers.microsoft.com/us/en/job/1013160/Software-Engineer-2), [Sr. SDE](https://careers.microsoft.com/us/en/job/1017151/Senior-Software-Engineer), [Sr. Researcher](https://careers.microsoft.com/us/en/job/1016440/Senior-Researcher)
 
 [DeepSpeed](https://www.deepspeed.ai/) is a deep learning optimization
 library that makes distributed training easy, efficient, and effective.
@@ -95,6 +95,12 @@ ds_report
 If you would like to pre-install any of the DeepSpeed extensions/ops (instead
 of JIT compiling) or install pre-compiled ops via PyPI please see our [advanced
 installation instructions](https://www.deepspeed.ai/tutorials/advanced-install/).
+
+On Windows you can build wheel with following steps, currently only inference mode is supported.
+1. Install pytorch, such as pytorch 1.8 + cuda 11.1
+2. Install visual cpp build tools, such as VS2019 C++ x64/x86 build tools
+3. Launch cmd console with Administrator privilege for creating required symlink folders
+4. Run `python setup.py bdist_wheel` to build wheel in `dist` folder
 
 # Features
 Below we provide a brief feature list, see our detailed [feature

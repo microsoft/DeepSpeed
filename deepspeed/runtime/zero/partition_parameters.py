@@ -18,6 +18,7 @@ from .offload_constants import *
 
 from ..utils import see_memory_usage
 from deepspeed.utils import log_dist, init_distributed
+from deepspeed.utils.debug import debug_param2name_id_shape, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
 from ..config import DeepSpeedConfig
@@ -27,8 +28,14 @@ partitioned_param_data_shape = [1]
 
 
 def print_rank_0(message, debug=False, force=False):
-    if torch.distributed.get_rank() == 0 and (debug or force):
+    rank = torch.distributed.get_rank()
+    if rank == 0 and (debug or force):
         print(message)
+    # other variations
+    # - print for all ranks w/o interleaving
+    # printflock(f"[{rank}] {message}")
+    # - print to log file per rank
+    # log_rank_file(rank, message)
 
 
 def is_zero_param(parameter):
@@ -186,6 +193,20 @@ def new_cuda_tensor(cls, *args):
     return tensor
 
 
+# https://stackoverflow.com/a/63851681/9201239
+def get_all_subclasses(cls):
+    subclass_list = []
+
+    def recurse(cl):
+        for subclass in cl.__subclasses__():
+            subclass_list.append(subclass)
+            recurse(subclass)
+
+    recurse(cls)
+
+    return set(subclass_list)
+
+
 reuse_buffers = False
 temp_contiguous_tensor = None
 empty_buffers = {}
@@ -224,8 +245,9 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def _init_subclass(cls, **kwargs):
             cls.__init__ = partition_after(cls.__init__)
 
-        # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
+        # Replace .__init__() for all existing subclasses of torch.nn.Module recursively
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+            # print(f"subclass={subclass.__module__}.{subclass.__qualname__}")
             _enable_class(subclass)
 
         # holding on to the current __init__subclass__ for exit
@@ -244,7 +266,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if self.mem_efficient_linear:
             print_rank_0(
                 "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
-                force=True)
+                force=False)
             self.linear_bk = torch.nn.functional.linear
             torch.nn.functional.linear = LinearFunctionForZeroStage3.apply
 
@@ -256,7 +278,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = cls._old_init
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
+        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
             _disable_class(subclass)
 
         # Replace .__init__() for future subclasses of torch.nn.Module
@@ -466,12 +488,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             force=False)
 
         global param_count
-        for name, param in module.named_parameters(recurse=False):
+        for param in module.parameters(recurse=False):
             param_count += param.numel()
             if not is_zero_param(param):
                 self._convert_to_deepspeed_param(param)
                 print_rank_0(
-                    f"Partitioning param with ds id {param.ds_id} and shape {param.data.shape}"
+                    f"Partitioning param {debug_param2name_id_shape(param)} module={debug_module2name(module)}"
                 )
                 param.partition()
         see_memory_usage(
@@ -782,23 +804,23 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         assert tensor_size == aligned_param_size, f'param id {param.ds_id} aligned size {aligned_param_size} does not match tensor size {tensor_size}'
 
         print_rank_0(
-            f"{'--'* hierarchy}---- Before allocating Allgather param with id {param.ds_id} and status {param.ds_status} Partition Size {partition_size} and data shape {param.ds_shape}"
+            f"{'--'* hierarchy}---- Before allocating allgather param {debug_param2name_id_shape_status(param)} partition size={partition_size}"
         )
 
         see_memory_usage(
-            f'Before allocate allgather param {param.ds_id} {param.ds_status} {aligned_param_size} {partition_size} {param.ds_shape}',
+            f'Before allocate allgather param {debug_param2name_id_shape_status(param)} partition_size={partition_size} ',
             force=False)
         flat_tensor = torch.zeros(aligned_param_size,
                                   dtype=param.dtype,
                                   device=param.device).view(-1)
         see_memory_usage(
-            f'After allocate allgather param {param.ds_id} {param.ds_status} {aligned_param_size} {partition_size} {param.ds_shape}',
+            f'After allocate allgather param {debug_param2name_id_shape_status(param)} {aligned_param_size} {partition_size} ',
             force=False)
 
         torch.cuda.synchronize()
 
         print_rank_0(
-            f"{'--'* hierarchy}----Allgather param with id {param.ds_id} and status {param.ds_status} Partition Size {partition_size} and data shape {param.ds_shape}"
+            f"{'--'* hierarchy}----allgather param with {debug_param2name_id_shape_status(param)} partition size={partition_size}"
         )
         #        if not flat_tensor.numel() > 100000:
         #            replicated_tensor = flat_tensor.narrow(0,
