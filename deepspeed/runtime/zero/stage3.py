@@ -472,6 +472,7 @@ class PartitionedParameterCoordinator(object):
         for param in params_to_fetch:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, f'fetch_sub_module param {param.ds_id} unavail status = {param.ds_status}'
 
+
 #            print_rank_0(
 #                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
 #                force=False)
