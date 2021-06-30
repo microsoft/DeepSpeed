@@ -294,14 +294,11 @@ class PrefetchCoordinator(object):
 
 class PartitionedParameterCoordinator(object):
     def __init__(self,
-                 comm_stream=None,
                  max_reuse_distance_in_numel=500000000,
                  max_available_parameters_in_numel=700000000):
 
         self.in_flight_handles = []
         self.params_in_flight = []
-        self.comm_stream = comm_stream if comm_stream is not None else torch.cuda.current_stream(
-        )
         self.prefetch_coordinator = PrefetchCoordinator()
         self.hierarchy = 0
 
@@ -553,27 +550,25 @@ class PartitionedParameterCoordinator(object):
         return reuse_distance_in_numel < self.max_reuse_distance_in_numel
 
     def _all_gather(self, partitioned_params, async_op=False):
-        with torch.cuda.stream(self.comm_stream):
-            handles = partitioned_params[0].all_gather(
-                param_list=partitioned_params,
-                async_op=async_op,
-                hierarchy=self.hierarchy) if partitioned_params else None
+        handles = partitioned_params[0].all_gather(
+            param_list=partitioned_params,
+            async_op=async_op,
+            hierarchy=self.hierarchy) if partitioned_params else None
 
         if handles is not None:
             self.in_flight_handles.extend(handles)
             self.params_in_flight.extend(partitioned_params)
 
-    def _synchronize_communication(self, synchronize_streams=True):
+    def _synchronize_communication(self):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
 
         if len(self.params_in_flight) > 0:
             avail_params = [param.ds_id for param in self.params_in_flight]
             status_params = [param.ds_status for param in self.params_in_flight]
 
-            with torch.cuda.stream(self.comm_stream):
-                self.params_in_flight[0].synchronize_communication(
-                    self.params_in_flight,
-                    self.in_flight_handles)
+            self.params_in_flight[0].synchronize_communication(
+                self.params_in_flight,
+                self.in_flight_handles)
 
             for param in self.params_in_flight:
                 assert param.ds_status == ZeroParamStatus.AVAILABLE, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.AVAILABLE}'
@@ -584,8 +579,6 @@ class PartitionedParameterCoordinator(object):
                 f'_sync_comm marks available params = {avail_params} status = {status_params} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}',
                 force=False)
 
-        self.comm_stream.synchronize()
-        torch.cuda.synchronize() if synchronize_streams else None
         self.in_flight_handles = []
         self.params_in_flight = []
 
@@ -766,13 +759,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         fetch_stream = torch.cuda.Stream() if self.overlap_comm else None
         self.param_coordinator = PartitionedParameterCoordinator(
-            comm_stream=fetch_stream,
             max_reuse_distance_in_numel=int(max_reuse_distance),
             max_available_parameters_in_numel=int(max_live_parameters))
 
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 
-        #self.param_coordinator = PartitionedParameterCoordinator(comm_stream=torch.cuda.Stream())
         #-------------Stage 3 Setup-------------------#
         # parameters smaller than the threshold will be collectively gathered at the
         # end of the optimizer step and will be kept till the end of the backward pass
