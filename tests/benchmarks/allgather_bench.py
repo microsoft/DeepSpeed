@@ -1,5 +1,5 @@
 """
-Test command: 
+Test command:
 python3 -m torch.distributed.launch --nnodes=1 --nproc_per_node=2 <this-file>
 """
 
@@ -105,15 +105,16 @@ def bench_torch_allgather(output_tensors,
 
     print_bw_rank0(partition_sizes, ts, input_tensors[0].dtype)
 
+
 def _custom_allgather_once(output_tensors, input_tensors, comm_stream):
     default_pg = _get_default_group()
     pg_name = _pg_names[default_pg]
 
     with torch.cuda.stream(comm_stream):
         res = ds_coll_comm._inplace_allgather(output_tensors,
-                                             input_tensors,
-                                             default_pg,
-                                             pg_name)
+                                              input_tensors,
+                                              default_pg,
+                                              pg_name)
     comm_stream.synchronize()
     return res
 
@@ -129,19 +130,21 @@ def bench_custom_allgather(output_tensors,
     comm_stream = torch.cuda.Stream(rank % torch.cuda.device_count())
 
     ts = []
-    for i in range(warm_up+repeat):
+    for i in range(warm_up + repeat):
         s = time.time()
         _custom_allgather_once(output_tensors, input_tensors, comm_stream)
         e = time.time()
 
         if i >= warm_up:
             ts.append(e - s)
-    
+
     print_bw_rank0(partition_sizes, ts, input_tensors[0].dtype)
+
 
 def print_rank0(msg):
     if (dist.get_rank() == 0):
         print(msg)
+
 
 def main():
     """"""
@@ -194,7 +197,10 @@ def main():
     out_sum_custom = combined_tensor_custom.sum()
     print_rank0(f'output tensor sum {out_sum_custom}')
 
-    print_rank0(f'allgather results are close {combined_tensor_custom.allclose(combined_tensor_torch)}')
+    print_rank0(
+        f'allgather results are close {combined_tensor_custom.allclose(combined_tensor_torch)}'
+    )
+
 
 if __name__ == '__main__':
     main()

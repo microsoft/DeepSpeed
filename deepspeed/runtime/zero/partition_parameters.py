@@ -844,7 +844,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _allgather_params_with_custom_op(self, param_list, hierarchy=0):
         """ using customized allgather op to avoid redundant cudaMemcpy
-        Note: the torch.distributed.allgather has extra copy: 
+        Note: the torch.distributed.allgather has extra copy:
         https://github.com/pytorch/pytorch/blob/v1.9.0/torch/lib/c10d/ProcessGroupNCCL.cpp#L1469
         """
         if len(param_list) == 0:
@@ -861,8 +861,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for psize in partition_sizes:
             tensor_size = psize * self.world_size
             flat_tensor = torch.empty(tensor_size,
-                                        dtype=param_list[0].dtype,
-                                        device=self.local_device).view(-1)
+                                      dtype=param_list[0].dtype,
+                                      device=self.local_device).view(-1)
             flat_tensor.requres_grad = False
             allgather_output_params.append(flat_tensor)
 
@@ -878,14 +878,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # assign to param.data (not copy)
         for i, param in enumerate(param_list):
             gathered_tensor = allgather_output_params[i]
-            param.data = gathered_tensor.narrow(
-                0, 0, param.ds_numel).view(param.ds_shape).data
+            param.data = gathered_tensor.narrow(0,
+                                                0,
+                                                param.ds_numel).view(param.ds_shape).data
 
         # this synchronize on cuda.Event
         comm_handle.synchronize()
 
         return None
-
 
     def _allgather_params_split_launch(self, param_list, hierarchy=0):
         """ blocking call
@@ -905,8 +905,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for psize in partition_sizes:
             tensor_size = psize * self.world_size
             flat_tensor = torch.empty(tensor_size,
-                                        dtype=param_list[0].dtype,
-                                        device=self.local_device).view(-1)
+                                      dtype=param_list[0].dtype,
+                                      device=self.local_device).view(-1)
             flat_tensor.requres_grad = False
             allgather_params.append(flat_tensor)
 
@@ -923,9 +923,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             input_tensor = local_tensors[param_idx].view(-1)
             h = torch.distributed.all_gather(output_list,
-                            input_tensor,
-                            group=self.ds_process_group,
-                            async_op=True)
+                                             input_tensor,
+                                             group=self.ds_process_group,
+                                             async_op=True)
             launch_handles.append(h)
 
         # Wait ensures the operation is enqueued, but not necessarily complete.
@@ -934,8 +934,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # assign to param.data (not copy)
         for i, param in enumerate(param_list):
             gathered_tensor = allgather_params[i]
-            param.data = gathered_tensor.narrow(
-                0, 0, param.ds_numel).view(param.ds_shape).data
+            param.data = gathered_tensor.narrow(0,
+                                                0,
+                                                param.ds_numel).view(param.ds_shape).data
 
         # guarantee the communication to be completed
         torch.cuda.synchronize()

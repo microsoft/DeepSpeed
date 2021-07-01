@@ -27,6 +27,7 @@ class CommunicationHandle:
     def synchronize(self):
         self.end.synchronize()
 
+
 def map_process_group(group):
     # print(f'rank {dist.get_rank(group=group)}, _pg_names {_pg_names}, _pg_group_ranks {_pg_group_ranks}')
     if group == dist.group.WORLD:
@@ -41,7 +42,7 @@ def inplace_allgather(output_tensors, input_tensors, group, comm_stream, timing=
     if coll_comm_module is None:
         coll_comm_module = CommunicationBuilder().load()
 
-    group = map_process_group(group) 
+    group = map_process_group(group)
     process_group_name = _pg_names[group]
 
     start_event = torch.cuda.Event(enable_timing=timing)
