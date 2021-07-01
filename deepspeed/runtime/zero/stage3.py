@@ -960,7 +960,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.fp16_groups.append(sub_group)
                 self.sub_group_to_group_id[i] = j
 
-                #These are the list of the partitoned parameters
+                #These are the list of the partitioned parameters
                 self.fp16_partitioned_groups.append(
                     [param.ds_tensor for param in self.fp16_groups[i]])
 
@@ -1092,6 +1092,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self.offload_param:
             self._create_param_groups_fp16_flat_cpu_memory()
 
+        unpartitioned_params = []
         # loop to deal with groups
         for j, param_group in enumerate(self.optimizer.param_groups):
 
@@ -1106,7 +1107,17 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.fp16_groups.append(sub_group)
                 self.sub_group_to_group_id[i] = j
 
-                #These are the list of the partitoned parameters
+                for param in self.fp16_groups[i]:
+                    # for some reason this param wasn't partitioned
+                    if param.numel() != 1:
+                        unpartitioned_params.append(debug_param2name_id_shape(param))
+
+                # comment out for zero_to_fp32 debug
+                # if torch.distributed.get_rank() == 0:
+                #     for param in self.fp16_groups[i]:
+                #         print(f"{debug_param2name_id_shape(param)} {param.ds_shape}")
+
+                #These are the list of the partitioned parameters
                 self.fp16_partitioned_groups.append(
                     [param.ds_tensor for param in self.fp16_groups[i]])
 
@@ -1190,6 +1201,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     create_fp16_flat_reuse_buffer = True
 
                 see_memory_usage(f"After Flattening param subgroup {i}", force=False)
+
+        # Perhaps it should assert if any params are unpartitioned.
+        if len(unpartitioned_params) > 0 and torch.distributed.get_rank() == 0:
+            logger.warning(
+                f"{len(unpartitioned_params)} unpartitioned params detected:\n" +
+                "\n".join(unpartitioned_params))
 
         if create_fp16_flat_reuse_buffer:
             assert len(largest_partition_numel) > 0, f'Unexpected that largest partition is empty'
@@ -1406,14 +1423,16 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def persistent_parameters(self):
         persistent_params = []
         total_persistent_parameters = 0
+        params_count = 0
         for _, param in self.module.named_parameters(recurse=True):
             if param.ds_numel < self.persistence_threshold:
+                params_count += 1
                 param.ds_persist = True
                 persistent_params.append(param)
                 total_persistent_parameters += param.ds_numel
 
         print_rank_0(
-            f'ZeRO 3: Total persistent parameters: {total_persistent_parameters}',
+            f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
             force=False)
         return persistent_params
 

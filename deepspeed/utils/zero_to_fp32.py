@@ -19,6 +19,9 @@ import deepspeed
 
 debug = 0
 
+# load to cpu
+device = torch.device('cpu')
+
 
 def get_model_state_file(checkpoint_dir, zero_stage):
     if not os.path.isdir(checkpoint_dir):
@@ -48,8 +51,6 @@ def get_optim_files(checkpoint_dir):
 
 
 def parse_model_state(file):
-    # load to cpu
-    device = torch.device('cpu')
     state_dict = torch.load(file, map_location=device)
 
     if "buffer_names" not in state_dict:
@@ -72,7 +73,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     total_files = len(files)
     state_dicts = []
     for f in files:
-        state_dicts.append(torch.load(f))
+        state_dicts.append(torch.load(f, map_location=device))
 
     if not "zero_stage" in state_dicts[0]['optimizer_state_dict']:
         raise ValueError(f"{files[0]} is not a zero checkpoint")
@@ -82,7 +83,8 @@ def parse_optim_states(files, ds_checkpoint_dir):
 
     if world_size != total_files:
         raise ValueError(
-            f"Expected {world_size} of '*_optim_states.pt' under '{ds_checkpoint_dir}' but got {total_files} files"
+            f"Expected {world_size} of '*_optim_states.pt' under '{ds_checkpoint_dir}' but found {total_files} files. "
+            "Possibly due to an overwrite of an old checkpoint, or a checkpoint didn't get saved by one or more processes."
         )
 
     # the groups are named differently in each stage
@@ -147,6 +149,16 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     if zero_stage == 2:
         # XXX: memory usage doubles here (zero2)
         full_single_fp32_vector = torch.cat(fp32_flat_groups, 0)
+        avail_numel = full_single_fp32_vector.numel()
+    elif zero_stage == 3:
+        avail_numel = fp32_flat_groups[0].numel() * world_size
+
+    if debug:
+        wanted_params = len(param_shapes)
+        wanted_numel = sum(shape.numel() for shape in param_shapes.values())
+        # not asserting if there is a mismatch due to possible padding
+        print(f"Have {avail_numel} numels to process.")
+        print(f"Need {wanted_numel} numels in {wanted_params} params.")
 
     state_dict = OrderedDict()
 
@@ -160,9 +172,12 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     # out-of-core computing solution
     offset = 0
     total_numel = 0
+    total_params = 0
     for name, shape in param_shapes.items():
+
         unpartitioned_numel = shape.numel()
         total_numel += unpartitioned_numel
+        total_params += 1
 
         if zero_stage == 2:
             if debug:
@@ -180,7 +195,7 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
 
             if debug:
                 print(
-                    f"{name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+                    f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
                 )
 
             # XXX: memory usage doubles here (zero3)
@@ -192,8 +207,17 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
                 0).view(shape)
             offset += partitioned_numel + partitioned_padding_numel
 
-    if debug:
-        print(f"Reconstructed fp32 state dict with total_numel={total_numel}")
+    if zero_stage == 3:
+        offset *= world_size
+
+    # Sanity check
+    if offset != avail_numel:
+        raise ValueError(
+            f"consumed {offset} numels out of {avail_numel} - something is wrong")
+
+    print(
+        f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements"
+    )
 
     return state_dict
 
