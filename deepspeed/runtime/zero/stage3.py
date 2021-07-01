@@ -301,18 +301,10 @@ class PartitionedParameterCoordinator(object):
         self.params_in_flight = []
         self.prefetch_coordinator = PrefetchCoordinator()
         self.hierarchy = 0
-
-        self.total_available_parameter_numel = 0
         self.max_available_parameters_in_numel = max_available_parameters_in_numel
 
         # max distance between two use of the module beyond which module is released
         self.max_reuse_distance_in_numel = max_reuse_distance_in_numel
-
-    def _increment_available_parameter_numel(self, increment):
-        self.total_available_parameter_numel += increment
-
-    def _decrement_available_parameter_numel(self, decrement):
-        self.total_available_parameter_numel -= decrement
 
     '''-----------------------Tracing and Prefetching ---------------'''
 
@@ -372,8 +364,6 @@ class PartitionedParameterCoordinator(object):
             for param in params_to_prefetch:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.INFLIGHT}'
 
-                # keeping track of number of elements consumed by available parmaeters
-                #self._increment_available_parameter_numel(param.ds_numel)
                 print_rank_0(
                     f"{'--' * self.hierarchy}--PreFetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
                     force=False)
@@ -448,8 +438,6 @@ class PartitionedParameterCoordinator(object):
                     f"{'--' * self.hierarchy}--Fetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
                     force=False)
 
-                # keeping track of number of elements consumed by available parmaeters
-                #self._increment_available_parameter_numel(param.ds_numel)
                 print_rank_0(f"Incrementing with parameter id {param.ds_id}")
 
             if param.ds_status == ZeroParamStatus.INFLIGHT:
@@ -507,8 +495,6 @@ class PartitionedParameterCoordinator(object):
                     f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
                     force=False)
 
-                # Keeping track of number of elements that are consumed by available parameters
-                #self._decrement_available_parameter_numel(param.ds_numel)
                 see_memory_usage(
                     f"Before releasing param {debug_param2name_id_numel(param)}",
                     force=False)
@@ -536,7 +522,6 @@ class PartitionedParameterCoordinator(object):
                 f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
                 force=False)
 
-            #self._decrement_available_parameter_numel(param.ds_numel)
             param.partition()
 
     def _keep_for_later(self, sub_module):

@@ -663,8 +663,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     handle = self._allgather_param(param,
                                                    async_op=async_op,
                                                    hierarchy=hierarchy)
-                    #param.ds_status = ZeroParamStatus.INFLIGHT  # if async_op else ZeroParamStatus.AVAILABLE
-                    param.update_status(ZeroParamStatus.INFLIGHT)
+                    param.update_status(ZeroParamStatus.INFLIGHT
+                                        if async_op else ZeroParamStatus.AVAILABLE)
                     handles.append(handle)
                 else:
                     all_gather_list.append(param)
@@ -676,7 +676,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             for param in all_gather_list:
                 avail_params.append(param.ds_id)
                 status_params.append(param.ds_status)
-                #param.ds_status = ZeroParamStatus.AVAILABLE
                 param.update_status(ZeroParamStatus.AVAILABLE)
 
             print_rank_0(
@@ -692,7 +691,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #print_rank_0(f"Before Partitioning Param {param.ds_id}")
             #self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
-            #param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             param.update_status(ZeroParamStatus.NOT_AVAILABLE)
             #if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
@@ -1096,7 +1094,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             return
 
         for param in param_list:
-            #assert param.ds_status != new_status, f"Detected redundant status update, param = {param.ds_id} status = {param.ds_status}"
             old_status = param.ds_status
             param.ds_status = new_status
             self._update_param_status(new_status, old_status, param.ds_numel)
