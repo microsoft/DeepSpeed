@@ -2986,7 +2986,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         """
         self.micro_step_id += 1
         print_rank_0(
-            f"Total fully available parameters {self.param_coordinator.total_available_parameter_numel}"
+            f"Total fully available parameters {self.fp16_groups[0][0].get_available_parameter_numel()}"
         )
 
         if self.swap_optimizer:
