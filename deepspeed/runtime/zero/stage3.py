@@ -211,7 +211,7 @@ class PrefetchCoordinator(object):
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != self.sub_module_trace[self.step_id]:
             print_rank_0(
-                f"Tracing failed. Prefetching is disabled at sub-module: {sub_module.id}"
+                f"Tracing failed. Prefetching is disabled at step {self.step_id} sub-module: {sub_module.id} not same as traced sub-module{self.sub_module_trace[self.step_id]}"
             )
             return []
 
@@ -340,7 +340,7 @@ class PartitionedParameterCoordinator(object):
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
     def prefetch_next_sub_modules(self, sub_module, numel=5000000, nvme=False):
-
+        print_rank_0(f"Prefetching at Step id: {self.prefetch_coordinator.step_id} at sub_module: {sub_module.id}")
         params_to_prefetch = []
         if not self.prefetch_coordinator.trace_completed:
             return params_to_prefetch
@@ -431,9 +431,8 @@ class PartitionedParameterCoordinator(object):
                 )
         self.hierarchy += 1
 
-        # parameters are partitioned and need to be allgathered
         self._all_gather(partitioned_params, async_op=True)
-
+       
         # parameters are inflight and communication needs to be completed
         if partitioned_params or params_in_flight:
             self._synchronize_communication()
@@ -520,6 +519,7 @@ class PartitionedParameterCoordinator(object):
 
     def _synchronize_communication(self, synchronize_streams=True):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
+        print_rank_0(f"params in flight {self.params_in_flight} and in flight handles {self.in_flight_handles}")
         for handle, param in zip(self.in_flight_handles, self.params_in_flight):
             if handle is not None:
                 with torch.cuda.stream(self.comm_stream):
@@ -1377,11 +1377,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
-        self._register_hooks_recursively(self.module)
 
         #reset step at the beginning of forward
         def _pre_forward_hook(module, *args):
             self.param_coordinator.reset_step()
+
+        self.module.register_forward_pre_hook(_pre_forward_hook)
+
+        self._register_hooks_recursively(self.module)
 
         #reset step if in inference mode
         def _end_of_forward_hook(module, *args):
@@ -1391,8 +1394,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         #likely one of them should be enough but just to be safe
         self.module.register_forward_hook(_end_of_forward_hook)
-        self.module.register_forward_pre_hook(_pre_forward_hook)
-
+        
         # Add top todule to stack trace
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(self.module)
