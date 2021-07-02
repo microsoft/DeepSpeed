@@ -241,21 +241,17 @@ class InsertPostInitMethodToModuleSubClasses(object):
                              force=False)
 
                 is_child_module = False
-                if not hasattr(module, "is_parent_module"):
-                    # child's __init__ was called, flag parents not call post_init
+                if not hasattr(module, "child_entered"):
+                    # child's __init__ was called, since parents all see the same object they can now skip post_init
                     is_child_module = True
-                    for parent_class in module.__class__.__mro__:
-                        if not parent_class == object:
-                            setattr(parent_class, "is_parent_module", True)
+                    setattr(module, "child_entered", True)
 
                 f(module, *args, **kwargs)
 
                 if is_child_module:
                     # child's __init__ is done, now we can run a single post_init on the child and release
                     # parents from being parents, so that they can be children too.
-                    for parent_class in module.__class__.__mro__:
-                        if not parent_class == object:
-                            delattr(parent_class, "is_parent_module")
+                    delattr(module, "child_entered")
 
                     print_rank_0(f'Running post_init for {module.__class__.__name__}',
                                  force=False)
