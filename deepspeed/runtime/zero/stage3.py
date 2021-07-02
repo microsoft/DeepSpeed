@@ -1589,10 +1589,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
         fp16_param = self.fp16_partitioned_groups_flat[sub_group_id]
         self.optimizer.param_groups[param_group_id]['params'] = [fp32_param]
-
+        
+        # fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
+        # print_rank_0(f"Grads Before Steps Rank{dist.get_rank()} gid: {sub_group_id} {fp32_param.grad.narrow(0,0,10)}", force=True)
+        # print_rank_0(f"Params Before Steps Rank{dist.get_rank()} gid: {sub_group_id} {fp32_param.narrow(0,0,10)}", force=True)
+        
         self.optimizer.step()
         self.optimizer.param_groups[param_group_id]['params'] = []
-
+        #print_rank_0(f"Params After Before Step Rank{dist.get_rank()} gid: {sub_group_id} {fp32_param.narrow(0,0,10)}", force=True)
+        
     def _swappable_optimizer_subgroup(self, sub_group_id):
         if not self.swap_optimizer:
             return False
@@ -1752,6 +1757,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #in case of cpu offload, averaged gradients are already in fp32_partitioned_groups_flat.grad
         #TODO: use a similar code path for both cpu_offload and non-cpu offload
         if not self.offload_optimizer:
+
+            #PRINT GRADIENT NORMS
+            # for name, param in self.module.named_parameters():
+            #     dist.barrier()
+            #     print(f"Rank:{dist.get_rank()} name:{name} grad norm:{param.grad.norm()}")
+            # dist.barrier()
+
             for i, sub_group in enumerate(self.fp16_groups):
                 self.averaged_gradients[i] = [
                     torch.zeros_like(param.ds_tensor) if param.grad is None else
@@ -2039,6 +2051,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 if param_id in self.norm_for_param_grads.keys():
                     param_norm = self.norm_for_param_grads[param_id]
                     total_norm += param_norm.item()**2
+            else:
+                print(f"Rank: {dist.get_rank()} param id {p.ds_id} is not model parallel ")
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -2052,9 +2066,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
-        if total_norm == float(
-                'inf') or total_norm == -float('inf') or total_norm != total_norm:
-            total_norm = -1
+        # if total_norm == float(
+        #         'inf') or total_norm == -float('inf') or total_norm != total_norm:
+        #     total_norm = -1
 
         return total_norm
 
@@ -2125,16 +2139,25 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                         self.set_norm_for_param_grad_in_gpu(param)
 
+                        # if i == 0 and dest_offset == 0:
+                        #     print_rank_0(f"{dist.get_rank()} sub_group_id {i} param id {param.ds_id} grads {param.grad.narrow(0,0,10)}", force=True)
+
                         self.update_overflow_tracker_for_param_grad(param)
+                        # if i == 0 and dest_offset == 0:
+                        #     print_rank_0(f"{dist.get_rank()} After update overflow sub_group_id {i} param id {param.ds_id} grads {param.grad.narrow(0,0,10)}", force=True)
 
                         if self._swappable_optimizer_subgroup(i):
                             if not i in offload_fp32_gradients.keys():
                                 offload_fp32_gradients[i] = []
                                 offload_fp32_offsets[i] = []
 
-                            offload_fp32_gradients[i].append(param.grad.view(-1).float())
+                            #TODO cloning here will cause memory frgmentation/ preallocate this buffer
+                            offload_fp32_gradients[i].append(param.grad.view(-1).clone().float())
                             param.grad = None
                             offload_fp32_offsets[i].append(dest_offset)
+                            # if i == 0 and dest_offset == 0:
+                            #     print_rank_0(f"{dist.get_rank()} After adding to offload grad overflow sub_group_id {i} param id {param.ds_id} grads {offload_fp32_gradients[i][-1].narrow(0,0,10)}", force=True)
+
                         else:
                             fp32_grad_tensor = self.fp32_partitioned_groups_flat[
                                 i].grad.narrow(0,
@@ -2145,6 +2168,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                 param,
                                 fp32_grad_tensor)
                 else:
+                    # if i == 0 and dest_offset == 0:
+                    #     print_rank_0(f"{dist.get_rank()} sub_group_id {i} param id {param.ds_id} grads {param.grad.view(-1).narrow(0,0,10)}", force=True)
+
                     # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
                     fp16_grad_tensor = self.grads_in_partition[i].narrow(
                         0,
@@ -2156,6 +2182,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             if self.offload_optimizer and self.swap_optimizer:
                 for i in offload_fp32_gradients.keys():
+                    # if i == 0:
+                    #     for j, offset in enumerate(offload_fp32_offsets[i]):
+                    #         if offset == 0:
+                    #             print_rank_0(f"{dist.get_rank()} sub_group_id {i} grads {offload_fp32_gradients[i][j].narrow(0,0,10)}", force=True)
                     self.optimizer_swapper.swap_out_gradients(
                         parameter=self.fp32_partitioned_groups_flat[i],
                         gradient_offsets=offload_fp32_offsets[i],
@@ -2452,22 +2482,30 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
+                # else:
+                #     print(f"not model parallel: {p.ds_id}")
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-
+            #print(f"Rank {torch.distributed.get_rank()} norm before dp reduce {(total_norm_cuda**0.5).item()}")
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
                                          group=self.dp_process_group)
-
+            # dist.barrier()
+            # print(f"Rank {torch.distributed.get_rank()} norm before mp reduce {(total_norm_cuda**0.5).item()}")
+            # dist.barrier()
             self._model_parallel_all_reduce(tensor=total_norm_cuda,
                                             op=torch.distributed.ReduceOp.SUM)
+
+            #print(f"Rank {torch.distributed.get_rank()} norm before after reduce {(total_norm_cuda**0.5).item()}")
+            
 
             total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
         if total_norm == float(
                 'inf') or total_norm == -float('inf') or total_norm != total_norm:
             total_norm = -1
-
+        #print(f"Rank {torch.distributed.get_rank()} norm before returning {(total_norm_cuda**0.5).item()}")
+            
         return total_norm
 
     # creates a flat fused tensor from the tensor list starting at the first_offset
@@ -2617,7 +2655,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.optimizer_swapper.swap_in_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
             async_parameter=self.next_swappable_fp32_partitioned_groups[sub_group_id])
-
+        
+        fp32_param = self.fp32_partitioned_groups_flat[sub_group_id]
+        # if fp32_param is not None:
+        #     if fp32_param.numel() > 10 and fp32_param.grad is not None:
+        #         print_rank_0(f"Grads After swap in  Rank{dist.get_rank()} gid: {sub_group_id} {fp32_param.grad.narrow(0,0,10)}", force=True)
+        #         print_rank_0(f"Params After swap in  Rank{dist.get_rank()} gid: {sub_group_id} {fp32_param.narrow(0,0,10)}", force=True)
+                
         self.stop_timers([OPTIMIZER_SWAP_IN_STATE])
         timer_names.add(OPTIMIZER_SWAP_IN_STATE)
         see_memory_usage(f'pre-step After swapping in optimizer tensors {sub_group_id}',
@@ -2867,11 +2911,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     return True
         return False
 
-    def has_overflow(self, partition_gradients=True):
+    def has_overflow(self, partition_gradients=True, reset_gpu_sum=True):
         if partition_gradients:
             if self.overlap_comm:
                 self.local_overflow = self._has_inf_or_nan(self.gpu_sum)
-                self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
+                if reset_gpu_sum:
+                    self.gpu_sum = torch.zeros(1, dtype=torch.float).cuda()
 
             overflow = self.local_overflow if self.offload_optimizer else self.has_overflow_partitioned_grads_serial(
             )
