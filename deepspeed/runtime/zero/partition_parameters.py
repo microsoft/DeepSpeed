@@ -228,10 +228,39 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def partition_after(f):
             @functools.wraps(f)
             def wrapper(module, *args, **kwargs):
+
+                # important logic: We want to run post_init only after child's __init__ is
+                # completed, and do nothing after __init__ of any of its parents and grandparents in
+                # the inheritance ancestry. This way the partitioning will need to happen only once
+                # when the whole object is ready to be partitioned and not before. This is because
+                # often the child module will need to tweak the weights - for example running a
+                # custom weights init function. So if a parent created the weights, the child won't
+                # need to gather them in order to tweak the weights.
+
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
+
+                is_child_module = False
+                if not hasattr(module, "is_parent_module"):
+                    # child's __init__ was called, flag parents not call post_init
+                    is_child_module = True
+                    for parent_class in module.__class__.__mro__:
+                        if not parent_class == object:
+                            setattr(parent_class, "is_parent_module", True)
+
                 f(module, *args, **kwargs)
-                self._post_init_method(module)
+
+                if is_child_module:
+                    # child's __init__ is done, now we can run a single post_init on the child and release
+                    # parents from being parents, so that they can be children too.
+                    for parent_class in module.__class__.__mro__:
+                        if not parent_class == object:
+                            delattr(parent_class, "is_parent_module")
+
+                    print_rank_0(f'Running post_init for {module.__class__.__name__}',
+                                 force=False)
+                    self._post_init_method(module)
+
                 print_rank_0(
                     f'After initializing followed by post init for {module.__class__.__name__}',
                     force=False)
