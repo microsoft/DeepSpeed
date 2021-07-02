@@ -29,13 +29,13 @@ class TransformerBuilder(CUDAOpBuilder):
         ]
 
     def include_paths(self):
-        """ ramya
         includes = ['csrc/includes']
         if is_rocm_pytorch:
             from torch.utils.cpp_extension import ROCM_HOME
             includes += ['{}/hiprand/include'.format(ROCM_HOME), '{}/rocrand/include'.format(ROCM_HOME)]
         return includes
 
+    """ramya
     def nvcc_args(self):
         args = [
             '-O3',
@@ -57,4 +57,3 @@ class TransformerBuilder(CUDAOpBuilder):
             args += self.compute_capability_args()
         return args
         """
-        return ['csrc/includes']
