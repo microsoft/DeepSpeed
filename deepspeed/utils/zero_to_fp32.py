@@ -34,7 +34,7 @@ def get_model_state_file(checkpoint_dir, zero_stage):
         file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
 
     if not os.path.exists(file):
-        raise FileNotFoundError(f"can't find '{file}' in directory '{checkpoint_dir}'")
+        raise FileNotFoundError(f"can't find model states file at '{file}'")
 
     return file
 
