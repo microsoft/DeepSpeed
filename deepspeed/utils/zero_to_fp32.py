@@ -265,9 +265,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir)
 
 
-def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
-                                          output_file,
-                                          tag=None):
+def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=None):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
     loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
@@ -309,9 +307,6 @@ def load_state_dict_from_zero_checkpoint(model, checkpoint_dir, tag=None):
     model.load_state_dict(state_dict, strict=False)
 
     return model
-
-
-
 
 
 if __name__ == "__main__":
