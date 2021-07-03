@@ -234,8 +234,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 # the inheritance ancestry. This way the partitioning will need to happen only once
                 # when the whole object is ready to be partitioned and not before. This is because
                 # often the child module will need to tweak the weights - for example running a
-                # custom weights init function. So if a parent created the weights, the child won't
-                # need to gather them in order to tweak the weights.
+                # custom weights init function. So if a parent created the weights param, the child
+                # won't need to gather it in order to tweak it
 
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
@@ -249,8 +249,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 f(module, *args, **kwargs)
 
                 if is_child_module:
-                    # child's __init__ is done, now we can run a single post_init on the child and release
-                    # parents from being parents, so that they can be children too.
+                    # child's __init__ is done, now we can run a single post_init on the child object
                     delattr(module, "_ds_child_entered")
 
                     print_rank_0(f'Running post_init for {module.__class__.__name__}',
