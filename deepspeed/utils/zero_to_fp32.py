@@ -16,6 +16,7 @@ from collections import OrderedDict
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
 # DeepSpeed data structures it has to be available in the current python environment.
 import deepspeed
+from deepspeed.utils import logger
 
 debug = 0
 
@@ -115,7 +116,7 @@ def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     return partitioned_numel, padding_numel
 
 
-def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
+def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     """
     Returns fp32 state_dict reconstructed from ds checkpoint
 
@@ -222,7 +223,7 @@ def _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir):
     return state_dict
 
 
-def get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag=None):
+def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be
     loaded with ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example via a model hub.
@@ -238,9 +239,9 @@ def get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag=None):
 
     A typical usage might be ::
 
-        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_chkpt
+        from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
         # do the training and checkpoint saving
-        state_dict = get_fp32_state_dict_from_zero_chkpt(checkpoint_dir) # already on cpu
+        state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir) # already on cpu
         model = model.cpu() # move to cpu
         model.load_state_dict(state_dict)
         #submit to model hub or save the model to share with others
@@ -261,12 +262,12 @@ def get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag=None):
     if not os.path.isdir(ds_checkpoint_dir):
         raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
 
-    return _get_fp32_state_dict_from_zero_chkpt(ds_checkpoint_dir)
+    return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir)
 
 
-def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir,
-                                                   output_file,
-                                                   tag=None):
+def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir,
+                                          output_file,
+                                          tag=None):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
     loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
@@ -274,13 +275,43 @@ def convert_zero_chkpt_to_fp32_consolid_state_dict(checkpoint_dir,
     Args:
         - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)
         - ``output_file``: path to the pytorch fp32 state_dict output file (e.g. path/pytorch_model.bin)
-        - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in 'latest' file. e.g., ``global_step14``
-
+        - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
     """
 
-    state_dict = get_fp32_state_dict_from_zero_chkpt(checkpoint_dir, tag)
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag)
     print(f"Saving fp32 state dict to {output_file}")
     torch.save(state_dict, output_file)
+
+
+def load_state_dict_from_zero_checkpoint(model, checkpoint_dir, tag=None):
+    """
+    1. Put the provided model to cpu
+    2. Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict``
+    3. Load it into the provided model
+
+    Make sure you have plenty of CPU memory available before you call this function. If you don't
+    have enough use the ``zero_to_fp32.py`` utility to do the conversion. You will find it
+    conveniently placed for you in the checkpoint folder.
+
+    Note, that once this was run you can't continue using deepspeed and you will have to re-initialize it.
+
+    Args:
+        - ``model``: the model object to update
+        - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)
+        - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
+
+    """
+    logger.info(f"Extracting fp32 weights")
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag)
+
+    logger.info(f"Overwriting model with fp32 weights")
+    model = model.cpu()
+    model.load_state_dict(state_dict, strict=False)
+
+    return model
+
+
+
 
 
 if __name__ == "__main__":
@@ -301,4 +332,4 @@ if __name__ == "__main__":
 
     debug = args.debug
 
-    convert_zero_chkpt_to_fp32_consolid_state_dict(args.checkpoint_dir, args.output_file)
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file)
