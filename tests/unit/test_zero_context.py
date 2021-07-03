@@ -355,7 +355,7 @@ def test_subclass_param_init():
     assert model.param.ds_status == ZeroParamStatus.NOT_AVAILABLE
 
     # test that the weights manipulation during each __init__ worked in all w/o needing gathering
-    ones = torch.ones(5).cuda()
+    ones = torch.ones(5).half().cuda()
     with deepspeed.zero.GatheredParameters(list(model.parameters(recurse=False))):
         assert torch.equal(model.param, ones + 1)
         assert torch.equal(model.param_pa, ones + 2)
