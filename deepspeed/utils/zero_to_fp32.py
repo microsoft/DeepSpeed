@@ -225,8 +225,9 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
 
 def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     """
-    Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be
-    loaded with ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example via a model hub.
+    Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated state_dict that can be loaded with
+    ``load_state_dict()`` and used for training without DeepSpeed or shared with others, for example
+    via a model hub.
 
     Args:
         - ``checkpoint_dir``: path to the desired checkpoint folder
@@ -235,7 +236,9 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     Returns:
         - pytorch ``state_dict``
 
-    Note: this approach may not work if your application doesn't have sufficient free CPU memory and you may need to use the offline approach using the ``zero_to_fp32.py`` script that is saved with the checkpoint.
+    Note: this approach may not work if your application doesn't have sufficient free CPU memory and
+    you may need to use the offline approach using the ``zero_to_fp32.py`` script that is saved with
+    the checkpoint.
 
     A typical usage might be ::
 
@@ -244,9 +247,13 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
         state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir) # already on cpu
         model = model.cpu() # move to cpu
         model.load_state_dict(state_dict)
-        #submit to model hub or save the model to share with others
+        # submit to model hub or save the model to share with others
 
-    In this example the ``model`` will no longer be useable in the deepspeed context of the same application. i.e. you will need to re-initialize the deepspeed engine, since ``model.load_state_dict(state_dict)`` will remove all the deepspeed magic from it.
+    In this example the ``model`` will no longer be useable in the deepspeed context of the same
+    application. i.e. you will need to re-initialize the deepspeed engine, since
+    ``model.load_state_dict(state_dict)`` will remove all the deepspeed magic from it.
+
+    If you want it all done for you, use ``load_state_dict_from_zero_checkpoint`` instead.
 
     """
     if tag is None:
@@ -287,16 +294,27 @@ def load_state_dict_from_zero_checkpoint(model, checkpoint_dir, tag=None):
     2. Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict``
     3. Load it into the provided model
 
-    Make sure you have plenty of CPU memory available before you call this function. If you don't
-    have enough use the ``zero_to_fp32.py`` utility to do the conversion. You will find it
-    conveniently placed for you in the checkpoint folder.
-
-    Note, that once this was run you can't continue using deepspeed and you will have to re-initialize it.
-
     Args:
         - ``model``: the model object to update
         - ``checkpoint_dir``: path to the desired checkpoint folder. (one that contains the tag-folder, like ``global_step14``)
         - ``tag``: checkpoint tag used as a unique identifier for checkpoint. If not provided will attempt to load tag in the file named ``latest`` in the checkpoint folder, e.g., ``global_step14``
+
+    Returns:
+        - ``model`: modified model
+
+    Make sure you have plenty of CPU memory available before you call this function. If you don't
+    have enough use the ``zero_to_fp32.py`` utility to do the conversion. You will find it
+    conveniently placed for you in the checkpoint folder.
+
+    A typical usage might be ::
+
+        from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+        model = load_state_dict_from_zero_checkpoint(trainer.model, checkpoint_dir)
+        # submit to model hub or save the model to share with others
+
+    Note, that once this was run, the ``model`` will no longer be useable in the deepspeed context
+    of the same application. i.e. you will need to re-initialize the deepspeed engine, since
+    ``model.load_state_dict(state_dict)`` will remove all the deepspeed magic from it.
 
     """
     logger.info(f"Extracting fp32 weights")
