@@ -339,10 +339,22 @@ def init_matmul_inputs(Z, H, M, N, K, rho, mode, trans_a, trans_b, block, dtype,
 
 testdata = [
       (16, dtype, mode, trans_a, trans_b)\
-         for dtype in [torch.float16, torch.float32]\
-         for mode in ['sdd', 'dsd', 'dds']\
-         for trans_a   in [False, True]\
+         for dtype in [torch.float16]\
+         for mode in ['sdd', 'dds']\
+         for trans_a   in [False]\
          for trans_b   in [False, True]\
+   ] + [
+      (16, dtype, mode, trans_a, trans_b)\
+         for dtype in [torch.float16]\
+         for mode in ['dsd']\
+         for trans_a   in [False, True]\
+         for trans_b   in [False]\
+   ] + [
+      (16, dtype, mode, trans_a, trans_b)\
+         for dtype in [torch.float32]\
+         for mode in ['sdd', 'dsd', 'dds']\
+         for trans_a   in [False]\
+         for trans_b   in [False]\
    ] + [
       (block, torch.float16, mode, False, False)\
          for block in [16, 32, 64]\

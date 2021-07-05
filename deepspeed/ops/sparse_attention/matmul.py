@@ -784,7 +784,7 @@ class MatMul:
             return self.lut_cache[key]
         # C look-up table
         layout, block = self.layout, self.block
-        step = 8 if dtype == torch.float32 else 16
+        step = 16
         if self.mode == 'sdd':
             c_lut, c_num_locks, c_width, c_packs = _sparse_matmul.make_sdd_lut(layout, block, dtype, device)
         elif self.mode == 'dsd':
