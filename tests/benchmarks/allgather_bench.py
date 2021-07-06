@@ -11,11 +11,9 @@ from torch._C import device
 from torch.autograd.grad_mode import F
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group, _pg_names
-from deepspeed.ops.op_builder import CommunicationBuilder
+from deepspeed.ops.communication import inplace_allgather
 import time
 import numpy as np
-
-ds_coll_comm = CommunicationBuilder().load()
 
 
 def sizeof_dtype(dtype):
@@ -108,13 +106,7 @@ def bench_torch_allgather(output_tensors,
 
 def _custom_allgather_once(output_tensors, input_tensors, comm_stream):
     default_pg = _get_default_group()
-    pg_name = _pg_names[default_pg]
-
-    with torch.cuda.stream(comm_stream):
-        res = ds_coll_comm._inplace_allgather(output_tensors,
-                                              input_tensors,
-                                              default_pg,
-                                              pg_name)
+    res = inplace_allgather(output_tensors, input_tensors, default_pg, comm_stream)
     comm_stream.synchronize()
     return res
 
@@ -198,7 +190,7 @@ def main():
     print_rank0(f'output tensor sum {out_sum_custom}')
 
     print_rank0(
-        f'allgather results are close {combined_tensor_custom.allclose(combined_tensor_torch)}'
+        f'allgather results of torch API and customized op are close {combined_tensor_custom.allclose(combined_tensor_torch)}'
     )
 
 
