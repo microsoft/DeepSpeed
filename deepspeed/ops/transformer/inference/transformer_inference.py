@@ -232,8 +232,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                     mixed_query,
                     (key_layer1 if unfused_mode else past_key.type_as(key_layer)),
                     (key_layer1 if unfused_mode else key_layer),
-                    (input_mask if config.triangular_masking or input_mask is None else
-                     input_mask.float()),
+                    (input_mask
+                     if config.triangular_masking or no_masking else input_mask.float()),
                     (value_layer1 if unfused_mode else past_value.type_as(value_layer)),
                     (value_layer1 if unfused_mode else value_layer),
                     num_attention_heads_per_partition,
