@@ -34,24 +34,3 @@ class TransformerBuilder(CUDAOpBuilder):
             from torch.utils.cpp_extension import ROCM_HOME
             includes += ['{}/hiprand/include'.format(ROCM_HOME), '{}/rocrand/include'.format(ROCM_HOME)]
         return includes
-
-    def nvcc_args(self):
-        args = [
-            '-O3',
-            '-std=c++14',
-        ]
-        if is_rocm_pytorch:
-            args += [
-                '-U__HIP_NO_HALF_OPERATORS__',
-                '-U__HIP_NO_HALF_CONVERSIONS__',
-                '-U__HIP_NO_HALF2_OPERATORS__'
-            ]
-        else:
-            args += [
-                '--use_fast_math',
-                '-U__CUDA_NO_HALF_OPERATORS__',
-                '-U__CUDA_NO_HALF_CONVERSIONS__',
-                '-U__CUDA_NO_HALF2_OPERATORS__'
-            ]
-            args += self.compute_capability_args()
-        return args

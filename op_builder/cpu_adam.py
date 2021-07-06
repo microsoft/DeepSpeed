@@ -3,7 +3,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
 import sys
-import torch
 import subprocess
 from .builder import CUDAOpBuilder, is_rocm_pytorch
 
@@ -26,6 +25,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
 
     def include_paths(self):
+        import torch
         if not is_rocm_pytorch:
             CUDA_INCLUDE = [os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")]
         else:
@@ -54,6 +54,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return '-D__SCALAR__'
 
     def cxx_args(self):
+        import torch
         if not is_rocm_pytorch:
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
         else:
@@ -72,24 +73,3 @@ class CPUAdamBuilder(CUDAOpBuilder):
             '-fopenmp',
             SIMD_WIDTH
         ]
-
-    def nvcc_args(self):
-        args = [
-            '-O3',
-            '-std=c++14'
-        ]
-        if is_rocm_pytorch:
-            args += [
-                '-U__HIP_NO_HALF_OPERATORS__',
-                '-U__HIP_NO_HALF_CONVERSIONS__',
-                '-U__HIP_NO_HALF2_OPERATORS__'
-            ]
-        else:
-            args += [
-                '--use_fast_math',
-                '-U__CUDA_NO_HALF_OPERATORS__',
-                '-U__CUDA_NO_HALF_CONVERSIONS__',
-                '-U__CUDA_NO_HALF2_OPERATORS__'
-            ]
-            args += self.compute_capability_args()
-        return args
