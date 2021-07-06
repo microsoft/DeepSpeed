@@ -530,7 +530,6 @@ class PartitionedParameterCoordinator(object):
         self.in_flight_handles = []
         self.params_in_flight = []
 
-
 class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
