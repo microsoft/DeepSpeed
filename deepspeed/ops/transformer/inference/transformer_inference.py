@@ -156,7 +156,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       (hidden_size_per_partition,)
             return x.view(*new_x_layer_shape)
 
-        def compute_attention(qkv_out):
+        def compute_attention(qkv_out, input_mask):
             score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16 or not config.triangular_masking) else \
                                     inference_cuda_module.softmax_context_fp16
             if not config.triangular_masking:
@@ -207,8 +207,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                     True) / (norm_factor if config.scale_attention else 1.0)
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
-            if input_mask is None:
-                no_masking = True
+            no_masking = input_mask is None
+            if no_masking:
                 input_mask = torch.empty(1)
 
             if layer_past is None:
@@ -274,7 +274,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None))
-            context_layer, key_layer, value_layer = compute_attention(qkv_out)
+            context_layer, key_layer, value_layer = compute_attention(qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow)
 
             return output, key_layer, value_layer, context_layer
