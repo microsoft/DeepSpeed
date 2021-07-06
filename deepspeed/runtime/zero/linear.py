@@ -129,6 +129,9 @@ class LinearNoTransposeFunctionForZeroStage3(torch.autograd.Function):
     #@autocast_custom_fwd
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
+        assert hasattr(weight, 'ds_id'), "weight is not DeepSpeed ZeRO 3 parameter"
+        if bias is not None:
+            assert hasattr(bias, 'ds_id'), "bias is not DeepSpeed ZeRO 3 parameter"
         
         weight_id = id(weight)
         bias_id = id(bias)

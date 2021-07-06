@@ -543,7 +543,7 @@ class PreBackwardFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *args):
-        print_rank_0(f"Before Backward: {ctx.module.__class__.__name__}")
+        #print_rank_0(f"Before Backward: {ctx.module.__class__.__name__}", force=True)
         #print(f"Before pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
         ctx.pre_backward_function(ctx.module)
         #print(f"After pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
