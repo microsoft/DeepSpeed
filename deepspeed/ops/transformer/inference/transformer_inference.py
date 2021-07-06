@@ -208,6 +208,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
             no_masking = input_mask is None
+            input_mask = torch.empty(1)
             if layer_past is None:
                 attn_key_value = score_context_func(
                     mixed_query,
