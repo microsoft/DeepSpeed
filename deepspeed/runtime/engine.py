@@ -1650,6 +1650,7 @@ class DeepSpeedEngine(Module):
             load_module_strict: Optional. Boolean to strictly enforce that the keys in state_dict of module and checkpoint match.
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
+            finetune: Optional. Boolean to indicate that this is a fine tuning run, so optimizer states should not be loaded, the learning rate schedule should be reset, and the iteration number should be set to 0.
         Returns:
             A tuple of ``load_path`` and ``client_state``.
 
