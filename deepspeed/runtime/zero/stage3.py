@@ -1962,14 +1962,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             for tensor in tensors:
                 tensor.div_(dist.get_world_size(group=self.dp_process_group))
 
-            # reduction resulting with each rank only holding the gradient partition it owns
-            # This could either be a reduce scatter or a reduce op depending on how
-            # parameters are partitionied. The method is impelemnted by the
-            # DeepSpeed param extensions to the pytroch parameter, so its up to
-            # the extension to define what happens here
-            params_to_reduce[0].reduce_gradients_at_owner(
-                param_list=params_to_reduce,
-                hierarchy=self.param_coordinator.hierarchy)
+            if len(params_to_reduce) > 0:
+                # reduction resulting with each rank only holding the gradient partition it owns
+                # This could either be a reduce scatter or a reduce op depending on how
+                # parameters are partitionied. The method is implemented by the
+                # DeepSpeed param extensions to the pytorch parameter, so its up to
+                # the extension to define what happens here
+                params_to_reduce[0].reduce_gradients_at_owner(
+                    param_list=params_to_reduce,
+                    hierarchy=self.param_coordinator.hierarchy)
 
     def set_grad_positions(self):
         for i, group in enumerate(self.fp16_groups):
