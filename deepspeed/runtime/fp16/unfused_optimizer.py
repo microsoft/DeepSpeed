@@ -22,6 +22,7 @@ class FP16_UnfusedOptimizer(object):
     """
     def __init__(self,
                  init_optimizer,
+                 deepspeed=None,
                  static_loss_scale=1.0,
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
@@ -96,7 +97,9 @@ class FP16_UnfusedOptimizer(object):
         self.mpu = mpu
 
         self.overflow = False
-        self.overflow_checker = CheckOverflow(self.fp16_groups, mpu=self.mpu)
+        self.overflow_checker = CheckOverflow(self.fp16_groups,
+                                              mpu=self.mpu,
+                                              deepspeed=deepspeed)
 
         self.initialize_optimizer_states()
 
@@ -150,12 +153,22 @@ class FP16_UnfusedOptimizer(object):
                             output_params=self.fp16_groups,
                             scale=combined_scale)
 
+        for fp32_group, fp16_group in zip(self.fp32_groups, self.fp16_groups):
+            for idx, (fp32_param, fp16_param) in enumerate(zip(fp32_group, fp16_group)):
+
+                #remove the fp32 grad
+                fp32_param.grad = None
+
+                #copy data from fp32 to fp16
+                fp16_param.data.copy_(fp32_param.data)
+
         return self.overflow
 
     def step(self, closure=None):
         """
         Not supporting closure.
         """
+
         if self.fused_lamb_legacy:
             return self.step_fused_lamb()
 
@@ -175,7 +188,7 @@ class FP16_UnfusedOptimizer(object):
         for i, group in enumerate(self.fp16_groups):
             norm_groups.append(get_grad_norm(group, mpu=self.mpu))
 
-            # copying gradients to fp32 to work with fp32 parameters
+            # copying gradients to fp32 to wor  k with fp32 parameters
             for fp32_param, fp16_param in zip(self.fp32_groups[i], self.fp16_groups[i]):
                 if fp16_param.grad is None:
                     fp32_param.grad = torch.zeros(fp16_param.size(),
@@ -189,7 +202,7 @@ class FP16_UnfusedOptimizer(object):
         self.optimizer.step()
 
         for fp32_group, fp16_group in zip(self.fp32_groups, self.fp16_groups):
-            for fp32_param, fp16_param in zip(fp32_group, fp16_group):
+            for idx, (fp32_param, fp16_param) in enumerate(zip(fp32_group, fp16_group)):
 
                 #remove the fp32 grad
                 fp32_param.grad = None
@@ -221,7 +234,7 @@ class FP16_UnfusedOptimizer(object):
 
         return combined_scale
 
-    def backward(self, loss):
+    def backward(self, loss, create_graph=False, retain_graph=False):
         """
         :attr:`backward` performs the following steps:
 
@@ -230,7 +243,8 @@ class FP16_UnfusedOptimizer(object):
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
         scaled_loss = (loss.float()) * self.cur_scale
-        scaled_loss.backward()
+
+        scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
 
     def _update_scale(self, skip):
         if self.dynamic_loss_scale:

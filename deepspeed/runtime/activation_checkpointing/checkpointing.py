@@ -24,7 +24,7 @@ from torch.cuda import _lazy_call, device as device_ctx_manager
 
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.utils import logger
-from deepspeed.runtime.utils import move_to_device
+from deepspeed.runtime.utils import move_to_device, see_memory_usage
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers
 
 # DeepSpeed Checkpointing Enabled or Disabled
@@ -54,34 +54,6 @@ PA_TO_CPU = False
 CONTIGUOUS_CHECKPOINTING = False
 SYNCHRONIZE = False
 PROFILE_TIME = False
-
-
-def see_memory_usage(message, force=False):
-    # return
-    if not force:
-        return
-    # dist.barrier()
-    if dist.get_rank() == 0:
-        logger.info(message)
-        logger.info(
-            "Memory Allocated %s GigaBytes",
-            torch.cuda.memory_allocated() / (1024 * 1024 * 1024),
-        )
-        logger.info(
-            "Max Memory Allocated %s GigaBytes",
-            torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),
-        )
-        logger.info(
-            "Cache Allocated %s GigaBytes",
-            torch.cuda.memory_cached() / (1024 * 1024 * 1024),
-        )
-        logger.info(
-            "Max cache Allocated %s GigaBytes",
-            torch.cuda.max_memory_cached() / (1024 * 1024 * 1024),
-        )
-        logger.info("")
-        #input("Press Any Key To Continue ..")
-
 
 # Default name for the model parallel rng tracker.
 _MODEL_PARALLEL_RNG_TRACKER_NAME = 'model-parallel-rng'
@@ -433,7 +405,7 @@ class CheckpointFunction(torch.autograd.Function):
                     f"----contiguous Memory Checkpointing {CONTIGUOUS_CHECKPOINTING} with {num_layers} total layers"
                 )
                 logger.info(f"----Synchronization {SYNCHRONIZE}")
-                logger.info(f"----Profiling {PROFILE_TIME}")
+                logger.info(f"----Profiling time in checkpointing {PROFILE_TIME}")
 
             cuda_device = torch.cuda.current_device()
             transport_stream = torch.cuda.Stream(device=cuda_device)
@@ -444,7 +416,7 @@ class CheckpointFunction(torch.autograd.Function):
 
             inputs = []
             for i, item in enumerate(args[:-1]):
-                if not torch.is_tensor(item):
+                if not torch.is_tensor(item) or mp_size > item.numel():
                     inputs.append(item)
                     continue
 
@@ -685,8 +657,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         torch.autograd.backward(output_tensors, grad_tensors)
 
-        see_memory_usage("After backward checkpointing code before backward",
-                         force=False)
+        see_memory_usage("After backward checkpointing code after backward", force=False)
 
         if PROFILE_TIME:
             timers('backward').stop()
@@ -754,11 +725,11 @@ def reset():
         size_offsets = []
 
 
-def _configure_using_config_file(deepspeed_config, mpu=None):
+def _configure_using_config_file(config, mpu=None):
     global num_layers, PARTITION_ACTIVATIONS, CONTIGUOUS_CHECKPOINTING, \
         PA_TO_CPU, SYNCHRONIZE, PROFILE_TIME
 
-    config = DeepSpeedConfig(deepspeed_config, mpu=mpu).activation_checkpointing_config
+    config = DeepSpeedConfig(config, mpu=mpu).activation_checkpointing_config
     if dist.get_rank() == 0:
         logger.info(config.repr())
     PARTITION_ACTIVATIONS = config.partition_activations

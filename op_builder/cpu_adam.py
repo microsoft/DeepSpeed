@@ -2,7 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
-import torch
+import sys
 import subprocess
 from .builder import CUDAOpBuilder
 
@@ -14,6 +14,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
     def __init__(self):
         super().__init__(name=self.NAME)
 
+    def is_compatible(self):
+        # Disable on Windows.
+        return sys.platform != "win32"
+
     def absolute_name(self):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
@@ -21,6 +25,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
 
     def include_paths(self):
+        import torch
         CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
         return ['csrc/includes', CUDA_INCLUDE]
 
@@ -42,6 +47,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return '-D__SCALAR__'
 
     def cxx_args(self):
+        import torch
         CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
         SIMD_WIDTH = self.simd_width()
 
@@ -57,15 +63,3 @@ class CPUAdamBuilder(CUDAOpBuilder):
             '-fopenmp',
             SIMD_WIDTH
         ]
-
-    def nvcc_args(self):
-        args = [
-            '-O3',
-            '--use_fast_math',
-            '-std=c++14',
-            '-U__CUDA_NO_HALF_OPERATORS__',
-            '-U__CUDA_NO_HALF_CONVERSIONS__',
-            '-U__CUDA_NO_HALF2_OPERATORS__'
-        ]
-        args += self.compute_capability_args()
-        return args
