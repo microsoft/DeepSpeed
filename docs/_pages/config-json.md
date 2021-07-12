@@ -350,7 +350,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                     | Default |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. Only useful when running very large models. | `False` |
+| Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. | `True` |
 
 <i>**grad_hooks**</i>: [boolean]
 
@@ -557,7 +557,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                    | Default |
 | ------------------------------ | ------- |
-| Print train loss every N steps | `10`    |
+| Print progress report every N training steps. The report includes the number of training steps, number of skipped optimizer updates (likely due to overflows in mixed-precision training), current learning rate, and current momentum.  | `10`    |
 
 <i>**wall_clock_breakdown**</i>: [boolean]
 
