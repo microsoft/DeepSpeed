@@ -35,7 +35,7 @@ FWD_MODULE_STACK = list()
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
-def print_rank_0(message, debug=False, force=True):
+def print_rank_0(message, debug=False, force=False):
     rank = torch.distributed.get_rank()
     if rank == 0 and (debug or force):
         print(message)
@@ -627,7 +627,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                  elastic_checkpoint=False,
                  aio_config=None):
 
-        see_memory_usage("Stage 3 initialize beginning", force=True)
+        see_memory_usage("Stage 3 initialize beginning", force=False)
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -702,7 +702,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
             print_rank_0(
                 f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
-                force=True)
+                force=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
@@ -798,7 +798,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-        see_memory_usage("Before creating fp16 partitions", force=True)
+        see_memory_usage("Before creating fp16 partitions", force=False)
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
@@ -867,7 +867,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         ])
         print_rank_0(
             f'Largest partitioned param numel = {largest_partitioned_param_numel}',
-            force=True)
+            force=False)
 
         see_memory_usage(f"Before Set Grad positions", force=False)
 
@@ -922,7 +922,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.debug_fp16_grads = [{} for _ in self.fp16_groups]
 
         if dist.get_rank(group=self.dp_process_group) == 0:
-            see_memory_usage(f"After initializing ZeRO optimizer", force=True)
+            see_memory_usage(f"After initializing ZeRO optimizer", force=False)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
@@ -1096,7 +1096,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         for j, param_group in enumerate(self.optimizer.param_groups):
 
             sub_groups = self._create_fp16_sub_groups(param_group['params'])
-            print_rank_0(f'fp16 group {j} has {len(sub_groups)} subgroups', force=True)
+            print_rank_0(f'fp16 group {j} has {len(sub_groups)} subgroups', force=False)
 
             flat_offset = 0
             for sub_group in sub_groups:
@@ -1331,19 +1331,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         nvme_gigabytes = nvme_memory_usage / GIGA_BYTES
         print_rank_0(
             f'Swappable FP32 Partitions: count={num_swappable_partitions} size={nvme_gigabytes:5.2f} GB',
-            force=True)
+            force=False)
         if self.params_in_nvme_and_cpu:
             print_rank_0(
                 f'Swap from NVMe Partitions: count = {num_swap_from_nvme_partitions}, size = {swap_from_nvme_memory_usage/GIGA_BYTES:5.2f}GB',
-                force=True)
+                force=False)
             print_rank_0(
                 f'Swap from CPU Partitions: count = {num_swap_from_cpu_partitions}, size = {swap_from_cpu_memory_usage/GIGA_BYTES:5.2f}GB',
-                force=True)
+                force=False)
 
         cpu_memory_gigabytes = cpu_memory_usage / GIGA_BYTES
         print_rank_0(
             f'In-Memory FP32 Partitions: count={cpu_memory_sub_groups} size={cpu_memory_gigabytes:5.2f} GB',
-            force=True)
+            force=False)
 
         # Clear for on-the-fly population before the optimizer step
         for param_group in self.optimizer.param_groups:
@@ -1889,8 +1889,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     ###############Idependent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
-        #print_rank_0(f"Inside reduce ipg buckets. Param ID {param.ds_id}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
-        if self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
+        #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
+
+        # Because the ipg bucket is initialized with a random place holder tensor, we must
+        # explicitly check that the bucket has any real data in it (self.elements_in_ipg_bucket >
+        # 0). Otherwise if the incoming param.ds_numel is large, this branch may get triggered on a
+        # garbage data and `self.average_tensor()` will crash because its params_to_reduce will be
+        # empty, while reduction_list will have that garbage data.
+        if self.elements_in_ipg_bucket > 0 and self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
                                          param.ds_numel)
 
@@ -1964,8 +1970,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             # reduction resulting with each rank only holding the gradient partition it owns
             # This could either be a reduce scatter or a reduce op depending on how
-            # parameters are partitionied. The method is impelemnted by the
-            # DeepSpeed param extensions to the pytroch parameter, so its up to
+            # parameters are partitionied. The method is implemented by the
+            # DeepSpeed param extensions to the pytorch parameter, so its up to
             # the extension to define what happens here
             params_to_reduce[0].reduce_gradients_at_owner(
                 param_list=params_to_reduce,
@@ -2176,7 +2182,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         params_to_reduce = [param for i, param, param_id in self.params_in_ipg_bucket]
         #print(f"Params in ipg bucket {self.params_in_ipg_bucket}")
-        #print(f"Reducing {[(param.ds_id, param.grad) for param in params_to_reduce]}")
+        #print(f"Reducing {[(debug_param2name_id_shape(param), param.grad) for param in params_to_reduce]}")
         #exit(0)
         if self.contiguous_gradients:
             reduction_list = [self.ipg_buffer[self.ipg_index]]
@@ -2201,7 +2207,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        #print(f"Backward {param.ds_id}")
+        #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
