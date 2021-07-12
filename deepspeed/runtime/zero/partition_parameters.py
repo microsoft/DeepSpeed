@@ -1093,7 +1093,7 @@ class GatheredParameters:
                 registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
-        Important: Make sure you use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
+        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
         if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
