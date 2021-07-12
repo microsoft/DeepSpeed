@@ -1094,7 +1094,7 @@ class GatheredParameters:
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
         Important: Make sure you use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
-        if you need the gathered memory to be released upon exit from the context manager.
+        if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
         ========
