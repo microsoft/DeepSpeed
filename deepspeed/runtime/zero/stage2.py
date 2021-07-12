@@ -709,7 +709,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                          param.numel())
 
         param_id = self.get_param_id(param)
-        #        self.print_rank_0(f'reducing gradient {param_id} = {param.grad.norm()}')
         assert self.params_already_reduced[param_id] == False, \
             f"The parameter {param_id} has already been reduced. \
             Gradient computed twice for this partition. \
@@ -740,10 +739,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if dist.get_rank() == 0:
             logger.info(message)
 
-    def _dump_ipg_gradients(self, msg):
-        for _, param, param_id in self.params_in_ipg_bucket:
-            self.print_rank_0(f'{msg} ipg_grad {param_id} = {param.grad.norm()}')
-
     def gradient_reduction_w_predivide(self, tensor):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
 
@@ -761,11 +756,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             if self.gradient_predivide_factor != dp_world_size:
                 tensor_to_allreduce.mul_(self.gradient_predivide_factor / dp_world_size)
         else:
-            #            self._dump_ipg_gradients(f'before divide')
             tensor_to_allreduce.div_(dp_world_size)
-            #            self._dump_ipg_gradients(f'before reduce')
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
-#            self._dump_ipg_gradients(f'after reduce')
 
         if self.allreduce_always_fp32 and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
@@ -1075,6 +1067,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.overlap_comm:
             stream = self.reduction_stream
         elif self.cpu_offload:
+            # TODO: copy_grad_stream is disabled because of race with reduce. This hurts perf and should be fixed.
             #            torch.cuda.synchronize()
             #            stream = self.copy_grad_stream
             stream = torch.cuda.current_stream()
@@ -1090,7 +1083,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     Multiple gradient reduction is currently not supported"
 
                 self.params_already_reduced[param_id] = True
-                #                self.print_rank_0(f'param {param_id} numel = {param.numel()} gradient = {param.grad.norm()}')
                 if not self.is_param_in_current_partition[param_id]:
                     if self.overlap_comm and self.contiguous_gradients is False:
                         # Clear grads of other partitions during the next reduction
@@ -1229,10 +1221,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
                     buf.copy_(synced)
 
-    def _dump_gradients(self, msg, start_index, gradient_list):
-        for i, grad in enumerate(gradient_list):
-            self.print_rank_0(f'{msg} gradient {i+start_index} = {grad.norm()}')
-
     def allreduce_no_retain(self,
                             bucket,
                             numel_per_bucket=500000000,
@@ -1245,18 +1233,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
             small_bucket.append(tensor)
             numel = numel + tensor.numel()
             if numel > numel_per_bucket:
-                #                self._dump_gradients(f'before reduce', num_reduced, small_bucket)
                 self.allreduce_and_copy(small_bucket, rank=rank, log=None)
-                #                self._dump_gradients(f'after reduce', num_reduced, small_bucket)
                 num_reduced += small_bucket
                 small_bucket = []
 
         if len(small_bucket) > 0:
-            #            self._dump_gradients(f'before reduce', num_reduced, small_bucket)
             self.allreduce_and_copy(small_bucket, rank=rank, log=log)
 
-
-#            self._dump_gradients(f'after reduce', num_reduced, small_bucket)
 
 # allows using reduction of gradients instead of using all_reduce
 
@@ -1265,14 +1248,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                  grads,
                                  elements_per_buffer=500000000,
                                  log=None):
-        #        self.print_rank_0(
-        #            f'buffered_reduce_fallback of gradient count = {len(grads)}, elems_per_buf = {elements_per_buffer}'
-        #        )
         split_buckets = split_half_float_double(grads)
 
         for i, bucket in enumerate(split_buckets):
-            #            self.print_rank_0(
-            #                f'allreduce_no_retain on bucket {i} of gradient count {len(bucket)}')
             self.allreduce_no_retain(bucket,
                                      numel_per_bucket=elements_per_buffer,
                                      rank=rank,
@@ -1573,9 +1551,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.averaged_gradients[i] = None
 
             single_partition_grad_groups.append(single_grad_partition)
-
-        for i, norm_value in enumerate(norm_groups):
-            self.print_rank_0(f'group_norm [{i}] = {norm_value}')
 
         self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
         self.stop_timers([OPTIMIZER_GRADIENTS])
