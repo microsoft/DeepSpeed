@@ -1238,8 +1238,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if len(small_bucket) > 0:
             self.allreduce_and_copy(small_bucket, rank=rank, log=log)
 
-
-# allows using reduction of gradients instead of using all_reduce
+    # allows using reduction of gradients instead of using all_reduce
 
     def buffered_reduce_fallback(self,
                                  rank,
