@@ -1228,13 +1228,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
                             log=None):
         small_bucket = []
         numel = 0
-        num_reduced = 0
         for tensor in bucket:
             small_bucket.append(tensor)
             numel = numel + tensor.numel()
             if numel > numel_per_bucket:
                 self.allreduce_and_copy(small_bucket, rank=rank, log=None)
-                num_reduced += small_bucket
                 small_bucket = []
 
         if len(small_bucket) > 0:
