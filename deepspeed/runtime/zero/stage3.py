@@ -1092,7 +1092,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self.offload_param:
             self._create_param_groups_fp16_flat_cpu_memory()
 
-        unpartitioned_params = []
         # loop to deal with groups
         for j, param_group in enumerate(self.optimizer.param_groups):
 
@@ -1106,11 +1105,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # push this group to list before modify
                 self.fp16_groups.append(sub_group)
                 self.sub_group_to_group_id[i] = j
-
-                for param in self.fp16_groups[i]:
-                    # for some reason this param wasn't partitioned
-                    if param.numel() != 1:
-                        unpartitioned_params.append(debug_param2name_id_shape(param))
 
                 # comment out for zero_to_fp32 debug
                 # if torch.distributed.get_rank() == 0:
@@ -1201,12 +1195,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     create_fp16_flat_reuse_buffer = True
 
                 see_memory_usage(f"After Flattening param subgroup {i}", force=False)
-
-        # Perhaps it should assert if any params are unpartitioned.
-        if len(unpartitioned_params) > 0 and torch.distributed.get_rank() == 0:
-            logger.warning(
-                f"{len(unpartitioned_params)} unpartitioned params detected:\n" +
-                "\n".join(unpartitioned_params))
 
         if create_fp16_flat_reuse_buffer:
             assert len(largest_partition_numel) > 0, f'Unexpected that largest partition is empty'
