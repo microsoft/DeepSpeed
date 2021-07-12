@@ -234,6 +234,19 @@ class DeepSpeedEngine(Module):
         """
         return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
 
+    def __getattr__(self, name):
+        _module = {}
+        if "module" in self.__dict__:
+            _module = self.__dict__['module']
+
+        if name in dir(self):
+            return getattr(self, name)
+        elif name in dir(_module):
+            return getattr(_module, name)
+        else:
+            raise AttributeError("'{}' object has no attribute '{}'".format(
+                type(self).__name__, name))
+
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
 
@@ -641,6 +654,7 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self.module = model
+        self.__dict__['module'] = model
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
