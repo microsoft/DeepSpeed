@@ -30,6 +30,8 @@ class AsyncIOBuilder(OpBuilder):
         return ['csrc/aio/py_lib', 'csrc/aio/common']
 
     def cxx_args(self):
+        CPU_ARCH = self.cpu_arch()
+
         args = [
             '-g',
             '-Wall',
@@ -38,7 +40,7 @@ class AsyncIOBuilder(OpBuilder):
             '-shared',
             '-fPIC',
             '-Wno-reorder',
-            '-march=native',
+            CPU_ARCH,
             '-fopenmp',
             '-laio',
         ]

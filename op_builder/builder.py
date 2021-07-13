@@ -160,10 +160,25 @@ class OpBuilder(ABC):
             valid = valid or result.wait() == 0
         return valid
 
+    def cpu_arch(self):
+        if not self.command_exists('lscpu'):
+            self.warning(
+                f"{self.name} attempted to query 'lscpu' to detect the CPU architecture. "
+                "However, 'lscpu' does not appear to exist on "
+                "your system, will fall back to use -march=native.")
+            return ''
+
+        result = subprocess.check_output('lscpu', shell=True)
+        result = result.decode('utf-8').strip().lower()
+        if 'ppc64le' in result:
+            # gcc does not provide -march on PowerPC, use -mcpu instead
+            return '-mcpu=native'
+        return '-march=native'
+
     def simd_width(self):
         if not self.command_exists('lscpu'):
             self.warning(
-                f"{self.name} is attempted to query 'lscpu' to detect the existence "
+                f"{self.name} attempted to query 'lscpu' to detect the existence "
                 "of AVX instructions. However, 'lscpu' does not appear to exist on "
                 "your system, will fall back to non-vectorized execution.")
             return ''
@@ -175,7 +190,7 @@ class OpBuilder(ABC):
                 return '-D__AVX512__'
             elif 'avx2' in result:
                 return '-D__AVX256__'
-        return ''
+        return '-D__SCALAR__'
 
     def python_requirements(self):
         '''
