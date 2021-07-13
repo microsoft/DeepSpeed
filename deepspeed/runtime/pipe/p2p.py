@@ -11,8 +11,8 @@ import torch.distributed as dist
 _groups = None
 _grid = None
 
-
 _async = []
+
 
 #initializes adjacent process groups
 #run this only after torch.distributed.init_process_group() has been called
@@ -70,6 +70,7 @@ def wait():
     _async = []
 
     torch.cuda.synchronize()
+
 
 def send_obj(msg: typing.Any, dest: int):
     """Send an arbitrary python object to ``dest``.
