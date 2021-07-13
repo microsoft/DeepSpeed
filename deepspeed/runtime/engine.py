@@ -2059,18 +2059,17 @@ class DeepSpeedEngine(Module):
                         # (and shared params will have the same param.ds_id)
                         if param.ds_id in shared_params:
                             # shared weights
-                            print(
-                                f"`{key}` is shared with `{shared_params[param.ds_id]}`")
+                            #print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
                             state_dict[key] = state_dict[shared_params[param.ds_id]]
                         else:
-                            state_dict[key] = param.cpu()
+                            state_dict[key] = param.detach().cpu()
                             shared_params[param.ds_id] = key
-                        print(f"param {param.ds_id} {param.shape} {key} ")
+                        #print(f"param {param.ds_id} {param.shape} {key} ")
 
                     # now buffers - not sure if need to take care of potentially shared weights here
                     for name, buf in module.named_buffers(recurse=False):
                         if buf is not None and name not in module._non_persistent_buffers_set:
-                            state_dict[prefix + name] = buf.cpu()
+                            state_dict[prefix + name] = buf.detach().cpu()
             #see_memory_usage("after GatheredParameters", force=True)
 
             for name, child in module.named_children():
