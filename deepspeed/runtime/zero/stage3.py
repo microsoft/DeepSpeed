@@ -32,7 +32,7 @@ from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedO
 pg_correctness_test = False
 
 FWD_MODULE_STACK = list()
-from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
+from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
 def print_rank_0(message, debug=False, force=False):
@@ -397,7 +397,9 @@ class PartitionedParameterCoordinator(object):
     def fetch_sub_module(self, sub_module):
         partitioned_params = []
         params_in_flight = False
-        # print_rank_0(f"{'--' * self.hierarchy}Fetching params in module {sub_module.__class__.__name__}")
+        print_rank_0(
+            f"{'--' * self.hierarchy}Fetching params in module {debug_module2name_class(sub_module)}"
+        )
         params_to_fetch = [
             param for _,
             param in sub_module.named_parameters(recurse=False)
@@ -416,17 +418,18 @@ class PartitionedParameterCoordinator(object):
         for param in params_to_fetch:
             param.ds_active_sub_modules += 1
             print_rank_0(
-                f"{'--' * self.hierarchy}--Fetching parameters {param.ds_id} {param.ds_shape} with active sub modules {param.ds_active_sub_modules}"
+                f"{'--' * self.hierarchy}--Fetching parameters {debug_param2name_id_shape(param)} with active sub modules {param.ds_active_sub_modules}"
             )
 
             if param.ds_status == ZeroParamStatus.AVAILABLE:
                 print_rank_0(
-                    f"{'--' * self.hierarchy}--Parameter {param.ds_id} is already available"
+                    f"{'--' * self.hierarchy}--Parameter {debug_param2name_id(param)} is already available"
                 )
 
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
                 print_rank_0(
-                    f"{'--' * self.hierarchy}--Parameter {param.ds_id} is being fetched")
+                    f"{'--' * self.hierarchy}--Parameter {debug_param2name_id(param)} is being fetched"
+                )
                 partitioned_params.append(param)
 
                 # keeping track of number of elements consumed by available parmaeters
@@ -436,7 +439,7 @@ class PartitionedParameterCoordinator(object):
             if param.ds_status == ZeroParamStatus.INFLIGHT:
                 params_in_flight = True
                 print_rank_0(
-                    f"{'--' * self.hierarchy}--Parameters {param.ds_id} is already in flight (prefetched)"
+                    f"{'--' * self.hierarchy}--Parameters {debug_param2name_id(param)} is already in flight (prefetched)"
                 )
         self.hierarchy += 1
 
@@ -545,7 +548,9 @@ class PreBackwardFunction(torch.autograd.Function):
     def forward(ctx, module, pre_backward_function, outputs):
         ctx.module = module
         ctx.pre_backward_function = pre_backward_function
-        module.applied_pre_backward = False
+        if not hasattr(module, "applied_pre_backward_ref_cnt"):
+            module.applied_pre_backward_ref_cnt = 0
+        module.applied_pre_backward_ref_cnt += 1
         #print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
@@ -960,7 +965,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.fp16_groups.append(sub_group)
                 self.sub_group_to_group_id[i] = j
 
-                #These are the list of the partitoned parameters
+                #These are the list of the partitioned parameters
                 self.fp16_partitioned_groups.append(
                     [param.ds_tensor for param in self.fp16_groups[i]])
 
@@ -1106,7 +1111,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.fp16_groups.append(sub_group)
                 self.sub_group_to_group_id[i] = j
 
-                #These are the list of the partitoned parameters
+                # comment out for zero_to_fp32 debug
+                # if torch.distributed.get_rank() == 0:
+                #     for param in self.fp16_groups[i]:
+                #         print(f"{debug_param2name_id_shape(param)} {param.ds_shape}")
+
+                #These are the list of the partitioned parameters
                 self.fp16_partitioned_groups.append(
                     [param.ds_tensor for param in self.fp16_groups[i]])
 
@@ -1406,14 +1416,16 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def persistent_parameters(self):
         persistent_params = []
         total_persistent_parameters = 0
+        params_count = 0
         for _, param in self.module.named_parameters(recurse=True):
             if param.ds_numel < self.persistence_threshold:
+                params_count += 1
                 param.ds_persist = True
                 persistent_params.append(param)
                 total_persistent_parameters += param.ds_numel
 
         print_rank_0(
-            f'ZeRO 3: Total persistent parameters: {total_persistent_parameters}',
+            f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
             force=False)
         return persistent_params
 
@@ -1471,9 +1483,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         def _pre_backward_module_hook(module, inputs, output):
             def _run_before_backward_function(sub_module):
-                if sub_module.applied_pre_backward is False:
+                # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
+                # before doing backwards, so each backward will need a pre-fetch - using reference
+                # counting to support this scenario
+                #print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
+                if sub_module.applied_pre_backward_ref_cnt > 0:
                     self.pre_sub_module_backward_function(sub_module)
-                    sub_module.applied_pre_backward = True
+                    sub_module.applied_pre_backward_ref_cnt -= 1
+                #print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
 
             return _apply_to_tensors_only(module,
                                           PreBackwardFunction,
@@ -1889,8 +1906,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     ###############Idependent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
-        #print_rank_0(f"Inside reduce ipg buckets. Param ID {param.ds_id}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
-        if self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
+        #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
+
+        # Because the ipg bucket is initialized with a random place holder tensor, we must
+        # explicitly check that the bucket has any real data in it (self.elements_in_ipg_bucket >
+        # 0). Otherwise if the incoming param.ds_numel is large, this branch may get triggered on a
+        # garbage data and `self.average_tensor()` will crash because its params_to_reduce will be
+        # empty, while reduction_list will have that garbage data.
+        if self.elements_in_ipg_bucket > 0 and self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
             self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
                                          param.ds_numel)
 
@@ -1964,8 +1987,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             # reduction resulting with each rank only holding the gradient partition it owns
             # This could either be a reduce scatter or a reduce op depending on how
-            # parameters are partitionied. The method is impelemnted by the
-            # DeepSpeed param extensions to the pytroch parameter, so its up to
+            # parameters are partitionied. The method is implemented by the
+            # DeepSpeed param extensions to the pytorch parameter, so its up to
             # the extension to define what happens here
             params_to_reduce[0].reduce_gradients_at_owner(
                 param_list=params_to_reduce,
@@ -2176,7 +2199,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         params_to_reduce = [param for i, param, param_id in self.params_in_ipg_bucket]
         #print(f"Params in ipg bucket {self.params_in_ipg_bucket}")
-        #print(f"Reducing {[(param.ds_id, param.grad) for param in params_to_reduce]}")
+        #print(f"Reducing {[(debug_param2name_id_shape(param), param.grad) for param in params_to_reduce]}")
         #exit(0)
         if self.contiguous_gradients:
             reduction_list = [self.ipg_buffer[self.ipg_index]]
@@ -2201,7 +2224,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        #print(f"Backward {param.ds_id}")
+        #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
