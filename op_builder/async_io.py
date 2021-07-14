@@ -31,8 +31,8 @@ class AsyncIOBuilder(OpBuilder):
 
     def cxx_args(self):
         CPU_ARCH = self.cpu_arch()
-
-        args = [
+        SIMD_WIDTH = self.simd_width()
+        return [
             '-g',
             '-Wall',
             '-O0',
@@ -42,14 +42,9 @@ class AsyncIOBuilder(OpBuilder):
             '-Wno-reorder',
             CPU_ARCH,
             '-fopenmp',
+            SIMD_WIDTH,
             '-laio',
         ]
-
-        simd_width = self.simd_width()
-        if len(simd_width) > 0:
-            args.append(simd_width)
-
-        return args
 
     def extra_ldflags(self):
         return ['-laio']

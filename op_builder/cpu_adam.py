@@ -45,5 +45,5 @@ class CPUAdamBuilder(CUDAOpBuilder):
             '-Wno-reorder',
             CPU_ARCH,
             '-fopenmp',
-            SIMD_WIDTH
+            SIMD_WIDTH,
         ]
