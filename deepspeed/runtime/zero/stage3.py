@@ -35,7 +35,7 @@ FWD_MODULE_STACK = list()
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
-def print_rank_0(message, debug=False, force=True):
+def print_rank_0(message, debug=False, force=False):
     rank = torch.distributed.get_rank()
     if rank == 0 and (debug or force):
         print(message)
@@ -1486,9 +1486,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
                 # before doing backwards, so each backward will need a pre-fetch - using reference
                 # counting to support this scenario
+                #print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
                 if sub_module.applied_pre_backward_ref_cnt > 0:
                     self.pre_sub_module_backward_function(sub_module)
                     sub_module.applied_pre_backward_ref_cnt -= 1
+                #print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
 
             return _apply_to_tensors_only(module,
                                           PreBackwardFunction,
