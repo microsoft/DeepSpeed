@@ -852,8 +852,13 @@ class DeepSpeedEngine(Module):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
         clip_grad = self.gradient_clipping()
-        if isinstance(optimizer,
-                      FusedAdam) or self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
+        is_fairseq_adam = False
+        try:
+            import fairseq
+            is_fairseq_adam = isinstance(optimizer, fairseq.optim.adam.FairseqAdam)
+        except ImportError:
+            pass
+        if isinstance(optimizer, FusedAdam) or is_fairseq_adam or self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
                 log_dist('Creating fp16 optimizer with dynamic loss scale', ranks=[0])
                 timers = self.timers if self.wall_clock_breakdown() else None

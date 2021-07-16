@@ -103,6 +103,15 @@ class FP16_UnfusedOptimizer(object):
 
         self.initialize_optimizer_states()
 
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
+
     def zero_grad(self, set_grads_to_None=True):
         """
         Zero FP16 parameter grads.

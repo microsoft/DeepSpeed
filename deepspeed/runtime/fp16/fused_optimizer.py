@@ -49,6 +49,16 @@ class FP16_Optimizer(object):
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
+            
+            # pad uneven fp16 params
+            padded_fp16_groups = []
+            for p in self.fp16_groups[i]:
+                padded_fp16_groups.append(p)
+                if p.numel() % 2 != 0:
+                    pad_tensor = torch.nn.Parameter(torch.zeros(1, device=p.device, dtype=p.dtype))
+                    padded_fp16_groups.append(pad_tensor)
+            self.fp16_groups[i] = padded_fp16_groups
+
             # init fp16 weight buffer, flattened
             self.fp16_groups_flat.append(
                 _flatten_dense_tensors([p.clone().detach()
@@ -308,6 +318,15 @@ class FP16_Optimizer(object):
         scaled_loss = (loss.float()) * self.cur_scale
 
         scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
+
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
 
     def _update_scale(self, skip):
         if self.dynamic_loss_scale:

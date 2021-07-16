@@ -121,13 +121,25 @@ class CheckOverflow(object):
 
     # `params` is a list / generator of torch.Variable
     def has_overflow_serial(self, params):
+        has_overflow = False
+        overflow_count = 0
+        count = 0
         for i, p in enumerate(params):
             if p.grad is not None and self._has_inf_or_nan(p.grad.data, i):
-                return True
-        return False
+                has_overflow = True
+                # print(p.grad)
+                overflow_count += 1
+                #return True
+            count += 1
+        #return False
+        print(f'overflows: {overflow_count} / {count}')
+        return has_overflow
 
     def has_overflow(self, params):
+        print('all grads before overflow check', [param.grad for param in params])
         overflow = self.has_overflow_serial(params)
+        import remote_pdb
+        remote_pdb.set_trace()
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = torch.cuda.ByteTensor([overflow])
@@ -171,6 +183,7 @@ class CheckOverflow(object):
             cpu_sum = float(x.float().sum())
             # More efficient version that can be used if .sum() returns a Python scalar
             # cpu_sum = float(x.sum())
+            print(f'cpu_sum={cpu_sum}')
         except RuntimeError as instance:
             # We want to check if inst is actually an overflow exception.
             # RuntimeError could come from a different error.
