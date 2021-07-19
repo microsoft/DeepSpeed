@@ -139,10 +139,12 @@ else
     PIP_SUDO=""
 fi
 
+PIP_BINARY=`which pip`
+
 if [ "$pip_mirror" != "" ]; then
-    PIP_INSTALL="pip install $VERBOSE $PIP_VERBOSE -i $pip_mirror"
+    PIP_INSTALL="$PIP_BINARY install $VERBOSE $PIP_VERBOSE -i $pip_mirror"
 else
-    PIP_INSTALL="pip install $VERBOSE $PIP_VERBOSE"
+    PIP_INSTALL="$PIP_BINARY install $VERBOSE $PIP_VERBOSE"
 fi
 
 
@@ -156,7 +158,7 @@ python setup.py $VERBOSE bdist_wheel
 
 if [ "$local_only" == "1" ]; then
     echo "Installing deepspeed"
-    $PIP_SUDO pip uninstall -y deepspeed
+    $PIP_SUDO $PIP_BINARY uninstall -y deepspeed
     $PIP_SUDO $PIP_INSTALL dist/deepspeed*.whl
     ds_report
 else
@@ -174,7 +176,7 @@ else
     pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
 
     echo "Installing deepspeed"
-    pdsh -w $hosts "$PIP_SUDO pip uninstall -y deepspeed"
+    pdsh -w $hosts "$PIP_SUDO $PIP_BINARY uninstall -y deepspeed"
     pdcp -w $hosts dist/deepspeed*.whl $tmp_wheel_path/
     pdsh -w $hosts "$PIP_SUDO $PIP_INSTALL $tmp_wheel_path/deepspeed*.whl"
     pdsh -w $hosts "ds_report"

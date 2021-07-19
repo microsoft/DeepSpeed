@@ -127,6 +127,7 @@ class CudaRNGStatesTracker:
     rng state, we can perform operations and return to our starting
     cuda state.
     """
+
     def __init__(self):
         # Map from a string name to the cuda rng state.
         self.states_ = {}
@@ -254,12 +255,18 @@ def get_partition_size(item):
 
 
 def get_full_inputs(tensors, device=None):
+    global mp_rank, mp_size, mp_group
+    assert len(tensors) % 2 == 0, f'Expected even count of tensors, instead got {len(tensors)}'
     inputs = []
     num_args = int(len(tensors) / 2)
-    for i in range(num_args - 1):
+    for i in range(num_args):
 
         item = tensors[2 * i]
         size = tensors[2 * i + 1]
+
+        if not is_activation_to_checkpoint(item):
+            inputs.append(item)
+            continue
 
         partition_size = item.numel()
         tensor_size = partition_size * mp_size
@@ -281,7 +288,6 @@ def get_full_inputs(tensors, device=None):
         item.data = input_tensor.data
 
         inputs.append(item)
-    inputs.append(tensors[-2])
 
     return tuple(inputs)
 
@@ -324,7 +330,7 @@ def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
 
     real_tensor_flags = None
 
-    #remove the flags that are assigned to the size of the flattened tensors
+    # remove the flags that are assigned to the size of the flattened tensors
     if PARTITION_ACTIVATIONS:
         real_tensor_flags = []
         previous_flag = False
@@ -346,6 +352,14 @@ def merge_tensors(tensor_objects, non_tensor_objects, tensor_flags):
             non_tensor_idx += 1
 
     return tuple(merged_objects)
+
+
+def is_activation_to_checkpoint(item):
+    """
+        Is an activation to be checkpointed
+    """
+    global mp_size
+    return torch.is_tensor(item) and item.is_floating_point() and item.numel() >= mp_size
 
 
 class CheckpointFunction(torch.autograd.Function):
@@ -415,8 +429,8 @@ class CheckpointFunction(torch.autograd.Function):
             # inputs.append(args[-1])
 
             inputs = []
-            for i, item in enumerate(args[:-1]):
-                if not torch.is_tensor(item):
+            for i, item in enumerate(args):
+                if not is_activation_to_checkpoint(item):
                     inputs.append(item)
                     continue
 
@@ -470,9 +484,7 @@ class CheckpointFunction(torch.autograd.Function):
                     partition = partition.cpu() if PA_TO_CPU else partition
                     inputs.append(partition)
 
-            inputs.append(args[-1])
-
-        #just in case something funky is happening such as reuse of inputs
+        # just in case something funky is happening such as reuse of inputs
         inputs_cuda = move_to_device(args, cuda_device)
 
         # Copy the rng states.
@@ -501,8 +513,9 @@ class CheckpointFunction(torch.autograd.Function):
         if PARTITION_ACTIVATIONS:
             new_args = []
             for i, (arg, inp) in enumerate(zip(args, inputs)):
-                if not torch.is_tensor(arg):
+                if not is_activation_to_checkpoint(arg):
                     new_args.append(arg)
+                    new_args.append(None)
                     continue
 
                 size = torch.tensor(arg.size())
@@ -538,8 +551,10 @@ class CheckpointFunction(torch.autograd.Function):
                 # if dist.get_rank() == 0:
                 #    logger.info(f"The stored tensor is {contiguous_size} and orginal one is {size} ")
 
+            assert len(new_args) % 2 == 0, f'save_for_backward called with odd number of args, {len(new_args)} '
             save_args_for_backward(*new_args)
         else:
+            assert len(args) % 2 == 0, f'save_for_backward called with odd number of args, {len(args)} '
             save_args_for_backward(*args)
 
         if PROFILE_TIME:
