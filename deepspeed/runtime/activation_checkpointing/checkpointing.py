@@ -424,7 +424,7 @@ class CheckpointFunction(torch.autograd.Function):
             transport_stream = torch.cuda.Stream(device=cuda_device)
 
         if PARTITION_ACTIVATIONS:
-            #inputs = [item.detach().contiguous().view(-1).narrow(0, get_partition_start(item), get_partition_size(item)).clone() for item in args[:-1]]
+            # inputs = [item.detach().contiguous().view(-1).narrow(0, get_partition_start(item), get_partition_size(item)).clone() for item in args[:-1]]
             # inputs.append(args[-1])
 
             inputs = []
@@ -512,12 +512,11 @@ class CheckpointFunction(torch.autograd.Function):
         if PARTITION_ACTIVATIONS:
             new_args = []
             for i, (arg, inp) in enumerate(zip(args, inputs)):
+                size = torch.tensor(arg.size()) if torch.is_tensor(arg) else None
                 if not is_activation_to_checkpoint(arg):
                     new_args.append(arg)
-                    new_args.append(None)
+                    new_args.append(size)
                     continue
-
-                size = torch.tensor(arg.size())
 
                 arg.data = inp.data
                 new_args.append(arg)
