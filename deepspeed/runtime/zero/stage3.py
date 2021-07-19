@@ -78,6 +78,9 @@ def get_all_parameters(sub_module, recurse=False):
 
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
+
+    #print_rank_0(f"Adding hook in module: {module.__class__.__name__} and type {type(outputs)}", force=True)
+            
     if type(outputs) is tuple:
         touched_outputs = []
         for output in outputs:
@@ -87,6 +90,15 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     output)
             touched_outputs.append(touched_output)
         return tuple(touched_outputs)
+    elif type(outputs) is dict:
+        touched_outputs = {}
+        for key, output in outputs.items():
+            touched_output = _apply_to_tensors_only(module,
+                                                    functional,
+                                                    backward_function,
+                                                    output)
+            touched_outputs[key] = touched_output
+        return touched_outputs
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
@@ -256,9 +268,9 @@ class PrefetchCoordinator(object):
             return self.reuse_numel_for_step_id[sub_module_step_id]
 
         start_step = self.step_id
-        print_rank_0(f"Step id is {self.step_id} ")
+        #print_rank_0(f"Step id is {self.step_id} ")
         for step_id in range(start_step, total_steps):
-            print_rank_0(f"Trace id {trace[step_id]} and sub_module id {sub_module.id}")
+            #print_rank_0(f"Trace id {trace[step_id]} and sub_module id {sub_module.id}")
             if sub_module.id == trace[step_id]:
                 end_step = step_id
 
@@ -519,7 +531,7 @@ class PartitionedParameterCoordinator(object):
 
     def _synchronize_communication(self, synchronize_streams=True):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
-        print_rank_0(f"params in flight {self.params_in_flight} and in flight handles {self.in_flight_handles}")
+        print_rank_0(f"params in flight {[params.ds_id for params in self.params_in_flight]} and in flight handles {self.in_flight_handles}")
         for handle, param in zip(self.in_flight_handles, self.params_in_flight):
             if handle is not None:
                 with torch.cuda.stream(self.comm_stream):
@@ -543,7 +555,7 @@ class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, *args):
         #print_rank_0(f"Before Backward: {ctx.module.__class__.__name__}", force=True)
-        #print(f"Before pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
+        #print_rank_0(f"Before pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}", force=True)
         ctx.pre_backward_function(ctx.module)
         #print(f"After pre_backward_function {ctx.module.__class__.__name__}, {[(param.ds_status, param.shape) for param in ctx.module.parameters(recurse=False)]}")
         return (None, None) + args
@@ -573,7 +585,7 @@ class PostBackwardFunction(torch.autograd.Function):
         ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
         if ctx.module.ds_grads_remaining == 0:
             ctx.pre_backward_function(ctx.module)
-            print_rank_0(f"After Backward: {ctx.module.__class__.__name__}")
+            #print_rank_0(f"After Backward: {ctx.module.__class__.__name__}", force=True)
         return (None, None) + args
 
 
@@ -1467,6 +1479,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.post_sub_module_forward_function(module)
 
         def _pre_backward_module_hook(module, inputs, output):
+            #print_rank_0(f"Adding hook in module: {module.__class__.__name__}", force=True)
             def _run_before_backward_function(sub_module):
                 if sub_module.applied_pre_backward is False:
                     self.pre_sub_module_backward_function(sub_module)

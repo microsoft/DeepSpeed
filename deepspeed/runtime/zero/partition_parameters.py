@@ -210,7 +210,6 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
                 f(module, *args, **kwargs)
-                module.float()
                 self._post_init_method(module)
                 print_rank_0(
                     f'After initializing followed by post init for {module.__class__.__name__}',
@@ -302,7 +301,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  pin_memory=False,
                  config=None,
                  enabled=True,
-                 dtype=None):
+                 dtype=None,
+                 convert_module_dtype=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -433,6 +433,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         else:
             self.param_swapper = None
 
+        self.convert_module_dtype = convert_module_dtype
+
         # If we are provided an already-allocated module to prepare.
         if module is not None:
             assert isinstance(module, torch.nn.Module)
@@ -466,6 +468,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f"Before converting and partitioning parmas in {module.__class__.__name__}",
             force=False)
 
+        
         global param_count
         for name, param in module.named_parameters(recurse=False):
             param_count += param.numel()
@@ -474,6 +477,18 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 print_rank_0(
                     f"Partitioning param with ds id {param.ds_id} and shape {param.data.shape}"
                 )
+                
+                
+                #This conversion is only done when model is created in Init context
+                param.data=param.data.to(self.dtype)
+                
+                #this will be run multiple times for the same module but it will be a noop after the first time
+                #unless dtype set by the above statement does not match with the requested by convert module
+                #convert module dtype allows for converting the datatype before the module is partitioned for the 
+                #first time. Doing it later can cause requring multiple pin memory buffers, memory fragmentation etc
+                if self.convert_module_dtype is not None:
+                    self.convert_module_dtype(module)
+
                 param.partition()
         see_memory_usage(
             f"Param count {param_count}. After converting and partitioning parmas in {module.__class__.__name__}",
@@ -562,6 +577,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def partitioned_size():
             return self._partitioned_size(param)
 
+
+        def dtype_convert(dtype):
+            cls = param
+            param.data=param.data.to(dtype)
+            if param.ds_tensor is not None:
+                param.ds_tensor.data = param.ds_tensor.data.to(dtype)
+
+
         # Collectives for gathering and partitioning parameters
         param.all_gather = all_gather
         param.partition = partition
@@ -574,6 +597,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.aligned_size = aligned_size
         param.padding_size = padding_size
         param.partitioned_size = partitioned_size
+
+        # Data type converstion
+        param.dtype_convert = dtype_convert
 
     def _aligned_size(self, param):
         return param.ds_numel + self._padding_size(param)
@@ -666,7 +692,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     f'Before partitioning param {param.ds_id} {param.shape}',
                     force=False)
                 #param.data does not store anything meaningful in partitioned state
-                param.data = torch.ones(1, dtype=self.dtype).to(param.device)
+                param.data = torch.ones(1, dtype=param.dtype).to(param.device)
                 see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
                                  force=False)
 
@@ -747,7 +773,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             see_memory_usage(f'Before partitioning param {param.ds_id} {param.shape}',
                              force=False)
-            param.data = torch.ones(1, dtype=self.dtype).to(param.device)
+            param.data = torch.ones(1, dtype=param.dtype).to(param.device)
             see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
                              force=False)
 
@@ -1152,6 +1178,8 @@ class GatheredParameters:
         if not self.enabled:
             return
         if self.src_rank is None:
+            # if torch.distributed.get_rank() == 0:
+            #     print(f"Releasing parmaeter")
             self.params[0].partition(param_list=self.params, has_been_updated=False)
             return
 

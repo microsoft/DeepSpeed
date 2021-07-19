@@ -578,7 +578,7 @@ def memory_status(msg, print_rank=-1, reset_max=False):
 def see_memory_usage(message, force=False):
     if not force:
         return
-    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+    if torch.distributed.is_initialized() and not torch.distributed.get_rank() in [0]:
         return
 
     # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports

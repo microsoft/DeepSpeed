@@ -572,7 +572,11 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self.module = model
-        if self.fp16_enabled():
+        #TODO pipe this parameter from DS config file
+        self.mixed_precision_parameters = True
+        if self.fp16_enabled() and self.mixed_precision_parameters:
+            pass
+        elif self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
                          'ds_id') for param in self.module.parameters()]):
