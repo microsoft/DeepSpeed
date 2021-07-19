@@ -1121,7 +1121,7 @@ class DeepSpeedEngine(Module):
         clip_scale = 1.0
         if max_norm > 0 and total_norm > max_norm:
             clip_scale = (total_norm + 1e-8) / max_norm
-            
+
         for param in parameters:
             if param.grad is not None:
                 param.grad.data.mul_(1. / clip_scale)
@@ -1137,7 +1137,8 @@ class DeepSpeedEngine(Module):
             if not (self.fp16_enabled() or self.amp_enabled()
                     or self.zero_optimization()):
                 parameters_to_clip = self.module.parameters()
-                self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
+                self.clip_gradients(parameters_to_clip,
+                                    max_norm=self.gradient_clipping())
 
                 #self.clip_fp32_gradients()
             elif self.amp_enabled():
@@ -1146,8 +1147,9 @@ class DeepSpeedEngine(Module):
                 # master_params = amp.master_params(self.optimizer)
                 # torch.nn.utils.clip_grad_norm_(parameters=master_params,
                 #                                max_norm=self.gradient_clipping())
-                parameters_to_clip = amp.master_params(self.optimizer)                
-                self.clip_gradients(parameters_to_clip, max_norm=self.gradient_clipping())
+                parameters_to_clip = amp.master_params(self.optimizer)
+                self.clip_gradients(parameters_to_clip,
+                                    max_norm=self.gradient_clipping())
 
         self.optimizer.step()
 

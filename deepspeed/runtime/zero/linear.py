@@ -43,7 +43,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None):
         #print(f"forward input {(input.shape, input.dtype)}, weight {(weight.shape, weight.dtype)}, bias {(bias.shape, bias.dtype) if bias is not None else None}")
-        
+
         #print("In ZeRO Linear Function")
 
         weight_id = id(weight)
@@ -84,7 +84,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
         bias = tensor_map[bias_id.item()]
         weight = weight.type_as(input)
         if bias is not None:
-            bias=bias.type_as(input)
+            bias = bias.type_as(input)
         grad_input = grad_weight = grad_bias = None
 
         #print(f"backward shaped grad_output {grad_output.shape}, input {input.shape}, weight {weight.shape} and bias {bias.shape if bias is not None else None}")
@@ -118,7 +118,7 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             grad_bias = grad_bias.float()
         #print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
         #print(f"In backward linear end")
-        
+
         return grad_input, grad_weight, grad_bias
 
 
@@ -132,7 +132,7 @@ class LinearNoTransposeFunctionForZeroStage3(torch.autograd.Function):
         assert hasattr(weight, 'ds_id'), "weight is not DeepSpeed ZeRO 3 parameter"
         if bias is not None:
             assert hasattr(bias, 'ds_id'), "bias is not DeepSpeed ZeRO 3 parameter"
-        
+
         weight_id = id(weight)
         bias_id = id(bias)
 
@@ -171,7 +171,7 @@ class LinearNoTransposeFunctionForZeroStage3(torch.autograd.Function):
         bias = tensor_map[bias_id.item()]
         weight = weight.type_as(input)
         if bias is not None:
-            bias=bias.type_as(input)
+            bias = bias.type_as(input)
         grad_input = grad_weight = grad_bias = None
 
         #print(f"backward shaped grad_output {grad_output.shape}, input {input.shape}, weight {weight.shape} and bias {bias.shape if bias is not None else None}")
@@ -206,7 +206,7 @@ class LinearNoTransposeFunctionForZeroStage3(torch.autograd.Function):
             grad_bias = grad_bias.float()
         #print(f"backward shaped grad_input {(grad_input.shape, grad_input.dtype)}, grad_weight {(grad_weight.shape, grad_weight.dtype)}, grad_bias {(grad_bias.shape, grad_bias.dtype) if grad_bias is not None else None}")
         #print(f"In backward linear end")
-        
+
         return grad_input, grad_weight, grad_bias
 
 

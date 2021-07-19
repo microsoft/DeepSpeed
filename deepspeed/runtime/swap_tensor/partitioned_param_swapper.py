@@ -305,7 +305,7 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.inflight_params.extend(params)
         self.inflight_swap_in_buffers.extend(swap_in_buffers)
-        
+
         for param in params:
             param.ds_tensor.status = PartitionedParamStatus.INFLIGHT
 

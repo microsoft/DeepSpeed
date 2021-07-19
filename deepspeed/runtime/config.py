@@ -99,8 +99,8 @@ def get_fp16_enabled(param_dict):
 def get_loss_scale(param_dict):
     if get_fp16_enabled(param_dict):
         return get_scalar_param(param_dict[FP16],
-                                    FP16_LOSS_SCALE,
-                                    FP16_LOSS_SCALE_DEFAULT)
+                                FP16_LOSS_SCALE,
+                                FP16_LOSS_SCALE_DEFAULT)
         return FP16_LOSS_SCALE_DEFAULT
 
 

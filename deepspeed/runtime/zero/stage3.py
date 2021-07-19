@@ -340,7 +340,9 @@ class PartitionedParameterCoordinator(object):
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
     def prefetch_next_sub_modules(self, sub_module, numel=5000000, nvme=False):
-        print_rank_0(f"Prefetching at Step id: {self.prefetch_coordinator.step_id} at sub_module: {sub_module.id}")
+        print_rank_0(
+            f"Prefetching at Step id: {self.prefetch_coordinator.step_id} at sub_module: {sub_module.id}"
+        )
         params_to_prefetch = []
         if not self.prefetch_coordinator.trace_completed:
             return params_to_prefetch
@@ -519,7 +521,9 @@ class PartitionedParameterCoordinator(object):
 
     def _synchronize_communication(self, synchronize_streams=True):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
-        print_rank_0(f"params in flight {self.params_in_flight} and in flight handles {self.in_flight_handles}")
+        print_rank_0(
+            f"params in flight {self.params_in_flight} and in flight handles {self.in_flight_handles}"
+        )
         for handle, param in zip(self.in_flight_handles, self.params_in_flight):
             if handle is not None:
                 with torch.cuda.stream(self.comm_stream):
@@ -592,7 +596,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     For usage examples, refer to TODO: DeepSpeed Tutorial
 
     """
-
     def __init__(self,
                  module,
                  init_optimizer,
@@ -2065,7 +2068,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     param_norm = self.norm_for_param_grads[param_id]
                     total_norm += param_norm.item()**2
             else:
-                print(f"Rank: {dist.get_rank()} param id {p.ds_id} is not model parallel ")
+                print(
+                    f"Rank: {dist.get_rank()} param id {p.ds_id} is not model parallel ")
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -2167,7 +2171,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                 offload_fp32_offsets[i] = []
 
                             # TODO cloning here will cause memory frgmentation/ preallocate this buffer
-                            offload_fp32_gradients[i].append(param.grad.view(-1).clone().float())
+                            offload_fp32_gradients[i].append(
+                                param.grad.view(-1).clone().float())
                             param.grad = None
                             offload_fp32_offsets[i].append(dest_offset)
                             # if i == 0 and dest_offset == 0:

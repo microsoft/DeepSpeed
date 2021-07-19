@@ -972,7 +972,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f"Partitioning param {param.ds_id} gradient of size {param.grad.numel()} type {param.grad.dtype} part_size {param.ds_tensor.ds_numel}"
         )
         see_memory_usage("Before partitioning gradients", force=False)
-        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}", force=False)
+        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}",
+                     force=False)
         partition_size = param.ds_tensor.ds_numel
 
         if partition_buffer is None:
@@ -1029,7 +1030,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.grad.data = dest_tensor_full_buffer.data
 
         see_memory_usage("After partitioning gradients", force=False)
-        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}", force=False)
+        print_rank_0(f"Gradients {param.grad.numel()} device: {param.grad.device}",
+                     force=False)
 
 
 class GatheredParameters:
@@ -1115,11 +1117,10 @@ class GatheredParameters:
         """
 
         self.enabled = enabled
-        
+
         if not enabled:
             return
 
-        
         if not isinstance(params, list):
             params = [params]
 
@@ -1147,7 +1148,7 @@ class GatheredParameters:
         if not self.enabled:
             return
         self.params[0].all_gather(param_list=self.params)
-        
+
     def __exit__(self, *exc):
         if not self.enabled:
             return
