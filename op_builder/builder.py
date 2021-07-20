@@ -23,8 +23,11 @@ except ImportError:
         f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
     )
 
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
+
 is_rocm_pytorch = False
-if torch.__version__ >= '1.5':
+if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
     from torch.utils.cpp_extension import ROCM_HOME
     is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
 
