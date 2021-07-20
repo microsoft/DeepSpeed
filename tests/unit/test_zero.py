@@ -226,6 +226,8 @@ def test_zero_to_fp32(tmpdir, zero_stage):
 
         fp32_state_dict = fp32_model.state_dict()
         for name in orig_state_dict.keys():
-            assert torch.allclose(orig_state_dict[name], fp32_state_dict[name])
+            # float() workaround for torch<1.6
+            assert torch.allclose(orig_state_dict[name].float(),
+                                  fp32_state_dict[name].float())
 
     _test_zero_to_fp32()
