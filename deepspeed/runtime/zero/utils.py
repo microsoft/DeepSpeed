@@ -37,6 +37,13 @@ try:
 except ImportError:
     pass
 
+# Add fairseq adam if available
+try:
+    import fairseq
+    ZERO_SUPPORTED_OPTIMIZERS.append(fairseq.optim.adam.FairseqAdam)
+except ImportError:
+    pass
+
 
 def is_zero_supported_optimizer(optimizer):
     if dist.get_rank() == 0:
