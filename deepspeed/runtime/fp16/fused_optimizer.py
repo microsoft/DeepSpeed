@@ -49,13 +49,16 @@ class FP16_Optimizer(object):
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             self.fp16_groups.append(param_group['params'])
-            
+
             # pad uneven fp16 params
             padded_fp16_groups = []
             for p in self.fp16_groups[i]:
                 padded_fp16_groups.append(p)
                 if p.numel() % 2 != 0:
-                    pad_tensor = torch.nn.Parameter(torch.zeros(1, device=p.device, dtype=p.dtype))
+                    pad_tensor = torch.nn.Parameter(
+                        torch.zeros(1,
+                                    device=p.device,
+                                    dtype=p.dtype))
                     padded_fp16_groups.append(pad_tensor)
             self.fp16_groups[i] = padded_fp16_groups
 

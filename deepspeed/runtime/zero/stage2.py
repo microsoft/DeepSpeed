@@ -222,7 +222,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p in self.fp16_groups[i]:
                 padded_fp16_groups.append(p)
                 if p.numel() % 2 != 0:
-                    pad_tensor = torch.nn.Parameter(torch.zeros(1, device=p.device, dtype=p.dtype))
+                    pad_tensor = torch.nn.Parameter(
+                        torch.zeros(1,
+                                    device=p.device,
+                                    dtype=p.dtype))
                     padded_fp16_groups.append(pad_tensor)
             self.fp16_groups[i] = padded_fp16_groups
 
@@ -257,7 +260,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #create flat buffer in CPU and move to GPU
             self.fp16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
-                    self.round_robin_fp16_groups[i] if self.load_balance_grads else self.fp16_groups[i],
+                    self.round_robin_fp16_groups[i]
+                    if self.load_balance_grads else self.fp16_groups[i],
                     dist.get_world_size(group=self.dp_process_group)).cuda(
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU")
@@ -1501,7 +1505,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def override_loss_scale(self, loss_scale):
         if loss_scale != self.external_loss_scale:
-            logger.info(f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}')
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 

@@ -245,7 +245,8 @@ class DeepSpeedEngine(Module):
             return getattr(_module, name)
         else:
             raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, name))
+                type(self).__name__,
+                name))
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -858,7 +859,9 @@ class DeepSpeedEngine(Module):
             is_fairseq_adam = isinstance(optimizer, fairseq.optim.adam.FairseqAdam)
         except ImportError:
             pass
-        if isinstance(optimizer, FusedAdam) or is_fairseq_adam or self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
+        if isinstance(optimizer,
+                      FusedAdam) or is_fairseq_adam or self.optimizer_name(
+                      ) == ONEBIT_ADAM_OPTIMIZER:
             if self.dynamic_loss_scale():
                 log_dist('Creating fp16 optimizer with dynamic loss scale', ranks=[0])
                 timers = self.timers if self.wall_clock_breakdown() else None
