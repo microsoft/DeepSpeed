@@ -720,7 +720,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     f'Before partitioning param {param.ds_id} {param.shape}',
                     force=False)
                 #param.data does not store anything meaningful in partitioned state
-                param.data = torch.ones(1, dtype=self.dtype).to(param.device)
+                param.data = torch.empty(1, dtype=self.dtype, device=param.device)
                 see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',
                                  force=False)
 
@@ -741,7 +741,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         numel=partition_size):
                     final_location = OFFLOAD_NVME_DEVICE
                     buffer = self.param_swapper.get_buffer(param, partition_size)
-                    partitioned_tensor = torch.zeros(1,
+                    partitioned_tensor = torch.empty(1,
                                                      dtype=param.dtype,
                                                      device=buffer.device)
                     partitioned_tensor.data = buffer.data
@@ -750,7 +750,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     )
 
                 else:
-                    partitioned_tensor = torch.zeros(
+                    partitioned_tensor = torch.empty(
                         partition_size,
                         dtype=param.dtype,
                         device=OFFLOAD_CPU_DEVICE
