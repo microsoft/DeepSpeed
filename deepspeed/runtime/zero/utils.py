@@ -37,12 +37,6 @@ try:
 except ImportError:
     pass
 
-# Add fairseq adam if available
-try:
-    import fairseq
-    ZERO_SUPPORTED_OPTIMIZERS.append(fairseq.optim.adam.FairseqAdam)
-except ImportError:
-    pass
 
 _fairseq = None
 
