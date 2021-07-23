@@ -105,7 +105,7 @@ class DynamicLossScaler(LossScalerBase):
                  init_scale=2**32,
                  scale_factor=2.,
                  scale_window=1000,
-                 min_scale=1,
+                 min_scale=1e-4,
                  delayed_shift=1,
                  consecutive_hysteresis=False):
         super(DynamicLossScaler, self).__init__(init_scale)

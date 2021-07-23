@@ -111,6 +111,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
 
         self.load_balance_grads = False
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
 
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
@@ -1497,6 +1499,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for name in timer_names:
             self.timers(name).stop()
 
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}')
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
+    def get_loss_scale(self):
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scale
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1660,12 +1674,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         total_norm = math.sqrt(total_norm)
 
         # compute combined scale factor for this group
-        combined_scale = self.loss_scale
+        combined_scale = self.get_loss_scale()
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
-            clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
+            clip = ((total_norm / self.get_loss_scale()) + 1e-6) / self.clip_grad
             if clip > 1:
-                combined_scale = clip * self.loss_scale
+                combined_scale = clip * self.get_loss_scale()
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
@@ -1768,7 +1782,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            # logger.info(f'effective loss scale: {self.external_loss_scale}')
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
