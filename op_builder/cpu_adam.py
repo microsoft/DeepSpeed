@@ -36,29 +36,13 @@ class CPUAdamBuilder(CUDAOpBuilder):
             ]
         return ['csrc/includes'] + CUDA_INCLUDE
 
-    def simd_width(self):
-        if not self.command_exists('lscpu'):
-            self.warning(
-                "CPUAdam attempted to query 'lscpu' to detect the existence "
-                "of AVX instructions. However, 'lscpu' does not appear to exist on "
-                "your system, will fall back to non-vectorized execution.")
-            return ''
-
-        result = subprocess.check_output('lscpu', shell=True)
-        result = result.decode('utf-8').strip().lower()
-        if 'genuineintel' in result:
-            if not is_rocm_pytorch and 'avx512' in result:
-                return '-D__AVX512__'
-            elif 'avx2' in result:
-                return '-D__AVX256__'
-        return '-D__SCALAR__'
-
     def cxx_args(self):
         import torch
         if not is_rocm_pytorch:
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
         else:
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
+        CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
 
         return [
@@ -69,7 +53,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
             '-lcublas',
             '-g',
             '-Wno-reorder',
-            '-march=native',
+            CPU_ARCH,
             '-fopenmp',
-            SIMD_WIDTH
+            SIMD_WIDTH,
         ]
