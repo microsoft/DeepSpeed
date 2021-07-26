@@ -49,6 +49,10 @@ def set_random_seed(seed):
     torch.manual_seed(seed)
 
 
+def is_model_parallel_parameter(p) -> bool:
+    return hasattr(p, 'model_parallel') and p.model_parallel
+
+
 def bwc_tensor_model_parallel_rank(mpu=None):
     """Backwards-compatible way of querying the tensor model parallel rank from
     an ``mpu`` object.
@@ -269,15 +273,19 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    param_norm = p.grad.data.float().norm(norm_type)
-                    total_norm += param_norm.item()**norm_type
-            else:
-                param_norm = p.grad.data.float().norm(norm_type)
-                total_norm += param_norm.item()**norm_type
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
+
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.grad.data.float().norm(norm_type)
+            total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -292,6 +300,48 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm = -1
 
     return total_norm
+
+
+def get_grad_zeros(parameters, mpu=None):
+    """Compute the number of grads with zero values.
+
+    This is adapted from get_grad_norm
+
+    Arguments:
+        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
+            single Tensor that will have gradients normalized
+
+    Returns:
+        Total number of params with zero values (viewed as a single vector).
+    """
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = list(filter(lambda p: p.grad is not None, parameters))
+
+    total_zeros = 0.
+    tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
+    for p in parameters:
+        # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+        if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            continue
+
+        # Filter to avoid over-counting replicated tensors from tensor
+        # model parallelism
+        if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+            continue
+
+        count_zeros = p.grad.numel() - torch.count_nonzero(p.grad)
+        total_zeros += count_zeros.item()
+
+    # Sum across all model parallel GPUs.
+    total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    if mpu is not None:
+        torch.distributed.all_reduce(total_zeros_cuda,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_model_parallel_group())
+    total_zeros = total_zeros_cuda[0].item()
+
+    return total_zeros
 
 
 def get_weight_norm(parameters, norm_type=2, mpu=None):
@@ -326,24 +376,19 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    try:
-                        param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                    except TypeError as err:
-                        param_norm = float(torch.norm(p.float(), norm_type))
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
 
-                    #param_norm = p.data.float().norm(norm_type)
-                    total_norm += param_norm**norm_type
-            else:
-                try:
-                    param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                except TypeError as err:
-                    param_norm = float(torch.norm(p.float(), norm_type))
-                #param_norm = p.data.float().norm(norm_type)
-                total_norm += param_norm**norm_type
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.data.float().norm(norm_type)
+            total_norm += param_norm**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
