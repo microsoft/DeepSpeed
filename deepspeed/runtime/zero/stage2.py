@@ -13,7 +13,7 @@ from packaging import version as pkg_version
 import collections
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -149,7 +149,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.model_parallel_rank = 0
         else:
             self.model_parallel_group = mpu.get_model_parallel_group()
-            self.model_parallel_rank = mpu.get_model_parallel_rank()
+            self.model_parallel_rank = bwc_tensor_model_parallel_rank(mpu)
 
         self.overflow = False
         self.clip_grad = clip_grad
@@ -970,6 +970,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         total_norm = 0.0
         norm_type = 2.0
         for p in params:
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
+
             if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                 param_id = self.get_param_id(p)
                 # as some model have trainable parameters but skipped in training,
@@ -1366,6 +1370,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
             #if dist.get_rank() == 0:
             #    logger.info(f"Total Norm begining {total_norm}")
             for g, p in zip(gradients, params):
+                # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+                if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                    continue
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2

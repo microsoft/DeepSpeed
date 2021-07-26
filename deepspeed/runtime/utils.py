@@ -276,7 +276,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, '_pipe_replicated') and p._pipe_replicated:
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
                 continue
 
             # Filter to avoid over-counting replicated tensors from tensor
@@ -322,7 +322,7 @@ def get_grad_zeros(parameters, mpu=None):
     tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
     for p in parameters:
         # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-        if hasattr(p, '_pipe_replicated') and p._pipe_replicated:
+        if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
             continue
 
         # Filter to avoid over-counting replicated tensors from tensor
@@ -379,7 +379,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, '_pipe_replicated') and p._pipe_replicated:
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
                 continue
 
             # Filter to avoid over-counting replicated tensors from tensor

@@ -253,7 +253,7 @@ class PipelineModule(nn.Module):
         # All pipeline parameters should be considered as model parallel in the context
         # of our FP16 optimizer
         for p in self.parameters():
-            p._pipe_replicated = False
+            p.ds_pipe_replicated = False
 
     def _count_layer_params(self):
         """Count the trainable parameters in individual layers.
@@ -472,7 +472,7 @@ class PipelineModule(nn.Module):
                             # Only count the tied module once in the eyes of the FP16 optimizer
                             if self.global_rank != tied_ranks[0]:
                                 for p in self.tied_modules[key].parameters():
-                                    p._pipe_replicated = True
+                                    p.ds_pipe_replicated = True
         '''
         if len(tied_comms) > 0:
             print(f'RANK={self.global_rank} tied_comms={tied_comms}')
