@@ -122,6 +122,7 @@ class DeepSpeedEngine(Module):
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
+        self._step_applied = False
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -1013,6 +1014,18 @@ class DeepSpeedEngine(Module):
                           torch.utils.data.IterableDataset
                           )  # hasattr(obj, "__iter__") should work as well
 
+    def was_step_applied(self) -> bool:
+        """Returns True if the latest ``step()`` produced in parameter updates.
+
+        Note that a ``False`` return is not an error condition. Steps are frequently
+        no-ops, such as between gradient accumulation boundaries or when overflows
+        occur.
+
+        Returns:
+            bool: Whether the latest ``step()`` modified model parameters.
+        """
+        return self._step_applied
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -1307,6 +1320,7 @@ class DeepSpeedEngine(Module):
         overflow = False
         if hasattr(self.optimizer, 'overflow'):
             overflow = self.optimizer.overflow
+        self._step_applied = not overflow
 
         if overflow:
             self.skipped_steps += 1
@@ -1337,6 +1351,8 @@ class DeepSpeedEngine(Module):
         assert self.optimizer is not None, "must provide optimizer during " \
                                            "init in order to use step"
         report_progress = self.global_rank == 0 if self.global_rank else True
+
+        self._step_applied = False  # assume False, will flip to True
 
         # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():
