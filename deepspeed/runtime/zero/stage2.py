@@ -1499,11 +1499,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             see_memory_usage('After overflow after clearing gradients')
 
-            logger.info(
-                "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
-                "reducing to {}".format(dist.get_rank(),
-                                        prev_scale,
-                                        self.loss_scale))
             self.start_timers(timer_names)
             self.stop_timers(timer_names)
             return
