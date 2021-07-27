@@ -99,7 +99,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
                  ignore_unused_parameters=True,
-                 partition_grads=True):
+                 partition_grads=True,
+                 elastic_checkpoint=False):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -110,9 +111,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
 
-        self.load_balance_grads = False
+        # will disable later if number of elements in a param % 2 != 0
+        self.load_balance_grads = True
+
         self.custom_loss_scaler = False
         self.external_loss_scale = None
+
+        self.elastic_checkpoint = elastic_checkpoint
 
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
@@ -222,6 +227,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for p in self.fp16_groups[i]:
                 padded_fp16_groups.append(p)
                 if p.numel() % 2 != 0:
+                    # turn off load balancing grads, isn't supported
+                    self.load_balance_grads = False
                     pad_tensor = torch.nn.Parameter(
                         torch.zeros(1,
                                     device=p.device,
@@ -1880,17 +1887,21 @@ class FP16_DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+
+        if self.elastic_checkpoint:
+            state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+            # Remove paddings for DP alignment to enable loading for other alignment values
+            fp32_groups_without_padding = self._get_groups_without_padding(
+                self.single_partition_of_fp32_groups)
+            state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
+        else:
+            state_dict['base_optimizer_state'] = self.optimizer.state_dict()
+            state_dict[
+                'single_partition_of_fp32_groups'] = self.single_partition_of_fp32_groups
 
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
         state_dict['partition_count'] = self.partition_count
-
         state_dict['ds_version'] = version
-
-        # Remove paddings for DP alignment to enable loading for other alignment values
-        fp32_groups_without_padding = self._get_groups_without_padding(
-            self.single_partition_of_fp32_groups)
-        state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
 
         #        if self.cpu_offload:
         #            state_dict_tmp = async_copy_to(state_dict,
@@ -2019,7 +2030,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
             assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
 
         if load_optimizer_states:
-            self._restore_base_optimizer_state(state_dict_list)
+            if self.elastic_checkpoint:
+                self._restore_base_optimizer_state(state_dict_list)
+            else:
+                self.optimizer.load_state_dict(state_dict_list[dist.get_rank(
+                    group=self.dp_process_group)]['base_optimizer_state'])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.

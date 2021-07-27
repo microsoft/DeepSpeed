@@ -952,7 +952,8 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
-                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
+                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
+                elastic_checkpoint=self.zero_elastic_checkpoint())
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
