@@ -573,7 +573,7 @@ class DeepSpeedEngine(Module):
         if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
             ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
             local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
-            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({mpi_local_rank}), " \
+            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({ompi_local_rank}), " \
                 "not sure how to proceed as we're seeing conficting local rank info."
             os.environ['LOCAL_RANK'] = local_rank
 
@@ -907,6 +907,13 @@ class DeepSpeedEngine(Module):
                 gradient_predivide=self.gradient_predivide)
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
+            contiguous_gradients = self.zero_contiguous_gradients()
+
+            # Overlap and contiguous grads are meaningless in stage 1 and are ignored
+            if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                overlap_comm = False
+                contiguous_gradients = False
+
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
                     logger.warning(
@@ -921,7 +928,7 @@ class DeepSpeedEngine(Module):
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
+                contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,
@@ -1978,7 +1985,15 @@ class DeepSpeedEngine(Module):
         param_shapes = OrderedDict()
         cnt = 0
         numel = 0
-        for fp16_group in self.optimizer.fp16_groups:
+
+        # zero2 started using a round_robin_fp16_groups which is a shuffled version of fp16_groups -
+        # if we don't use it, we get parameters ordered incorrectly
+        if hasattr(self.optimizer, "round_robin_fp16_groups"):
+            fp16_groups = self.optimizer.round_robin_fp16_groups
+        else:
+            fp16_groups = self.optimizer.fp16_groups
+
+        for fp16_group in fp16_groups:
             for param in fp16_group:
                 cnt += 1
                 numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
