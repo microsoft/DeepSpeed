@@ -126,6 +126,9 @@ class DeepSpeedEngine(Module):
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
 
+        # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
+        self.param_names = {param: name for name, param in model.named_parameters()}
+
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
             self.config = config_params
@@ -584,7 +587,7 @@ class DeepSpeedEngine(Module):
         if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
             ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
             local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
-            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({mpi_local_rank}), " \
+            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({ompi_local_rank}), " \
                 "not sure how to proceed as we're seeing conficting local rank info."
             os.environ['LOCAL_RANK'] = local_rank
 
@@ -926,6 +929,13 @@ class DeepSpeedEngine(Module):
                 gradient_predivide=self.gradient_predivide)
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
+            contiguous_gradients = self.zero_contiguous_gradients()
+
+            # Overlap and contiguous grads are meaningless in stage 1 and are ignored
+            if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                overlap_comm = False
+                contiguous_gradients = False
+
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
                     logger.warning(
@@ -940,7 +950,7 @@ class DeepSpeedEngine(Module):
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
+                contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,
@@ -1287,7 +1297,7 @@ class DeepSpeedEngine(Module):
 
         self.optimizer.step()
 
-        # Quantize the updated parameter if there no overflow
+        # Quantize the updated parameter if there is no overflow
         if self.quantizer:
             self.quantizer.quantize(
                 (self.optimizer.fp16_groups
@@ -1983,12 +1993,43 @@ class DeepSpeedEngine(Module):
 
         return buffer_names
 
-    def _get_param_shapes(self):
+    def _get_zero_param_shapes(self):
+        """Returns a dict of name to shape mapping, only for the flattened fp32 weights saved by the
+        optimizer. the names are exactly as in state_dict. The order is absolutely important, since
+        the saved data is just flattened data with no identifiers and requires reconstruction in the
+        same order it was saved.
+
+        We can't rely on self.module.named_parameters() to get the saved tensors, as some params
+        will be missing and others unsaved and then it'd be impossible to reconstruct state_dict
+        from the flattened weights.
+
+        optimizer.fp16_groups seems to be the easiest to use as it's in all zeroX versions.
+        """
         param_shapes = OrderedDict()
-        for name, param in self.module.named_parameters():
-            param_shapes[name] = param.ds_shape if hasattr(param,
-                                                           "ds_shape") else param.shape
-            # print(f"saving param {name} {param_shapes[name]}")
+        cnt = 0
+        numel = 0
+
+        # zero2 started using a round_robin_fp16_groups which is a shuffled version of fp16_groups -
+        # if we don't use it, we get parameters ordered incorrectly
+        if hasattr(self.optimizer, "round_robin_fp16_groups"):
+            fp16_groups = self.optimizer.round_robin_fp16_groups
+        else:
+            fp16_groups = self.optimizer.fp16_groups
+
+        for fp16_group in fp16_groups:
+            for param in fp16_group:
+                cnt += 1
+                numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
+                shape = param.ds_shape if hasattr(param, "ds_shape") else param.shape
+                if param not in self.param_names:
+                    raise ValueError(f"failed to find optimizer param in named params")
+                name = self.param_names[param]
+                param_shapes[name] = shape
+
+                # uncomment to debug zero_to_fp32.py problems
+                # if self.global_rank == 0: print(f"saving param {name} {shape} (numel={shape.numel()})")
+        # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
+
         return param_shapes
 
     def _copy_recovery_script(self, save_path):
@@ -2004,11 +2045,12 @@ class DeepSpeedEngine(Module):
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
-                       param_shapes=self._get_param_shapes(),
+                       param_shapes=self._get_zero_param_shapes(),
                        ds_config=self.config,
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
-        self._copy_recovery_script(save_path)
+        if self.global_rank == 0:
+            self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
     def _zero3_consolidated_fp16_state_dict(self):
@@ -2035,33 +2077,38 @@ class DeepSpeedEngine(Module):
             raise ValueError("this function requires ZeRO-3 mode")
 
         state_dict = OrderedDict() if torch.distributed.get_rank() == 0 else None
-        shared_weights = {}
+        shared_params = {}
 
         def get_layer_state_dict(module, prefix=""):
             # gather one layer at a time to be memory-efficient
+            # must use modifier_rank=0 to release GPU memory after each layer gathered
+            #see_memory_usage("before GatheredParameters", force=True)
             with deepspeed.zero.GatheredParameters(list(
-                    module.parameters(recurse=False))):
+                    module.parameters(recurse=False)),
+                                                   modifier_rank=0):
                 if torch.distributed.get_rank() == 0:
+                    # handle params
                     for name, param in module.named_parameters(recurse=False):
                         if param is None:
                             continue
                         key = prefix + name
-                        # for shared weights we want to make sure not to unshare them when copying to cpu
-                        data_ptr_id = param.storage().data_ptr()
-                        if data_ptr_id in shared_weights:
+                        # can't rely on param.data_ptr() as it will be reused as weights gets
+                        # gathered and reduced, but param.ds_id is unique across all zero weights
+                        # (and shared params will have the same param.ds_id)
+                        if param.ds_id in shared_params:
                             # shared weights
-                            # print(f"`{key}` is shared with `{shared_weights[data_ptr_id]}`")
-                            state_dict[key] = state_dict[shared_weights[data_ptr_id]]
+                            #print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
+                            state_dict[key] = state_dict[shared_params[param.ds_id]]
                         else:
                             state_dict[key] = param.detach().cpu()
-                            shared_weights[data_ptr_id] = key
-                        #print(f"param {name} {param.shape}")
-                        #print(f"param {key} {param.shape} {state_dict[key].storage().data_ptr()}")
+                            shared_params[param.ds_id] = key
+                        #print(f"param {param.ds_id} {param.shape} {key} ")
 
                     # now buffers - not sure if need to take care of potentially shared weights here
                     for name, buf in module.named_buffers(recurse=False):
                         if buf is not None and name not in module._non_persistent_buffers_set:
                             state_dict[prefix + name] = buf.detach().cpu()
+            #see_memory_usage("after GatheredParameters", force=True)
 
             for name, child in module.named_children():
                 if child is not None:
