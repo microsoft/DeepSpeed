@@ -18,6 +18,7 @@ from .offload_constants import *
 
 from ..utils import see_memory_usage
 from deepspeed.utils import log_dist, init_distributed
+from deepspeed.utils.debug import debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
 from ..config import DeepSpeedConfig
@@ -27,8 +28,14 @@ partitioned_param_data_shape = [1]
 
 
 def print_rank_0(message, debug=False, force=False):
-    if torch.distributed.get_rank() == 0 and (debug or force):
+    rank = torch.distributed.get_rank()
+    if rank == 0 and (debug or force):
         print(message)
+    # other variations
+    # - print for all ranks w/o interleaving
+    # printflock(f"[{rank}] {message}")
+    # - print to log file per rank
+    # log_rank_file(rank, message)
 
 
 def is_zero_param(parameter):
@@ -221,10 +228,34 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def partition_after(f):
             @functools.wraps(f)
             def wrapper(module, *args, **kwargs):
+
+                # important logic: We want to run post_init only after child's __init__ is
+                # completed, and do nothing after __init__ of any of its parents and grandparents in
+                # the inheritance ancestry. This way the partitioning will need to happen only once
+                # when the whole object is ready to be partitioned and not before. This is because
+                # often the child module will need to tweak the weights - for example running a
+                # custom weights init function. So if a parent created the weights param, the child
+                # won't need to gather it in order to tweak it
+
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
+
+                is_child_module = False
+                if not hasattr(module, "_ds_child_entered"):
+                    # child's __init__ was called, since parents all see the same object they can now skip post_init
+                    is_child_module = True
+                    setattr(module, "_ds_child_entered", True)
+
                 f(module, *args, **kwargs)
-                self._post_init_method(module)
+
+                if is_child_module:
+                    # child's __init__ is done, now we can run a single post_init on the child object
+                    delattr(module, "_ds_child_entered")
+
+                    print_rank_0(f'Running post_init for {module.__class__.__name__}',
+                                 force=False)
+                    self._post_init_method(module)
+
                 print_rank_0(
                     f'After initializing followed by post init for {module.__class__.__name__}',
                     force=False)
@@ -259,7 +290,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if self.mem_efficient_linear:
             print_rank_0(
                 "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
-                force=True)
+                force=False)
             self.linear_bk = torch.nn.functional.linear
             torch.nn.functional.linear = LinearFunctionForZeroStage3.apply
 
@@ -481,12 +512,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             force=False)
 
         global param_count
-        for name, param in module.named_parameters(recurse=False):
+        for param in module.parameters(recurse=False):
             param_count += param.numel()
             if not is_zero_param(param):
                 self._convert_to_deepspeed_param(param)
                 print_rank_0(
-                    f"Partitioning param with ds id {param.ds_id} and shape {param.data.shape}"
+                    f"Partitioning param {debug_param2name_id_shape(param)} module={debug_module2name(module)}"
                 )
                 param.partition()
         see_memory_usage(
@@ -537,7 +568,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def partition(param_list=None, hierarchy=0, has_been_updated=False):
             cls = param
             print_rank_0(
-                f"{'--'*hierarchy}----Partitioning param with id {cls.ds_id} dev {cls.device} shape {cls.shape}"
+                f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}"
             )
             if param_list is None:
                 param_list = [cls]
@@ -558,7 +589,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                 accumulate=False):
             cls = param
             print_rank_0(
-                f"{'--'*hierarchy}----Partitioning param gradient with id {cls.ds_id}")
+                f"{'--'*hierarchy}----Partitioning param gradient with id {debug_param2name_id_shape_device(cls)}"
+            )
             if param_list is None:
                 param_list = [cls]
                 if isinstance(partition_buffers, torch.Tensor):
@@ -797,23 +829,23 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         assert tensor_size == aligned_param_size, f'param id {param.ds_id} aligned size {aligned_param_size} does not match tensor size {tensor_size}'
 
         print_rank_0(
-            f"{'--'* hierarchy}---- Before allocating Allgather param with id {param.ds_id} and status {param.ds_status} Partition Size {partition_size} and data shape {param.ds_shape}"
+            f"{'--'* hierarchy}---- Before allocating allgather param {debug_param2name_id_shape_status(param)} partition size={partition_size}"
         )
 
         see_memory_usage(
-            f'Before allocate allgather param {param.ds_id} {param.ds_status} {aligned_param_size} {partition_size} {param.ds_shape}',
+            f'Before allocate allgather param {debug_param2name_id_shape_status(param)} partition_size={partition_size} ',
             force=False)
         flat_tensor = torch.zeros(aligned_param_size,
                                   dtype=param.dtype,
                                   device=param.device).view(-1)
         see_memory_usage(
-            f'After allocate allgather param {param.ds_id} {param.ds_status} {aligned_param_size} {partition_size} {param.ds_shape}',
+            f'After allocate allgather param {debug_param2name_id_shape_status(param)} {aligned_param_size} {partition_size} ',
             force=False)
 
         torch.cuda.synchronize()
 
         print_rank_0(
-            f"{'--'* hierarchy}----Allgather param with id {param.ds_id} and status {param.ds_status} Partition Size {partition_size} and data shape {param.ds_shape}"
+            f"{'--'* hierarchy}----allgather param with {debug_param2name_id_shape_status(param)} partition size={partition_size}"
         )
         #        if not flat_tensor.numel() > 100000:
         #            replicated_tensor = flat_tensor.narrow(0,
@@ -1060,6 +1092,9 @@ class GatheredParameters:
             fwd_module (``torch.nn.Module``, optional): If specified, ``params`` will be
                 registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
+
+        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
+        if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
         ========

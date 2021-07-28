@@ -38,6 +38,7 @@ from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
+from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.eigenvalue import Eigenvalue
 
@@ -121,6 +122,12 @@ class DeepSpeedEngine(Module):
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
+
+        # for debug purposes - can then debug print: debug_get_module_name(module)
+        debug_extract_module_and_param_names(model)
+
+        # needed for zero_to_fp32 weights reconstruction to remap nameless data to state_dict
+        self.param_names = {param: name for name, param in model.named_parameters()}
 
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
@@ -475,6 +482,9 @@ class DeepSpeedEngine(Module):
     def zero_allgather_partitions(self):
         return self._config.zero_config.allgather_partitions
 
+    def zero_round_robin_gradients(self):
+        return self._config.zero_config.round_robin_gradients
+
     def dump_state(self):
         return self._config.dump_state
 
@@ -562,6 +572,14 @@ class DeepSpeedEngine(Module):
         # environment variable is set. We must align args.local_rank to this value for
         # backwards compatability with scripts relying on [args|self].local_rank containing
         # the correct local rank info. _do_args_sanity_check will ensure this is the case.
+
+        if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
+            ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
+            local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
+            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({ompi_local_rank}), " \
+                "not sure how to proceed as we're seeing conficting local rank info."
+            os.environ['LOCAL_RANK'] = local_rank
+
         self.local_rank = int(os.environ['LOCAL_RANK'])
         if hasattr(args, 'local_rank'):
             args.local_rank = self.local_rank
@@ -581,8 +599,10 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
-        assert "LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment variable, it is set by the deepspeed launcher, " \
-            "deepspeed.init_distributed, or the torch.distributed launcher. If using a different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
+        assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
+            "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch.distributed launcher. If using a " \
+            "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
+
         if hasattr(args, 'local_rank') and args.local_rank != None:
             assert isinstance(args.local_rank, int), f"args.local_rank of {args.local_rank} is an unknown type {type(args.local_rank)}"
             if args.local_rank >= 0:
@@ -768,6 +788,7 @@ class DeepSpeedEngine(Module):
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Adam is not compatible with ZeRO"
             from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
@@ -775,6 +796,7 @@ class DeepSpeedEngine(Module):
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
         elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
+            assert not self.zero_optimization(), "1bit-Lamb is not compatible with ZeRO"
             from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
             optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
@@ -888,6 +910,15 @@ class DeepSpeedEngine(Module):
                 gradient_predivide=self.gradient_predivide)
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
+            contiguous_gradients = self.zero_contiguous_gradients()
+            round_robin_gradients = self.zero_round_robin_gradients()
+
+            # Overlap and contiguous grads are meaningless in stage 1 and are ignored
+            if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                overlap_comm = False
+                contiguous_gradients = False
+                round_robin_gradients = False
+
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
                     logger.warning(
@@ -902,7 +933,7 @@ class DeepSpeedEngine(Module):
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
+                contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,
@@ -914,9 +945,10 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
-                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
+                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
+                round_robin_gradients=round_robin_gradients)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
-            print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
+            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage3(
                 self.module,
@@ -1248,7 +1280,7 @@ class DeepSpeedEngine(Module):
 
         self.optimizer.step()
 
-        # Quantize the updated parameter if there no overflow
+        # Quantize the updated parameter if there is no overflow
         if self.quantizer:
             self.quantizer.quantize(
                 (self.optimizer.fp16_groups
@@ -1903,6 +1935,7 @@ class DeepSpeedEngine(Module):
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
         state = dict(module=self.module_state_dict(),
+                     buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not self.zero_optimization() else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
@@ -1922,12 +1955,64 @@ class DeepSpeedEngine(Module):
         torch.save(state, save_path)
         self._curr_save_path = None
 
-    def _get_param_shapes(self):
+    def _get_buffer_names(self):
+        buffer_names = []
+
+        # we save buffer names so that we could extract later the real buffers from the saved
+        # state_dict["module"] in the non-zero checkpoint - the buffers are already there but they
+        # are intermixed with param placeholders
+
+        # have to traverse the tree to be able to skip non-persistent buffers
+        def get_layer_named_buffers(module, prefix=""):
+            for name, buf in module.named_buffers(recurse=False):
+                if buf is not None and name not in module._non_persistent_buffers_set:
+                    buffer_names.append(prefix + name)
+
+            for name, child in module.named_children():
+                if child is not None:
+                    get_layer_named_buffers(child, prefix + name + ".")
+
+        get_layer_named_buffers(self.module, prefix="")
+
+        return buffer_names
+
+    def _get_zero_param_shapes(self):
+        """Returns a dict of name to shape mapping, only for the flattened fp32 weights saved by the
+        optimizer. the names are exactly as in state_dict. The order is absolutely important, since
+        the saved data is just flattened data with no identifiers and requires reconstruction in the
+        same order it was saved.
+
+        We can't rely on self.module.named_parameters() to get the saved tensors, as some params
+        will be missing and others unsaved and then it'd be impossible to reconstruct state_dict
+        from the flattened weights.
+
+        optimizer.fp16_groups seems to be the easiest to use as it's in all zeroX versions.
+        """
         param_shapes = OrderedDict()
-        for name, param in self.module.named_parameters():
-            param_shapes[name] = param.ds_shape if hasattr(param,
-                                                           "ds_shape") else param.shape
-            # print(f"saving param {name} {param_shapes[name]}")
+        cnt = 0
+        numel = 0
+
+        # zero2 started using a round_robin_fp16_groups which is a shuffled version of fp16_groups -
+        # if we don't use it, we get parameters ordered incorrectly
+        if hasattr(self.optimizer, "round_robin_fp16_groups"):
+            fp16_groups = self.optimizer.round_robin_fp16_groups
+        else:
+            fp16_groups = self.optimizer.fp16_groups
+
+        for fp16_group in fp16_groups:
+            for param in fp16_group:
+                cnt += 1
+                numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
+                shape = param.ds_shape if hasattr(param, "ds_shape") else param.shape
+                if param not in self.param_names:
+                    raise ValueError(f"failed to find optimizer param in named params")
+                name = self.param_names[param]
+                param_shapes[name] = shape
+
+                # uncomment to debug zero_to_fp32.py problems
+                # if self.global_rank == 0: print(f"saving param {name} {shape} (numel={shape.numel()})")
+        # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
+
         return param_shapes
 
     def _copy_recovery_script(self, save_path):
@@ -1943,11 +2028,12 @@ class DeepSpeedEngine(Module):
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
-                       param_shapes=self._get_param_shapes(),
+                       param_shapes=self._get_zero_param_shapes(),
                        ds_config=self.config,
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
-        self._copy_recovery_script(save_path)
+        if self.global_rank == 0:
+            self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
     def _zero3_consolidated_fp16_state_dict(self):
@@ -1974,33 +2060,38 @@ class DeepSpeedEngine(Module):
             raise ValueError("this function requires ZeRO-3 mode")
 
         state_dict = OrderedDict() if torch.distributed.get_rank() == 0 else None
-        shared_weights = {}
+        shared_params = {}
 
         def get_layer_state_dict(module, prefix=""):
             # gather one layer at a time to be memory-efficient
+            # must use modifier_rank=0 to release GPU memory after each layer gathered
+            #see_memory_usage("before GatheredParameters", force=True)
             with deepspeed.zero.GatheredParameters(list(
-                    module.parameters(recurse=False))):
+                    module.parameters(recurse=False)),
+                                                   modifier_rank=0):
                 if torch.distributed.get_rank() == 0:
+                    # handle params
                     for name, param in module.named_parameters(recurse=False):
                         if param is None:
                             continue
                         key = prefix + name
-                        # for shared weights we want to make sure not to unshare them when copying to cpu
-                        data_ptr_id = param.storage().data_ptr()
-                        if data_ptr_id in shared_weights:
+                        # can't rely on param.data_ptr() as it will be reused as weights gets
+                        # gathered and reduced, but param.ds_id is unique across all zero weights
+                        # (and shared params will have the same param.ds_id)
+                        if param.ds_id in shared_params:
                             # shared weights
-                            # print(f"`{key}` is shared with `{shared_weights[data_ptr_id]}`")
-                            state_dict[key] = state_dict[shared_weights[data_ptr_id]]
+                            #print(f"`{key}` is shared with `{shared_params[param.ds_id]}`")
+                            state_dict[key] = state_dict[shared_params[param.ds_id]]
                         else:
                             state_dict[key] = param.detach().cpu()
-                            shared_weights[data_ptr_id] = key
-                        #print(f"param {name} {param.shape}")
-                        #print(f"param {key} {param.shape} {state_dict[key].storage().data_ptr()}")
+                            shared_params[param.ds_id] = key
+                        #print(f"param {param.ds_id} {param.shape} {key} ")
 
                     # now buffers - not sure if need to take care of potentially shared weights here
                     for name, buf in module.named_buffers(recurse=False):
                         if buf is not None and name not in module._non_persistent_buffers_set:
                             state_dict[prefix + name] = buf.detach().cpu()
+            #see_memory_usage("after GatheredParameters", force=True)
 
             for name, child in module.named_children():
                 if child is not None:
