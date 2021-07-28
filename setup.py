@@ -112,9 +112,11 @@ def op_enabled(op_name):
     return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
 
 
+compatible_ops = dict.fromkeys(ALL_OPS.keys(), False)
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
+    compatible_ops[op_name] = op_compatible
 
     # If op is requested but not available, throw an error
     if op_enabled(op_name) and not op_compatible:
@@ -131,8 +133,6 @@ for op_name, builder in ALL_OPS.items():
         assert torch_available, f"Unable to pre-compile {op_name}, please first install torch"
         install_ops[op_name] = op_enabled(op_name)
         ext_modules.append(builder.builder())
-
-compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 
 print(f'Install Ops={install_ops}')
 
