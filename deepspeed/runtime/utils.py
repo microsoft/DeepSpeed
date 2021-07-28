@@ -66,6 +66,7 @@ def copy_to_device(item, device, criterion_func):
     Parameters:
         item: tensor to copy or (possibly nested) container of tensors to copy.
         device: target device
+        criterion_func: Function to restrict copy operation to items meet criterion
 
     Returns:
         None
@@ -73,11 +74,11 @@ def copy_to_device(item, device, criterion_func):
     if criterion_func(item):
         return item.to(device)
     elif isinstance(item, list):
-        return [copy_to_device(v, device) for v in item]
+        return [copy_to_device(v, device, criterion_func) for v in item]
     elif isinstance(item, tuple):
-        return tuple([copy_to_device(v, device) for v in item])
+        return tuple([copy_to_device(v, device, criterion_func) for v in item])
     elif isinstance(item, dict):
-        return {k: copy_to_device(v, device) for k, v in item.items()}
+        return {k: copy_to_device(v, device, criterion_func) for k, v in item.items()}
     else:
         return item
 
@@ -89,6 +90,7 @@ def move_to_device(item, device, criterion_func):
     Parameters:
         item: tensor to move or (possibly nested) container of tensors to move.
         device: target device
+        criterion_func: Function to restrict move operation to items meet criterion
 
     Returns:
         None
@@ -98,11 +100,11 @@ def move_to_device(item, device, criterion_func):
         item.data = device_copy.data
         return item
     elif isinstance(item, list):
-        return [move_to_device(v, device) for v in item]
+        return [move_to_device(v, device, criterion_func) for v in item]
     elif isinstance(item, tuple):
-        return tuple([move_to_device(v, device) for v in item])
+        return tuple([move_to_device(v, device, criterion_func) for v in item])
     elif isinstance(item, dict):
-        return {k: move_to_device(v, device) for k, v in item.items()}
+        return {k: move_to_device(v, device, criterion_func) for k, v in item.items()}
     else:
         return item
 
