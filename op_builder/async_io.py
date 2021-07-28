@@ -56,16 +56,19 @@ class AsyncIOBuilder(OpBuilder):
     def check_for_libaio_pkg(self):
         libs = dict(
             dpkg=["-l",
-                  "libaio-dev"],
+                  "libaio-dev",
+                  "apt"],
             pacman=["-Q",
-                    "libaio"],
+                    "libaio",
+                    "pacman"],
             rpm=["-q",
-                 "libaio-devel"],
+                 "libaio-devel",
+                 "yum"],
         )
 
         found = False
         for pkgmgr, data in libs.items():
-            flag, lib = data
+            flag, lib, tool = data
             path = distutils.spawn.find_executable(pkgmgr)
             if path is not None:
                 cmd = f"{pkgmgr} {flag} {lib}"
@@ -77,7 +80,7 @@ class AsyncIOBuilder(OpBuilder):
                     found = True
                 else:
                     self.warning(
-                        f"{self.NAME}: please install the {lib} package with {pkgmgr}")
+                        f"{self.NAME}: please install the {lib} package with {tool}")
                 break
         return found
 
