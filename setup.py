@@ -121,7 +121,9 @@ for op_name, builder in ALL_OPS.items():
     # If op is requested but not available, throw an error
     if op_enabled(op_name) and not op_compatible:
         env_var = op_envvar(op_name)
-        assert False, f"Unable to pre-compile {op_name}, perhaps disable with {env_var}=0"
+        if env_var not in os.environ:
+            builder.warning(f"One can disable {op_name} with {env_var}=0")
+        assert False, f"Unable to pre-compile {op_name}"
 
     # If op is compatible update install reqs so it can potentially build/run later
     if op_compatible:
