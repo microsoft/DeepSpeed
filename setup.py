@@ -101,10 +101,14 @@ def command_exists(cmd):
         return result.wait() == 0
 
 
-def op_enabled(op_name):
+def op_envvar(op_name):
     assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
         f"{op_name} is missing BUILD_VAR field"
-    env_var = ALL_OPS[op_name].BUILD_VAR
+    return ALL_OPS[op_name].BUILD_VAR
+
+
+def op_enabled(op_name):
+    env_var = op_envvar(op_name)
     return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
 
 
@@ -114,9 +118,7 @@ for op_name, builder in ALL_OPS.items():
 
     # If op is requested but not available, throw an error
     if op_enabled(op_name) and not op_compatible:
-        assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
-            f"{op_name} is missing BUILD_VAR field"
-        env_var = ALL_OPS[op_name].BUILD_VAR
+        env_var = op_envvar(op_name)
         assert False, f"Unable to pre-compile {op_name}, perhaps disable with {env_var}=0"
 
     # If op is compatible update install reqs so it can potentially build/run later
