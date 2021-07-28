@@ -112,6 +112,13 @@ install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
 
+    # If op is requested but not available, throw an error
+    if op_enabled(op_name) and not op_compatible:
+        assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
+            f"{op_name} is missing BUILD_VAR field"
+        env_var = ALL_OPS[op_name].BUILD_VAR
+        assert False, f"Unable to pre-compile {op_name}, perhaps disable with {env_var}=0"
+
     # If op is compatible update install reqs so it can potentially build/run later
     if op_compatible:
         reqs = builder.python_requirements()
