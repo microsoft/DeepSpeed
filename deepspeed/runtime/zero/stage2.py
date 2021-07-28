@@ -1525,12 +1525,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 
-    def get_loss_scale(self):
-        if self.custom_loss_scaler:
-            return self.external_loss_scale
-        else:
-            return self.loss_scale
-
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1559,11 +1553,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             see_memory_usage('After overflow after clearing gradients')
 
-            logger.info(
-                "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
-                "reducing to {}".format(dist.get_rank(),
-                                        prev_scale,
-                                        self.loss_scale))
+            if self.custom_loss_scaler:
+                logger.info(
+                    "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step.}".format(dist.get_rank()))
+            else:
+                logger.info(
+                    "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
+                    "reducing to {}".format(dist.get_rank(),
+                                            prev_scale,
+                                            self.loss_scale))
             self.start_timers(timer_names)
             self.stop_timers(timer_names)
             return
@@ -1692,12 +1690,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         total_norm = math.sqrt(total_norm)
 
         # compute combined scale factor for this group
-        combined_scale = self.get_loss_scale()
+        combined_scale = self.loss_scale
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
-            clip = ((total_norm / self.get_loss_scale()) + 1e-6) / self.clip_grad
+            clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
             if clip > 1:
-                combined_scale = clip * self.get_loss_scale()
+                combined_scale = clip * self.loss_scale
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
@@ -1832,7 +1830,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value
