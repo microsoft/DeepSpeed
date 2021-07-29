@@ -33,6 +33,15 @@ except ImportError:
 
 from op_builder import ALL_OPS, get_default_compute_capatabilities
 
+RED_START = '\033[31m'
+RED_END = '\033[0m'
+ERROR = f"{RED_START} [ERROR] {RED_END}"
+
+
+def abort(msg):
+    print(f"{ERROR} {msg}")
+    assert False, msg
+
 
 def fetch_requirements(path):
     with open(path, 'r') as fd:
@@ -123,7 +132,7 @@ for op_name, builder in ALL_OPS.items():
         env_var = op_envvar(op_name)
         if env_var not in os.environ:
             builder.warning(f"One can disable {op_name} with {env_var}=0")
-        assert False, f"Unable to pre-compile {op_name}"
+        abort(f"Unable to pre-compile {op_name}")
 
     # If op is compatible update install reqs so it can potentially build/run later
     if op_compatible:
