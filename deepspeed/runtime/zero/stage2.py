@@ -1555,7 +1555,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             if self.custom_loss_scaler:
                 logger.info(
-                    "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step.}".format(dist.get_rank()))
+                    "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step.".format(dist.get_rank()))
             else:
                 logger.info(
                     "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
