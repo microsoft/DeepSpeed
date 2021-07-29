@@ -1146,7 +1146,8 @@ class DeepSpeedEngine(Module):
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
-        self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary()
+        self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
+        )
 
         # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
