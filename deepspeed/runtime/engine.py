@@ -501,6 +501,9 @@ class DeepSpeedEngine(Module):
     def zero_allgather_partitions(self):
         return self._config.zero_config.allgather_partitions
 
+    def zero_round_robin_gradients(self):
+        return self._config.zero_config.round_robin_gradients
+
     def dump_state(self):
         return self._config.dump_state
 
@@ -592,7 +595,7 @@ class DeepSpeedEngine(Module):
         if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
             ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
             local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
-            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({mpi_local_rank}), " \
+            assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({ompi_local_rank}), " \
                 "not sure how to proceed as we're seeing conficting local rank info."
             os.environ['LOCAL_RANK'] = local_rank
 
@@ -926,6 +929,15 @@ class DeepSpeedEngine(Module):
                 gradient_predivide=self.gradient_predivide)
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
+            contiguous_gradients = self.zero_contiguous_gradients()
+            round_robin_gradients = self.zero_round_robin_gradients()
+
+            # Overlap and contiguous grads are meaningless in stage 1 and are ignored
+            if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+                overlap_comm = False
+                contiguous_gradients = False
+                round_robin_gradients = False
+
             if isinstance(self.module, PipelineModule):
                 if overlap_comm:
                     logger.warning(
@@ -940,7 +952,7 @@ class DeepSpeedEngine(Module):
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
                 clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
+                contiguous_gradients=contiguous_gradients,
                 reduce_bucket_size=self.zero_reduce_bucket_size(),
                 allgather_bucket_size=self.zero_allgather_bucket_size(),
                 dp_process_group=self.data_parallel_group,
@@ -952,7 +964,8 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
-                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
+                partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
+                round_robin_gradients=round_robin_gradients)
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -1163,6 +1176,10 @@ class DeepSpeedEngine(Module):
         return loss
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
+        # Pass (PP) gas boundary flag to optimizer (required for zero)
+        self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
+        )
+
         # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
