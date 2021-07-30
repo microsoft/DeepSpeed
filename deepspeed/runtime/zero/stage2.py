@@ -1832,7 +1832,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value
