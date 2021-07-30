@@ -363,7 +363,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Stage 2 optimization for CPU offloading that parallelizes gradient copying to CPU memory among ranks by fine-grained gradient partitioning. Performance benefit grows with gradient accumulation steps (more copying between optimizer steps) or GPU count (increased parallelism).| `False`  |
+| Stage 2 optimization for CPU offloading that parallelizes gradient copying to CPU memory among ranks by fine-grained gradient partitioning. Performance benefit grows with gradient accumulation steps (more copying between optimizer steps) or GPU count (increased parallelism). | `False`  |
 
 ***offload_param***: [dictionary]
 
