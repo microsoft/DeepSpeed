@@ -1,5 +1,4 @@
 #include "cpu_adam.h"
-#include <cuda_runtime_api.h>
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
@@ -8,10 +7,13 @@
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-#include "cublas_v2.h"
-#include "cuda.h"
-#include "curand.h"
+
+#if defined(__ENABLE_CUDA__)
+
+#include <cuda_fp16.h>
 #include "custom_cuda_layers.h"
+
+#endif
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
@@ -647,7 +649,9 @@ int ds_adam_step(int optimizer_id,
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
     opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0));
 
+#if defined(__ENABLE_CUDA__)
     opt->SynchronizeStreams();
+#endif
     return 0;
 }
 
@@ -684,7 +688,9 @@ int ds_adam_step_plus_copy(int optimizer_id,
     opt->Step_8(
         params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr, params_c.size(0), gpu_params_ptr);
 
+#if defined(__ENABLE_CUDA__)
     opt->SynchronizeStreams();
+#endif
     return 0;
 }
 

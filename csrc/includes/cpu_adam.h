@@ -5,10 +5,9 @@
 #include <x86intrin.h>
 #endif
 
+#if defined(__ENABLE_CUDA__)
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
-#include <stdio.h>
-#include <cassert>
 #include "context.h"
 #include "cublas_v2.h"
 #include "cuda.h"
@@ -22,6 +21,10 @@
             assert(0);                                                                         \
         }                                                                                      \
     }
+#endif
+
+#include <stdio.h>
+#include <cassert>
 
 #define TILE (128 * 1024 * 1024)
 
@@ -66,16 +69,21 @@ public:
           _buf_index(false),
           _adamw_mode(adamw_mode)
     {
+#if defined(__ENABLE_CUDA__)
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
 
         _streams[0] = Context::Instance().GetCurrentStream();
         _streams[1] = Context::Instance().GetNewStream();
+#endif
     }
     ~Adam_Optimizer()
     {
+#if defined(__ENABLE_CUDA__)
+
         cudaFreeHost(_doubled_buffer[0]);
         cudaFreeHost(_doubled_buffer[1]);
+#endif
     }
     void Step(float* _params,
               float* grads,
@@ -95,10 +103,12 @@ public:
                 float* _exp_avg_sq,
                 size_t _param_size,
                 __half* dev_params = nullptr);
+#if defined(__ENABLE_CUDA__)
     inline void SynchronizeStreams()
     {
         for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
     }
+#endif
     inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         if (beta1 != _betta1 || beta2 != _betta2) {
@@ -158,9 +168,11 @@ private:
     float _bias_correction1;
     float _bias_correction2;
 
-    float* _doubled_buffer[2];
     bool _buf_index;
     bool _adamw_mode;
 
+#if defined(__ENABLE_CUDA__)
+    float* _doubled_buffer[2];
     cudaStream_t _streams[2];
+#endif
 };
