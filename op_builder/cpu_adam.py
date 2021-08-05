@@ -34,6 +34,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
+        ENABLE_CUDA = self.is_cuda_available()
 
         return [
             '-O3',
@@ -46,4 +47,5 @@ class CPUAdamBuilder(CUDAOpBuilder):
             CPU_ARCH,
             '-fopenmp',
             SIMD_WIDTH,
+            ENABLE_CUDA,
         ]

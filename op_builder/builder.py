@@ -267,6 +267,12 @@ class OpBuilder(ABC):
             return '-mcpu=native'
         return '-march=native'
 
+    def is_cuda_available(self):
+        if torch.cuda.is_available():
+            return '-D__ENABLE_CUDA__'
+        else:
+            return '-D__DISABLE_CUDA__'
+
     def simd_width(self):
         if not self.command_exists('lscpu'):
             self.warning(

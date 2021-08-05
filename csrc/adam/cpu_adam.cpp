@@ -3,6 +3,7 @@
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
+#include <cassert>
 #include <iostream>
 #include <memory>
 #include <type_traits>
@@ -102,11 +103,16 @@ void Adam_Optimizer::Step(float* _params,
             SIMD_STORE(_exp_avg + i, momentum_4.data);
             SIMD_STORE(_exp_avg_sq + i, variance_4.data);
         }
+#if defined(__ENABLE_CUDA__)
         if (dev_params) {
             launch_param_update(
                 _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
+#else
+        static_assert(dev_params == nullptr,
+                      "CUDA is not enabled for the parameter tiled-copy feature!")
+#endif
     }
 
 #endif
@@ -142,11 +148,16 @@ void Adam_Optimizer::Step(float* _params,
                 _exp_avg[k] = momentum;
                 _exp_avg_sq[k] = variance;
             }
+#if defined(__ENABLE_CUDA__)
             if (dev_params) {
                 launch_param_update(
                     _doubled_buffer[_buf_index], dev_params + t, (copy_size), _streams[_buf_index]);
                 _buf_index = !_buf_index;
             }
+#else
+            static_assert(dev_params == nullptr,
+                          "CUDA is not enabled for the parameter tiled-copy feature!")
+#endif
         }
     }
 }
@@ -300,11 +311,16 @@ void Adam_Optimizer::Step_4(float* _params,
             SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 3, variance_4[3].data);
         }
 
+#if defined(__ENABLE_CUDA__)
         if (dev_params) {
             launch_param_update(
                 _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
+#else
+        static_assert(dev_params == nullptr,
+                      "CUDA is not enabled for the parameter tiled-copy feature!")
+#endif
     }
 #endif
     if (_param_size > rounded_size)
@@ -581,11 +597,16 @@ void Adam_Optimizer::Step_8(float* _params,
             SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 6, variance_4[6].data);
             SIMD_STORE(_exp_avg_sq + i + SIMD_WIDTH * 7, variance_4[7].data);
         }
+#if defined(__ENABLE_CUDA__)
         if (dev_params) {
             launch_param_update(
                 _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
             _buf_index = !_buf_index;
         }
+#else
+        static_assert(dev_params == nullptr,
+                      "CUDA is not enabled for the parameter tiled-copy feature!")
+#endif
     }
 #endif
     if (_param_size > rounded_size)
