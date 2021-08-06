@@ -124,8 +124,9 @@ class TiledLinear(torch.nn.Module):
 
     def forward(self, input_):
         if self.in_splits > 1 and not self.input_is_already_split:
+            input_parts = partition(input_.shape[-1], self.in_splits)
             split_sizes = [
-                input_.shape[-1] // self.in_splits for p in range(self.in_splits)
+                input_parts[p + 1] - input_parts[p] for p in range(self.in_splits)
             ]
             inputs = self._split_global_input(input_, split_sizes)
         elif self.in_splits > 1:
