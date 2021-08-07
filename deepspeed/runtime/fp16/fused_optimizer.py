@@ -45,6 +45,8 @@ class FP16_Optimizer(object):
         self.fp16_groups_flat = []
         self.fp32_groups_flat = []
 
+        self._global_grad_norm = 0.
+
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
@@ -250,6 +252,8 @@ class FP16_Optimizer(object):
         self.start_timers([COMPUTE_NORM])
         all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
         self.stop_timers([COMPUTE_NORM])
+
+        self._global_grad_norm = all_groups_norm
 
         self.start_timers([UNSCALE_AND_CLIP])
         self.unscale_and_clip_grads(grads_groups_flat, [all_groups_norm])

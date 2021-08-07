@@ -32,6 +32,7 @@ class FP16_UnfusedOptimizer(object):
                  fused_lamb_legacy=False):
 
         self.fused_lamb_legacy = fused_lamb_legacy
+        self._global_grad_norm = 0.
 
         if torch.distributed.get_rank() == 0:
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
@@ -217,6 +218,7 @@ class FP16_UnfusedOptimizer(object):
         for norm in norm_groups:
             total_norm += norm**2.0
         total_norm = math.sqrt(total_norm)
+        self._global_grad_norm = total_norm
 
         # compute combined scale factor for this group
         combined_scale = self.cur_scale
