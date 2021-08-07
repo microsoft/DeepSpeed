@@ -109,6 +109,27 @@ def listen_for_changes(state):
                     relaunch(state)
 
 
+def get_relaunch_rank_for_pod_level_retry(new_hostset, old_hostset, host_to_ip_map, new_host_to_ip_map):
+    # get list of hosts valid on both old and new, this ensures we are re-launched
+    # on a node that is still alive and not new
+
+    filtered_host = []
+    for key in host_to_ip_map.keys():
+        if host_to_ip_map[key] == new_host_to_ip_map[key]:
+            filtered_host.append(host_to_ip_map[key])
+
+    host_list = list(new_hostset.intersection(filtered_host))
+    host_list.sort()
+    first_host = host_list[0]
+
+    assert 'DS_RANK_MAPPING' in os.environ, "Missing DS_RANK_MAPPING variable, unable to proceed with relaunch"
+    rank_mapping = json.loads(os.environ['DS_RANK_MAPPING'])
+    logger.info(f"Global rank mapping={rank_mapping}")
+
+    # relaunch rank is first rank on first host
+    relaunch_rank = rank_mapping[first_host][0]
+    return int(relaunch_rank)
+
 def get_relaunch_rank(new_hostset, old_hostset):
     # get list of hosts valid on both old and new, this ensures we are re-launched
     # on a node that is still alive and not new
@@ -140,6 +161,14 @@ def wait_on_available_nodes(new_hosts):
         logger.info("waiting for scale up nodes to become available")
         time.sleep(1)
 
+
+def handle_pod_level_retry_event(state, new_hosts, old_hosts, new_config_hosts, host_to_ip_map, new_host_to_ip_map):
+    assert len(new_hosts) == len(old_hosts), "new hosts and new config hosts don't align, {new_hosts} != {new_config_hosts}"
+    state['relaunch_rank'] = get_relaunch_rank_for_pod_level_retry(new_hosts, old_hosts, host_to_ip_map, new_host_to_ip_map)
+    logger.info(f"Relaunch rank = {state['relaunch_rank']}")
+    # DeepSpeedEngine will read this and call relaunch
+    wait_on_available_nodes(new_hosts)
+    relaunch(state)
 
 def handle_scaling_event(state, new_hosts, old_hosts, new_config_hosts):
     assert len(new_hosts) == len(new_config_hosts), "new hosts and new config hosts don't align, {new_hosts} != {new_config_hosts}"
@@ -176,6 +205,25 @@ def get_config_host_set(ssh_config_path):
     assert len(config_hostset) > 0, f"Unable to find any hosts in config={config}"
     return config_hostset
 
+def get_config_ip_set(ssh_config_path):
+    #TODO: support host parsing for non worker-[0-9]+ pattern
+    config = open(ssh_config_path, 'r').read()
+    config_ipset = set(re.findall("HostName \d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", config))
+    assert len(config_ipset) > 0, f"Unable to find any ips in config={config}"
+    return config_ipset
+
+def get_worker_ip_mapping(ssh_config_path):
+    config = open(ssh_config_path, 'r').read()
+    regex = r"Host worker(.*?)\n(.*?)HostName (.*?)$"
+    matches = re.finditer(regex, config, re.MULTILINE)
+    mapping = {}
+    for matchNum, match in enumerate(matches, start=1):
+        match.group()
+        host_name = re.search('Host (worker-[0-9]+)', match.group())
+        ip = re.search('HostName(.*?)$', match.group())
+        mapping[host_name] = ip
+    return mapping
+
 
 def wait_on_hostfile_changes(hostfile_path, original_hosts, new_config_hosts):
     # shouldn't take more than 5min for hostfile to change once ssh config has changed
@@ -195,6 +243,8 @@ def wait_on_hostfile_changes(hostfile_path, original_hosts, new_config_hosts):
         # Still waiting for hostfile to change
         time.sleep(sleep_time)
         loops += 1
+        if loops >= max_loops:
+            return new_hosts
         assert loops < max_loops, "waited {max_wait_time/60} minutes for hostfile to change after .ssh/config changed, unable to handle scaling event"
         logger.info("waiting for hostfile to change...")
 
@@ -210,8 +260,20 @@ def listen_for_changes_polling(state):
     original_hosts = get_host_set(hostfile_path)
     original_config_hosts = get_config_host_set(ssh_config_path)
 
-    while not state['scale_up'] and not state['scale_down']:
+    original_config_ips = get_config_ip_set(ssh_config_path)
+    host_to_ip_map = get_worker_ip_mapping(ssh_config_path)
+
+    while not state['scale_up'] and not state['scale_down'] and not state['pod_level_retried']:
         new_config_hosts = get_config_host_set(ssh_config_path)
+        new_config_ips = get_config_ip_set(ssh_config_path)
+        if new_config_ips != original_config_ips and new_config_hosts == original_config_hosts:
+            new_host_to_ip_map = get_worker_ip_mapping(ssh_config_path)
+            new_hosts = get_host_set(hostfile_path)
+            state['pod_level_retried'] = True
+            handle_pod_level_retry_event(state, new_hosts, original_hosts, new_config_hosts, host_to_ip_map,
+                                         new_host_to_ip_map)
+            logger.info(f"{dist.get_rank()} Pod level retry event already triggered, monitoring stopped")
+
         if new_config_hosts != original_config_hosts:
             logger.info(
                 "{dist.get_rank()} detected ssh config changed due to scaling event")
@@ -221,9 +283,8 @@ def listen_for_changes_polling(state):
             state['hostfile_changed'] = True
 
             handle_scaling_event(state, new_hosts, original_hosts, new_config_hosts)
+            logger.info(f"{dist.get_rank()} Scaling event already triggered, monitoring stopped")
         time.sleep(POLLING_INTERVAL)
-
-    logger.info(f"{dist.get_rank()} Scaling event already triggered, monitoring stopped")
 
 
 def listen_for_changes_with_inotify(state):
@@ -336,6 +397,7 @@ if __name__ == "__main__":
         'scale_down': False,
         'config_changed': False,
         'hostfile_changed': False,
+        'pod_level_retried': False,
         "hostfile_path": "/job/hostfile",
         "ssh_config_path": os.path.join(os.environ["HOME"],
                                         '.ssh/config')
