@@ -325,6 +325,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  mem_efficient_linear=True,
                  remote_device=None,
                  pin_memory=False,
+                 config_dict_or_path=None,
                  config=None,
                  enabled=True,
                  dtype=None,
@@ -348,8 +349,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             pin_memory (bool, optional): Potentially increase performance by
                 using pinned memory for model weights. ``remote_device`` must be
                 ``"cpu"``. Defaults to ``False``.
-            config (``json file`` or dict, optional): If provided, provides configuration
+            config_dict_or_path (dict or ``json file``, optional): If provided, provides configuration
                 for swapping fp16 params to NVMe.
+            config (dict or ``json file``, optional): Deprecated, use config_dict_or_path instead.
             enabled (bool, optional): If ``False``, this context has no
                 effect. Defaults to ``True``.
             dtype (``dtype``, optional): Can be used to change the data type of the parameters.
@@ -426,7 +428,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 model = deepspeed.zero.Init(module=model)
         """
 
-        _ds_config = DeepSpeedConfig(config, mpu) if config is not None else None
+        _ds_config = DeepSpeedConfig(config_dict_or_path,
+                                     mpu) if config_dict_or_path is not None else None
         super().__init__(enabled=enabled,
                          mem_efficient_linear=mem_efficient_linear,
                          ds_config=_ds_config,
