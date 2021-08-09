@@ -9,7 +9,7 @@ Helper functions and classes from multiple sources.
 import os
 import psutil
 import gc
-from math import ceil
+from math import ceil, sqrt
 from math import floor
 from bisect import bisect_left, bisect_right
 
@@ -238,6 +238,15 @@ def _handle_overflow(cpu_sum, x, i):
         logger.info(
             f"rank {rank} detected overflow {cpu_sum} in tensor {i}:{t_i} shape {x.shape}"
         )
+
+
+def get_global_norm(norm_list):
+    """ Compute total from a list of norms
+    """
+    total_norm = 0.0
+    for norm in norm_list:
+        total_norm += norm**2.0
+    return sqrt(total_norm)
 
 
 def get_grad_norm(parameters, norm_type=2, mpu=None):
