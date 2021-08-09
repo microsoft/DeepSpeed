@@ -149,7 +149,9 @@ class FP16_UnfusedOptimizer(object):
                                                        self.cur_scale))
             return self.overflow
 
-        combined_scale = self.unscale_and_clip_grads(norm_groups, apply_scale=False)
+        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
+        combined_scale = self.unscale_and_clip_grads(self._global_grad_norm,
+                                                     apply_scale=False)
         self.optimizer.step(grads=grads_groups,
                             output_params=self.fp16_groups,
                             scale=combined_scale)
