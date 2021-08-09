@@ -13,7 +13,7 @@ from packaging import version as pkg_version
 import collections
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -145,6 +145,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
 
         self.is_gradient_accumulation_boundary = True
+
+        self._global_grad_norm = 0.
 
         if mpu is None:
             self.model_parallel_group = None
@@ -1560,7 +1562,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             single_partition_grad_groups.append(single_grad_partition)
 
-        self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
+        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
+        self.unscale_and_clip_grads(single_partition_grad_groups, self._global_grad_norm)
         self.stop_timers([OPTIMIZER_GRADIENTS])
 
         self.start_timers([OPTIMIZER_STEP])
@@ -1636,12 +1639,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         return
 
-    def unscale_and_clip_grads(self, grad_groups_flat, norm_groups):
-        total_norm = 0.0
-        for norm in norm_groups:
-            total_norm += norm**2.0
-        total_norm = math.sqrt(total_norm)
-
+    def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
         if self.clip_grad > 0.:
