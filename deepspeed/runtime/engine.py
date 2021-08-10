@@ -2051,7 +2051,7 @@ class DeepSpeedEngine(Module):
         script = "zero_to_fp32.py"
         src = os.path.join(base_dir, "utils", script)
         dst = os.path.join(save_path, script)
-        logger.info(f"creating recovery script {dst}")
+        #logger.info(f"creating recovery script {dst}")
         copyfile(src, dst)
         # make executable
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
@@ -2064,7 +2064,7 @@ class DeepSpeedEngine(Module):
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
         self._copy_recovery_script(save_path)
-        logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
+        #logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
     def _zero3_consolidated_fp16_state_dict(self):
         """

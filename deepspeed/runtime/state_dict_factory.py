@@ -78,7 +78,7 @@ class SDLoaderBase(ABC):
         merge_count = 1
         if num_ckpt == mp_world_size:
             assert os.path.exists(load_path)
-            logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
+            #logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
             sd = torch.load(load_path, map_location=lambda storage, loc: storage)
 
             if quantize:
@@ -158,7 +158,7 @@ class SDLoaderBase(ABC):
         return sd
 
     def check_ckpt_list(self):
-        logger.info(f'checkpoint file list: {self.ckpt_list}')
+        #logger.info(f'checkpoint file list: {self.ckpt_list}')
         assert len(self.ckpt_list) > 0
 
         sd = torch.load(self.ckpt_list[0], map_location=lambda storage, loc: storage)
