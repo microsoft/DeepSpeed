@@ -10,7 +10,7 @@ import json
 from abc import ABC, abstractmethod
 from deepspeed.utils import logger
 from .weight_quantizer import WeightQuantization
-
+import nebula_snapshot
 AUTO_MODULE_KEY = 'auto'
 
 
@@ -78,13 +78,19 @@ class SDLoaderBase(ABC):
             idx = 0
 
         load_path = self.ckpt_list[idx]
+        partition_name = os.path.basename(load_path)
+        partition_name = os.path.splitext(partition_name)[0]
+        latest_snapshot = nebula_snapshot.Snapshot.get_latest_snapshot()
+        if latest_snapshot is None or (latest_snapshot is not None and latest_snapshot.tag is ''):
+            print('None Snapshot dectected!')
+            return None, None, None
 
         merge_count = 1
         if num_ckpt == mp_world_size:
-            assert os.path.exists(load_path)
+            #assert os.path.exists(load_path)
             logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
-            sd = torch.load(load_path, map_location=lambda storage, loc: storage)
-
+            #sd = torch.load(load_path, map_location=lambda storage, loc: storage)
+            sd = latest_snapshot.load(load_path, map_location=lambda storage, loc: storage)
             if quantize:
                 quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
                                                mp_size=mp_world_size)

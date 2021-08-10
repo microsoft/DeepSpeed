@@ -13,7 +13,7 @@ from collections import OrderedDict
 from shutil import copyfile
 
 from torch.nn.modules import Module
-from torch.distributed.distributed_c10d import _get_global_rank
+from torch.distributed.distributed_c10d import _get_global_rank, group
 from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
@@ -50,6 +50,7 @@ from ..ops.adam import FusedAdam
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+import nebula_snapshot
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -1806,27 +1807,35 @@ class DeepSpeedEngine(Module):
             tag=tag,
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size)
-        invalid_zero_ckpt_paths = []
-        for i, ckpt_name in enumerate(zero_ckpt_names):
-            if not os.path.exists(ckpt_name):
-                # transparently handle the old file pattern for optim_states
-                if 'optim_states.pt' in ckpt_name:
-                    ckpt_name_try = ckpt_name.replace("_optim_states.pt",
-                                                      "optim_states.pt")
-                    if os.path.exists(ckpt_name_try):
-                        zero_ckpt_names[i] = ckpt_name_try
-                        continue
-                invalid_zero_ckpt_paths.append(ckpt_name)
+        #invalid_zero_ckpt_paths = []
+        #for i, ckpt_name in enumerate(zero_ckpt_names):
+        #    if not os.path.exists(ckpt_name):
+        #        # transparently handle the old file pattern for optim_states
+        #        if 'optim_states.pt' in ckpt_name:
+        #            ckpt_name_try = ckpt_name.replace("_optim_states.pt",
+        #                                              "optim_states.pt")
+        #            if os.path.exists(ckpt_name_try):
+        #                zero_ckpt_names[i] = ckpt_name_try
+        #                continue
+        #        invalid_zero_ckpt_paths.append(ckpt_name)
 
-        if len(invalid_zero_ckpt_paths) > 0:
-            logger.warn(
-                f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
-            )
-            return None
+        #if len(invalid_zero_ckpt_paths) > 0:
+        #    logger.warn(
+        #        f"The following zero checkpoints paths are missing: {invalid_zero_ckpt_paths}"
+        #    )
+        #    return None
 
         zero_sd_list = []
+        latest_snapshot = nebula_snapshot.Snapshot.get_latest_snapshot()
+        if latest_snapshot is None or (latest_snapshot is not None and latest_snapshot.tag is ''):
+            print('None Snapshot dectected!')
+            return None
+        print(zero_ckpt_names)
         for ckpt_name in zero_ckpt_names:
-            zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
+            #zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
+            partition_name = os.path.basename(ckpt_name)
+            partition_name = os.path.splitext(partition_name)[0]
+            zero_sd_list.append(latest_snapshot.load(partition_name, map_location='cpu'))
 
         zero_optimizer_sd = [sd['optimizer_state_dict'] for sd in zero_sd_list]
         print(
@@ -1887,10 +1896,12 @@ class DeepSpeedEngine(Module):
         self._checkpoint_tag_validation(tag)
 
         if self.save_non_zero_checkpoint:
+            print("save non zero checkpoint !!!!")
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_checkpoint(save_dir, tag, client_state=client_state)
 
         if self.save_zero_checkpoint:
+            print("save zero checkpoint !!!!")
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
@@ -1949,10 +1960,15 @@ class DeepSpeedEngine(Module):
                      ds_config=self.config,
                      ds_version=version)
         state.update(client_state)
-
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0])
         #logger.info('Saving model checkpoint: {}'.format(save_path))
-        torch.save(state, save_path)
+        snapshot = nebula_snapshot.Snapshot(tag)
+        partition_name = os.path.basename(save_path)
+        partition_name = os.path.splitext(partition_name)[0]
+        print(f'partition_name {partition_name}')
+        check_point_world_size = torch.distributed.get_world_size()
+        snapshot.save(partition_name, state, check_point_world_size * 2)
+        #torch.save(state, save_path)
         self._curr_save_path = None
 
     def _get_buffer_names(self):
@@ -2027,13 +2043,20 @@ class DeepSpeedEngine(Module):
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
+        print(f"zero_checkpoint_name: {zero_checkpoint_name}")
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        param_shapes=self._get_zero_param_shapes(),
                        ds_config=self.config,
                        ds_version=version)
-        torch.save(zero_sd, zero_checkpoint_name)
-        if self.global_rank == 0:
-            self._copy_recovery_script(save_path)
+        snapshot = nebula_snapshot.Snapshot(tag)
+        partition_name = os.path.basename(zero_checkpoint_name)
+        partition_name = os.path.splitext(partition_name)[0]
+        print(f'zero_checkpoint partition_name {partition_name}')
+        check_point_world_size = torch.distributed.get_world_size()
+        snapshot.save(partition_name, zero_sd, 2 * check_point_world_size)
+        #torch.save(zero_sd, zero_checkpoint_name)
+        #if self.global_rank == 0:
+        #    self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
     def _zero3_consolidated_fp16_state_dict(self):
