@@ -906,7 +906,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             flat_tensor = torch.empty(tensor_size,
                                       dtype=param_list[0].dtype,
                                       device=self.local_device).view(-1)
-            flat_tensor.requres_grad = False
+            flat_tensor.requires_grad = False
             allgather_params.append(flat_tensor)
 
         # launch
