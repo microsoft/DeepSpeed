@@ -577,10 +577,10 @@ class PipelineModule(nn.Module):
 
             layer.load_state_dict(checkpoint)
 
-            if self._grid.data_parallel_id == 0:
-                logger.info(
-                    f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
-                )
+            # if self._grid.data_parallel_id == 0:
+            #     logger.info(
+            #         f'RANK={self.global_rank} Loaded layer={idx+self._local_start} file={load_path}'
+            #     )
 
         self._synchronize_tied_weights()
 
