@@ -285,7 +285,7 @@ class DeepSpeedEngine(Module):
 
     def eigenvalue_layer_num(self):
         return self._config.eigenvalue_layer_num
-        
+
     def curriculum_enabled(self):
         return self._config.curriculum_enabled
 
