@@ -1174,7 +1174,11 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    def backward(self, loss, allreduce_gradients=True, release_loss=False):
+    def backward(self,
+                 loss,
+                 allreduce_gradients=True,
+                 release_loss=False,
+                 scale_wrt_gas=True):
         r"""Execute backward pass on the loss
 
         Arguments:
@@ -1188,7 +1192,7 @@ class DeepSpeedEngine(Module):
             )
 
         # scale loss w.r.t. gradient accumulation if needed
-        if self.gradient_accumulation_steps() > 1:
+        if self.gradient_accumulation_steps() > 1 and scale_wrt_gas:
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
@@ -1753,6 +1757,16 @@ class DeepSpeedEngine(Module):
 
         self.csr_tensor_module_names = checkpoint['csr_tensor_module_names']
         self.global_steps = checkpoint['global_steps']
+
+        # ensure all ranks are loading the same global steps
+        global_steps_cuda = torch.cuda.FloatTensor([self.global_steps])
+        output = [
+            torch.cuda.FloatTensor([0])
+            for _ in range(torch.distributed.get_world_size())
+        ]
+        torch.distributed.all_gather(output, global_steps_cuda)
+        assert all(map(lambda t: output[0] == t, output)), f"global steps not aligned across all ranks: {output}"
+
         self.global_samples = checkpoint.get('global_samples',
                                              self.global_steps * self.train_batch_size())
         self.skipped_steps = checkpoint['skipped_steps']
@@ -2046,6 +2060,7 @@ class DeepSpeedEngine(Module):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        param_shapes=self._get_zero_param_shapes(),
+                       global_steps=self.global_steps,
                        ds_config=self.config,
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
