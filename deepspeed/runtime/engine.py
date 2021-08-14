@@ -82,6 +82,7 @@ def split_half_float_double_csr(tensors):
         "torch.cuda.HalfTensor",
         "torch.cuda.FloatTensor",
         "torch.cuda.DoubleTensor",
+        "torch.cuda.BFloat16Tensor",
         CSRTensor.type()
     ]
 
@@ -101,7 +102,6 @@ def print_configuration(args, name):
     for arg in sorted(vars(args)):
         dots = '.' * (29 - len(arg))
         logger.info('  {} {} {}'.format(arg, dots, getattr(args, arg)))
-
 
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
@@ -527,6 +527,9 @@ class DeepSpeedEngine(Module):
     def fp16_master_weights_and_gradients(self):
         return self._config.fp16_master_weights_and_gradients
 
+    def bfloat16_enabled(self):
+        return self._config.bfloat16_enabled
+
     def amp_enabled(self):
         return self._config.amp_enabled
 
@@ -756,6 +759,8 @@ class DeepSpeedEngine(Module):
                         f"fp16 is enabled but the following parameters have dtype that is not fp16: {', '.join(names)}"
                     )
             self.module.half()
+        elif self.bfloat16_enabled():
+            self.module.bfloat16()
         else:
             if not all(
                 [param.dtype == torch.float for param in self.module.parameters()]):
@@ -882,7 +887,7 @@ class DeepSpeedEngine(Module):
                     )
             self.optimizer = self._configure_zero_optimizer(basic_optimizer)
         elif self.amp_enabled():
-            assert not self.fp16_enabled(), "Cannot enable both amp with (legacy) fp16 mode"
+            assert not (self.fp16_enabled() or self.bfloat16_enabled()), "Cannot enable both amp with (legacy) fp16 or bfloat16 mode"
             amp_params = self.amp_params()
             if self.global_rank == 0:
                 logger.info(f"Initializing AMP with these params: {amp_params}")
