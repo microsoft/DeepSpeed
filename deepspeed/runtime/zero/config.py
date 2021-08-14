@@ -2,6 +2,7 @@
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
+# bfloat16 file completed for Zero2
 
 from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigObject
 from deepspeed.utils import logger
@@ -10,7 +11,7 @@ from .offload_constants import *
 from .offload_config import get_offload_param_config, get_default_offload_param_config, \
     get_offload_optimizer_config, get_default_offload_optimizer_config
 
-
+# marked for bfloat16
 class DeepSpeedZeroConfig(DeepSpeedConfigObject):
     def __init__(self, param_dict):
         super(DeepSpeedZeroConfig, self).__init__()
@@ -31,6 +32,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.offload_optimizer = None
         self.sub_group_size = None
 
+        # marked for bfloat16, complete for Zero2
         #Stage3 Specific Parameters
         self.prefetch_bucket_size = None
         self.param_persistence_threshold = None
@@ -173,6 +175,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT)
 
+        # marked for bfloat16, completed for Zero2, check later again
         self.gather_fp16_weights_on_model_save = get_scalar_param(
             zero_config_dict,
             ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE,

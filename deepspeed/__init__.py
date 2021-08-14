@@ -1,6 +1,7 @@
 '''
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
+# bfloat16 file completed for Zero2
 import sys
 import types
 import packaging
@@ -45,10 +46,10 @@ sys.modules['deepspeed.pt'] = deepspeed.pt
 sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
 setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
 sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
-setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
-sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
+setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler) # marked for bfloat16
+sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler # marked for bfloat16
 
-
+#marked for bfloat16, DeepSpeedEngine taken care of PipelineEngine to be done later
 def initialize(args=None,
                model=None,
                optimizer=None,
@@ -113,7 +114,6 @@ def initialize(args=None,
         __git_hash__,
         __git_branch__),
              ranks=[0])
-
     assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
