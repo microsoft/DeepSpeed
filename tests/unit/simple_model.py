@@ -26,7 +26,7 @@ class Curriculum_SimpleModel(SimpleModel):
         super(Curriculum_SimpleModel, self).__init__(hidden_dim, empty_grad)
 
     def forward(self, x, y, **kwargs):
-        seqlen = kwargs.get('seqlen', None)
+        seqlen = kwargs.get('curriculum_seqlen', None)
         loss = super(Curriculum_SimpleModel, self).forward(x, y)
         return loss, seqlen
 
