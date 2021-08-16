@@ -2,30 +2,21 @@
 title: "Mixture of Experts"
 ---
 
-DeepSpeed v0.4.6 introduces new support for training Mixture of Experts (MoE) models.
+DeepSpeed v0.5 introduces new support for training Mixture of Experts (MoE) models. MoE models are an emerging class of sparsely activated models that have sublinear compute costs with respect to their parameters. For example, the [Switch Transformer](https://arxiv.org/abs/2101.03961) consists of over 1.6 trillion parameters, while the compute required to train it is approximately equal to that of a 10 billion-parameter dense model. This increase in model size offers tremendous accuracy gains for a constant compute budget.
 
-TODO: add short description of MoE background (can copy from press release).
-
-For more details on results and further discussion, please see our press
-release: [DeepSpeed powers 8x larger MoE model training with high performance]({{ site.press_release_v3 }})
+For more details on results and further discussion, please see our [paper](https://aka.ms/zcode_moe) and press
+release: [DeepSpeed powers 8x larger MoE model training with high performance]({{ site.press_release_v5 }}).
 
 ## Getting started with a simple MoE example
 
 **Note:** DeepSpeed MoE requires Pytorch 1.8 or above.
 {: .notice--info}
 
-As a simple starting point we will show how to apply DeepSpeed MoE to a toy cifar10 example. Please refer to
+As a simple starting point we will show how to apply DeepSpeed MoE to a cifar10 example. Please refer to
 our [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar) going forward.
 
 If you are adding MoE to an existing model you can use the snippet below to help guide you:
 
-```python
-import deepspeed
-
-deepspeed.utils.groups.initialize()
-
-experts = deepspeed.moe.layer.MoE(hidden_size, expert=Expert(params..), num_experts=num_experts, k=2)
-```
 
 ### Expert group initialization
 
@@ -35,6 +26,13 @@ TODO: add description of why this is needed and what it does
 
 TODO: add details about input/output dimension assumptions
 
+```python
+import deepspeed
+
+deepspeed.utils.groups.initialize()
+
+experts = deepspeed.moe.layer.MoE(hidden_size, expert=Expert(params..), num_experts=num_experts, k=2)
+```
 
 <!--
 hidden_size (int): the hidden dimension of the model.
