@@ -30,20 +30,24 @@ For most cases, the model training code needs to initialize these groups by call
 
 The GPUs (or ranks) participating in an expert-parallel group will distribute the total number of experts specified by the model training code argument num_experts.
 
-For example, 
+For example, we can set our total number of GPUs and number of GPUs in our expert-parallel world as follows. 
 
+```python
 WORLD_SIZE = 4
 EP_WORLD_SIZE = 2
 EXPERTS = 8
+```
 
 Given the setting above, the user code needs to initialize the groups as follows
 
+```python
 groups.initialize (ep_size=EP_WORLD_SIZE)
-
+```
 After that, the model code needs to use the deepspeed.moe.layer.MoE API as follows.
 
+```python
 self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=EXPERTS)
-
+```
 With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this E+D (as shown in Table 1).
 
 
