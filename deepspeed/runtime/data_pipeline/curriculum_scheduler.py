@@ -2,6 +2,7 @@
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
 import math
+from deepspeed.utils import logger
 
 
 class CurriculumScheduler(object):
@@ -43,7 +44,7 @@ class CurriculumScheduler(object):
         elif config['schedule_type'] == 'fixed_root':
             """
             The schedule_config includes:
-            total_step: how many steps the curriculum learning takes to go
+            total_curriculum_step: how many steps the curriculum learning takes to go
             from min difficulty to max difficulty.
             difficulty_step: the difficulty level determined every time must
             be a multiple of this difficulty_step. This is used to determine
@@ -54,26 +55,34 @@ class CurriculumScheduler(object):
             square root and degree of 3 means cube root. Degree of 1 is
             equivalent to linear.
             "schedule_config": {
-              "total_step": 30000,
+              "total_curriculum_step": 30000,
               "difficulty_step": 8,
               "root_degree": 2
             }
             """
-            assert "total_step" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'total_step'"
+            assert "total_curriculum_step" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'total_curriculum_step'"
             assert "difficulty_step" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'difficulty_step'"
             assert "root_degree" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'root_degree'"
+            if config['schedule_config']['difficulty_step'] % 8 != 0:
+                logger.warning(
+                    f'The difficulty_step for curriculum learning has to be multiple of 8 (for FP16 data) or 16 (for INT8 data) to enable NVIDIA Tensor Core acceleration. Disregard this warning if this is unrelated to your hardware.'
+                )
             self.state['schedule'] = config['schedule_config']
         elif config['schedule_type'] == 'fixed_linear':
             """
             The schedule_config is the same as 'fixed_root' but without the
             root_degree.
             "schedule_config": {
-              "total_step": 30000,
+              "total_curriculum_step": 30000,
               "difficulty_step": 8
             }
             """
-            assert "total_step" in config['schedule_config'], "Curriculum learning with fixed_linear schedule requires the schedule_config 'total_step'"
+            assert "total_curriculum_step" in config['schedule_config'], "Curriculum learning with fixed_linear schedule requires the schedule_config 'total_curriculum_step'"
             assert "difficulty_step" in config['schedule_config'], "Curriculum learning with fixed_linear schedule requires the schedule_config 'difficulty_step'"
+            if config['schedule_config']['difficulty_step'] % 8 != 0:
+                logger.warning(
+                    f'The difficulty_step for curriculum learning has to be multiple of 8 (for FP16 data) or 16 (for INT8 data) to enable NVIDIA Tensor Core acceleration. Disregard this warning if this is unrelated to your hardware.'
+                )
             self.state['schedule'] = config['schedule_config']
         else:
             raise RuntimeError('Unsupported curriculum schedule type')
@@ -100,8 +109,8 @@ class CurriculumScheduler(object):
         s_state = self.state['schedule']
         if root_degree is None:
             root_degree = s_state['root_degree']
-        next_difficulty = (float(global_steps) / s_state['total_step'])**(1.0 /
-                                                                          root_degree)
+        next_difficulty = (float(global_steps) /
+                           s_state['total_curriculum_step'])**(1.0 / root_degree)
         next_difficulty = math.floor(
             next_difficulty *
             (self.state['max_difficulty'] - self.state['min_difficulty']) +

@@ -37,7 +37,7 @@ Curriculum learning can be used by setting the DeepSpeed configuration as the fo
     "max_difficulty": 1024,
     "schedule_type": "fixed_linear",
     "schedule_config": {
-      "total_step": 15000,
+      "total_curriculum_step": 15000,
       "difficulty_step": 8
     }
   }
@@ -60,12 +60,12 @@ For `fixed_linear` schedule there are two configurations:
 ```json
 "schedule_type": "fixed_linear",
 "schedule_config": {
-  "total_step": 15000,
+  "total_curriculum_step": 15000,
   "difficulty_step": 8
 }
 ```
 
-The `total_step` is the total number of steps for the curriculum learning. For `fixed_linear` schedule the difficulty level will linearly increase from `min_difficulty` to `max_difficulty` during the `total_step` duration. This configuration needs to be tuned for each training task. We observe that too small and too large `total_step` are both suboptimal: with too small `total_step` curriculum learning might not be able to provide enough training stability benefit so the training might still diverge; with too large `total_step` the model may overfit too much during curriculum learning on the easier/simpler training data thus hurt the overall convergence. We recommend to first set `total_step` as 20% to 40% of the total training steps (note that if you increase the batch size for the curriculum learning-based training, you also need to reduce the total training steps correspondingly), then increase the `total_step` if the training is not stable, or reduce the `total_step` to test if convergence improves.
+The `total_curriculum_step` is the total number of steps for the curriculum learning. For `fixed_linear` schedule the difficulty level will linearly increase from `min_difficulty` to `max_difficulty` during the `total_curriculum_step` duration. This configuration needs to be tuned for each training task. We observe that too small and too large `total_curriculum_step` are both suboptimal: with too small `total_curriculum_step` curriculum learning might not be able to provide enough training stability benefit so the training might still diverge; with too large `total_curriculum_step` the model may overfit too much during curriculum learning on the easier/simpler training data thus hurt the overall convergence. We recommend to first set `total_curriculum_step` as 20% to 40% of the total training steps (note that if you increase the batch size for the curriculum learning-based training, you also need to reduce the total training steps correspondingly), then increase the `total_curriculum_step` if the training is not stable, or reduce the `total_curriculum_step` to test if convergence improves.
 
 The `difficulty_step` configuration ensures that at anytime the difficulty level must be multiple of `difficulty_step`. We usually set it as 8 (for FP16 data) or 16 (for INT8 data) to enable [NVIDIA GPU's Tensor Core acceleration](https://developer.nvidia.com/blog/optimizing-gpu-performance-tensor-cores/). If this is unrelated to your training experiment, you can set it as 1.
 
@@ -75,13 +75,13 @@ For `fixed_root` schedule there are three configurations:
 ```json
 "schedule_type": "fixed_root",
 "schedule_config": {
-  "total_step": 15000,
+  "total_curriculum_step": 15000,
   "difficulty_step": 8,
   "root_degree": 2
 }
 ```
 
-The `total_step` and `difficulty_step` have the same meaning as in the `fixed_linear` schedule case. The `root_degree` determines the root degree of the root function of the schedule. The difficulty level at certain step is determined as ((current step/`total_step`)**(1/`root_degree`)) * (`max_difficulty` - `min_difficulty`) + `min_difficulty`. Thus `fixed_linear` is basically a special case of `fixed_root` with `root_degree` as 1. In our (limited) study, we find the `fixed_root` schedule does not provide any clear advantage over `fixed_linear` schedule, while requiring one additional parameter.
+The `total_curriculum_step` and `difficulty_step` have the same meaning as in the `fixed_linear` schedule case. The `root_degree` determines the root degree of the root function of the schedule. The difficulty level at certain step is determined as ((current step/`total_curriculum_step`)**(1/`root_degree`)) * (`max_difficulty` - `min_difficulty`) + `min_difficulty`. Thus `fixed_linear` is basically a special case of `fixed_root` with `root_degree` as 1. In our (limited) study, we find the `fixed_root` schedule does not provide any clear advantage over `fixed_linear` schedule, while requiring one additional parameter.
 
 ### 1.3 fixed_discrete schedule
 For `fixed_discrete` schedule there are two configurations:
@@ -104,4 +104,4 @@ Besides the additional DeepSpeed configurations, there are some other necessary 
 
 Second, since there will be less tokens per step during curriculum learning, for curriculum-learning based training it requires more steps in order to reach the same number of training tokens as baseline. Thus in Megatron-LM we add a `--train-tokens` argument to terminate the training based on number of tokens. Then we usually set a long enough `--train-iters` (e.g., two times of baseline's total training step), and set the `--train-tokens` the same for baseline and curriculum-learning based training.
 
-Third, again due to the less tokens per step during curriculum learning, we find that for curriculum-learning based training it is beneficial to increase the learning rate decay steps (otherwise the curriculum learning case will have faster token-wise learning rate decay than baseline). For `fixed_linear` schedule because we start from very short sequence length, the total number of tokens during the curriculum learning is roughly halved. Thus we usually just add half of `fixed_linear` schedule's `total_step` to the Megatron-LM's `--lr-decay-iters`.
+Third, again due to the less tokens per step during curriculum learning, we find that for curriculum-learning based training it is beneficial to increase the learning rate decay steps (otherwise the curriculum learning case will have faster token-wise learning rate decay than baseline). For `fixed_linear` schedule because we start from very short sequence length, the total number of tokens during the curriculum learning is roughly halved. Thus we usually just add half of `fixed_linear` schedule's `total_curriculum_step` to the Megatron-LM's `--lr-decay-iters`.

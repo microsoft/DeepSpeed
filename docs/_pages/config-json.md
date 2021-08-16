@@ -726,7 +726,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "max_difficulty": 1024,
     "schedule_type": "fixed_linear",
     "schedule_config": {
-      "total_step": 40000,
+      "total_curriculum_step": 40000,
       "difficulty_step": 8
     }
   }
@@ -763,7 +763,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | Type of curriculum schedule. Currently support `fixed_linear`, `fixed_root`, and `fixed_discrete`. | N/A |
 
 
-<i>**total_step**</i>: [integer]
+<i>**total_curriculum_step**</i>: [integer]
 
 | Description                                                     | Default |
 | --------------------------------------------------------------- | ------- |

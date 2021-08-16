@@ -100,7 +100,7 @@ def test_curriculum_scheduler_fixed_linear(tmpdir):
             "max_difficulty": 10,
             "schedule_type": "fixed_linear",
             "schedule_config": {
-                "total_step": 8,
+                "total_curriculum_step": 8,
                 "difficulty_step": 2
             }
         }
