@@ -638,9 +638,6 @@ class DeepSpeedTransformerInference(nn.Module):
             if input_type != output.dtype:
                 output = output.to(input_type)
 
-            if self.config.mp_size > 1:
-                torch.distributed.broadcast(output, 0)
-
         if get_present:
             output = (output, presents)
 

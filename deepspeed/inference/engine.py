@@ -206,7 +206,6 @@ class InferenceEngine(Module):
                         input = input.to(torch.cuda.current_device())
                         if not input.is_contiguous():
                             input = input.contiguous()
-
                 for k in kwargs:
                     if torch.is_tensor(kwargs[k]):
                         kwargs[k] = kwargs[k].to(torch.cuda.current_device())
@@ -215,13 +214,6 @@ class InferenceEngine(Module):
                         dist.broadcast(kwargs[k], 0)
 
             outputs = self.model_orig_fwd(*inputs, **kwargs)
-
-            for output in outputs:
-                if torch.is_tensor(output):
-                    dist.broadcast(output, 0)
-
-            torch.distributed.barrier()
-            torch.cuda.synchronize()
         else:
             outputs = self.module(*inputs, **kwargs)
         return outputs
