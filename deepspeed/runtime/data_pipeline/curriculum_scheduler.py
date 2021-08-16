@@ -8,6 +8,10 @@ class CurriculumScheduler(object):
     def __init__(self, config):
         super().__init__()
         self.state = {}
+        assert "curriculum_type" in config, "Curriculum learning requires the config 'curriculum_type'"
+        assert "min_difficulty" in config, "Curriculum learning requires the config 'min_difficulty'"
+        assert "max_difficulty" in config, "Curriculum learning requires the config 'max_difficulty'"
+        assert "schedule_type" in config, "Curriculum learning requires the config 'schedule_type'"
         self.state['min_difficulty'] = config['min_difficulty']
         self.state['max_difficulty'] = config['max_difficulty']
         self.state['current_difficulty'] = config['min_difficulty']
@@ -25,6 +29,12 @@ class CurriculumScheduler(object):
             The self.state['schedule'] is a dictionary of
             difficulty : [max step for this difficulty, next difficulty].
             """
+            assert "difficulty" in config['schedule_config'], "Curriculum learning with fixed_discrete schedule requires the schedule_config 'difficulty'"
+            assert "max_step" in config['schedule_config'], "Curriculum learning with fixed_discrete schedule requires the schedule_config 'max_step'"
+            assert len(config['schedule_config']['max_step']) > 0
+            assert len(config['schedule_config']['difficulty']) > 0
+            assert len(config['schedule_config']['difficulty']) == len(
+                config['schedule_config']['max_step']) + 1
             self.state['schedule'] = {}
             for i in range(len(config['schedule_config']['max_step'])):
                 self.state['schedule'][config['schedule_config']['difficulty'][i]] = \
@@ -49,6 +59,9 @@ class CurriculumScheduler(object):
               "root_degree": 2
             }
             """
+            assert "total_step" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'total_step'"
+            assert "difficulty_step" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'difficulty_step'"
+            assert "root_degree" in config['schedule_config'], "Curriculum learning with fixed_root schedule requires the schedule_config 'root_degree'"
             self.state['schedule'] = config['schedule_config']
         elif config['schedule_type'] == 'fixed_linear':
             """
@@ -59,6 +72,8 @@ class CurriculumScheduler(object):
               "difficulty_step": 8
             }
             """
+            assert "total_step" in config['schedule_config'], "Curriculum learning with fixed_linear schedule requires the schedule_config 'total_step'"
+            assert "difficulty_step" in config['schedule_config'], "Curriculum learning with fixed_linear schedule requires the schedule_config 'difficulty_step'"
             self.state['schedule'] = config['schedule_config']
         else:
             raise RuntimeError('Unsupported curriculum schedule type')
