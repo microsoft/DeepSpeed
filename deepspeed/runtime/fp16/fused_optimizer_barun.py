@@ -5,14 +5,14 @@ Copyright NVIDIA/apex
 This file is adapted from FP16_Optimizer in NVIDIA/apex
 '''
 
+from deepspeed.moe.utils import is_moe_param, split_params_grads_into_shared_and_expert_params
 import torch
 import math
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
-from deepspeed.runtime.utils import get_grad_norm, CheckOverflow, get_weight_norm
+from deepspeed.runtime.utils import CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
-from deepspeed.utils import groups, logger, log_dist
-import torch.distributed as dist
+from deepspeed.utils import logger, log_dist
 
 
 class FP16_Optimizer(object):
@@ -36,8 +36,7 @@ class FP16_Optimizer(object):
 
         self.fused_adam_legacy = fused_adam_legacy
         self.timers = timers
-        self.deepspeed = deepspeed
-        self.using_pipeline = self.deepspeed.pipeline_parallelism
+
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
@@ -141,7 +140,10 @@ class FP16_Optimizer(object):
         """
         # First compute norm for all group so we know if there is overflow
         grads_groups_flat = []
+        # We don't want expert norms for norm computation
         norm_groups = []
+        # But we do want them for overflow checking
+        expert_norm_groups = []
         for i, group in enumerate(self.fp16_groups):
             grads_groups_flat.append(
                 _flatten_dense_tensors([
@@ -150,9 +152,26 @@ class FP16_Optimizer(object):
                                 device=p.device) if p.grad is None else p.grad
                     for p in group
                 ]))
-            norm_groups.append(get_weight_norm(grads_groups_flat[i], mpu=self.mpu))
 
-        self.overflow = self.overflow_checker.check_using_norm(norm_groups)
+            grads_for_norm, expert_grads_for_norm = split_params_grads_into_shared_and_expert_params(group)
+
+            norm_group_value = 0.0
+            if len(grads_for_norm) > 0:
+                norm_group_value = get_weight_norm(
+                    _flatten_dense_tensors(grads_for_norm),
+                    mpu=self.mpu)
+            norm_groups.append(norm_group_value)
+
+            expert_norm_group_value = 0.0
+            if len(expert_grads_for_norm) > 0:
+                expert_norm_group_value = get_weight_norm(
+                    _flatten_dense_tensors(expert_grads_for_norm),
+                    mpu=self.mpu)
+            expert_norm_groups.append(expert_norm_group_value)
+
+        # We use both norm_groups and expert_norm_groups for overflow detection
+        self.overflow = self.overflow_checker.check_using_norm(norm_groups +
+                                                               expert_norm_groups)
         prev_scale = self.cur_scale
         self._update_scale(self.overflow)
 
@@ -233,6 +252,15 @@ class FP16_Optimizer(object):
             return self.overflow
 
         grads_groups_flat = []
+        # For the case of MoE, different experts across different workers
+        # can cause the norms to differ across them, which can then
+        # cause a different gradient update and ultimately cause
+        # shared model weights to vary across workers.
+        # Two ways to avoid this are:
+        # 1. Simply avoid the MoE parameters during norm computation
+        # 2. Do an all-reduce for the grads of experts in an expert_parallel_group
+        # Doing 1. here for simplicity.
+        grads_groups_for_norm_flat = []
         for i, group in enumerate(self.fp16_groups):
             data_type = self.fp32_groups_flat[i].dtype
 
@@ -243,6 +271,13 @@ class FP16_Optimizer(object):
                                 device=p.device)
                     if p.grad is None else p.grad.to(data_type) for p in group
                 ]))
+            _grads_for_norm = [
+                p.grad.to(data_type) for p in group
+                if p.grad is not None and not is_moe_param(p)
+            ]
+            if len(_grads_for_norm) > 0:
+                grads_groups_for_norm_flat.append(
+                    _flatten_dense_tensors(_grads_for_norm))
 
             for p in group:
                 p.grad = None
@@ -250,22 +285,8 @@ class FP16_Optimizer(object):
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 
         self.start_timers([COMPUTE_NORM])
-
-        all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
-        #all_groups_norm_old = all_groups_norm
-        # Need to allreduce (avg) the norms across different ranks because moe params will not be synced during allreduce
-        if self.using_pipeline:
-            pg = self.deepspeed.mpu.get_data_parallel_group()
-        else:
-            pg = groups.get_data_parallel_group()
-        scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=pg))
-        scaled_norm_tensor = torch.tensor(scaled_norm,
-                                          device=self.fp32_groups_flat[i].device,
-                                          dtype=torch.float)
-        dist.all_reduce(scaled_norm_tensor, group=pg)
-        all_groups_norm = scaled_norm_tensor.item()
-        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {torch.distributed.get_rank()}")
-
+        # Now use the non MoE parameters for grad_norm computation
+        all_groups_norm = get_weight_norm(grads_groups_for_norm_flat, mpu=self.mpu)
         self.stop_timers([COMPUTE_NORM])
 
         self.start_timers([UNSCALE_AND_CLIP])
