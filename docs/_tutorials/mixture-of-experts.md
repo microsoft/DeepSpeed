@@ -20,7 +20,32 @@ If you are adding MoE to an existing model you can use the snippet below to help
 
 ### Expert group initialization
 
-TODO: add description of why this is needed and what it does
+DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in Table 1.
+
+TODO: Add Table 1 from the Blog post here.
+
+To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in deepspeed.utils.group.py
+
+For most cases, the model training code needs to initialize these groups by calling deepspeed.utilis.groups.initialize(ep_size=<desired expert-parallel world size>).
+
+The GPUs (or ranks) participating in an expert-parallel group will distribute the total number of experts specified by the model training code argument num_experts.
+
+For example, 
+
+WORLD_SIZE = 4
+EP_WORLD_SIZE = 2
+EXPERTS = 8
+
+Given the setting above, the user code needs to initialize the groups as follows
+
+groups.initialize (ep_size=EP_WORLD_SIZE)
+
+After that, the model code needs to use the deepspeed.moe.layer.MoE API as follows.
+
+self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=EXPERTS)
+
+With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this E+D (as shown in Table 1).
+
 
 ### MoE layer
 
