@@ -146,6 +146,9 @@ def top1gating(logits: torch.Tensor,
         exp_selection_uniform_map[logits.device] = uniform
 
     mask1_rand = mask1 * uniform(mask1.shape)
+
+    assert logits.shape[0] >= min_capacity, "No. of tokens (batch-size) should be greater than min_capacity. Either set min_capacity to 0 or inrease your batch size."
+
     _, top_idx = torch.topk(mask1_rand, k=capacity, dim=0)
 
     new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
