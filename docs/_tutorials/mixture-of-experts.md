@@ -24,6 +24,15 @@ DeepSpeed MoE supports five different forms of parallelism, and it exploits both
 
 TODO: Add Table 1 from the Blog post here.
 
+| Short Name       | Flexible Parallelism Configurations                  |
+| ---------------- | ------------------------------------------------     |
+| E                | Expert parallelism only                              |
+| E + D            | Expert-parallelism and Data-parallelism              |
+| E + Z            | Expert-parallelism and ZeRO-powered Data-parallelism |
+| E + D + M        |   |
+| E + D + Z        |   |
+| E + Z-Off + M    |   |
+
 To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in deepspeed.utils.group.py
 
 For most cases, the model training code needs to initialize these groups by calling deepspeed.utilis.groups.initialize(ep_size=<desired expert-parallel world size>).
