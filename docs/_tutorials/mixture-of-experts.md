@@ -104,8 +104,70 @@ fc4 = torch.nn.Linear(84, 10)
 
 For a runnable end-to-end example, please look at [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar)
 
+### Combining ZeRO-Offload and DeepSpeed MoE for greatest model scale
 
+To use MoE Layers in DeepSpeed, we rely on two parameter groups that are passed to an optimizer. A concrete example to create such groups is available from the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar).
 
+The relevant function that creates these param groups is as follows.
+
+```python
+def create_moe_param_groups(model):
+    from deepspeed.moe.utils import is_moe_param
+
+    params_with_weight_decay = {'params': [], 'name': 'weight_decay_params'}
+    moe_params_with_weight_decay = {
+        'params': [],
+        'moe': True,
+        'name': 'weight_decay_moe_params'
+    }
+
+    for module_ in model.modules():
+        moe_params_with_weight_decay['params'].extend([
+            p for n, p in list(module_._parameters.items())
+            if p is not None and is_moe_param(p)
+        ])
+        params_with_weight_decay['params'].extend([
+            p for n, p in list(module_._parameters.items())
+            if p is not None and not is_moe_param(p)
+        ])
+
+    return params_with_weight_decay, moe_params_with_weight_decay
+```
+
+The above param groups can then be fed to the ZeRO stage-2 optimizer as follows.
+
+```python
+parameters = create_moe_param_groups(net)
+
+model_engine, optimizer, trainloader, __ = deepspeed.initialize(
+    args=args, model=net, model_parameters=parameters, training_data=trainset)
+```
+
+We are working on automating this functionality in the DeepSpeed ZeRO optimizer so the model training code can be simplified further. 
+
+To run the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar) with ZeRO-Offload (stage 2) and MoE, please set the ds_config flags
+
+```json
+"zero_optimization": {
+      "stage": 2,
+      "allgather_partitions": true,
+      "reduce_scatter": true,
+      "allgather_bucket_size": 50000000,
+      "reduce_bucket_size": 50000000,
+      "overlap_comm": true,
+      "contiguous_gradients": true,
+      "cpu_offload": true
+  }
+
+  An additional optimization to save memory for extremely large model training on limited number of GPUs has also been introduced. Please enable that using the following config flag to the fp16 optimizer in ds_config.
+
+  ```json
+    "fp16": {
+      "enabled": true,
+      "fp16_master_weights_and_grads": true,
+  }
+  ```
+```
 
 <!--
 
