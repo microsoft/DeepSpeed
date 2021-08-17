@@ -24,14 +24,14 @@ DeepSpeed MoE supports five different forms of parallelism, and it exploits both
 
 TODO: Add Table 1 from the Blog post here.
 
-| Short Name       | Flexible Parallelism Configurations                  |
-| ---------------- | ------------------------------------------------     |
-| E                | Expert parallelism only                              |
-| E + D            | Expert-parallelism and Data-parallelism              |
-| E + Z            | Expert-parallelism and ZeRO-powered Data-parallelism |
-| E + D + M        |   |
-| E + D + Z        |   |
-| E + Z-Off + M    |   |
+| Short Name       | Flexible Parallelism Configurations | Benefit  |
+| ---------------- | ------------------------------------| -------- | 
+| E                | Expert                              | -------- |
+| E + D            | Expert + Data                       | -------- |
+| E + Z            | Expert + ZeRO-powered data          | -------- |
+| E + D + M        | Expert + Data + Model               | -------- |
+| E + D + Z        | Expert + Data + ZeRO-powered data   | -------- |
+| E + Z-Off + M    | Expert + ZeRO-Offload + Model       | -------- |
 
 To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in deepspeed.utils.group.py
 
