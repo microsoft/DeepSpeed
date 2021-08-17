@@ -106,11 +106,6 @@ def initialize(ep_size=1, mpu=None):
             that descibes model/data parallel ranks.
 
     """
-    """ if mpu is provided, intialize groups using mpu.
-        otherwise, we have two cases:
-        1. If called from DeepSpeed.initialize(), initialize groups with mp_size=1 and ep_size=1
-        2. If called from an application, initialize groups with mp_size=1 and ep_size=ep_size provided by the application
-    """
     if mpu is not None:
         log_dist(message="initializing deepspeed groups using mpu", ranks=[0])
         initialize_model_and_expert_parallel(ep_size, mpu)
