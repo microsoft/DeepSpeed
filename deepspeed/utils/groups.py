@@ -74,10 +74,11 @@ def initialize(ep_size=1, mpu=None):
     the following scenarios w.r.t. process group creation.
 
     S1: There is no expert parallelism or model parallelism, only data (D)
-    ``
+
+    ```
     model = my_model(args)
     engine = deepspeed.init(model) ---> initialize groups without mpu
-    ``
+    ```
 
     S2: There is expert parallelism but no model parallelism (E+D)
     ``
