@@ -88,7 +88,7 @@ def initialize(ep_size=1, mpu=None):
 
         mpu.init() # client initializes it's model parallel unit
         model = my_model(args)
-        engine = deepspeed.init(model, mpu=mpu) # inits w. mpu but expert_parallel_size = dp_world_size
+        engine = deepspeed.initialize(model, mpu=mpu) # init w. mpu but ep_size = dp_world_size
 
     * S4: There is model, data, and expert parallelism (E+D+M)::
 
