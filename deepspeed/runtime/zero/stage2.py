@@ -213,7 +213,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
-            self.fp16_groups.append(param_group['params'])
+#            self.fp16_groups.append(param_group['params'])
+            trainable_parameters = [param for param in param_group['params'] if param.requires_grad]
+            self.fp16_groups.append(trainable_parameters)
 
             # Record padding required to align group to world size
             if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
