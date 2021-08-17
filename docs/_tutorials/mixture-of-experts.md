@@ -19,10 +19,10 @@ If you are adding MoE to an existing model you can use the snippet below to help
 
 ### Expert groups initialization
 
-DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in the table below. 
+DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in the table below.
 
 | Short Name       | Flexible Parallelism Configurations | Benefit                                                                     |
-| ---------------- | ------------------------------------| --------------------------------------------------------------------------- | 
+| ---------------- | ------------------------------------| --------------------------------------------------------------------------- |
 | E                | Expert                              | Scales the model size by increasing the number of experts                   |
 | E + D            | Expert + Data                       | Accelerates training throughput by scaling to multiple data parallel groups |
 | E + Z            | Expert + ZeRO-powered data          | Partitions the nonexpert parameters to support larger base models           |
@@ -32,8 +32,8 @@ DeepSpeed MoE supports five different forms of parallelism, and it exploits both
 
 To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in ```deepspeed.utils.groups.py```
 
-For most cases, the model training code needs to initialize these groups by calling 
-```python 
+For most cases, the model training code needs to initialize these groups by calling
+```python
 deepspeed.utils.groups.initialize(ep_size="desired expert-parallel world size")
 ```
 
@@ -59,7 +59,7 @@ Updated with MoE Layers
 
 ### An Example Scenario
 
-Given a total number of GPUs in our world size and a subset of GPUs in our expert-parallel world as follows. 
+Given a total number of GPUs in our world size and a subset of GPUs in our expert-parallel world as follows.
 
 ```python
 WORLD_SIZE = 4
@@ -78,9 +78,9 @@ After that, the model code needs to use the deepspeed.moe.layer.MoE API as follo
 ```python
 self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=EXPERTS)
 ```
-With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this the E + D mode as described earlier in the table. 
+With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this the E + D mode as described earlier in the table.
 
-For more advanced use case of the groups API including the inter-operability with Megatron style mpu object, watch this space! 
+For more advanced use case of the groups API including the inter-operability with Megatron style mpu object, watch this space!
 
 
 ```python
@@ -145,7 +145,7 @@ model_engine, optimizer, trainloader, __ = deepspeed.initialize(
     args=args, model=net, model_parameters=parameters, training_data=trainset)
 ```
 
-We are working on automating this functionality in the DeepSpeed ZeRO optimizer so the model training code can be simplified further. 
+We are working on automating this functionality in the DeepSpeed ZeRO optimizer so the model training code can be simplified further.
 
 To run the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar) with ZeRO-Offload (stage 2) and MoE, please set the ds_config flags
 
