@@ -40,29 +40,6 @@ deepspeed.utils.groups.initialize(ep_size="desired expert-parallel world size")
 
 The GPUs (or ranks) participating in an expert-parallel group will distribute the total number of experts specified by the model training code argument num_experts.
 
-For example, we can set our total number of GPUs and number of GPUs in our expert-parallel world as follows. 
-
-```python
-WORLD_SIZE = 4
-EP_WORLD_SIZE = 2
-EXPERTS = 8
-```
-
-Given the setting above, the user code needs to initialize the groups as follows
-
-```python
-groups.initialize (ep_size=EP_WORLD_SIZE)
-```
-After that, the model code needs to use the deepspeed.moe.layer.MoE API as follows.
-
-```python
-self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=EXPERTS)
-```
-With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this the E + D mode as described earlier in the table. 
-
-For more advanced use case of the groups API including the inter-operability with Megatron style mpu object, watch this space! 
-
-
 ### MoE layer
 
 The hidden_size is the input dimension of a particular layer and the output dimension is the same as that. This could lead to some changes to your model definition, especially for vision/convolutional models because the input/output dimensions don't match in certain cases. E.g. in the CIFAR-10 example, we modify the third fully connected layer to add the MoE layer. To cater for this, we need to add an additional fully-connected layer, whose input dimension is equal to the output dimension of the MoE layer.
@@ -81,6 +58,39 @@ Updated with MoE Layers
     self.fc4 = nn.Linear(84, 10)
 ```
 
+### An Example Scenario
+
+Given a total number of GPUs in our world size and a subset of GPUs in our expert-parallel world as follows. 
+
+```python
+WORLD_SIZE = 4
+EP_WORLD_SIZE = 2
+EXPERTS = 8
+```
+
+The user code needs to initialize the groups as follows.
+
+```python
+groups.initialize (ep_size=EP_WORLD_SIZE)
+```
+
+After that, the model code needs to use the deepspeed.moe.layer.MoE API as follows.
+
+```python
+self.experts = deepspeed.moe.layer.MoE(hidden_size=input_dim, expert=ExpertModule(), num_experts=EXPERTS)
+```
+With the above two commands, the DeepSpeed runtime will be set to train an MoE model with a total of 8 experts on 4 GPUs in 4 experts/GPU mode. We call this the E + D mode as described earlier in the table. 
+
+For more advanced use case of the groups API including the inter-operability with Megatron style mpu object, watch this space! 
+
+
+### Fully contained example
+
+For a runnable end-to-end example, please look at [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar)
+
+
+<!--
+
 ```python
 import deepspeed
 
@@ -89,7 +99,6 @@ deepspeed.utils.groups.initialize()
 experts = deepspeed.moe.layer.MoE(hidden_size, expert=Expert(params..), num_experts=num_experts, k=2)
 ```
 
-<!--
 hidden_size (int): the hidden dimension of the model.
 expert (torch.nn.Module): the torch module that defines the expert (e.g., MLP, torch.linear).
 num_experts (int, optional): default=1, the total number of experts per layer.
