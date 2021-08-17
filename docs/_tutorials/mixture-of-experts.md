@@ -65,8 +65,6 @@ For more advanced use case of the groups API including the inter-operability wit
 
 ### MoE layer
 
-TODO: add details about input/output dimension assumptions
-
 The hidden_size is the input dimension of a particular layer and the output dimension is the same as that. This could lead to some changes to your model definition, especially for vision/convolutional models because the input/output dimensions don't match in certain cases. E.g. in the CIFAR-10 example, we modify the third fully connected layer to add the MoE layer. To cater for this, we need to add an additional fully-connected layer, whose input dimension is equal to the output dimension of the MoE layer.
 
 Original model config
@@ -78,7 +76,7 @@ Original model config
 Updated with MoE Layers
 
 ```python
-if args.moe:
+    self.fc3 = nn.Linear(84, 84)
     self.fc3 = deepspeed.moe.layer.MoE(hidden_size=84, expert=self.fc3, num_experts=args.num_experts, ...)
     self.fc4 = nn.Linear(84, 10)
 ```
