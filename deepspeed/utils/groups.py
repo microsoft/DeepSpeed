@@ -73,28 +73,32 @@ def initialize(ep_size=1, mpu=None):
     Process groups initialization supporting expert (E), data (D), and model (M) parallelism. DeepSpeed considers
     the following scenarios w.r.t. process group creation.
 
-    S1) There is no expert parallelism or model parallelism, only data (D)
+    S1: There is no expert parallelism or model parallelism, only data (D)
     ``
     model = my_model(args)
     engine = deepspeed.init(model) ---> initialize groups without mpu
     ``
 
-    S2)
+    S2: There is expert parallelism but no model parallelism (E+D)
+    ``
+    deepspeed.utils.groups.initialize(ep_size) # groups will be initialized here
+    model = my_model(args)
+    engine = deepspeed.initialize(model)
+    ``
 
-Scenario 2 : There is expert parallelism but no model parallelism (E+D)
-deepspeed.init_groups(args) --> groups will be initialized here
-model = my_model(args)
-engine = deepspeed.init(model) --> don't initialize groups
+    S3: There is model parallelism but no expert parallelism (M)
+    ``
+    mpu.init() # client initializes it's model parallel unit
+    model = my_model(args)
+    engine = deepspeed.init(model, mpu=mpu) # inits w. mpu but expert_parallel_size = dp_world_size
+    ``
 
-Scenario 3 : There is model parallelism but no expert parallelism (M)
-mpu.init()
-model = my_model(args)
-engine = deepspeed.init(model, mpu = mpu)  --> initialize groups with mpu but expert_parallel_size = dp_world_size
-
-Scenario 4 : There is model, data, and expert parallelism (E+D+M)
-mpu.init()
-deepspeed.init_groups(mpu, args)  ---> initialize groups with mpu
-model = my_model(args)
+    S4: There is model, data, and expert parallelism (E+D+M)
+    ``
+    mpu.init() # client initializes it's model parallel unit
+    deepspeed.utils.groups.initialize(ep_size, mpu) # initialize expert groups wrt mpu
+    model = my_model(args)
+    ``
 
     Arguments:
         ep_size (int, optional): default=1, expert parallel size
