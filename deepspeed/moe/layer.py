@@ -77,12 +77,14 @@ class MoE(torch.nn.Module):
         self.dropout = torch.nn.Dropout(output_dropout_prob)
 
     def forward(self, hidden_states, used_token=None):
-        """
+        """ MoE forward
+
         Arguments:
             hidden_states (Tensor): input to the layer
             used_token (Tensor, optional): default: None, mask only used tokens
 
         Returns:
+            A tuple including output, gate loss, and expert count.
 
             * output (Tensor): output of the model
 
