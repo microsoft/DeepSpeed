@@ -188,6 +188,11 @@ noisy_gate_policy (str, optional): default=None, noisy gate policy, valid option
 
 
 
+
+## Random Token Selection
+
+We have devised a new technique called “Random Token Selection” that greatly improves convergence. Random token selection addresses the limitation of biased selection problem in MoE model training. Our upcoming paper describes this technique and its results in detail. This feature is already part of the DeepSpeed runtime and is enabled by default so users can take advantage without any config flags or command-line arguments.
+
 ## Advanced MoE usage
 
 Watch this space! We plan to add more interesting and detailed examples of using DeepSpeed MoE in the coming weeks.
