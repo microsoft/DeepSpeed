@@ -31,9 +31,9 @@ DeepSpeed MoE supports five different forms of parallelism, and it exploits both
 | E + D + Z        | Expert + Data + ZeRO-powered data   | Supports massive hidden sizes and even larger base models than E+Z          |
 | E + Z-Off + M    | Expert + ZeRO-Offload + Model       | Leverages both GPU and CPU memory for large MoE models on limited # of GPUs |
 
-To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in deepspeed.utils.group.py
+To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in ```deepspeed.utils.group.py```
 
-For most cases, the model training code needs to initialize these groups by calling deepspeed.utilis.groups.initialize(ep_size=<desired expert-parallel world size>).
+For most cases, the model training code needs to initialize these groups by calling ```deepspeed.utilis.groups.initialize(ep_size="desired expert-parallel world size")```.
 
 The GPUs (or ranks) participating in an expert-parallel group will distribute the total number of experts specified by the model training code argument num_experts.
 
