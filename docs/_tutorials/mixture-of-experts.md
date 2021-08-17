@@ -18,7 +18,7 @@ our [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master
 If you are adding MoE to an existing model you can use the snippet below to help guide you:
 
 
-### Expert group initialization
+### Expert groups initialization
 
 DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in the table below. 
 
@@ -40,7 +40,7 @@ deepspeed.utils.groups.initialize(ep_size="desired expert-parallel world size")
 
 The GPUs (or ranks) participating in an expert-parallel group will distribute the total number of experts specified by the model training code argument num_experts.
 
-### MoE layer
+### MoE layer API
 
 The hidden_size is the input dimension of a particular layer and the output dimension is the same as that. This could lead to some changes to your model definition, especially for vision/convolutional models because the input/output dimensions don't match in certain cases. E.g. in the CIFAR-10 example, we modify the third fully connected layer to add the MoE layer. To cater for this, we need to add an additional fully-connected layer, whose input dimension is equal to the output dimension of the MoE layer.
 
@@ -84,20 +84,31 @@ With the above two commands, the DeepSpeed runtime will be set to train an MoE m
 For more advanced use case of the groups API including the inter-operability with Megatron style mpu object, watch this space! 
 
 
-### Fully contained example
+```python
+import torch
+import deepspeed
+import deepspeed.utils.groups as groups
+from deepspeed.moe.layer import MoE
+
+WORLD_SIZE = 4
+EP_WORLD_SIZE = 2
+EXPERTS = 8
+
+groups.initialize(ep_size=EP_WORLD_SIZE)
+
+fc3 = torch.nn.Linear(84, 84)
+fc3 = MoE(hidden_size=84, expert=self.fc3, num_experts=EXPERTS, k=1)
+fc4 = torch.nn.Linear(84, 10)
+
+```
 
 For a runnable end-to-end example, please look at [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar)
 
 
+
+
 <!--
 
-```python
-import deepspeed
-
-deepspeed.utils.groups.initialize()
-
-experts = deepspeed.moe.layer.MoE(hidden_size, expert=Expert(params..), num_experts=num_experts, k=2)
-```
 
 hidden_size (int): the hidden dimension of the model.
 expert (torch.nn.Module): the torch module that defines the expert (e.g., MLP, torch.linear).
