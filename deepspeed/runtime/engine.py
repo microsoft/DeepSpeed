@@ -146,7 +146,7 @@ class DeepSpeedEngine(Module):
         # Set config using config_params for backwards compat
         if self.config is None and config_params is not None:
             self.config = config_params
-            
+
         self.auto_save_dir = "/tmp/ds-checkpoint"
 
         if dist_init_required is None:
