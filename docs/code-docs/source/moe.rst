@@ -9,5 +9,4 @@ Layer specification
 
 Groups initialization
 --------
-.. automodule:: deepspeed.utils.groups.initialize
-    :members:
+.. autofunction:: deepspeed.utils.groups.initialize
