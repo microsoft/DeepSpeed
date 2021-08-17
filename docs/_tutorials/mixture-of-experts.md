@@ -104,7 +104,7 @@ fc4 = torch.nn.Linear(84, 10)
 
 For a runnable end-to-end example, please look at [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar)
 
-### Combining ZeRO-Offload and DeepSpeed MoE for greatest model scale
+### Combining ZeRO-Offload and DeepSpeed MoE for very large models
 
 To use MoE Layers in DeepSpeed, we rely on two parameter groups that are passed to an optimizer. A concrete example to create such groups is available from the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree/master/cifar).
 
@@ -137,6 +137,9 @@ def create_moe_param_groups(model):
 The above param groups can then be fed to the ZeRO stage-2 optimizer as follows.
 
 ```python
+
+net = Net()
+
 parameters = create_moe_param_groups(net)
 
 model_engine, optimizer, trainloader, __ = deepspeed.initialize(
@@ -158,8 +161,9 @@ To run the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree
       "contiguous_gradients": true,
       "cpu_offload": true
   }
+```
 
-  An additional optimization to save memory for extremely large model training on limited number of GPUs has also been introduced. Please enable that using the following config flag to the fp16 optimizer in ds_config.
+An additional optimization to save memory for extremely large model training on limited number of GPUs has also been introduced. Please enable that using the following config flag to the fp16 optimizer in ds_config.
 
   ```json
     "fp16": {
@@ -167,7 +171,6 @@ To run the [cifar10 example](https://github.com/microsoft/DeepSpeedExamples/tree
       "fp16_master_weights_and_grads": true,
   }
   ```
-```
 
 <!--
 
