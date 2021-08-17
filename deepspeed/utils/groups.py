@@ -95,7 +95,7 @@ def initialize(ep_size=1, mpu=None):
         mpu.init() # client initializes it's model parallel unit
         deepspeed.utils.groups.initialize(ep_size, mpu) # initialize expert groups wrt mpu
         model = my_model(args)
-        engine = deepspeed.initialize(model, mpu=mpu) # passing mpu is optional
+        engine = deepspeed.initialize(model, mpu=mpu) # passing mpu is optional in this case
 
     Arguments:
         ep_size (int, optional): default=1, expert parallel size
