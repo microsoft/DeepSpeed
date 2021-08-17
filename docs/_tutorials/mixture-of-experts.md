@@ -20,18 +20,16 @@ If you are adding MoE to an existing model you can use the snippet below to help
 
 ### Expert group initialization
 
-DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in Table 1.
+DeepSpeed MoE supports five different forms of parallelism, and it exploits both GPU and CPU memory. Its flexible design enables users to mix different types of prevalent parallelism techniques, as shown in the table below. 
 
-TODO: Add Table 1 from the Blog post here.
-
-| Short Name       | Flexible Parallelism Configurations | Benefit  |
-| ---------------- | ------------------------------------| -------- | 
-| E                | Expert                              | -------- |
-| E + D            | Expert + Data                       | -------- |
-| E + Z            | Expert + ZeRO-powered data          | -------- |
-| E + D + M        | Expert + Data + Model               | -------- |
-| E + D + Z        | Expert + Data + ZeRO-powered data   | -------- |
-| E + Z-Off + M    | Expert + ZeRO-Offload + Model       | -------- |
+| Short Name       | Flexible Parallelism Configurations | Benefit                                                                     |
+| ---------------- | ------------------------------------| --------------------------------------------------------------------------- | 
+| E                | Expert                              | Scales the model size by increasing the number of experts                   |
+| E + D            | Expert + Data                       | Accelerates training throughput by scaling to multiple data parallel groups |
+| E + Z            | Expert + ZeRO-powered data          | Partitions the nonexpert parameters to support larger base models           |
+| E + D + M        | Expert + Data + Model               | Supports massive hidden sizes and even larger base models than E+Z          |
+| E + D + Z        | Expert + Data + ZeRO-powered data   | Supports massive hidden sizes and even larger base models than E+Z          |
+| E + Z-Off + M    | Expert + ZeRO-Offload + Model       | Leverages both GPU and CPU memory for large MoE models on limited # of GPUs |
 
 To support different forms of parallelism, we create a notion of DeepSpeed process groups that resides in deepspeed.utils.group.py
 
