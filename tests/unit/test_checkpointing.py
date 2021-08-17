@@ -683,7 +683,6 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
     _test(tmpdir, num_stages=stages)
 
 
-#@pytest.mark.skip(reason="moe branch will skip all PP tests for now")
 @pytest.mark.parametrize(
     "base_topo,test_topo",
     [
