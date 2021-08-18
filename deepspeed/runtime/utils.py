@@ -291,7 +291,6 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     return total_norm
 
 
-
 def get_grad_norm(parameters, norm_type=2, mpu=None):
     """Get grad norm of an iterable of parameters.
 
