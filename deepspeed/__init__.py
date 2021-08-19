@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import sys
 import types
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -12,7 +12,7 @@ from packaging import version as pkg_version
 from . import ops
 from . import module_inject
 
-from .runtime.engine import DeepSpeedEngine
+from .runtime.engine import DeepSpeedEngine, DeepSpeedOptimizerCallable, DeepSpeedSchedulerCallable
 from .runtime.engine import ADAM_OPTIMIZER, LAMB_OPTIMIZER
 from .runtime.pipe.engine import PipelineEngine
 from .inference.engine import InferenceEngine
@@ -31,7 +31,6 @@ from .runtime import zero
 from .pipe import PipelineModule
 
 from .git_version_info import version, git_hash, git_branch
-
 
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''
@@ -57,13 +56,12 @@ sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
 setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
 sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
 
-
 def initialize(args=None,
                model: torch.nn.Module = None,
-               optimizer: Optional[Optimizer] = None,
+               optimizer: Optional[Union[Optimizer, DeepSpeedOptimizerCallable]] = None,
                model_parameters: Optional[torch.nn.Module] = None,
                training_data: Optional[torch.utils.data.Dataset]= None,
-               lr_scheduler: Optional[Union[_LRScheduler, Callable[[Optimizer], _LRScheduler]]] = None,
+               lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]] = None,
                mpu=None,
                dist_init_required: Optional[bool]=None,
                collate_fn=None,
@@ -77,8 +75,8 @@ def initialize(args=None,
 
         model: Required: nn.module class before apply any wrappers
 
-        optimizer: Optional: a user defined optimizer, this is typically used instead of defining
-            an optimizer in the DeepSpeed json config.
+        optimizer: Optional: a user defined Optimizer or Callable that returns an Optimizer object. 
+            This overrides any optimizer definition in the DeepSpeed json config.
 
         model_parameters: Optional: An iterable of torch.Tensors or dicts.
             Specifies what Tensors should be optimized.
