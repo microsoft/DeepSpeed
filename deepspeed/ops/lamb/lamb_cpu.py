@@ -48,7 +48,7 @@ class FusedLamb(torch.optim.Optimizer):
                  max_coeff=10.0,
                  min_coeff=0.01,
                  amsgrad=False):
-        self.fused_lamb_cuda = FusedLambBuilder().load()
+        self.fused_lamb_cpu = FusedLambBuilder().load()
 
         if amsgrad:
             raise RuntimeError('FusedLamb does not support the AMSGrad variant.')
@@ -165,7 +165,7 @@ class FusedLamb(torch.optim.Optimizer):
                 out_p = torch.tensor(
                     [],
                     dtype=torch.float) if output_param is None else output_param
-                lamb_coeff = self.fused_lamb_cuda.lamb(p.data,
+                lamb_coeff = self.fused_lamb_cpu.lamb(p.data,
                                                        out_p,
                                                        exp_avg,
                                                        exp_avg_sq,
