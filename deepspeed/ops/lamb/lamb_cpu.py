@@ -10,7 +10,7 @@ from ..op_builder import FusedLambBuilder
 
 
 class FusedLamb(torch.optim.Optimizer):
-    """Implements the LAMB algorithm. Currently GPU-only.
+    """Implements the LAMB algorithm. Implemented CPU
 
     LAMB was proposed in `Large Batch Optimization for Deep Learning: Training BERT in 76 minutes.
     https://arxiv.org/abs/1904.00962
@@ -151,9 +151,9 @@ class FusedLamb(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                     # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['exp_avg'] = torch.zeros_like(p.data,dtype=state_dtype,device='cpu')
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p.data,dtype=state_dtype,device='cpu')
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 beta1, beta2 = group['betas']
