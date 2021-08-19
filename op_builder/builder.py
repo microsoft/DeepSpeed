@@ -31,9 +31,11 @@ except ImportError:
     )
 
 
-def installed_cuda_version():
+def installed_cuda_version(name=""):
     import torch.utils.cpp_extension
     cuda_home = torch.utils.cpp_extension.CUDA_HOME
+    if cuda_home is None and name == "DS_BUILD_CPU_ADAM":
+        return 0, 0
     assert cuda_home is not None, "CUDA_HOME does not exist, unable to compile CUDA op(s)"
     # Ensure there is not a cuda version mismatch between torch and nvcc compiler
     output = subprocess.check_output([cuda_home + "/bin/nvcc",
@@ -74,8 +76,10 @@ cuda_minor_mismatch_ok = {
 }
 
 
-def assert_no_cuda_mismatch():
-    cuda_major, cuda_minor = installed_cuda_version()
+def assert_no_cuda_mismatch(name=""):
+    cuda_major, cuda_minor = installed_cuda_version(name)
+    if cuda_minor == 0 and cuda_major == 0:
+        return False
     sys_cuda_version = f'{cuda_major}.{cuda_minor}'
     torch_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
     # This is a show-stopping error, should probably not proceed past this
@@ -113,6 +117,7 @@ class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
+        self.build_for_cpu = False
 
     @abstractmethod
     def absolute_name(self):
@@ -365,7 +370,7 @@ class OpBuilder(ABC):
             )
 
         if isinstance(self, CUDAOpBuilder):
-            assert_no_cuda_mismatch()
+            self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
 
         self.jit_mode = True
         from torch.utils.cpp_extension import load
@@ -390,6 +395,7 @@ class OpBuilder(ABC):
             extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
             extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
             verbose=verbose)
+
         build_duration = time.time() - start_build
         if verbose:
             print(f"Time to load {self.name} op: {build_duration} seconds")
@@ -469,16 +475,21 @@ class CUDAOpBuilder(OpBuilder):
         return super().is_compatible()
 
     def builder(self):
-        from torch.utils.cpp_extension import CUDAExtension
-        assert_no_cuda_mismatch()
-        return CUDAExtension(name=self.absolute_name(),
-                             sources=self.strip_empty_entries(self.sources()),
-                             include_dirs=self.strip_empty_entries(self.include_paths()),
-                             libraries=self.strip_empty_entries(self.libraries_args()),
-                             extra_compile_args={
-                                 'cxx': self.strip_empty_entries(self.cxx_args()),
-                                 'nvcc': self.strip_empty_entries(self.nvcc_args())
-                             })
+        self.build_for_cpu = not assert_no_cuda_mismatch(self.name)
+        if self.build_for_cpu:
+            from torch.utils.cpp_extension import CPPExtension as ExtensionBuilder
+        else:
+            from torch.utils.cpp_extension import CUDAExtension as ExtensionBuilder
+
+        compile_args = {'cxx': self.strip_empty_entries(self.cxx_args())} if self.build_for_cpu else \
+                       {'cxx': self.strip_empty_entries(self.cxx_args()), \
+                           'nvcc': self.strip_empty_entries(self.nvcc_args())}
+        return ExtensionBuilder(
+            name=self.absolute_name(),
+            sources=self.strip_empty_entries(self.sources()),
+            include_dirs=self.strip_empty_entries(self.include_paths()),
+            libraries=self.strip_empty_entries(self.libraries_args()),
+            extra_compile_args=compile_args)
 
     def cxx_args(self):
         if sys.platform == "win32":
@@ -487,6 +498,8 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
+        if self.build_for_cpu:
+            return []
         args = [
             '-O3',
             '--use_fast_math',

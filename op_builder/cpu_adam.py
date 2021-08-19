@@ -22,7 +22,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
+        if self.is_cuda_available():
+            return ['csrc/adam/cpu_adam.cpp']
+        else:
+            return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
 
     def include_paths(self):
         import torch
@@ -35,17 +38,27 @@ class CPUAdamBuilder(CUDAOpBuilder):
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
         ENABLE_CUDA = self.is_cuda_available()
-
-        return [
-            '-O3',
-            '-std=c++14',
-            f'-L{CUDA_LIB64}',
-            '-lcudart',
-            '-lcublas',
-            '-g',
-            '-Wno-reorder',
-            CPU_ARCH,
-            '-fopenmp',
-            SIMD_WIDTH,
-            ENABLE_CUDA,
-        ]
+        if ENABLE_CUDA:
+            return [
+                '-O3',
+                '-std=c++14',
+                f'-L{CUDA_LIB64}',
+                '-lcudart',
+                '-lcublas',
+                '-g',
+                '-Wno-reorder',
+                CPU_ARCH,
+                '-fopenmp',
+                SIMD_WIDTH,
+                ENABLE_CUDA,
+            ]
+        else:
+            return [
+                '-O3',
+                '-std=c++14',
+                '-Wno-reorder',
+                CPU_ARCH,
+                '-fopenmp',
+                SIMD_WIDTH,
+                ENABLE_CUDA,
+            ]
