@@ -22,7 +22,6 @@ from tensorboardX import SummaryWriter
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
-
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
@@ -547,7 +546,7 @@ class DeepSpeedEngine(Module):
                     f'DeepSpeed using configured LR scheduler = {self.scheduler_name()}')
             self.lr_scheduler = lr_scheduler
         else:
-            if isinstance(client_lr_scheduler, _LRScheduler):            
+            if isinstance(client_lr_scheduler, _LRScheduler):
                 if self.global_rank == 0:
                     logger.info('DeepSpeed using client LR scheduler')
                 self.lr_scheduler = client_lr_scheduler
@@ -673,7 +672,7 @@ class DeepSpeedEngine(Module):
         ) == ONEBIT_LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
-        
+
         assert isinstance(self.client_lr_scheduler, (type(None), _LRScheduler, Callable)), \
             f'Client LR Scheduler is of unexpected type {type(self.client_lr_scheduler)}'
 
@@ -797,7 +796,6 @@ class DeepSpeedEngine(Module):
             ])
             assert occurance <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behaviour."
 
-
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         if client_optimizer is not None:
@@ -807,7 +805,8 @@ class DeepSpeedEngine(Module):
                 ]
                 if self.global_rank == 0:
                     logger.info(
-                        "Removing param_group that has no 'params' in the client Optimizer")
+                        "Removing param_group that has no 'params' in the client Optimizer"
+                    )
 
                 basic_optimizer = client_optimizer
                 if self.global_rank == 0:

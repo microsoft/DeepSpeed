@@ -32,6 +32,7 @@ from .pipe import PipelineModule
 
 from .git_version_info import version, git_hash, git_branch
 
+
 def _parse_version(version_str):
     '''Parse a version string and extract the major, minor, and patch versions.'''
     ver = pkg_version.parse(version_str)
@@ -56,14 +57,17 @@ sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
 setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
 sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
 
+
 def initialize(args=None,
                model: torch.nn.Module = None,
-               optimizer: Optional[Union[Optimizer, DeepSpeedOptimizerCallable]] = None,
+               optimizer: Optional[Union[Optimizer,
+                                         DeepSpeedOptimizerCallable]] = None,
                model_parameters: Optional[torch.nn.Module] = None,
-               training_data: Optional[torch.utils.data.Dataset]= None,
-               lr_scheduler: Optional[Union[_LRScheduler, DeepSpeedSchedulerCallable]] = None,
+               training_data: Optional[torch.utils.data.Dataset] = None,
+               lr_scheduler: Optional[Union[_LRScheduler,
+                                            DeepSpeedSchedulerCallable]] = None,
                mpu=None,
-               dist_init_required: Optional[bool]=None,
+               dist_init_required: Optional[bool] = None,
                collate_fn=None,
                config=None,
                config_params=None):
@@ -75,7 +79,7 @@ def initialize(args=None,
 
         model: Required: nn.module class before apply any wrappers
 
-        optimizer: Optional: a user defined Optimizer or Callable that returns an Optimizer object. 
+        optimizer: Optional: a user defined Optimizer or Callable that returns an Optimizer object.
             This overrides any optimizer definition in the DeepSpeed json config.
 
         model_parameters: Optional: An iterable of torch.Tensors or dicts.

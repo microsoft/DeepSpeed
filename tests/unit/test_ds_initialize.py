@@ -12,6 +12,7 @@ from deepspeed.ops.adam import FusedAdam
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WarmupLR
 from deepspeed.runtime.config import ADAM_OPTIMIZER
 
+
 @pytest.mark.parametrize('optimizer_type', [None, Optimizer, Callable])
 def test_client_optimizer(tmpdir, optimizer_type):
     def _optimizer_callable(params) -> Optimizer:
@@ -20,9 +21,7 @@ def test_client_optimizer(tmpdir, optimizer_type):
     hidden_dim = 10
     model = SimpleModel(hidden_dim)
 
-    config_dict = {
-        'train_batch_size': 1
-    }
+    config_dict = {'train_batch_size': 1}
     if optimizer_type is None:
         client_optimizer = None
         config_dict['optimizer'] = {'type': ADAM_OPTIMIZER}
@@ -32,7 +31,6 @@ def test_client_optimizer(tmpdir, optimizer_type):
         client_optimizer = _optimizer_callable
 
     args = args_from_dict(tmpdir, config_dict)
-    
 
     @distributed_test(world_size=[1])
     def _test_client_optimizer(args, model, client_optimizer):
@@ -47,23 +45,29 @@ def test_client_optimizer(tmpdir, optimizer_type):
         else:
             assert isinstance(ds_optimizer, AdamW)
 
-
     _test_client_optimizer(args=args, model=model, client_optimizer=client_optimizer)
 
 
-@pytest.mark.parametrize('scheduler_type, optimizer_type', [
-    (None, None),
-    (None, Optimizer), 
-    (None, Callable),
-    (_LRScheduler, None),
-    (_LRScheduler, Optimizer),
-    (_LRScheduler, Callable),
-    (Callable, None),
-    (Callable, Optimizer),
-    (Callable, Callable)
-    ])
+@pytest.mark.parametrize('scheduler_type, optimizer_type',
+                         [(None,
+                           None),
+                          (None,
+                           Optimizer),
+                          (None,
+                           Callable),
+                          (_LRScheduler,
+                           None),
+                          (_LRScheduler,
+                           Optimizer),
+                          (_LRScheduler,
+                           Callable),
+                          (Callable,
+                           None),
+                          (Callable,
+                           Optimizer),
+                          (Callable,
+                           Callable)])
 def test_client_lr_scheduler(tmpdir, scheduler_type, optimizer_type):
-
     def _my_lambda(epoch):
         return epoch // 10
 
@@ -76,9 +80,7 @@ def test_client_lr_scheduler(tmpdir, scheduler_type, optimizer_type):
     hidden_dim = 10
     model = SimpleModel(hidden_dim)
 
-    config_dict = {
-        'train_batch_size': 1
-    }
+    config_dict = {'train_batch_size': 1}
 
     client_optimizer = None
     client_scheduler = None
@@ -102,11 +104,12 @@ def test_client_lr_scheduler(tmpdir, scheduler_type, optimizer_type):
         client_scheduler = _lr_scheduler_callable
 
     args = args_from_dict(tmpdir, config_dict)
-    
 
     @distributed_test(world_size=[1])
     def _test_client_lr_scheduler(args, model, optimizer, lr_scheduler):
-        if isinstance(lr_scheduler, _LRScheduler) and not isinstance(optimizer, Optimizer):
+        if isinstance(lr_scheduler,
+                      _LRScheduler) and not isinstance(optimizer,
+                                                       Optimizer):
             with pytest.raises(AssertionError):
                 _, _, _, _ = deepspeed.initialize(args=args,
                                                   model=model,
@@ -126,9 +129,7 @@ def test_client_lr_scheduler(tmpdir, scheduler_type, optimizer_type):
             else:
                 assert isinstance(ds_lr_scheduler, LambdaLR)
 
-
     _test_client_lr_scheduler(args=args,
-                              model=model, 
+                              model=model,
                               optimizer=client_optimizer,
                               lr_scheduler=client_scheduler)
-
