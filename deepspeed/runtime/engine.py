@@ -1626,8 +1626,11 @@ class DeepSpeedEngine(Module):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
-    def load_module_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+    def load_module_state_dict(self, state_dict, strict=True, model_f=None):
+        if model_f:
+            model_f(src=state_dict, dst=self.module)
+        else:
+            self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
         filename = 'zero_pp_rank_{}'.format(dp_rank)
@@ -1677,7 +1680,8 @@ class DeepSpeedEngine(Module):
                         tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
-                        load_lr_scheduler_states=True):
+                        load_lr_scheduler_states=True,
+                        model_f=None):
         """Load training checkpoint
 
         Arguments:
@@ -1708,7 +1712,8 @@ class DeepSpeedEngine(Module):
                                                          tag,
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
-                                                         load_lr_scheduler_states=load_lr_scheduler_states)
+                                                         load_lr_scheduler_states=load_lr_scheduler_states,
+                                                         model_f=model_f)
 
         if self.zero_optimization() and load_path is not None:
             success = self._load_zero_checkpoint(load_dir,
@@ -1724,7 +1729,8 @@ class DeepSpeedEngine(Module):
                          tag,
                          load_module_strict=True,
                          load_optimizer_states=True,
-                         load_lr_scheduler_states=True):
+                         load_lr_scheduler_states=True,
+                         model_f=None):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
@@ -1743,7 +1749,8 @@ class DeepSpeedEngine(Module):
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+                                    strict=load_module_strict,
+                                    model_f=model_f)
 
         if load_optimizer_states and self.optimizer is not None and not self.zero_optimization(
         ):
