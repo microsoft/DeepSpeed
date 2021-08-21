@@ -208,7 +208,7 @@ class DeepSpeedEngine(Module):
 
         # Configure optimizer and scheduler
         self.optimizer = None
-        self.basic_optimizer = None 
+        self.basic_optimizer = None
         self.lr_scheduler = None
         if model_parameters or optimizer:
             self._configure_optimizer(optimizer, model_parameters)
