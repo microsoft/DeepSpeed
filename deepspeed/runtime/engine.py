@@ -208,6 +208,7 @@ class DeepSpeedEngine(Module):
 
         # Configure optimizer and scheduler
         self.optimizer = None
+        self.basic_optimizer = None 
         self.lr_scheduler = None
         if model_parameters or optimizer:
             self._configure_optimizer(optimizer, model_parameters)
@@ -553,7 +554,7 @@ class DeepSpeedEngine(Module):
             elif isinstance(client_lr_scheduler, Callable):
                 if self.global_rank == 0:
                     logger.info('DeepSpeed using client callable to create LR scheduler')
-                self.lr_scheduler = client_lr_scheduler(self.optimizer)
+                self.lr_scheduler = client_lr_scheduler(self.basic_optimizer)
 
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
@@ -824,6 +825,7 @@ class DeepSpeedEngine(Module):
 
         self._check_for_duplicates(basic_optimizer)
 
+        self.basic_optimizer = basic_optimizer
         if self.global_rank == 0:
             logger.info('DeepSpeed Basic Optimizer = {}'.format(
                 basic_optimizer.__class__.__name__))
