@@ -1884,9 +1884,10 @@ class DeepSpeedEngine(Module):
                                                          load_module_only=load_module_only)
 
         if self.zero_optimization() and load_path is not None:
-            success = self._load_zero_checkpoint(load_dir,
-                                       tag,
-                                       load_optimizer_states=load_optimizer_states)
+            success = self._load_zero_checkpoint(
+                load_dir,
+                tag,
+                load_optimizer_states=load_optimizer_states)
             if not success:
                 self.optimizer._restore_from_fp16_weights()
 
