@@ -234,6 +234,7 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
                              (8,128,128,2,3,True,True),
                              (8,4096,128,64,3,True,True),
                              (8,8192,128,64,3,False,True),
+                             (1,256,2048,32,3,True,True),
                          ]) # yapf: disable
 @skipIfRocm("Skipped as this test fails on ROCm")
 def test_forward(batch_size,

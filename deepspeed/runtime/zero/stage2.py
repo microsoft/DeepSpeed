@@ -99,12 +99,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
                  ignore_unused_parameters=True,
-                 partition_grads=True):
+                 partition_grads=True,
+                 round_robin_gradients=False):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {allgather_bucket_size}")
             logger.info(f"CPU Offload: {cpu_offload}")
+            logger.info(f'Round robin gradient partitioning: {round_robin_gradients}')
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -159,6 +161,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = 0
         self.ignore_unused_parameters = ignore_unused_parameters
+        self.round_robin_gradients = round_robin_gradients
 
         self.extra_large_param_to_reduce = None
 
@@ -232,10 +235,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
             # For example, rather than 3 gradients (g_n+2, g_n+1, g_n) that are reduced consecutively belonging
             # to the same rank, instead they will belong to 3 ranks (r_m+2, r_m+1, r_m).
-            round_robin_tensors, round_robin_indices = self._round_robin_reorder(
-                self.fp16_groups[i],
-                dist.get_world_size(group=self.dp_process_group)
-            )
+            if self.round_robin_gradients:
+                round_robin_tensors, round_robin_indices = self._round_robin_reorder(
+                    self.fp16_groups[i],
+                    dist.get_world_size(group=self.dp_process_group)
+                )
+            else:
+                round_robin_tensors = self.fp16_groups[i]
+                round_robin_indices = list(range(len(self.fp16_groups[i])))
+
             self.round_robin_fp16_groups.append(round_robin_tensors)
             self.round_robin_fp6_indices.append(round_robin_indices)
 
@@ -424,7 +432,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _round_robin_reorder(self, tensor_list, num_partitions):
 
         # disable round robin if need to debug something
-        #return tensor_list, list(range(len(tensor_list)))
+        # return tensor_list, list(range(len(tensor_list)))
 
         partition_tensors = {}
 
@@ -465,7 +473,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if not self.cpu_offload:
             for group in self.single_partition_of_fp32_groups:
-                group.grad = None
+                group.grad = None  #class init
 
         return
 
@@ -489,7 +497,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if not self.overlap_comm:
             for i, group in enumerate(self.fp16_groups):
                 for param in group:
-                    self.reduce_ready_partitions_and_remove_grads(param, i)
+                    if param.grad is not None:
+                        self.reduce_ready_partitions_and_remove_grads(param, i)
 
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
@@ -509,7 +518,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         total_partitions = dist.get_world_size(group=self.dp_process_group)
 
-        for i, param_group in enumerate(self.fp16_groups):
+        for i, param_group in enumerate(self.round_robin_fp16_groups):
 
             self.param_to_partition_ids[i] = {}
             self.is_partition_reduced[i] = {}
@@ -966,7 +975,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements).float()
         dest_tensor.copy_(src_tensor, non_blocking=True)
-        param.grad = None
+        param.grad = None  #offload only
 
     def complete_grad_norm_calculation_for_cpu_offload(self, params):
         total_norm = 0.0
@@ -1087,17 +1096,19 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     Multiple gradient reduction is currently not supported"
 
                 self.params_already_reduced[param_id] = True
-                if not self.is_param_in_current_partition[param_id]:
-                    if self.overlap_comm and self.contiguous_gradients is False:
-                        # Clear grads of other partitions during the next reduction
-                        # to avoid clearing them before the reduction is complete.
-                        if self.previous_reduced_grads is None:
-                            self.previous_reduced_grads = []
-                        self.previous_reduced_grads.append(param)
-                    else:
-                        param.grad = None
-                elif self.contiguous_gradients:
-                    self.copy_grads_in_partition(param)
+
+                if self.partition_gradients:
+                    if not self.is_param_in_current_partition[param_id]:
+                        if self.overlap_comm and self.contiguous_gradients is False:
+                            # Clear grads of other partitions during the next reduction
+                            # to avoid clearing them before the reduction is complete.
+                            if self.previous_reduced_grads is None:
+                                self.previous_reduced_grads = []
+                            self.previous_reduced_grads.append(param)
+                        else:
+                            param.grad = None  #only if self.partition_gradients
+                    elif self.contiguous_gradients:
+                        self.copy_grads_in_partition(param)
 
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
@@ -1117,7 +1128,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         for params_id in self.is_grad_computed[i][partition_id]:
             if are_all_related_partitions_reduced(params_id):
-                self.param_dict[params_id].grad = None
+                self.param_dict[params_id].grad = None  # dead code
 
     def flatten_and_print(self, message, tensors, start=0, n=5):
         flatten_tensor = self.flatten(tensors)
@@ -1206,7 +1217,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _clear_previous_reduced_grads(self):
         if self.previous_reduced_grads is not None:
             for param in self.previous_reduced_grads:
-                param.grad = None
+                param.grad = None  # overlap enabled
             self.previous_reduced_grads = None
 
     # if rank is specified do a reduction instead of an allreduce
@@ -1323,7 +1334,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         for group in self.fp16_groups:
             for p in group:
                 if set_grads_to_None:
-                    p.grad = None
+                    p.grad = None  # epilogue and in step
                 else:
                     if p.grad is not None:
                         p.grad.detach_()
@@ -1449,7 +1460,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     def free_grad_in_param_list(self, param_list):
         for p in param_list:
-            p.grad = None
+            p.grad = None  # in step
 
     def reset_cpu_buffers(self):
         self.norm_for_param_grads = {}
@@ -1575,7 +1586,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # get rid of the fp32 gradients. Not needed anymore
             if not self.cpu_offload:
                 for group in self.single_partition_of_fp32_groups:
-                    group.grad = None
+                    group.grad = None  # in step
 
             for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_fp16_groups, self.single_partition_of_fp32_groups):
                 fp16_partitions[partition_id].data.copy_(fp32_partition.data)
