@@ -32,6 +32,14 @@ if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
     from torch.utils.cpp_extension import ROCM_HOME
     is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
 
+if is_rocm_pytorch:
+    with open('/opt/rocm/.info/version-dev', 'r') as file:
+        ROCM_VERSION_DEV_RAW = file.read()
+    ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
+    ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
+else:
+    ROCM_MAJOR = '0'
+    ROCM_MINOR = '0'
 
 def installed_cuda_version():
     import torch.utils.cpp_extension
@@ -431,7 +439,9 @@ class CUDAOpBuilder(OpBuilder):
                 '-std=c++14',
                 '-U__HIP_NO_HALF_OPERATORS__',
                 '-U__HIP_NO_HALF_CONVERSIONS__',
-                '-U__HIP_NO_HALF2_OPERATORS__'
+                '-U__HIP_NO_HALF2_OPERATORS__',
+                '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
+                '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
             ]
         else:
             args += [
