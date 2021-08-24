@@ -45,19 +45,19 @@ jobs:
           assignees: rraminen
           reviewers: jithunnair-amd
           delete-branch: true
-      - name: Send email
-        uses: jithunnair-amd/action-send-mail@v3.1.0
-        if: always()
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.GMAIL_USERNAME }}
-          password: ${{ secrets.GMAIL_PASSWORD }}
-          subject: IFU to ${{ steps.extract_branch.outputs.branch }} branch of ${{ github.repository }}
-          to: Jithun.Nair@amd.com, RamyaSai.Ramineni@amd.com
-          from: ${{ secrets.GMAIL_USERNAME }}
-          html_body: |
-            <b>Fetch and Merge</b>: ${{ steps.fetch_and_merge.outcome }} <br/>
-            <b>Create Pull Request</b>: ${{ steps.create_pull_request.outcome }} <br/>
-            <b>Pull request</b>: <a href="${{ steps.create_pull_request.outputs.pull-request-url }}">${{ steps.create_pull_request.outputs.pull-request-url }}</a> <br/>
+#      - name: Send email
+#        uses: jithunnair-amd/action-send-mail@v3.1.0
+#        if: always()
+#        with:
+#          server_address: smtp.gmail.com
+#          server_port: 465
+#          secure: true
+#          username: ${{ secrets.GMAIL_USERNAME }}
+#          password: ${{ secrets.GMAIL_PASSWORD }}
+#          subject: IFU to ${{ steps.extract_branch.outputs.branch }} branch of ${{ github.repository }}
+#          to: Jithun.Nair@amd.com, RamyaSai.Ramineni@amd.com
+#          from: ${{ secrets.GMAIL_USERNAME }}
+#          html_body: |
+#            <b>Fetch and Merge</b>: ${{ steps.fetch_and_merge.outcome }} <br/>
+#            <b>Create Pull Request</b>: ${{ steps.create_pull_request.outcome }} <br/>"""
+#            <b>Pull request</b>: <a href="${{ steps.create_pull_request.outputs.pull-request-url }}">${{ steps.create_pull_request.outputs.pull-request-url }}</a> <br/>
