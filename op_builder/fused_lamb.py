@@ -3,16 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import torch
 from .builder import CUDAOpBuilder, is_rocm_pytorch
-
-if is_rocm_pytorch:
-    with open('/opt/rocm/.info/version-dev', 'r') as file:
-        ROCM_VERSION_DEV_RAW = file.read()
-    ROCM_MAJOR = (ROCM_VERSION_DEV_RAW.split('.')[0])
-    ROCM_MINOR = (ROCM_VERSION_DEV_RAW.split('.')[1])
-else:
-    ROCM_MAJOR = '0'
-    ROCM_MINOR = '0'
-
+from .builder import ROCM_MAJOR, ROCM_MINOR
 
 class FusedLambBuilder(CUDAOpBuilder):
     BUILD_VAR = 'DS_BUILD_FUSED_LAMB'
