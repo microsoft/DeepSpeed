@@ -1108,6 +1108,9 @@ class DeepSpeedEngine(Module):
                           torch.utils.data.IterableDataset
                           )  # hasattr(obj, "__iter__") should work as well
 
+    def drop_last(self):
+        return self._config.drop_last
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -1115,6 +1118,7 @@ class DeepSpeedEngine(Module):
                      pin_memory=True,
                      data_sampler=None,
                      collate_fn=None,
+                     drop_last=None,
                      num_local_io_workers=None):
         if not (self.is_map_style_dataset(dataset)
                 or self.is_iterable_style_dataset(dataset)):
@@ -1128,6 +1132,11 @@ class DeepSpeedEngine(Module):
 
         if collate_fn is None:
             collate_fn = self.collate_fn
+        
+        if self.drop_last():
+            drop_last = True
+        else: 
+            drop_last = False
 
         # Currently we only use timer in train route
         deepspeed_io_timer = None
@@ -1150,7 +1159,8 @@ class DeepSpeedEngine(Module):
                                    num_local_io_workers=num_local_io_workers,
                                    data_sampler=data_sampler,
                                    data_parallel_world_size=data_parallel_world_size,
-                                   data_parallel_rank=data_parallel_rank)
+                                   data_parallel_rank=data_parallel_rank,
+                                   drop_last=drop_last)
 
     def train(self, mode=True):
         r"""
