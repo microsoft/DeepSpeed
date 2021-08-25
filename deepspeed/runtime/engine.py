@@ -1108,8 +1108,8 @@ class DeepSpeedEngine(Module):
                           torch.utils.data.IterableDataset
                           )  # hasattr(obj, "__iter__") should work as well
 
-    def drop_last(self):
-        return self._config.drop_last
+    def dataloader_drop_last(self):
+        return self._config.dataloader_drop_last
 
     def deepspeed_io(self,
                      dataset,
@@ -1118,8 +1118,7 @@ class DeepSpeedEngine(Module):
                      pin_memory=True,
                      data_sampler=None,
                      collate_fn=None,
-                     num_local_io_workers=None,
-                     drop_last=None):
+                     num_local_io_workers=None):
         if not (self.is_map_style_dataset(dataset)
                 or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
@@ -1155,7 +1154,7 @@ class DeepSpeedEngine(Module):
                                    data_sampler=data_sampler,
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank,
-                                   drop_last=self.drop_last())
+                                   dataloader_drop_last=self.dataloader_drop_last())
 
     def train(self, mode=True):
         r"""

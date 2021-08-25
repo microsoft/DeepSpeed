@@ -657,8 +657,8 @@ def get_checkpoint_tag_validation_mode(checkpoint_params):
         raise DeepSpeedConfigError("Checkpoint config contains invalid tag_validation " \
             f"value of {tag_validation_mode}, expecting one of {CHECKPOINT_TAG_VALIDATION_MODES}")
 
-def get_drop_last(param_dict):
-    return get_scalar_param(param_dict, DROP_LAST, DROP_LAST_DEFAULT)
+def get_dataloader_drop_last(param_dict):
+    return get_scalar_param(param_dict, DATALOADER_DROP_LAST, DATALOADER_DROP_LAST_DEFAULT)
 
 '''Write deepspeed config files by modifying basic templates.
 Can be used for quicly changing parameters via command line parameters.'''
@@ -853,7 +853,7 @@ class DeepSpeedConfig(object):
 
         self.aio_config = get_aio_config(param_dict)
 
-        self.drop_last = get_drop_last(param_dict)
+        self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
     def _batch_assertion(self):
 
