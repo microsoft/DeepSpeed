@@ -42,7 +42,7 @@ class DeepSpeedDataLoader(object):
                  data_sampler=None,
                  data_parallel_world_size=None,
                  data_parallel_rank=None,
-                 drop_last=False):
+                 dataloader_drop_last=False):
         self.tput_timer = tput_timer
         self.batch_size = batch_size
 
@@ -70,7 +70,7 @@ class DeepSpeedDataLoader(object):
         self.pin_memory = pin_memory
         self.len = len(self.data_sampler)
         self.data = None
-        self.drop_last = drop_last
+        self.dataloader_drop_last = dataloader_drop_last
 
     def __iter__(self):
         self._create_dataloader()
@@ -91,7 +91,7 @@ class DeepSpeedDataLoader(object):
                                          pin_memory=self.pin_memory,
                                          sampler=self.data_sampler,
                                          num_workers=self.num_local_io_workers,
-                                         drop_last=self.drop_last)
+                                         drop_last=self.dataloader_drop_last)
         else:
             self.dataloader = DataLoader(self.dataset,
                                          batch_size=self.batch_size,
@@ -99,7 +99,7 @@ class DeepSpeedDataLoader(object):
                                          sampler=self.data_sampler,
                                          collate_fn=self.collate_fn,
                                          num_workers=self.num_local_io_workers,
-                                         drop_last=self.drop_last)
+                                         drop_last=self.dataloader_drop_last)
         self.data = (x for x in self.dataloader)
 
         return self.dataloader
