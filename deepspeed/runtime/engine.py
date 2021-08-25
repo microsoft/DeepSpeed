@@ -1118,8 +1118,8 @@ class DeepSpeedEngine(Module):
                      pin_memory=True,
                      data_sampler=None,
                      collate_fn=None,
-                     drop_last=None,
-                     num_local_io_workers=None):
+                     num_local_io_workers=None,
+                     drop_last=None):
         if not (self.is_map_style_dataset(dataset)
                 or self.is_iterable_style_dataset(dataset)):
             raise ValueError("Training data must be a torch Dataset")
