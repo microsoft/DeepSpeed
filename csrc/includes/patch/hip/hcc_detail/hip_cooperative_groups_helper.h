@@ -32,8 +32,13 @@ THE SOFTWARE.
 #define HIP_INCLUDE_HIP_HCC_DETAIL_HIP_COOPERATIVE_GROUPS_HELPER_H
 
 #if __cplusplus
-#include <hip/hcc_detail/hip_runtime_api.h>
-#include <hip/hcc_detail/device_functions.h>
+
+#if ROCM_VERSION_MINOR < 4
+    #include <hip/hcc_detail/hip_runtime_api.h>
+    #include <hip/hcc_detail/device_functions.h>
+#else
+    #include <hip/hcc_detail/amd_device_functions.h>
+#endif
 
 #if !defined(__align__)
 #define __align__(x) __attribute__((aligned(x)))
