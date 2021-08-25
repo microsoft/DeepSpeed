@@ -416,3 +416,15 @@ QUANTIZE_ROUNDING_DEFAULT = 0  #nearest
 FP16_MIXED_QUANTIZE_ENABLED_DEFAULT = False
 QUANTIZE_CHANGE_RATIO_DEFAULT = 0.001
 QUANTIZE_VERBOSE_DEFAULT = False
+
+#########################################
+# Drop the last incomplete Batch
+#########################################
+# drop_last. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+DROP_LAST_FORMAT = '''
+The last incomplete batch can be dropped by setting:
+"drop_last": True
+'''
+DROP_LAST = "drop_last"
+DROP_LAST_DEFAULT = False
