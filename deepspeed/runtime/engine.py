@@ -1133,11 +1133,6 @@ class DeepSpeedEngine(Module):
         if collate_fn is None:
             collate_fn = self.collate_fn
         
-        if self.drop_last():
-            drop_last = True
-        else: 
-            drop_last = False
-
         # Currently we only use timer in train route
         deepspeed_io_timer = None
         if route == ROUTE_TRAIN:
@@ -1160,7 +1155,7 @@ class DeepSpeedEngine(Module):
                                    data_sampler=data_sampler,
                                    data_parallel_world_size=data_parallel_world_size,
                                    data_parallel_rank=data_parallel_rank,
-                                   drop_last=drop_last)
+                                   drop_last=self.drop_last())
 
     def train(self, mode=True):
         r"""
