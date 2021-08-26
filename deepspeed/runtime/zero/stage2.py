@@ -230,6 +230,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # number of elements per partition in each group
         self.partition_size = []
 
+        #align nccl all-gather send buffers to 4-bye boundary
+        self.nccl_start_alignment_factor = 2 # 4-byte alignment/sizeof(fp16) = 2
+
+        assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), "allgather_bucket_size must be a multiple of nccl_start_alignment_factor"
+
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
 
@@ -283,7 +288,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.fp16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
                     self.round_robin_fp16_groups[i],
-                    dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
+                    self.nccl_start_alignment_factor*dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
@@ -318,8 +323,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.single_partition_of_fp32_groups[i]]
 
-            partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(
-                group=self.real_dp_process_group[i])
+            #partition_size is same across all partitions
+            partition_size = data_parallel_partitions[0].numel()
             params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(
                 self.round_robin_fp16_groups[i],
                 partition_size,
@@ -1384,14 +1389,17 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         total_num_elements = tensor.numel()
 
-        base_size = total_num_elements // dp
-        remaining = total_num_elements % dp
+        divisor = dp*self.nccl_start_alignment_factor
+        # ceil( total_num_elements / divisor ) using integers
+        base_size = ( total_num_elements // divisor ) \
+            + ( total_num_elements % divisor > 0)
+        base_size *= self.nccl_start_alignment_factor
 
         start = 0
         for id in range(dp):
             partition_size = base_size
-            if id < remaining:
-                partition_size = partition_size + 1
+            if id == (dp-1):
+                partition_size -= ( base_size * dp - total_num_elements )
             partitions.append(tensor.narrow(0, start, partition_size))
             start = start + partition_size
         return partitions
