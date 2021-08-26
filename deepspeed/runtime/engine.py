@@ -1166,7 +1166,7 @@ class DeepSpeedEngine(Module):
 
         if collate_fn is None:
             collate_fn = self.collate_fn
-        
+
         # Currently we only use timer in train route
         deepspeed_io_timer = None
         if route == ROUTE_TRAIN:
@@ -1480,8 +1480,8 @@ class DeepSpeedEngine(Module):
             self.gas_boundary_ctr += 1
 
             if self.eigenvalue_enabled() and (
-                    self.gas_boundary_ctr % self.eigenvalue_gas_boundary_resolution() ==
-                    0) and self.quantizer.any_precision_switch():
+                    self.gas_boundary_ctr % self.eigenvalue_gas_boundary_resolution()
+                    == 0) and self.quantizer.any_precision_switch():
                 log_dist(f'computing eigenvalue...', ranks=[0])
                 self.block_eigenvalue = self.eigenvalue.compute_eigenvalue(
                     self.module,

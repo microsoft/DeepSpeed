@@ -419,7 +419,7 @@ QUANTIZE_VERBOSE_DEFAULT = False
 
 #########################################
 # Drop the last incomplete Batch
-#########################################
+# #########################################
 # dataloader_drop_last. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
 DATALOADER_DROP_LAST_FORMAT = '''
