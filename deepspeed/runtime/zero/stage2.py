@@ -231,7 +231,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.partition_size = []
 
         #align nccl all-gather send buffers to 4-bye boundary
-        self.nccl_start_alignment_factor = 2 # 4-byte alignment/sizeof(fp16) = 2
+        self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
 
         assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), "allgather_bucket_size must be a multiple of nccl_start_alignment_factor"
 
@@ -288,7 +288,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.fp16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
                     self.round_robin_fp16_groups[i],
-                    self.nccl_start_alignment_factor*dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
+                    self.nccl_start_alignment_factor *
+                    dist.get_world_size(group=self.real_dp_process_group[i])).cuda(
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
@@ -1389,7 +1390,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         total_num_elements = tensor.numel()
 
-        divisor = dp*self.nccl_start_alignment_factor
+        divisor = dp * self.nccl_start_alignment_factor
         # ceil( total_num_elements / divisor ) using integers
         base_size = ( total_num_elements // divisor ) \
             + ( total_num_elements % divisor > 0)
@@ -1398,8 +1399,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         start = 0
         for id in range(dp):
             partition_size = base_size
-            if id == (dp-1):
-                partition_size -= ( base_size * dp - total_num_elements )
+            if id == (dp - 1):
+                partition_size -= (base_size * dp - total_num_elements)
             partitions.append(tensor.narrow(0, start, partition_size))
             start = start + partition_size
         return partitions
