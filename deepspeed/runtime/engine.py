@@ -2,7 +2,6 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
-# bfloat16 file completed for Zero2
 import os
 import stat
 import torch
@@ -17,13 +16,13 @@ from torch.distributed.distributed_c10d import _get_global_rank
 from tensorboardX import SummaryWriter
 
 from deepspeed.runtime.utils import see_memory_usage
-from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer # marked for bfloat16
-from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1 # marked for bfloat16
+from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
+from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, _initialize_parameter_parallel_groups
 from deepspeed.runtime.activation_checkpointing import checkpointing as activation_checkpointing
-from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer # marked for bfloat16
-from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer # marked for bfloat16
+from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
+from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
     ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
@@ -57,7 +56,6 @@ except ImportError:
     # Fail silently so we don't spam logs unnecessarily if user isn't using amp
     pass
 
-# marked for bfloat16, completed (didn't change the name for now)
 def split_half_float_double_csr(tensors):
     dtypes = [
         "torch.cuda.HalfTensor",
@@ -80,11 +78,9 @@ def print_configuration(args, name):
         dots = '.' * (29 - len(arg))
         logger.info('  {} {} {}'.format(arg, dots, getattr(args, arg)))
 
-# marked for bfloat16
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
-    # marked for bfloat16, completed
     def __init__(self,
                  args,
                  model,
@@ -151,9 +147,11 @@ class DeepSpeedEngine(Module):
 
         # Configure distributed model
         self._configure_distributed_model(model)
+
         self.pipeline_parallelism = isinstance(self.module, PipelineModule)
 
         see_memory_usage(f"DeepSpeed Engine: After configure distributed model")
+
         # Configure wall clock timer
         self.timers = SynchronizedWallClockTimer()
         # Throughput timer
@@ -182,6 +180,7 @@ class DeepSpeedEngine(Module):
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
+
         # Bookkeeping for csr support
         self.csr_tensor_module_names = set()
         if self.sparse_gradients_enabled():
@@ -386,7 +385,6 @@ class DeepSpeedEngine(Module):
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
-    # marked for bfloat16, related to zero3, to be modified later
     def zero_gather_fp16_weights_on_model_save(self):
         return self._config.zero_config.gather_fp16_weights_on_model_save
 
@@ -399,7 +397,6 @@ class DeepSpeedEngine(Module):
     def zero_legacy_stage1(self):
         return self._config.zero_config.legacy_stage1
 
-    # marked for bfloat16, completed
     def fp16_enabled(self):
         return self._config.fp16_enabled
 
@@ -412,7 +409,6 @@ class DeepSpeedEngine(Module):
     def amp_params(self):
         return self._config.amp_params
 
-    # marked for bfloat16, completed
     def loss_scale(self):
         return self._config.loss_scale
 
@@ -422,11 +418,9 @@ class DeepSpeedEngine(Module):
     def allreduce_always_fp32(self):
         return self._config.allreduce_always_fp32
 
-    # marked for bfloat16, looked through
     def postscale_gradients(self):
         return not self._config.prescale_gradients
 
-    # marked for bfloat16, looked through
     def gradient_predivide_factor(self):
         return self._config.gradient_predivide_factor
 
@@ -442,15 +436,12 @@ class DeepSpeedEngine(Module):
     def gradient_clipping(self):
         return self._config.gradient_clipping
 
-    # marked for bfloat16, completed
     def dynamic_loss_scale(self):
         return self._config.loss_scale == 0
 
-    # marked for bfloat16, completed
     def initial_dynamic_scale(self):
         return self._config.initial_dynamic_scale
 
-    # marked for bfloat16, completed
     def dynamic_loss_scale_args(self):
         return self._config.dynamic_loss_scale_args
 
@@ -460,7 +451,6 @@ class DeepSpeedEngine(Module):
     def aio_config(self):
         return self._config.aio_config
 
-    # marked for bfloat16, looked through
     def _configure_lr_scheduler(self, client_lr_scheduler):
         # First check for scheduler in json configuration
         lr_scheduler = self._scheduler_from_config(self.optimizer)
@@ -493,7 +483,6 @@ class DeepSpeedEngine(Module):
             # optimizer state checkpoints for zero
             self.save_zero_checkpoint = (param_rank == dp_rank)
 
-    # marked for bfloat16, looked through
     def _scheduler_from_config(self, optimizer):
         scheduler_name = self.scheduler_name()
         if scheduler_name is not None:
@@ -535,7 +524,6 @@ class DeepSpeedEngine(Module):
         if self.config is None:
             self.config = args.deepspeed_config if hasattr(args,
                                                            'deepspeed_config') else None
-        # marked for bfloat16, go through DeepSpeedConfig separately and then mark this also completed
         self._config = DeepSpeedConfig(self.config, mpu)
 
     # Validate command line arguments
@@ -580,7 +568,6 @@ class DeepSpeedEngine(Module):
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
 
-    # marked for bfloat16, completed
     def _broadcast_model(self):
         def is_replicated(p):
             if hasattr(p, 'ds_status') and p.ds_status is not ZeroParamStatus.AVAILABLE:
@@ -589,15 +576,10 @@ class DeepSpeedEngine(Module):
 
         for p in self.module.parameters():
             if torch.is_tensor(p) and is_replicated(p):
-                # # temp code
-                # print('comm _broadcast_model')
-                # print(p.dtype)
-                # # temp code
                 dist.broadcast(p,
                                self.broadcast_src_rank,
                                group=self.data_parallel_group)
 
-    # marked for bfloat16, completed for Zero2
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
@@ -615,7 +597,6 @@ class DeepSpeedEngine(Module):
                     )
             self.module.half()
         elif self.bfloat16_enabled():
-            # marked for bfloat16, add logic for Zero3 following fp16 lines later
             self.module.bfloat16()
         else:
             if not all(
@@ -647,7 +628,6 @@ class DeepSpeedEngine(Module):
         if not self.amp_enabled():
             self._broadcast_model()
 
-    # marked for bfloat16, completed for Zero2
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
 
@@ -697,7 +677,6 @@ class DeepSpeedEngine(Module):
                     "Unable to import apex/amp, please make sure it is installed")
             self.module, self.optimizer = amp.initialize(self.module, basic_optimizer, **amp_params)
             self._broadcast_model()
-        # marked for bfloat16, not sure if we need to add a similar scenario for bfloat16 without zero enabled RJ/Shuai, to be completed later
         elif self.fp16_enabled():
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
         else:
@@ -705,7 +684,6 @@ class DeepSpeedEngine(Module):
         log_dist('DeepSpeed Final Optimizer = {}'.format(self.optimizer_name()),
                  ranks=[0])
 
-    # marked for bfloat16, completed for Zero2 and LANS with the optimizer all in 32bits
     def _configure_basic_optimizer(self, model_parameters):
         optimizer_parameters = self.optimizer_params()
         # print(optimizer_parameters.keys())
@@ -744,7 +722,6 @@ class DeepSpeedEngine(Module):
         elif self.optimizer_name() == LAMB_OPTIMIZER:
             from deepspeed.ops.lamb import FusedLamb
             optimizer = FusedLamb(model_parameters, **optimizer_parameters)
-        # marked for bfloat16, to be completed later to enable this optimizer
         elif self.optimizer_name() == ONEBIT_ADAM_OPTIMIZER:
             from deepspeed.runtime.fp16.onebit.adam import OnebitAdam
             optimizer = OnebitAdam(model_parameters, self, **optimizer_parameters)
@@ -752,7 +729,6 @@ class DeepSpeedEngine(Module):
                 logger.warning(
                     f'Currently the convergence of 1-bit Adam is only verified under FP16'
                 )
-        # marked for bfloat16, to be completed later to enable this optimizer
         elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
             from deepspeed.runtime.fp16.onebit.lamb import OnebitLamb
             optimizer = OnebitLamb(model_parameters, self, **optimizer_parameters)
@@ -765,7 +741,6 @@ class DeepSpeedEngine(Module):
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         return optimizer
 
-    # marked for bfloat16, completed for Zero2 and LANS in 32bit
     def _configure_fp16_optimizer(self, optimizer):
         initial_dynamic_scale = self.initial_dynamic_scale()
         dynamic_loss_args = self.dynamic_loss_scale_args()
@@ -811,14 +786,12 @@ class DeepSpeedEngine(Module):
 
         return optimizer
 
-    # marked for bfloat16, completed for Zero2
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        # marked for bfloat16, to be done later
         if self.zero_legacy_stage1(
         ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
@@ -865,7 +838,6 @@ class DeepSpeedEngine(Module):
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 ignore_unused_parameters=self.zero_ignore_unused_parameters(),
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS)
-        # marked for bfloat16, to be done later
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
@@ -973,7 +945,6 @@ class DeepSpeedEngine(Module):
         self.warn_unscaled_loss = True
         self.module.train(False)
 
-    # marked for bfloat16, looked through
     def _scale_loss(self, prescaled_loss):
         if isinstance(prescaled_loss, torch.Tensor):
             scaled_loss = prescaled_loss / self.gradient_accumulation_steps()
@@ -1023,23 +994,6 @@ class DeepSpeedEngine(Module):
         if self.training_dataloader is None:
             self.tput_timer.start()
 
-        # # temp code
-        # def activation_type_hook(module, inp, out):
-        #     print('forward')
-        #     print(out.dtype)
-        #
-        # def grad_type_hook(module, inp, out):
-        #     print('backward')
-        #     print(out[0].dtype)
-        #
-        #
-        # for name, submodule in self.module.named_modules():
-        #     if name == "bert.encoder.layer.33.output.dense":
-        #         submodule.register_forward_hook(activation_type_hook)
-        #         submodule.register_backward_hook(grad_type_hook)
-        #         print('hook registered')
-        # # temp code
-
         loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
@@ -1069,7 +1023,6 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-    # marked for bfloat16, completed
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # ZeRO stage 2 communicates during non gradient accumulation boundaries as well
         if self.zero_optimization_partition_gradients():
@@ -1083,7 +1036,6 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    # marked for bfloat16, completed for Zero2
     def backward(self, loss, allreduce_gradients=True, release_loss=False):
         r"""Execute backward pass on the loss
 
@@ -1137,7 +1089,6 @@ class DeepSpeedEngine(Module):
                                 self.optimizer,
                                 delay_unscale=delay_unscale) as scaled_loss:
                 scaled_loss.backward()
-        # marked for bfloat16, similar option needed if we introduce a bfloat16 option without ZeRO
         elif self.fp16_enabled():
             self.optimizer.backward(loss)
         else:
@@ -1188,7 +1139,6 @@ class DeepSpeedEngine(Module):
         torch.nn.utils.clip_grad_norm_(parameters=self.module.parameters(),
                                        max_norm=self.gradient_clipping())
 
-    # marked for bfloat16, completed, clipping for Zero happens in stage2.py
     def _take_model_step(self, lr_kwargs):
         if self.gradient_clipping() > 0.0:
             if not (self.fp16_enabled() or self.amp_enabled()
@@ -1229,7 +1179,6 @@ class DeepSpeedEngine(Module):
         self.global_steps += 1
         self.global_samples += self.train_batch_size()
 
-    # marked for bfloat16
     def step(self, lr_kwargs=None):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
@@ -1355,7 +1304,6 @@ class DeepSpeedEngine(Module):
         log_dist(f'step={step}, skipped={self.skipped_steps}, lr={lr}, mom={mom}',
                  ranks=[0])
 
-    # marked for bfloat16, completed, needed no change for NCCL 2.10
     def allreduce_bucket(self, bucket):
         tensor = self.flatten(bucket)
 
@@ -1388,13 +1336,11 @@ class DeepSpeedEngine(Module):
 
         return tensor
 
-    # marked for bfloat16, looked through
     def allreduce_and_copy(self, small_bucket):
         allreduced = self.allreduce_bucket(small_bucket)
         for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
             buf.copy_(synced)
 
-    #marked for bfloat16, looked through
     def allreduce_no_retain(self, bucket, numel_per_bucket=500000000):
         small_bucket = []
         numel = 0
@@ -1408,7 +1354,6 @@ class DeepSpeedEngine(Module):
         if len(small_bucket) > 0:
             self.allreduce_and_copy(small_bucket)
 
-    #marked for bfloat16, looked through
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
         grads = []
         for param_name, param in self.module.named_parameters():
@@ -1453,7 +1398,6 @@ class DeepSpeedEngine(Module):
         return csr_list
 
 
-    # marked for bfloat16, looked through
     def csr_allreduce(self, csr):
         # Pre-divide for fp16 stability
         csr.values.div_(self.dp_world_size)
@@ -1465,7 +1409,6 @@ class DeepSpeedEngine(Module):
         csr.values = torch.cat(values_device_list)
         return csr
 
-    #marked for bfloat16, looked through
     def csr_all_gather(self, value):
         my_size = torch.LongTensor([value.size()[0]]).to(self.device)
         all_sizes = self.all_gather_scalar(my_size)
@@ -1581,7 +1524,6 @@ class DeepSpeedEngine(Module):
 
         return load_path, client_states
 
-    # marked for bfloat16, completed for Zero2
     def _load_checkpoint(self,
                          load_dir,
                          tag,
@@ -1607,7 +1549,6 @@ class DeepSpeedEngine(Module):
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
         if self.optimizer is not None and not self.zero_optimization():
-            #marked for bfloat16, to be modified later possibly
             if self.fp16_enabled():
                 self.optimizer.load_state_dict(
                     checkpoint['optimizer'],
@@ -1735,7 +1676,6 @@ class DeepSpeedEngine(Module):
             elif not valid:
                 logger.warning(msg)
 
-    # marked for bfloat16, completed for Zero2
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
 
@@ -1751,7 +1691,6 @@ class DeepSpeedEngine(Module):
         method will hang waiting to synchronize with other processes if it's called just for the
         process with rank 0.
         """
-        #marked for bfloat16, check later if we need to do something here for Zero3
         if self.zero_optimization_partition_weights():
             # Prepare for state_dict() by ensuring all parameters are partitioned
             self.optimizer.save_checkpoint_prologue()
@@ -1784,7 +1723,6 @@ class DeepSpeedEngine(Module):
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
 
-        # marked for bfloat16, check if we need to do something for Zero3 (I don't think so)
         if self.zero_optimization_partition_weights():
             self.optimizer.save_checkpoint_epilogue()
 
@@ -1868,7 +1806,6 @@ class DeepSpeedEngine(Module):
         self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
-    # marked for bfloat16, modify later for Zero3
     def _zero3_consolidated_fp16_state_dict(self):
         """
 
@@ -1931,7 +1868,6 @@ class DeepSpeedEngine(Module):
 
         return state_dict
 
-    # marked for bfloat16, discuss with RJ if for Zero3 we should create a similar version for bfloat16
     def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
         r"""Save fp16 model weights
 

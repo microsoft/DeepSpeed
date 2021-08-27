@@ -2,7 +2,6 @@
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
-# bfloat16 file completed for Zero2
 
 #############################################
 # Routes
