@@ -306,7 +306,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # each process will compute on a different part of the partition
             data_parallel_partitions = self.get_data_parallel_partitions(
                 self.fp16_groups_flat[i],
-                i)
+                i,
+                self.nccl_start_alignment_factor)
             self.parallel_partitioned_fp16_groups.append(data_parallel_partitions)
 
             # a partition of the fp32 master weights that will be updated by this process
@@ -1382,7 +1383,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # views the tensor as multiple partitions and returns
     # those partitions
-    def get_data_parallel_partitions(self, tensor, group_id):
+    def get_data_parallel_partitions(self, tensor, group_id, alignment_factor):
         partitions = []
 
         dp = dist.get_world_size(group=self.real_dp_process_group[group_id])
@@ -1390,11 +1391,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         total_num_elements = tensor.numel()
 
-        divisor = dp * self.nccl_start_alignment_factor
+        divisor = dp * alignment_factor
         # ceil( total_num_elements / divisor ) using integers
         base_size = ( total_num_elements // divisor ) \
             + ( total_num_elements % divisor > 0)
-        base_size *= self.nccl_start_alignment_factor
+        base_size *= alignment_factor
 
         start = 0
         for id in range(dp):
@@ -2002,8 +2003,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
             ]
             flat_merged_partitions = self.flatten_dense_tensors_aligned(
                 merged_partitions,
+                self.nccl_start_alignment_factor *
                 dist.get_world_size(group=self.real_dp_process_group[i]))
-            dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions, i)
+            dp_partitions = self.get_data_parallel_partitions(
+                flat_merged_partitions,
+                i,
+                self.nccl_start_alignment_factor)
             merged_single_partition_of_fp32_groups.append(dp_partitions[partition_id])
 
         for current, saved in zip(self.single_partition_of_fp32_groups, merged_single_partition_of_fp32_groups):
@@ -2028,7 +2033,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 all_partition_states,
                 alignment)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions,
-                                                              group_id)
+                                                              group_id,
+                                                              1)
             return dp_partitions[partition_id]
         else:
             # Assume non-tensor states are not partitioned and equal across ranks, so return first one
