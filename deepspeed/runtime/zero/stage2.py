@@ -233,7 +233,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         #align nccl all-gather send buffers to 4-bye boundary
         self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
 
-        assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), "allgather_bucket_size must be a multiple of nccl_start_alignment_factor"
+        assert (allgather_bucket_size % self.nccl_start_alignment_factor == 0), f"allgather_bucket_size must be a multiple of nccl_start_alignment_factor, {self.nccl_start_alignment_factor} "
 
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
