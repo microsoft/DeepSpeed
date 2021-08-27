@@ -5,7 +5,7 @@ import os
 import sys
 import subprocess
 from .builder import CUDAOpBuilder
-
+import torch
 
 class CPUAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
@@ -22,11 +22,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        if self.is_cuda_available():
-            return ['csrc/adam/cpu_adam.cpp']
-        else:
+        if torch.cuda.is_available():
             return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
-
+        else:
+            return ['csrc/adam/cpu_adam.cpp']
     def include_paths(self):
         import torch
         CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
@@ -38,7 +37,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
         ENABLE_CUDA = self.is_cuda_available()
-        if ENABLE_CUDA:
+        if torch.cuda.is_available():
             return [
                 '-O3',
                 '-std=c++14',

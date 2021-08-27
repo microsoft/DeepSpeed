@@ -90,7 +90,7 @@ def assert_no_cuda_mismatch(name=""):
             print(f"Installed CUDA version {sys_cuda_version} does not match the "
                   f"version torch was compiled with {torch.version.cuda} "
                   "but since the APIs are compatible, accepting this combination")
-            return
+            return True
         raise Exception(
             f"Installed CUDA version {sys_cuda_version} does not match the "
             f"version torch was compiled with {torch.version.cuda}, unable to compile "
