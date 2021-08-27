@@ -7,6 +7,7 @@ import subprocess
 from .builder import CUDAOpBuilder
 import torch
 
+
 class CPUAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
@@ -26,6 +27,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
             return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
         else:
             return ['csrc/adam/cpu_adam.cpp']
+
     def include_paths(self):
         import torch
         CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
