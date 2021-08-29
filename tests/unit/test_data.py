@@ -19,21 +19,28 @@ def test_repeating_loader():
 def test_dataloader_drop_last(tmpdir):
     config_dict = {
         "train_batch_size": 1,
-        "steps_per_print": 1, 
+        "steps_per_print": 1,
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
 
     model = SimpleModel(hidden_dim)
 
-    def random_dataloader(model, total_samples, hidden_dim, device, drop_last, dtype=torch.half):
+    def random_dataloader(model,
+                          total_samples,
+                          hidden_dim,
+                          device,
+                          drop_last,
+                          dtype=torch.half):
         batch_size = model.train_micro_batch_size_per_gpu()
         train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
         train_label = torch.empty(total_samples,
-                                dtype=torch.long,
-                                device=device).random_(hidden_dim)
+                                  dtype=torch.long,
+                                  device=device).random_(hidden_dim)
         train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
-        train_loader = DeepSpeedDataLoader(train_dataset, batch_size=batch_size, dataloader_drop_last=drop_last)
+        train_loader = DeepSpeedDataLoader(train_dataset,
+                                           batch_size=batch_size,
+                                           dataloader_drop_last=drop_last)
         return train_loader
 
     @distributed_test(world_size=[1])
