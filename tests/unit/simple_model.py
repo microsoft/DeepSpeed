@@ -177,6 +177,7 @@ class PLD_SimpleModel(SimpleModel):
         hidden_dim = super(PLD_SimpleModel, self).forward(x, y)
         return hidden_dim
 
+
 def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
     train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
     train_label = torch.empty(total_samples,
@@ -184,6 +185,7 @@ def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
                               device=device).random_(hidden_dim)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
     return train_dataset
+
 
 def random_dataloader(model, total_samples, hidden_dim, device):
     batch_size = model.train_micro_batch_size_per_gpu()
