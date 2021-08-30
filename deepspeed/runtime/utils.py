@@ -264,9 +264,15 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     else:
         total_norm = 0
         for p in parameters:
-            if p.model_parallel or (get_model_parallel_rank() == 0):
-                param_norm = p.grad.data.norm(norm_type)
+            if mpu is not None:
+                if (mpu.get_model_parallel_rank() == 0
+                    ) or is_model_parallel_parameter(p):
+                    param_norm = p.grad.data.norm(norm_type)
+                    total_norm += param_norm.item()**norm_type
+            else:
+                param_norm = p.grad.data.float().norm(norm_type)
                 total_norm += param_norm.item()**norm_type
+
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         if mpu is not None:
@@ -278,9 +284,8 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     # Need to average total_norm across different GPUs due to the presence of moe params
     pg = groups.get_data_parallel_group()
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
-    scaled_norm_tensor = torch.tensor(scaled_norm,
-                                      device=self.fp32_groups_flat[i].device,
-                                      dtype=torch.float)
+
+    scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
     dist.all_reduce(scaled_norm_tensor, group=pg)
     total_norm = scaled_norm_tensor.item()
 
