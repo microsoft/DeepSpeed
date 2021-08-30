@@ -128,6 +128,11 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+    def to_half(inp):
+        if inp is None:
+            return inp
+        return inp.half()
+
     def replace_with_policy(child, policy_cls, inference=False, preln=True, layer_id=0):
         preln = False if policy_cls is HFBertLayerPolicy else preln
         if policy_cls is HFBertLayerPolicy:
@@ -158,13 +163,13 @@ def replace_transformer_layer(orig_layer_impl,
             _4hh_w = _4hh_w.half()
 
         if quantize or fp16:
-            dense_b = dense_b.half()
-            _h4h_b = _h4h_b.half()
-            _4hh_b = _4hh_b.half()
-            attn_nw = attn_nw.half()
-            attn_nb = attn_nb.half()
-            input_nw = input_nw.half()
-            input_nb = input_nb.half()
+            dense_b = to_half(dense_b)
+            _h4h_b = to_half(_h4h_b)
+            _4hh_b = to_half(_4hh_b)
+            attn_nw = to_half(attn_nw)
+            attn_nb = to_half(attn_nb)
+            input_nw = to_half(input_nw)
+            input_nb = to_half(input_nb)
 
         mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
 
@@ -244,7 +249,7 @@ def replace_transformer_layer(orig_layer_impl,
                 attn_block.attn_qkvb = qkvb
 
             attn_block.attn_ow.data = mp_replace.copy(attn_block.attn_ow.data, dense_w)
-            attn_block.attn_ob.data = mp_replace.copy(attn_block.attn_ob.data, dense_b)
+            attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
 
             mpl_block = new_module.mlp
             mpl_block.inter_w.data = mp_replace.copy(mpl_block.inter_w.data, _h4h_w)
@@ -252,10 +257,10 @@ def replace_transformer_layer(orig_layer_impl,
             mpl_block.output_w.data = mp_replace.copy(mpl_block.output_w.data, _4hh_w)
             mpl_block.output_b.data = mp_replace.copy(mpl_block.output_b.data, _4hh_b)
 
-            new_module.mlp.attn_nw.data = attn_nw.to(torch.cuda.current_device())
-            new_module.mlp.attn_nb.data = attn_nb.to(torch.cuda.current_device())
-            new_module.norm_w.data = input_nw.to(torch.cuda.current_device())
-            new_module.norm_b.data = input_nb.to(torch.cuda.current_device())
+            new_module.mlp.attn_nw = mp_replace.copy(attn_nw)
+            new_module.mlp.attn_nb = mp_replace.copy(attn_nb)
+            new_module.norm_w = mp_replace.copy(input_nw)
+            new_module.norm_b = mp_replace.copy(input_nb)
         else:
             transformer_config = deepspeed.DeepSpeedTransformerConfig(
                 batch_size=micro_batch_size,
