@@ -95,6 +95,7 @@ def assert_no_cuda_mismatch(name=""):
             f"Installed CUDA version {sys_cuda_version} does not match the "
             f"version torch was compiled with {torch.version.cuda}, unable to compile "
             "cuda/cpp extensions without a matching cuda version.")
+    return True
 
 
 def assert_torch_info(torch_info):
