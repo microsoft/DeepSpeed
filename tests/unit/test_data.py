@@ -43,7 +43,6 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     @distributed_test(world_size=[1])
     def _test_dataloader_drop_last(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
-        batch_size = model.train_micro_batch_size_per_gpu()
         train_dataset = random_dataset(total_samples=50,
                                        hidden_dim=hidden_dim,
                                        device=model.device,
