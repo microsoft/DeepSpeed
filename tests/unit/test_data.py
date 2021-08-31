@@ -29,6 +29,7 @@ def test_repeating_loader():
 def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     config_dict = {
         "train_batch_size": train_batch_size,
+        "dataloader_drop_last": drop_last,
         "steps_per_print": 1,
     }
     args = args_from_dict(tmpdir, config_dict)
@@ -40,17 +41,15 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     def _test_dataloader_drop_last(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
         batch_size = model.train_micro_batch_size_per_gpu()
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              optimizer=optimizer)
         train_dataset = random_dataset(total_samples=50,
                                        hidden_dim=hidden_dim,
                                        device=model.device,
                                        dtype=torch.half)
-        data_loader = DeepSpeedDataLoader(train_dataset,
-                                          batch_size=batch_size,
-                                          dataloader_drop_last=drop_last)
-        for n, batch in enumerate(data_loader):
+        model, _, training_dataloader, _ = deepspeed.initialize(args=args,
+                                                                model=model,
+                                                                training_data=train_dataset,
+                                                                optimizer=optimizer)
+        for n, batch in enumerate(training_dataloader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
