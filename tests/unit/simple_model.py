@@ -187,9 +187,9 @@ def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
     return train_dataset
 
 
-def random_dataloader(model, total_samples, hidden_dim, device):
+def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half):
     batch_size = model.train_micro_batch_size_per_gpu()
-    train_dataset = random_dataset(total_samples, hidden_dim, device, dtype=torch.half)
+    train_dataset = random_dataset(total_samples, hidden_dim, device, dtype=dtype)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
     return train_loader
 
