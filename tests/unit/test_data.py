@@ -57,4 +57,7 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
             model.backward(loss)
             model.step()
 
-    _test_dataloader_drop_last(args=args, model=model, hidden_dim=hidden_dim, device=device)
+    _test_dataloader_drop_last(args=args,
+                               model=model,
+                               hidden_dim=hidden_dim,
+                               device=device)
