@@ -31,6 +31,9 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
         "train_batch_size": train_batch_size,
         "dataloader_drop_last": drop_last,
         "steps_per_print": 1,
+        "fp16": {
+            "enabled": True
+        },
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
