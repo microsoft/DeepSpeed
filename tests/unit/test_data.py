@@ -39,22 +39,23 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     hidden_dim = 10
 
     model = SimpleModel(hidden_dim)
-    device = torch.cuda.curent_device()
 
     @distributed_test(world_size=[1])
-    def _test_dataloader_drop_last(args, model, hidden_dim, device):
+    def _test_dataloader_drop_last(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
         train_dataset = random_dataset(total_samples=50,
                                        hidden_dim=hidden_dim,
-                                       device=device,
+                                       device=torch.device('cpu'),
                                        dtype=torch.half)
         model, _, training_dataloader, _ = deepspeed.initialize(args=args,
                                                                 model=model,
                                                                 training_data=train_dataset,
                                                                 optimizer=optimizer)
         for n, batch in enumerate(training_dataloader):
-            loss = model(batch[0], batch[1])
+            x = batch[0].to(torch.cuda.current_device())
+            y = batch[1].to(torch.cuda.current_device())
+            loss = model(x, y)
             model.backward(loss)
             model.step()
 
-    _test_dataloader_drop_last(args=args, model=model, hidden_dim=hidden_dim, device=device)
+    _test_dataloader_drop_last(args=args, model=model, hidden_dim=hidden_dim)
