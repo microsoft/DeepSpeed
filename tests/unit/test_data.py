@@ -1,5 +1,4 @@
 from deepspeed.utils import RepeatingLoader
-from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 import torch
 import pytest
 import deepspeed
@@ -30,10 +29,7 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     config_dict = {
         "train_batch_size": train_batch_size,
         "dataloader_drop_last": drop_last,
-        "steps_per_print": 1,
-        "fp16": {
-            "enabled": True
-        },
+        "steps_per_print": 1
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10
@@ -43,10 +39,11 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
     @distributed_test(world_size=[1])
     def _test_dataloader_drop_last(args, model, hidden_dim):
         optimizer = torch.optim.AdamW(params=model.parameters())
+        #TODO: Figure out why this breaks with cuda device
         train_dataset = random_dataset(total_samples=50,
                                        hidden_dim=hidden_dim,
                                        device=torch.device('cpu'),
-                                       dtype=torch.half)
+                                       dtype=torch.float32)
         model, _, training_dataloader, _ = deepspeed.initialize(args=args,
                                                                 model=model,
                                                                 training_data=train_dataset,
