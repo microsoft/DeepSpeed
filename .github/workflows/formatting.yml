@@ -1,6 +1,12 @@
 name: Formatting
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      'staging**'
+  pull_request:
+    branches:
+      '**'
 
 jobs:
 
