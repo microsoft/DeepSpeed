@@ -36,7 +36,7 @@ THE SOFTWARE.
 #if __cplusplus && defined(__clang__) && defined(__HIP__)
 #include <hip/hcc_detail/hip_cooperative_groups_helper.h>
 #if ROCM_VERSION_MINOR < 4
-    #include <hip/hcc_detail/device_functions.h>
+#include <hip/hcc_detail/device_functions.h>
 #endif
 namespace cooperative_groups {
 
@@ -82,47 +82,50 @@ class thread_group {
 */
 
 class thread_group {
- protected:
-    bool _tiled_partition; // this_thread_block() constructor sets to false
-    uint32_t _size;            // this_thread_block() constructor sets to size()
-    uint32_t local_rank;      // this_thread_block() constructor sets to thread_rank()
+protected:
+    bool _tiled_partition;  // this_thread_block() constructor sets to false
+    uint32_t _size;         // this_thread_block() constructor sets to size()
+    uint32_t local_rank;    // this_thread_block() constructor sets to thread_rank()
     uint32_t _mask;
     uint32_t _type;
- public:
-    __CG_QUALIFIER__ thread_group(internal::group_type type, uint32_t group_size,
-                                uint64_t mask = (uint64_t)0) {
-    _type = type;
-    _size = group_size;
-    _mask = mask;
-    local_rank = internal::workgroup::thread_rank(); 
+
+public:
+    __CG_QUALIFIER__ thread_group(internal::group_type type,
+                                  uint32_t group_size,
+                                  uint64_t mask = (uint64_t)0)
+    {
+        _type = type;
+        _size = group_size;
+        _mask = mask;
+        local_rank = internal::workgroup::thread_rank();
     }
 
-    __CG_QUALIFIER__ void tiled_partition(const thread_group& parent,
-                                               unsigned int tile_size) {
-        if ( (ceil(log2(tile_size)) == floor(log2(tile_size))) || tile_size == 0 ||
-            tile_size > 64 || parent.size() < tile_size)
-            _tiled_partition =  false;
-            //xxx : abort
+    __CG_QUALIFIER__ void tiled_partition(const thread_group& parent, unsigned int tile_size)
+    {
+        if ((ceil(log2(tile_size)) == floor(log2(tile_size))) || tile_size == 0 || tile_size > 64 ||
+            parent.size() < tile_size)
+            _tiled_partition = false;
+        // xxx : abort
         _tiled_partition = true;
         _size = tile_size;
         local_rank = parent.thread_rank() % tile_size;
     }
-    __CG_QUALIFIER__ void sync() const; 
-    __CG_QUALIFIER__ uint32_t size() const {
-        return _size;
-    }
-    __CG_QUALIFIER__ uint32_t thread_rank() const; 
-    __CG_QUALIFIER__ float shfl_down(float var, unsigned int delta) const {
+    __CG_QUALIFIER__ void sync() const;
+    __CG_QUALIFIER__ uint32_t size() const { return _size; }
+    __CG_QUALIFIER__ uint32_t thread_rank() const;
+    __CG_QUALIFIER__ float shfl_down(float var, unsigned int delta) const
+    {
         return (__shfl_down(var, delta, _size));
     }
-     __CG_QUALIFIER__ float shfl_xor(float var, int mask) const {
+    __CG_QUALIFIER__ float shfl_xor(float var, int mask) const
+    {
         return (__shfl_xor(var, mask, _size));
     }
-    __CG_QUALIFIER__ float shfl(float var, unsigned int src_lane) const {
+    __CG_QUALIFIER__ float shfl(float var, unsigned int src_lane) const
+    {
         return (__shfl(var, src_lane, _size));
     }
     __CG_QUALIFIER__ bool is_valid() const;
-
 };
 
 /** \brief The multi-grid cooperative group type
@@ -132,35 +135,27 @@ class thread_group {
  *           devices, running the (same) kernel on these devices
  */
 class multi_grid_group : public thread_group {
-  // Only these friend functions are allowed to construct an object of this class
-  // and access its resources
-  friend __CG_QUALIFIER__ multi_grid_group this_multi_grid();
+    // Only these friend functions are allowed to construct an object of this class
+    // and access its resources
+    friend __CG_QUALIFIER__ multi_grid_group this_multi_grid();
 
- protected:
-  // Construct mutli-grid thread group (through the API this_multi_grid())
-  explicit __CG_QUALIFIER__ multi_grid_group(uint32_t size)
-      : thread_group(internal::cg_multi_grid, size) { }
+protected:
+    // Construct mutli-grid thread group (through the API this_multi_grid())
+    explicit __CG_QUALIFIER__ multi_grid_group(uint32_t size)
+        : thread_group(internal::cg_multi_grid, size)
+    {
+    }
 
- public:
-  // Number of invocations participating in this multi-grid group. In other
-  // words, the number of GPUs
-	__CG_QUALIFIER__ uint32_t num_grids() {
-    return internal::multi_grid::num_grids();
-  }
-  // Rank of this invocation. In other words, an ID number within the range
-  // [0, num_grids()) of the GPU, this kernel is running on
-	__CG_QUALIFIER__ uint32_t grid_rank() {
-    return internal::multi_grid::grid_rank();
-  }
-  __CG_QUALIFIER__ uint32_t thread_rank() const {
-    return internal::multi_grid::thread_rank();
-  }
-  __CG_QUALIFIER__ bool is_valid() const {
-    return internal::multi_grid::is_valid();
-  }
-  __CG_QUALIFIER__ void sync() const {
-    internal::multi_grid::sync();
-  }
+public:
+    // Number of invocations participating in this multi-grid group. In other
+    // words, the number of GPUs
+    __CG_QUALIFIER__ uint32_t num_grids() { return internal::multi_grid::num_grids(); }
+    // Rank of this invocation. In other words, an ID number within the range
+    // [0, num_grids()) of the GPU, this kernel is running on
+    __CG_QUALIFIER__ uint32_t grid_rank() { return internal::multi_grid::grid_rank(); }
+    __CG_QUALIFIER__ uint32_t thread_rank() const { return internal::multi_grid::thread_rank(); }
+    __CG_QUALIFIER__ bool is_valid() const { return internal::multi_grid::is_valid(); }
+    __CG_QUALIFIER__ void sync() const { internal::multi_grid::sync(); }
 };
 
 /** \brief User exposed API interface to construct multi-grid cooperative
@@ -170,9 +165,9 @@ class multi_grid_group : public thread_group {
  *           `multi_grid_group`. Instead, he should construct it through this
  *           API function
  */
-__CG_QUALIFIER__ multi_grid_group
-this_multi_grid() {
-  return multi_grid_group(internal::multi_grid::size());
+__CG_QUALIFIER__ multi_grid_group this_multi_grid()
+{
+    return multi_grid_group(internal::multi_grid::size());
 }
 
 /** \brief The grid cooperative group type
@@ -182,25 +177,18 @@ this_multi_grid() {
  *           workgroups running the (same) kernel on the same device
  */
 class grid_group : public thread_group {
-  // Only these friend functions are allowed to construct an object of this class
-  // and access its resources
-  friend __CG_QUALIFIER__ grid_group this_grid();
+    // Only these friend functions are allowed to construct an object of this class
+    // and access its resources
+    friend __CG_QUALIFIER__ grid_group this_grid();
 
- protected:
-  // Construct grid thread group (through the API this_grid())
-  explicit __CG_QUALIFIER__ grid_group(uint32_t size)
-      : thread_group(internal::cg_grid, size) { }
+protected:
+    // Construct grid thread group (through the API this_grid())
+    explicit __CG_QUALIFIER__ grid_group(uint32_t size) : thread_group(internal::cg_grid, size) {}
 
- public:
-  __CG_QUALIFIER__ uint32_t thread_rank() const {
-    return internal::grid::thread_rank();
-  }
-  __CG_QUALIFIER__ bool is_valid() const {
-    return internal::grid::is_valid();
-  }
-  __CG_QUALIFIER__ void sync() const {
-    internal::grid::sync();
-  }
+public:
+    __CG_QUALIFIER__ uint32_t thread_rank() const { return internal::grid::thread_rank(); }
+    __CG_QUALIFIER__ bool is_valid() const { return internal::grid::is_valid(); }
+    __CG_QUALIFIER__ void sync() const { internal::grid::sync(); }
 };
 
 /** \brief User exposed API interface to construct grid cooperative group type
@@ -210,10 +198,7 @@ class grid_group : public thread_group {
  *           `multi_grid_group`. Instead, he should construct it through this
  *           API function
  */
-__CG_QUALIFIER__ grid_group
-this_grid() {
-  return grid_group(internal::grid::size());
-}
+__CG_QUALIFIER__ grid_group this_grid() { return grid_group(internal::grid::size()); }
 
 /** \brief The workgroup (thread-block in CUDA terminology) cooperative group
  *         type
@@ -223,33 +208,25 @@ this_grid() {
  *           which are participated in the currently executing `workgroup`
  */
 class thread_block : public thread_group {
-  // Only these friend functions are allowed to construct an object of this
-  // class and access its resources
-  friend __CG_QUALIFIER__ thread_block this_thread_block();
+    // Only these friend functions are allowed to construct an object of this
+    // class and access its resources
+    friend __CG_QUALIFIER__ thread_block this_thread_block();
 
- protected:
-  // Construct a workgroup thread group (through the API this_thread_block())
-  explicit __CG_QUALIFIER__ thread_block(uint32_t size)
-      : thread_group(internal::cg_workgroup, size) { }
+protected:
+    // Construct a workgroup thread group (through the API this_thread_block())
+    explicit __CG_QUALIFIER__ thread_block(uint32_t size)
+        : thread_group(internal::cg_workgroup, size)
+    {
+    }
 
- public:
-  // 3-dimensional block index within the grid
-  __CG_QUALIFIER__ dim3 group_index() {
-    return internal::workgroup::group_index();
-  }
-  // 3-dimensional thread index within the block
-  __CG_QUALIFIER__ dim3 thread_index() {
-    return internal::workgroup::thread_index();
-  }
-  __CG_QUALIFIER__ uint32_t thread_rank() const {
-    return internal::workgroup::thread_rank();
-  }
-  __CG_QUALIFIER__ bool is_valid() const {
-    return internal::workgroup::is_valid();
-  }
-  __CG_QUALIFIER__ void sync() const {
-    internal::workgroup::sync();
-  }
+public:
+    // 3-dimensional block index within the grid
+    __CG_QUALIFIER__ dim3 group_index() { return internal::workgroup::group_index(); }
+    // 3-dimensional thread index within the block
+    __CG_QUALIFIER__ dim3 thread_index() { return internal::workgroup::thread_index(); }
+    __CG_QUALIFIER__ uint32_t thread_rank() const { return internal::workgroup::thread_rank(); }
+    __CG_QUALIFIER__ bool is_valid() const { return internal::workgroup::is_valid(); }
+    __CG_QUALIFIER__ void sync() const { internal::workgroup::sync(); }
 };
 
 /** \brief User exposed API interface to construct workgroup cooperative
@@ -259,79 +236,82 @@ class thread_block : public thread_group {
  *           `thread_block`. Instead, he should construct it through this API
  *           function
  */
-__CG_QUALIFIER__ thread_block
-this_thread_block() {
-  return thread_block(internal::workgroup::size());
+__CG_QUALIFIER__ thread_block this_thread_block()
+{
+    return thread_block(internal::workgroup::size());
 }
 
 /**
  *  Implemenation of all publicly exposed base class APIs
  */
-__CG_QUALIFIER__ uint32_t thread_group::thread_rank() const {
-  switch (this->_type) {
-    case internal::cg_multi_grid: {
-      return (static_cast<const multi_grid_group*>(this)->thread_rank());
+__CG_QUALIFIER__ uint32_t thread_group::thread_rank() const
+{
+    switch (this->_type) {
+        case internal::cg_multi_grid: {
+            return (static_cast<const multi_grid_group*>(this)->thread_rank());
+        }
+        case internal::cg_grid: {
+            return (static_cast<const grid_group*>(this)->thread_rank());
+        }
+        case internal::cg_workgroup: {
+            return (static_cast<const thread_block*>(this)->thread_rank());
+        }
+        case internal::cg_coalesced_tile: {
+            return local_rank;
+        }
+        default: {
+            assert(false && "invalid cooperative group type");
+            return -1;
+        }
     }
-    case internal::cg_grid: {
-      return (static_cast<const grid_group*>(this)->thread_rank());
-    }
-    case internal::cg_workgroup: {
-      return (static_cast<const thread_block*>(this)->thread_rank());
-    }
-    case internal::cg_coalesced_tile: {
-      return local_rank;
-    }
-    default: {
-      assert(false && "invalid cooperative group type");
-      return -1;
-    }
-  }
 }
 
-__CG_QUALIFIER__ bool thread_group::is_valid() const {
-  switch (this->_type) {
-    case internal::cg_multi_grid: {
-      return (static_cast<const multi_grid_group*>(this)->is_valid());
+__CG_QUALIFIER__ bool thread_group::is_valid() const
+{
+    switch (this->_type) {
+        case internal::cg_multi_grid: {
+            return (static_cast<const multi_grid_group*>(this)->is_valid());
+        }
+        case internal::cg_grid: {
+            return (static_cast<const grid_group*>(this)->is_valid());
+        }
+        case internal::cg_workgroup: {
+            return (static_cast<const thread_block*>(this)->is_valid());
+        }
+        case internal::cg_coalesced_tile: {
+            return _tiled_partition;
+        }
+        default: {
+            assert(false && "invalid cooperative group type");
+            return false;
+        }
     }
-    case internal::cg_grid: {
-      return (static_cast<const grid_group*>(this)->is_valid());
-    }
-    case internal::cg_workgroup: {
-      return (static_cast<const thread_block*>(this)->is_valid());
-    }
-    case internal::cg_coalesced_tile: {
-      return _tiled_partition;
-    }
-    default: {
-      assert(false && "invalid cooperative group type");
-      return false;
-    }
-  }
 }
 
-__CG_QUALIFIER__ void thread_group::sync() const {
-  switch (this->_type) {
-    case internal::cg_multi_grid: {
-      static_cast<const multi_grid_group*>(this)->sync();
-      break;
+__CG_QUALIFIER__ void thread_group::sync() const
+{
+    switch (this->_type) {
+        case internal::cg_multi_grid: {
+            static_cast<const multi_grid_group*>(this)->sync();
+            break;
+        }
+        case internal::cg_grid: {
+            static_cast<const grid_group*>(this)->sync();
+            break;
+        }
+        case internal::cg_workgroup: {
+            static_cast<const thread_block*>(this)->sync();
+            break;
+        }
+        case internal::cg_coalesced_tile: {
+            if (!_tiled_partition)  // If in a tiled partition, this is a no-op
+                __syncthreads();
+            break;
+        }
+        default: {
+            assert(false && "invalid cooperative group type");
+        }
     }
-    case internal::cg_grid: {
-      static_cast<const grid_group*>(this)->sync();
-      break;
-    }
-    case internal::cg_workgroup: {
-      static_cast<const thread_block*>(this)->sync();
-      break;
-    }
-    case internal::cg_coalesced_tile: {
-      if (!_tiled_partition) // If in a tiled partition, this is a no-op
-            __syncthreads();
-      break;
-    }
-    default: {
-      assert(false && "invalid cooperative group type");
-    }
-  }
 }
 
 /**
@@ -339,26 +319,30 @@ __CG_QUALIFIER__ void thread_group::sync() const {
  *  group type APIs
  */
 template <class CGTy>
-__CG_QUALIFIER__ uint32_t group_size(CGTy const &g) {
-  return g.size();
+__CG_QUALIFIER__ uint32_t group_size(CGTy const& g)
+{
+    return g.size();
 }
 
 template <class CGTy>
-__CG_QUALIFIER__ uint32_t thread_rank(CGTy const &g) {
-  return g.thread_rank();
+__CG_QUALIFIER__ uint32_t thread_rank(CGTy const& g)
+{
+    return g.thread_rank();
 }
 
 template <class CGTy>
-__CG_QUALIFIER__ bool is_valid(CGTy const &g) {
-  return g.is_valid();
+__CG_QUALIFIER__ bool is_valid(CGTy const& g)
+{
+    return g.is_valid();
 }
 
 template <class CGTy>
-__CG_QUALIFIER__ void sync(CGTy const &g) {
-  g.sync();
+__CG_QUALIFIER__ void sync(CGTy const& g)
+{
+    g.sync();
 }
 
-} // namespace cooperative_groups
+}  // namespace cooperative_groups
 
-#endif // __cplusplus
-#endif // HIP_INCLUDE_HIP_HCC_DETAIL_HIP_COOPERATIVE_GROUPS_H
+#endif  // __cplusplus
+#endif  // HIP_INCLUDE_HIP_HCC_DETAIL_HIP_COOPERATIVE_GROUPS_H

@@ -7,6 +7,7 @@ import pytest
 
 from common import skipIfRocm
 
+
 @skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=3)
 def test_init():
@@ -30,6 +31,7 @@ def test_dist_args(number, color):
 
     """Ensure that we can parse args to distributed_test decorated functions. """
     _test_dist_args_helper(number, color=color)
+
 
 @skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=[1, 2, 4])

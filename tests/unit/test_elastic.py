@@ -188,6 +188,7 @@ def test_non_elastic_batch_params(tmpdir):
 
     _test_elastic(args=args, model=model, hidden_dim=hidden_dim)
 
+
 @skipIfRocm("Skipped as this test fails on ROCm")
 def test_non_elastic_batch_params_w_override(tmpdir):
     config_dict = {
@@ -226,6 +227,7 @@ def test_non_elastic_batch_params_w_override(tmpdir):
                                              model_parameters=model.parameters())
 
     _test_elastic(args=args, model=model, hidden_dim=hidden_dim)
+
 
 @skipIfRocm("Skipped as this test fails on ROCm")
 def test_elastic_config_changed(tmpdir):

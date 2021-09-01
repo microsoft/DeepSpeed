@@ -210,9 +210,11 @@ class TestConfigurableMP:
         _run_resize(inputs, tag, test, test_event)
 
         verify_process.join()
+
     def test_gpt2_mp_2to1(self, tmpdir):
         # test mp_size=2 case, verify resize=1 case for ckpt merging.
         self._test_gpt2_config_mp(tmpdir, mp_size=2, resize=1)
+
     def test_gpt2_mp_2to4(self, tmpdir):
         # test mp_size=2 case, verify resize=4 case for ckpt splitting.
         self._test_gpt2_config_mp(tmpdir, mp_size=2, resize=4)

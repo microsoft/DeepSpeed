@@ -32,5 +32,8 @@ class TransformerBuilder(CUDAOpBuilder):
         includes = ['csrc/includes']
         if is_rocm_pytorch:
             from torch.utils.cpp_extension import ROCM_HOME
-            includes += ['{}/hiprand/include'.format(ROCM_HOME), '{}/rocrand/include'.format(ROCM_HOME)]
+            includes += [
+                '{}/hiprand/include'.format(ROCM_HOME),
+                '{}/rocrand/include'.format(ROCM_HOME)
+            ]
         return includes

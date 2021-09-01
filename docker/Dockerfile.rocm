@@ -125,7 +125,7 @@ RUN pip install psutil \
                 sklearn \
                 scikit-learn \
                 mpi4py \
-                h5py 
+                h5py
 
 ##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port

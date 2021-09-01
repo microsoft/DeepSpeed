@@ -34,7 +34,7 @@ __global__ void attn_softmax(float* vals,
     int block_width = blockStride * seq_length;
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
+    // cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
     cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
     g.tiled_partition(b, tbSize);
 
@@ -167,7 +167,7 @@ __global__ void attn_softmax(__half* vals,
     int block_width = blockStride * seq_length;
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
+    // cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
     cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
     g.tiled_partition(b, tbSize);
 
@@ -453,7 +453,7 @@ __global__ void softmax_backward_kernel(T* out_grad, const T* soft_inp, int seq_
                           : MAX_THREAD_ITERATIONS);
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
+    // cg::thread_block_tile<tbSize> g = cg::tiled_partition<tbSize>(b);
     cg::thread_group g(cg::internal::cg_coalesced_tile, tbSize);
     g.tiled_partition(b, tbSize);
 
@@ -530,7 +530,7 @@ __global__ void softmax_backward_kernel_v2(T* grad /* input & output*/,
     }
 
     cg::thread_block b = cg::this_thread_block();
-    //cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
 

@@ -34,10 +34,10 @@ THE SOFTWARE.
 #if __cplusplus
 
 #if ROCM_VERSION_MINOR < 4
-    #include <hip/hcc_detail/hip_runtime_api.h>
-    #include <hip/hcc_detail/device_functions.h>
+#include <hip/hcc_detail/device_functions.h>
+#include <hip/hcc_detail/hip_runtime_api.h>
 #else
-    #include <hip/hcc_detail/amd_device_functions.h>
+#include <hip/hcc_detail/amd_device_functions.h>
 #endif
 
 #if !defined(__align__)
@@ -62,86 +62,61 @@ namespace internal {
 
 /** \brief Enums representing different cooperative group types
  */
-typedef enum {
-  cg_invalid,
-  cg_multi_grid,
-  cg_grid,
-  cg_workgroup,
-  cg_coalesced_tile
-} group_type;
+typedef enum { cg_invalid, cg_multi_grid, cg_grid, cg_workgroup, cg_coalesced_tile } group_type;
 
 /**
  *  Functionalities related to multi-grid cooperative group type
  */
 namespace multi_grid {
 
-__CG_STATIC_QUALIFIER__ uint32_t num_grids() {
-  return (uint32_t)__ockl_multi_grid_num_grids();
-}
+__CG_STATIC_QUALIFIER__ uint32_t num_grids() { return (uint32_t)__ockl_multi_grid_num_grids(); }
 
-__CG_STATIC_QUALIFIER__ uint32_t grid_rank() {
-  return (uint32_t)__ockl_multi_grid_grid_rank();
-}
+__CG_STATIC_QUALIFIER__ uint32_t grid_rank() { return (uint32_t)__ockl_multi_grid_grid_rank(); }
 
-__CG_STATIC_QUALIFIER__ uint32_t size() {
-  return (uint32_t)__ockl_multi_grid_size();
-}
+__CG_STATIC_QUALIFIER__ uint32_t size() { return (uint32_t)__ockl_multi_grid_size(); }
 
-__CG_STATIC_QUALIFIER__ uint32_t thread_rank() {
-  return (uint32_t)__ockl_multi_grid_thread_rank();
-}
+__CG_STATIC_QUALIFIER__ uint32_t thread_rank() { return (uint32_t)__ockl_multi_grid_thread_rank(); }
 
-__CG_STATIC_QUALIFIER__ bool is_valid() {
-  return (bool)__ockl_multi_grid_is_valid();
-}
+__CG_STATIC_QUALIFIER__ bool is_valid() { return (bool)__ockl_multi_grid_is_valid(); }
 
-__CG_STATIC_QUALIFIER__ void sync() {
-  __ockl_multi_grid_sync();
-}
+__CG_STATIC_QUALIFIER__ void sync() { __ockl_multi_grid_sync(); }
 
-} // namespace multi_grid
+}  // namespace multi_grid
 
 /**
  *  Functionalities related to grid cooperative group type
  */
 namespace grid {
 
-__CG_STATIC_QUALIFIER__ uint32_t size() {
-  return (uint32_t)((hipBlockDim_z * hipGridDim_z) *
-                    (hipBlockDim_y * hipGridDim_y) *
-                    (hipBlockDim_x * hipGridDim_x));
+__CG_STATIC_QUALIFIER__ uint32_t size()
+{
+    return (uint32_t)((hipBlockDim_z * hipGridDim_z) * (hipBlockDim_y * hipGridDim_y) *
+                      (hipBlockDim_x * hipGridDim_x));
 }
 
-__CG_STATIC_QUALIFIER__ uint32_t thread_rank() {
-  // Compute global id of the workgroup to which the current thread belongs to
-  uint32_t blkIdx =
-           (uint32_t)((hipBlockIdx_z * hipGridDim_y * hipGridDim_x) +
-                      (hipBlockIdx_y * hipGridDim_x) +
-                      (hipBlockIdx_x));
+__CG_STATIC_QUALIFIER__ uint32_t thread_rank()
+{
+    // Compute global id of the workgroup to which the current thread belongs to
+    uint32_t blkIdx = (uint32_t)((hipBlockIdx_z * hipGridDim_y * hipGridDim_x) +
+                                 (hipBlockIdx_y * hipGridDim_x) + (hipBlockIdx_x));
 
-  // Compute total number of threads being passed to reach current workgroup
-  // within grid
-  uint32_t num_threads_till_current_workgroup =
-           (uint32_t)(blkIdx * (hipBlockDim_x * hipBlockDim_y * hipBlockDim_z));
+    // Compute total number of threads being passed to reach current workgroup
+    // within grid
+    uint32_t num_threads_till_current_workgroup =
+        (uint32_t)(blkIdx * (hipBlockDim_x * hipBlockDim_y * hipBlockDim_z));
 
-  // Compute thread local rank within current workgroup
-  uint32_t local_thread_rank =
-           (uint32_t)((hipThreadIdx_z * hipBlockDim_y * hipBlockDim_x) +
-                      (hipThreadIdx_y * hipBlockDim_x) +
-                      (hipThreadIdx_x));
+    // Compute thread local rank within current workgroup
+    uint32_t local_thread_rank = (uint32_t)((hipThreadIdx_z * hipBlockDim_y * hipBlockDim_x) +
+                                            (hipThreadIdx_y * hipBlockDim_x) + (hipThreadIdx_x));
 
-  return (num_threads_till_current_workgroup + local_thread_rank);
+    return (num_threads_till_current_workgroup + local_thread_rank);
 }
 
-__CG_STATIC_QUALIFIER__ bool is_valid() {
-  return (bool)__ockl_grid_is_valid();
-}
+__CG_STATIC_QUALIFIER__ bool is_valid() { return (bool)__ockl_grid_is_valid(); }
 
-__CG_STATIC_QUALIFIER__ void sync() {
-  __ockl_grid_sync();
-}
+__CG_STATIC_QUALIFIER__ void sync() { __ockl_grid_sync(); }
 
-} // namespace grid
+}  // namespace grid
 
 /**
  *  Functionalities related to `workgroup` (thread_block in CUDA terminology)
@@ -149,40 +124,40 @@ __CG_STATIC_QUALIFIER__ void sync() {
  */
 namespace workgroup {
 
-__CG_STATIC_QUALIFIER__ dim3 group_index() {
-  return (dim3((uint32_t)hipBlockIdx_x, (uint32_t)hipBlockIdx_y,
-               (uint32_t)hipBlockIdx_z));
+__CG_STATIC_QUALIFIER__ dim3 group_index()
+{
+    return (dim3((uint32_t)hipBlockIdx_x, (uint32_t)hipBlockIdx_y, (uint32_t)hipBlockIdx_z));
 }
 
-__CG_STATIC_QUALIFIER__ dim3 thread_index() {
-  return (dim3((uint32_t)hipThreadIdx_x, (uint32_t)hipThreadIdx_y,
-               (uint32_t)hipThreadIdx_z));
+__CG_STATIC_QUALIFIER__ dim3 thread_index()
+{
+    return (dim3((uint32_t)hipThreadIdx_x, (uint32_t)hipThreadIdx_y, (uint32_t)hipThreadIdx_z));
 }
 
-__CG_STATIC_QUALIFIER__ uint32_t size() {
-  return((uint32_t)(hipBlockDim_x * hipBlockDim_y * hipBlockDim_z));
+__CG_STATIC_QUALIFIER__ uint32_t size()
+{
+    return ((uint32_t)(hipBlockDim_x * hipBlockDim_y * hipBlockDim_z));
 }
 
-__CG_STATIC_QUALIFIER__ uint32_t thread_rank() {
- return ((uint32_t)((hipThreadIdx_z * hipBlockDim_y * hipBlockDim_x) +
-                    (hipThreadIdx_y * hipBlockDim_x) +
-                    (hipThreadIdx_x)));
+__CG_STATIC_QUALIFIER__ uint32_t thread_rank()
+{
+    return ((uint32_t)((hipThreadIdx_z * hipBlockDim_y * hipBlockDim_x) +
+                       (hipThreadIdx_y * hipBlockDim_x) + (hipThreadIdx_x)));
 }
 
-__CG_STATIC_QUALIFIER__ bool is_valid() {
-   //TODO(mahesha) any functionality need to be added here? I believe not
-  return true;
+__CG_STATIC_QUALIFIER__ bool is_valid()
+{
+    // TODO(mahesha) any functionality need to be added here? I believe not
+    return true;
 }
 
-__CG_STATIC_QUALIFIER__ void sync() {
-  __syncthreads();
-}
+__CG_STATIC_QUALIFIER__ void sync() { __syncthreads(); }
 
-} // namespace workgroup
+}  // namespace workgroup
 
-} // namespace internal
+}  // namespace internal
 
-} // namespace cooperative_groups
+}  // namespace cooperative_groups
 
-#endif // __cplusplus
-#endif // HIP_INCLUDE_HIP_HCC_DETAIL_HIP_COOPERATIVE_GROUPS_HELPER_H
+#endif  // __cplusplus
+#endif  // HIP_INCLUDE_HIP_HCC_DETAIL_HIP_COOPERATIVE_GROUPS_HELPER_H

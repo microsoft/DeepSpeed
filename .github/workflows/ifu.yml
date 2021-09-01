@@ -32,7 +32,7 @@ jobs:
           git config user.email github-actions@github.com
           git remote add upstream https://github.com/microsoft/DeepSpeed
           git fetch upstream master
-          git merge upstream/master 
+          git merge upstream/master
           # Since we use our own fork of DeepSpeedExamples, ignore theirs
           git checkout HEAD DeepSpeedExamples
       - name: Create Pull Request

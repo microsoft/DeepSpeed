@@ -5,6 +5,7 @@ import torch
 from .builder import CUDAOpBuilder, is_rocm_pytorch
 from .builder import ROCM_MAJOR, ROCM_MINOR
 
+
 class FusedLambBuilder(CUDAOpBuilder):
     BUILD_VAR = 'DS_BUILD_FUSED_LAMB'
     NAME = "fused_lamb"
@@ -26,13 +27,13 @@ class FusedLambBuilder(CUDAOpBuilder):
         return args + self.version_dependent_macros()
 
     def nvcc_args(self):
-        nvcc_flags=['-O3'] + self.version_dependent_macros()
+        nvcc_flags = ['-O3'] + self.version_dependent_macros()
         if is_rocm_pytorch:
-             nvcc_flags+= [
+            nvcc_flags += [
                 '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
             ]
         else:
-            nvcc_flags.extend(['-lineinfo', '--use_fast_math'] + self.compute_capability_args())
+            nvcc_flags.extend(['-lineinfo',
+                               '--use_fast_math'] + self.compute_capability_args())
         return nvcc_flags
-

@@ -36,7 +36,8 @@ TORCH_MINOR = int(torch.__version__.split('.')[1])
 is_rocm_pytorch = False
 if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
     from torch.utils.cpp_extension import ROCM_HOME
-    is_rocm_pytorch = True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False
+    is_rocm_pytorch = True if ((torch.version.hip is not None) and
+                               (ROCM_HOME is not None)) else False
 
 if is_rocm_pytorch:
     with open('/opt/rocm/.info/version-dev', 'r') as file:
@@ -46,6 +47,7 @@ if is_rocm_pytorch:
 else:
     ROCM_MAJOR = '0'
     ROCM_MINOR = '0'
+
 
 def installed_cuda_version():
     import torch.utils.cpp_extension
@@ -512,9 +514,7 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
-        args = [
-            '-O3'
-        ]
+        args = ['-O3']
         if is_rocm_pytorch:
             args += [
                 '-std=c++14',
