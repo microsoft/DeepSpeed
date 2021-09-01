@@ -13,17 +13,14 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+
+  # formatting and basic install on cpu-only machine
   formatting:
-    # The type of runner that the job will run on
     runs-on: ubuntu-20.04
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Runs a single command using the runners shell
       - name: environment
         run: |
           which python
@@ -31,7 +28,6 @@ jobs:
           pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
 
-      # Runs a set of commands using the runners shell
       - name: Install deepspeed
         run: |
           pip install .[dev]
@@ -40,3 +36,30 @@ jobs:
       - name: Formatting checks
         run: |
            pre-commit run --all-files
+
+  # unit tests running on nvidia gpus
+  unit-tests:
+    runs-on: [self-hosted, nvidia]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: environment
+        run: |
+          nvidia-smi
+          which python
+          python --version
+          which nvcc
+          nvcc --version
+          python -c "import torch; print('torch:', torch.__version__, torch)"
+          python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+      - name: Install deepspeed
+        run: |
+          pip install .[dev]
+          ds_report
+
+      - name: Unit tests
+        run: |
+          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
