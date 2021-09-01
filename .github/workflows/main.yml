@@ -13,10 +13,34 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
+
+  formatting:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v2
+
+      # Runs a single command using the runners shell
+      - name: environment
+        run: |
+          which python
+          python --version
+          python -c "import torch; print('torch:', torch.__version__, torch)"
+          python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+      # Runs a set of commands using the runners shell
+      - name: Install deepspeed
+        run: |
+          pip install .[dev]
+          ds_report
+
+      - name: Formatting checks
+        run: |
+           pre-commit run --all-files
+
+  unit-tests-nvidia:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, amd]
+    runs-on: [self-hosted, nvidia]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -40,9 +64,38 @@ jobs:
           pip install .[dev]
           ds_report
 
-      - name: Formatting checks
+      # Runs a set of commands using the runners shell
+      - name: Unit tests
         run: |
-           pre-commit run --all-files
+          if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
+
+  # amd build
+  unit-tests-amd:
+    # The type of runner that the job will run on
+    runs-on: [self-hosted, amd]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+
+      # Runs a single command using the runners shell
+      - name: environment
+        run: |
+          rocm-smi
+          which python
+          python --version
+          which hipcc
+          hipcc --version
+          python -c "import torch; print('torch:', torch.__version__, torch)"
+          python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+
+      # Runs a set of commands using the runners shell
+      - name: Install deepspeed
+        run: |
+          DS_BUILD_FUSED_ADAM=1 DS_BUILD_FUSED_LAMB=1 DS_BUILD_CPU_ADAM=1 DS_BUILD_TRANSFORMER=1 DS_BUILD_STOCHASTIC_TRANSFORMER=1 DS_BUILD_UTILS=1 pip install .[dev]
+          ds_report
 
       # Runs a set of commands using the runners shell
       - name: Unit tests
