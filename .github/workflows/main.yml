@@ -1,8 +1,5 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Build
 
-# Controls when the action will run.
 on:
   push:
     branches:
@@ -13,32 +10,7 @@ on:
     paths-ignore:
     - 'docs/**'
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-
-  # formatting and basic install on cpu-only machine
-  formatting:
-    runs-on: ubuntu-20.04
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: environment
-        run: |
-          which python
-          python --version
-          pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-          python -c "import torch; print('torch:', torch.__version__, torch)"
-
-      - name: Install deepspeed
-        run: |
-          pip install .[dev]
-          ds_report
-
-      - name: Formatting checks
-        run: |
-           pre-commit run --all-files
-
   # unit tests running on nvidia gpus
   unit-tests:
     runs-on: [self-hosted, nvidia]
