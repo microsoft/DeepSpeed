@@ -5,6 +5,8 @@ name: Build
 # Controls when the action will run.
 on:
   push:
+    branches:
+      'staging**'
     paths-ignore:
     - 'docs/**'
   pull_request:
