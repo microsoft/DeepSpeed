@@ -4,7 +4,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import subprocess
-from .builder import CUDAOpBuilder, is_rocm_pytorch
+from .builder import CUDAOpBuilder
 
 
 class CPUAdamBuilder(CUDAOpBuilder):
@@ -26,7 +26,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
 
     def include_paths(self):
         import torch
-        if not is_rocm_pytorch:
+        if not self.is_rocm_pytorch():
             CUDA_INCLUDE = [os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")]
         else:
             CUDA_INCLUDE = [
@@ -43,7 +43,7 @@ class CPUAdamBuilder(CUDAOpBuilder):
 
     def cxx_args(self):
         import torch
-        if not is_rocm_pytorch:
+        if not self.is_rocm_pytorch():
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
         else:
             CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")

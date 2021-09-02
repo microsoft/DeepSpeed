@@ -2,7 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import torch
-from .builder import CUDAOpBuilder, is_rocm_pytorch
+from .builder import CUDAOpBuilder
 
 
 class TransformerBuilder(CUDAOpBuilder):
@@ -30,7 +30,7 @@ class TransformerBuilder(CUDAOpBuilder):
 
     def include_paths(self):
         includes = ['csrc/includes']
-        if is_rocm_pytorch:
+        if self.is_rocm_pytorch():
             from torch.utils.cpp_extension import ROCM_HOME
             includes += [
                 '{}/hiprand/include'.format(ROCM_HOME),

@@ -33,21 +33,6 @@ except ImportError:
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
 
-is_rocm_pytorch = False
-if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
-    from torch.utils.cpp_extension import ROCM_HOME
-    is_rocm_pytorch = True if ((torch.version.hip is not None) and
-                               (ROCM_HOME is not None)) else False
-
-if is_rocm_pytorch:
-    with open('/opt/rocm/.info/version-dev', 'r') as file:
-        ROCM_VERSION_DEV_RAW = file.read()
-    ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
-    ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
-else:
-    ROCM_MAJOR = '0'
-    ROCM_MINOR = '0'
-
 
 def installed_cuda_version():
     import torch.utils.cpp_extension
@@ -111,37 +96,10 @@ def assert_no_cuda_mismatch():
             "cuda/cpp extensions without a matching cuda version.")
 
 
-def assert_torch_info(torch_info):
-    install_torch_version = torch_info['version']
-    install_cuda_version = torch_info['cuda_version']
-    install_hip_version = torch_info['hip_version']
-
-    if not is_rocm_pytorch:
-        current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    else:
-        current_hip_version = ".".join(torch.version.hip.split('.')[:2])
-
-    current_torch_version = ".".join(torch.__version__.split('.')[:2])
-
-    if not is_rocm_pytorch:
-        if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
-            raise RuntimeError(
-                "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
-                "with a different version than what is being used at runtime. Please re-install "
-                f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-                f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
-                f"torch={current_torch_version}, cuda={current_cuda_version}")
-    else:
-        if install_hip_version != current_hip_version or install_torch_version != current_torch_version:
-            raise RuntimeError(
-                "PyTorch and HIP version mismatch! DeepSpeed ops were compiled and installed "
-                "with a different version than what is being used at runtime. Please re-install "
-                f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-                f"torch={install_torch_version}, hip={install_hip_version}, runtime versions:"
-                f"torch={current_torch_version}, hip={current_hip_version}")
-
-
 class OpBuilder(ABC):
+    _rocm_version = None
+    _is_rocm_pytorch = None
+
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
@@ -160,6 +118,67 @@ class OpBuilder(ABC):
         Returns list of source files for your op, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
         '''
         pass
+
+    @staticmethod
+    def assert_torch_info(torch_info):
+        install_torch_version = torch_info['version']
+        install_cuda_version = torch_info['cuda_version']
+        install_hip_version = torch_info['hip_version']
+
+        if not OpBuilder.is_rocm_pytorch():
+            current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+        else:
+            current_hip_version = ".".join(torch.version.hip.split('.')[:2])
+
+        current_torch_version = ".".join(torch.__version__.split('.')[:2])
+
+        if not OpBuilder.is_rocm_pytorch():
+            if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
+                raise RuntimeError(
+                    "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. Please re-install "
+                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                    f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
+                    f"torch={current_torch_version}, cuda={current_cuda_version}")
+        else:
+            if install_hip_version != current_hip_version or install_torch_version != current_torch_version:
+                raise RuntimeError(
+                    "PyTorch and HIP version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. Please re-install "
+                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                    f"torch={install_torch_version}, hip={install_hip_version}, runtime versions:"
+                    f"torch={current_torch_version}, hip={current_hip_version}")
+
+    @staticmethod
+    def is_rocm_pytorch():
+        if OpBuilder._is_rocm_pytorch is not None:
+            return OpBuilder._is_rocm_pytorch
+
+        _is_rocm_pytorch = False
+        if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
+            _is_rocm_pytorch = hasattr(torch.version,
+                                       'hip') and torch.version.hip is not None
+            if _is_rocm_pytorch:
+                from torch.utils.cpp_extension import ROCM_HOME
+                _is_rocm_pytorch = ROCM_HOME is not None
+        OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
+        return OpBuilder._is_rocm_pytorch
+
+    @staticmethod
+    def installed_rocm_version():
+        if OpBuilder._rocm_version:
+            return OpBuilder._rocm_version
+
+        ROCM_MAJOR = '0'
+        ROCM_MINOR = '0'
+        if OpBuilder.is_rocm_pytorch():
+            from torch.utils.cpp_extension import ROCM_HOME
+            with open('/opt/rocm/.info/version-dev', 'r') as file:
+                ROCM_VERSION_DEV_RAW = file.read()
+            ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
+            ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
+        OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
+        return OpBuilder._rocm_version
 
     def include_paths(self):
         '''
@@ -372,7 +391,7 @@ class OpBuilder(ABC):
             # Ensure the op we're about to load was compiled with the same
             # torch/cuda versions we are currently using at runtime.
             if isinstance(self, CUDAOpBuilder):
-                assert_torch_info(torch_info)
+                self.assert_torch_info(torch_info)
 
             return importlib.import_module(self.absolute_name())
         else:
@@ -390,7 +409,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
             )
 
-        if isinstance(self, CUDAOpBuilder) and not is_rocm_pytorch:
+        if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
             assert_no_cuda_mismatch()
 
         self.jit_mode = True
@@ -515,7 +534,8 @@ class CUDAOpBuilder(OpBuilder):
 
     def nvcc_args(self):
         args = ['-O3']
-        if is_rocm_pytorch:
+        if self.is_rocm_pytorch():
+            ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
             args += [
                 '-std=c++14',
                 '-U__HIP_NO_HALF_OPERATORS__',
