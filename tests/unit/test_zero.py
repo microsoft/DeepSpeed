@@ -314,6 +314,8 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
 
         for data_parallel_partitions in model.optimizer.parallel_partitioned_fp16_groups:
             for partition_id, partitioned_data in enumerate(data_parallel_partitions):
-                assert (partitioned_data.data_ptr() % nccl_start_alignment_factor == 0)
+                # verify that data partition start locations are 4-byte aligned
+                assert (partitioned_data.data_ptr() %
+                        (2 * nccl_start_alignment_factor) == 0)
 
     _test_partition_nccl_alignment(args=args, model=model, hidden_dim=hidden_dim)

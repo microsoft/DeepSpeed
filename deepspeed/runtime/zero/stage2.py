@@ -306,9 +306,13 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # each process will compute on a different part of the partition
             data_parallel_partitions = self.get_data_parallel_partitions(
                 self.fp16_groups_flat[i],
-                i,
-                self.nccl_start_alignment_factor)
+                i)
             self.parallel_partitioned_fp16_groups.append(data_parallel_partitions)
+
+            # verify that data partition start locations are 4-byte aligned
+            for partitioned_data in data_parallel_partitions:
+                assert (partitioned_data.data_ptr() %
+                        (2 * self.nccl_start_alignment_factor) == 0)
 
             # a partition of the fp32 master weights that will be updated by this process
             if not fp16_master_weights_and_gradients:
@@ -325,8 +329,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.single_partition_of_fp32_groups[i]]
 
-            #partition_size is same across all partitions
-            partition_size = data_parallel_partitions[0].numel()
+            partition_size = len(self.fp16_groups_flat[i]) / dist.get_world_size(
+                group=self.real_dp_process_group[i])
             params_in_partition, params_not_in_partition, first_offset = self.get_partition_info(
                 self.round_robin_fp16_groups[i],
                 partition_size,
@@ -1383,7 +1387,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # views the tensor as multiple partitions and returns
     # those partitions
-    def get_data_parallel_partitions(self, tensor, group_id, alignment_factor):
+    def get_data_parallel_partitions(self, tensor, group_id):
         partitions = []
 
         dp = dist.get_world_size(group=self.real_dp_process_group[group_id])
@@ -1391,17 +1395,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         total_num_elements = tensor.numel()
 
-        divisor = dp * alignment_factor
-        # ceil( total_num_elements / divisor ) using integers
-        base_size = ( total_num_elements // divisor ) \
-            + ( total_num_elements % divisor > 0)
-        base_size *= alignment_factor
+        base_size = total_num_elements // dp
+        remaining = total_num_elements % dp
 
         start = 0
         for id in range(dp):
             partition_size = base_size
-            if id == (dp - 1):
-                partition_size -= (base_size * dp - total_num_elements)
+            if id < remaining:
+                partition_size = partition_size + 1
             partitions.append(tensor.narrow(0, start, partition_size))
             start = start + partition_size
         return partitions
@@ -2005,10 +2006,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 merged_partitions,
                 self.nccl_start_alignment_factor *
                 dist.get_world_size(group=self.real_dp_process_group[i]))
-            dp_partitions = self.get_data_parallel_partitions(
-                flat_merged_partitions,
-                i,
-                self.nccl_start_alignment_factor)
+            dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions, i)
             merged_single_partition_of_fp32_groups.append(dp_partitions[partition_id])
 
         for current, saved in zip(self.single_partition_of_fp32_groups, merged_single_partition_of_fp32_groups):
@@ -2033,8 +2031,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 all_partition_states,
                 alignment)
             dp_partitions = self.get_data_parallel_partitions(flat_merged_partitions,
-                                                              group_id,
-                                                              1)
+                                                              group_id)
             return dp_partitions[partition_id]
         else:
             # Assume non-tensor states are not partitioned and equal across ranks, so return first one
