@@ -515,7 +515,7 @@ class CUDAOpBuilder(OpBuilder):
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension
-        if not is_rocm_pytorch:
+        if not self.is_rocm_pytorch():
             assert_no_cuda_mismatch()
         return CUDAExtension(name=self.absolute_name(),
                              sources=self.strip_empty_entries(self.sources()),
