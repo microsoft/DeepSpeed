@@ -211,7 +211,7 @@ cuda_version = "0.0"
 hip_version = "0.0"
 if torch_available and torch.version.cuda is not None:
     cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-if torch_available and torch.version.hip is not None:
+if torch_available and hasattr(torch.version, 'hip') and torch.version.hip is not None:
     hip_version = ".".join(torch.version.hip.split('.')[:2])
 torch_info = {
     "version": torch_version,
