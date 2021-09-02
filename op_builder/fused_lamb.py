@@ -2,8 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import torch
-from .builder import CUDAOpBuilder, is_rocm_pytorch
-from .builder import ROCM_MAJOR, ROCM_MINOR
+from .builder import CUDAOpBuilder
 
 
 class FusedLambBuilder(CUDAOpBuilder):
@@ -28,7 +27,8 @@ class FusedLambBuilder(CUDAOpBuilder):
 
     def nvcc_args(self):
         nvcc_flags = ['-O3'] + self.version_dependent_macros()
-        if is_rocm_pytorch:
+        if self.is_rocm_pytorch():
+            ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
             nvcc_flags += [
                 '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
                 '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
