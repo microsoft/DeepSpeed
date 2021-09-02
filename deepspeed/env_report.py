@@ -78,6 +78,11 @@ def nvcc_version():
 
 def debug_report():
     max_dots = 33
+
+    hip_version = 'unknown'
+    if hasattr(torch.version, 'hip'):
+        hip_version = torch.version.hip
+
     report = [
         ("torch install path",
          torch.__path__),
@@ -86,7 +91,7 @@ def debug_report():
         ("torch cuda version",
          torch.version.cuda),
         ("torch hip version",
-         torch.version.hip),
+         hip_version),
         ("nvcc version",
          nvcc_version()),
         ("deepspeed install path",
