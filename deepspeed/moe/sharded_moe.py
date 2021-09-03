@@ -113,6 +113,7 @@ def top1gating(logits: torch.Tensor,
     num_tokens = gates.shape[0]
     num_experts = gates.shape[1]
     # round-up
+    # e.g. 256 tokens -- 4 experts --> capacity = 256/4 = 64
     capacity = math.ceil((num_tokens / num_experts) * capacity_factor)
     if capacity < min_capacity:
         capacity = min_capacity
@@ -129,8 +130,15 @@ def top1gating(logits: torch.Tensor,
         mask1 = torch.einsum("s,se->se", used_token, mask1)
 
     # gating decisions
+    # exp_counts ==> number of tokens selected for each expert (different on different ranks)
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
 
+    tokens_dropped = exp_counts - capacity
+    
+    # if we don't want to drop any tokens
+    capacity = torch.max(exp_counts)    
+    capacity = dist.allreduce(capacity, op=MAX)
+    
     # Compute l_aux
     me = torch.mean(gates, dim=0)
     ce = torch.mean(mask1.float(), dim=0)
