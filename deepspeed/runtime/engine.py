@@ -546,14 +546,14 @@ class DeepSpeedEngine(Module):
                     f'DeepSpeed using configured LR scheduler = {self.scheduler_name()}')
             self.lr_scheduler = lr_scheduler
         else:
-            if isinstance(client_lr_scheduler, _LRScheduler):
-                if self.global_rank == 0:
-                    logger.info('DeepSpeed using client LR scheduler')
-                self.lr_scheduler = client_lr_scheduler
-            elif isinstance(client_lr_scheduler, Callable):
+            if isinstance(client_lr_scheduler, Callable):
                 if self.global_rank == 0:
                     logger.info('DeepSpeed using client callable to create LR scheduler')
                 self.lr_scheduler = client_lr_scheduler(self.basic_optimizer)
+            else:
+                if self.global_rank == 0:
+                    logger.info('DeepSpeed using client LR scheduler')
+                self.lr_scheduler = client_lr_scheduler
 
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
@@ -672,9 +672,6 @@ class DeepSpeedEngine(Module):
         ) == ONEBIT_LAMB_OPTIMIZER:
             assert self.dynamic_loss_scale(), \
                 'DeepSpeed {} optimizer requires dynamic loss scaling'.format(self.optimizer_name())
-
-        assert isinstance(self.client_lr_scheduler, (type(None), _LRScheduler, Callable)), \
-            f'Client LR Scheduler is of unexpected type {type(self.client_lr_scheduler)}'
 
         # Detect invalid combinations of client optimizer and client scheduler
         if isinstance(self.client_lr_scheduler, _LRScheduler):
@@ -1143,6 +1140,9 @@ class DeepSpeedEngine(Module):
                           torch.utils.data.IterableDataset
                           )  # hasattr(obj, "__iter__") should work as well
 
+    def dataloader_drop_last(self):
+        return self._config.dataloader_drop_last
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -1185,7 +1185,8 @@ class DeepSpeedEngine(Module):
                                    num_local_io_workers=num_local_io_workers,
                                    data_sampler=data_sampler,
                                    data_parallel_world_size=data_parallel_world_size,
-                                   data_parallel_rank=data_parallel_rank)
+                                   data_parallel_rank=data_parallel_rank,
+                                   dataloader_drop_last=self.dataloader_drop_last())
 
     def train(self, mode=True):
         r"""
