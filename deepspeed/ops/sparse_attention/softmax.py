@@ -5,10 +5,7 @@ import warnings
 import importlib
 import torch
 import math
-try:
-    from .trsrc import softmax_fwd, softmax_bwd
-except ImportError:
-    pass
+from .trsrc import softmax_fwd, softmax_bwd
 
 fwd_kernels = dict()
 bwd_kernels = dict()

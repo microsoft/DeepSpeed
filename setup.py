@@ -240,36 +240,35 @@ with open(os.path.join(thisdir, 'README.md'), encoding='utf-8') as fin:
 
 start_time = time.time()
 
-setup(
-    name='deepspeed',
-    version=version_str,
-    description='DeepSpeed library',
-    long_description=readme_text,
-    long_description_content_type='text/markdown',
-    author='DeepSpeed Team',
-    author_email='deepspeed@microsoft.com',
-    url='http://deepspeed.ai',
-    install_requires=install_requires,
-    extras_require=extras_require,
-    packages=find_packages(exclude=["docker",
-                                    "third_party"]),
-    #      include_package_data=True, #FIXME
-    scripts=[
-        'bin/deepspeed',
-        'bin/deepspeed.pt',
-        'bin/ds',
-        'bin/ds_ssh',
-        'bin/ds_report',
-        'bin/ds_elastic'
-    ],
-    classifiers=[
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8'
-    ],
-    license='MIT',
-    ext_modules=ext_modules,
-    cmdclass=cmdclass)
+setup(name='deepspeed',
+      version=version_str,
+      description='DeepSpeed library',
+      long_description=readme_text,
+      long_description_content_type='text/markdown',
+      author='DeepSpeed Team',
+      author_email='deepspeed@microsoft.com',
+      url='http://deepspeed.ai',
+      install_requires=install_requires,
+      extras_require=extras_require,
+      packages=find_packages(exclude=["docker",
+                                      "third_party"]),
+      include_package_data=True,
+      scripts=[
+          'bin/deepspeed',
+          'bin/deepspeed.pt',
+          'bin/ds',
+          'bin/ds_ssh',
+          'bin/ds_report',
+          'bin/ds_elastic'
+      ],
+      classifiers=[
+          'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8'
+      ],
+      license='MIT',
+      ext_modules=ext_modules,
+      cmdclass=cmdclass)
 
 end_time = time.time()
 print(f'deepspeed build time = {end_time - start_time} secs')

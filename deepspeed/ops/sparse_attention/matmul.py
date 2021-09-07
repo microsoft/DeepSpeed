@@ -4,10 +4,7 @@ import importlib
 import warnings
 import torch
 import math
-try:
-    from .trsrc import matmul
-except ImportError:
-    pass
+from .trsrc import matmul
 from ..op_builder import SparseAttnBuilder
 
 triton = None
