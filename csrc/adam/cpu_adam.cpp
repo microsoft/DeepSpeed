@@ -1,6 +1,4 @@
 #include "cpu_adam.h"
-#include <math.h>
-#include <omp.h>
 #include <torch/extension.h>
 #include <cassert>
 #include <iostream>
@@ -66,7 +64,10 @@ void Adam_Optimizer::Step(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+
+#if defined(__ENABLE_CUDA__)
         if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+#endif
 
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH) {
@@ -119,8 +120,11 @@ void Adam_Optimizer::Step(float* _params,
             _buf_index = !_buf_index;
         }
 #else
-        static_assert(dev_params == nullptr,
-                      "CUDA is not enabled for the parameter tiled-copy feature!")
+        assert(!dev_params);
+        if (dev_params) {
+            std::cerr << " CUDA is not enabled for the parameter tiled-copy feature!\n";
+            exit(-1);
+        }
 #endif
     }
 
@@ -138,8 +142,9 @@ void Adam_Optimizer::Step(float* _params,
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
+#if defined(__ENABLE_CUDA__)
             if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
-
+#endif
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
                 float grad = half_precision ? (float)grads_cast_h[k] : grads[k];
@@ -176,8 +181,11 @@ void Adam_Optimizer::Step(float* _params,
                 _buf_index = !_buf_index;
             }
 #else
-            static_assert(dev_params == nullptr,
-                          "CUDA is not enabled for the parameter tiled-copy feature!")
+            assert(!dev_params);
+            if (dev_params) {
+                std::cerr << " CUDA is not enabled for the parameter tiled-copy feature!\n";
+                exit(-1);
+            }
 #endif
         }
     }
@@ -227,7 +235,9 @@ void Adam_Optimizer::Step_4(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+#if defined(__ENABLE_CUDA__)
         if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+#endif
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 2)) {
             AVX_Data grad_4[4];
@@ -350,8 +360,11 @@ void Adam_Optimizer::Step_4(float* _params,
             _buf_index = !_buf_index;
         }
 #else
-        static_assert(dev_params == nullptr,
-                      "CUDA is not enabled for the parameter tiled-copy feature!")
+        assert(!dev_params);
+        if (dev_params) {
+            std::cerr << " CUDA is not enabled for the parameter tiled-copy feature!\n";
+            exit(-1);
+        }
 #endif
     }
 #endif
@@ -449,7 +462,9 @@ void Adam_Optimizer::Step_8(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
+#if defined(__ENABLE_CUDA__)
         if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+#endif
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) {
             AVX_Data grad_4[8];
@@ -654,8 +669,11 @@ void Adam_Optimizer::Step_8(float* _params,
             _buf_index = !_buf_index;
         }
 #else
-        static_assert(dev_params == nullptr,
-                      "CUDA is not enabled for the parameter tiled-copy feature!")
+        assert(!dev_params);
+        if (dev_params) {
+            std::cerr << " CUDA is not enabled for the parameter tiled-copy feature!\n";
+            exit(-1);
+        }
 #endif
     }
 #endif

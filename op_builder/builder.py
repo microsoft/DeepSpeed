@@ -274,10 +274,15 @@ class OpBuilder(ABC):
         return '-march=native'
 
     def is_cuda_available(self):
-        if torch.cuda.is_available():
-            return '-D__ENABLE_CUDA__'
-        else:
+        try:
+            if torch.cuda.is_available():
+                return '-D__ENABLE_CUDA__'
+        except:
+            print(
+                f"{WARNING} {self.name} torch.cuda is missing, only cpu ops can be compiled!"
+            )
             return '-D__DISABLE_CUDA__'
+        return '-D__DISABLE_CUDA__'
 
     def simd_width(self):
         if not self.command_exists('lscpu'):

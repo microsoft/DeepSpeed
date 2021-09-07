@@ -5,8 +5,11 @@
 #include <x86intrin.h>
 #endif
 
-#if defined(__ENABLE_CUDA__)
 #include <cuda_fp16.h>
+#include <math.h>
+#include <omp.h>
+
+#if defined(__ENABLE_CUDA__)
 #include <cuda_runtime_api.h>
 #include "context.h"
 #include "cublas_v2.h"
@@ -123,9 +126,10 @@ public:
                 float* _exp_avg,
                 float* _exp_avg_sq,
                 size_t _param_size,
-#if defined(__ENABLE_CUDA__)
                 __half* dev_params = nullptr,
                 bool half_precision = false);
+
+#if defined(__ENABLE_CUDA__)
     inline void SynchronizeStreams()
     {
         for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
@@ -193,8 +197,8 @@ private:
     bool _buf_index;
     bool _adamw_mode;
 
-#if defined(__ENABLE_CUDA__)
     float* _doubled_buffer[2];
+#if defined(__ENABLE_CUDA__)
     cudaStream_t _streams[2];
 #endif
 };

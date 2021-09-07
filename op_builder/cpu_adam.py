@@ -11,6 +11,12 @@ import torch
 class CPUAdamBuilder(CUDAOpBuilder):
     BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
+    CPU_ONLY = True
+    try:
+        if torch.cuda.is_available():
+            CPU_ONLY = False
+    except:
+        print(f"{WARNING} {self.name} cup-adam will build without cuda features!")
 
     def __init__(self):
         super().__init__(name=self.NAME)
@@ -23,10 +29,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.adam.{self.NAME}_op'
 
     def sources(self):
-        if torch.cuda.is_available():
-            return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
-        else:
+        if CPU_ONLY:
             return ['csrc/adam/cpu_adam.cpp']
+        else:
+            return ['csrc/adam/cpu_adam.cpp', 'csrc/adam/custom_cuda_kernel.cu']
 
     def include_paths(self):
         import torch
@@ -39,14 +45,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
         ENABLE_CUDA = self.is_cuda_available()
-        if torch.cuda.is_available():
+        if CPU_ONLY:
             return [
                 '-O3',
                 '-std=c++14',
-                f'-L{CUDA_LIB64}',
-                '-lcudart',
-                '-lcublas',
-                '-g',
                 '-Wno-reorder',
                 CPU_ARCH,
                 '-fopenmp',
@@ -57,6 +59,10 @@ class CPUAdamBuilder(CUDAOpBuilder):
             return [
                 '-O3',
                 '-std=c++14',
+                f'-L{CUDA_LIB64}',
+                '-lcudart',
+                '-lcublas',
+                '-g',
                 '-Wno-reorder',
                 CPU_ARCH,
                 '-fopenmp',
