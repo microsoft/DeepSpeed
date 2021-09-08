@@ -32,7 +32,10 @@ except ImportError:
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
 from op_builder import ALL_OPS, get_default_compute_capatabilities, OpBuilder
+
+# fetch rocm state
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch
+rocm_version = OpBuilder.installed_rocm_version
 
 RED_START = '\033[31m'
 RED_END = '\033[0m'
@@ -63,7 +66,8 @@ extras_require = {
 if torch_available and torch.cuda.is_available():
     if shutil.which('ompi_info') or shutil.which('mpiname'):
         if is_rocm_pytorch:
-            cupy = "cupy"
+            rocm_major, rocm_minor = rocm_version
+            cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
         else:
             cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
         extras_require['1bit_adam'].append(cupy)
