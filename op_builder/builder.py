@@ -517,14 +517,24 @@ class CUDAOpBuilder(OpBuilder):
         from torch.utils.cpp_extension import CUDAExtension
         if not self.is_rocm_pytorch():
             assert_no_cuda_mismatch()
-        return CUDAExtension(name=self.absolute_name(),
-                             sources=self.strip_empty_entries(self.sources()),
-                             include_dirs=self.strip_empty_entries(self.include_paths()),
-                             libraries=self.strip_empty_entries(self.libraries_args()),
-                             extra_compile_args={
-                                 'cxx': self.strip_empty_entries(self.cxx_args()),
-                                 'nvcc': self.strip_empty_entries(self.nvcc_args())
-                             })
+        cuda_ext = CUDAExtension(
+            name=self.absolute_name(),
+            sources=self.strip_empty_entries(self.sources()),
+            include_dirs=self.strip_empty_entries(self.include_paths()),
+            libraries=self.strip_empty_entries(self.libraries_args()),
+            extra_compile_args={
+                'cxx': self.strip_empty_entries(self.cxx_args()),
+                'nvcc': self.strip_empty_entries(self.nvcc_args())
+            })
+        if self.is_rocm_pytorch():
+            # hip converts paths to absolute, this converts back to relative
+            sources = cuda_ext.sources
+            curr_file = Path(__file__).parent.parent  # ds root
+            for i in range(len(sources)):
+                src = Path(sources[i])
+                sources[i] = str(src.relative_to(curr_file))
+            cuda_ext.sources = sources
+        return cuda_ext
 
     def cxx_args(self):
         if sys.platform == "win32":
