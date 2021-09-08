@@ -276,9 +276,9 @@ int cublas_strided_batched_gemm(cublasHandle_t handle,
 #endif
 
 #ifdef __HIP_PLATFORM_HCC__
-    if (status != CUBLAS_STATUS_SUCCESS) {
-#else
     if (status != rocblas_status_success) {
+#else
+    if (status != CUBLAS_STATUS_SUCCESS) {
 #endif
         fprintf(stderr,
                 "!!!! kernel execution error. (batch: %d, m: %d, n: %d, k: %d, error: %d) \n",
