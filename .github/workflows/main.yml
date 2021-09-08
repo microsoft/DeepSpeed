@@ -14,7 +14,7 @@ on:
 jobs:
   # unit tests running on nvidia gpus
   nv-torch18:
-    runs-on: [self-hosted, nvidia torch18]
+    runs-on: [self-hosted, nvidia, torch18]
 
     steps:
       - uses: actions/checkout@v2
@@ -38,7 +38,7 @@ jobs:
           TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
 
   nv-torch12:
-    runs-on: [self-hosted, nvidia torch12]
+    runs-on: [self-hosted, nvidia, torch12]
 
     steps:
       - uses: actions/checkout@v2
