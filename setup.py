@@ -34,8 +34,8 @@ except ImportError:
 from op_builder import ALL_OPS, get_default_compute_capatabilities, OpBuilder
 
 # fetch rocm state
-is_rocm_pytorch = OpBuilder.is_rocm_pytorch
-rocm_version = OpBuilder.installed_rocm_version
+is_rocm_pytorch = OpBuilder.is_rocm_pytorch()
+rocm_version = OpBuilder.installed_rocm_version()
 
 RED_START = '\033[31m'
 RED_END = '\033[0m'
