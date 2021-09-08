@@ -54,6 +54,7 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
+    '1bit': [], # add cupy based on cuda/rocm version
     '1bit-mpi': fetch_requirements('requirements/requirements-1bit-mpi.txt'),
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
