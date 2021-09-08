@@ -28,10 +28,12 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
-
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
     int row = blockIdx.x;
     int id = threadIdx.x;
     int gid = id / WARP_SIZE;
@@ -123,14 +125,17 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                __half* means,
                                                int row_stride)
 {
-#if __CUDA_ARCH__ >= 700
+#if __CUDA_ARCH__ >= 700 || __HIP_PLATFORM_HCC__
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, 32);
     g.tiled_partition(b, 32);
+#else
+    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -318,9 +323,12 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, 32);
     g.tiled_partition(b, 32);
+#else
+    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -416,9 +424,13 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, 32);
     g.tiled_partition(b, 32);
+#else
+    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+#endif
+
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -626,9 +638,12 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     __shared__ float gamma_buffer[TILE_DIM][TILE_DIM + 1];
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, TILE_DIM);
     g.tiled_partition(b, TILE_DIM);
+#else
+    cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#endif
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = threadIdx.y * width + idx;
@@ -695,9 +710,12 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     __shared__ float gamma_buffer[TILE_DIM][TILE_DIM + 1];
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, TILE_DIM);
     g.tiled_partition(b, TILE_DIM);
+#else
+    cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#endif
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = threadIdx.y * width + idx;
@@ -762,9 +780,12 @@ __global__ void LayerNormBackward2(const float* out_grad,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -864,9 +885,12 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1081,9 +1105,12 @@ __global__ void LayerNormBackward2(const float* out_grad,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1178,9 +1205,12 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1382,9 +1412,12 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     __shared__ float gamma_buffer[TILE_DIM][TILE_DIM + 1];
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, TILE_DIM);
     g.tiled_partition(b, TILE_DIM);
+#else
+    cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#endif
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = threadIdx.y * width + idx;
@@ -1446,9 +1479,12 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     __shared__ float gamma_buffer[TILE_DIM][TILE_DIM + 1];
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, TILE_DIM);
     g.tiled_partition(b, TILE_DIM);
+#else
+    cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
+#endif
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     int offset = threadIdx.y * width + idx;
@@ -1507,9 +1543,12 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1613,9 +1652,12 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1833,9 +1875,12 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
@@ -1938,9 +1983,12 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    // cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#ifdef __HIP_PLATFORM_HCC__
     cg::thread_group g(cg::internal::cg_coalesced_tile, WARP_SIZE);
     g.tiled_partition(b, WARP_SIZE);
+#else
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+#endif
 
     int row = blockIdx.x;
     int id = threadIdx.x;
