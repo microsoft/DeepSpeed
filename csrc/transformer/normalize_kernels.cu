@@ -431,7 +431,6 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
 #endif
 
-
     int row = blockIdx.x;
     int id = threadIdx.x;
     int gid = id >> 5;
