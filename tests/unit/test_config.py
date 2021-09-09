@@ -3,7 +3,7 @@ import torch
 import pytest
 import json
 import argparse
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
 
@@ -56,6 +56,7 @@ def _batch_assert(status, ds_config, batch, micro_batch, gas, success):
                          (2,32,8,2,True),
                          (2,33,17,2,False),
                          (2,32,18,1,False)]) # yapf: disable
+@skipIfRocm()
 def test_batch_config(num_ranks, batch, micro_batch, gas, success):
     @distributed_test(world_size=2)
     def _test_batch_config(num_ranks, batch, micro_batch, gas, success):

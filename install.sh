@@ -156,7 +156,7 @@ python setup.py $VERBOSE bdist_wheel
 
 if [ "$local_only" == "1" ]; then
     echo "Installing deepspeed"
-    $PIP_SUDO pip uninstall -y deepspeed
+#    $PIP_SUDO pip uninstall -y deepspeed
     $PIP_SUDO $PIP_INSTALL dist/deepspeed*.whl
     ds_report
 else
@@ -171,7 +171,11 @@ else
     tmp_wheel_path="/tmp/deepspeed_wheels"
 
     pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*; else mkdir -pv $tmp_wheel_path; fi"
-    pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
+    if [ -e "/opt/rocm" ]; then
+        pdcp -w $hosts requirements/requirements-rocm.txt ${tmp_wheel_path}/
+    else
+        pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
+    fi
 
     echo "Installing deepspeed"
     pdsh -w $hosts "$PIP_SUDO pip uninstall -y deepspeed"
