@@ -581,7 +581,8 @@ class CUDAOpBuilder(OpBuilder):
                     '-std=c++14',
                     '-g',
                     '-Wno-reorder',
-                    '-D__HIP_PLATFORM_AMD__'
+                    '-D__HIP_PLATFORM_AMD__',
+                    '-D__hip_platform_hcc__'
                 ]
             else:
                 return ['-O3', '-std=c++14', '-g', '-Wno-reorder']

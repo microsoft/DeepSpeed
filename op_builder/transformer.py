@@ -2,7 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import torch
-from .builder import CUDAOpBuilder
+from .builder import CUDAOpBuilder, OpBuilder
 
 
 class TransformerBuilder(CUDAOpBuilder):
@@ -25,15 +25,17 @@ class TransformerBuilder(CUDAOpBuilder):
             'csrc/transformer/dropout_kernels.cu',
             'csrc/transformer/normalize_kernels.cu',
             'csrc/transformer/softmax_kernels.cu',
-            'csrc/transformer/general_kernels.cu'
+            'csrc/transformer/general_kernels.cu',
+            'csrc/transformer/context_cuda.cpp'
         ]
 
     def include_paths(self):
-        includes = ['csrc/includes']
+        includes = ['csrc/includes', 'csrc/includes/patch/hip/hcc_detail/']
         if self.is_rocm_pytorch():
             from torch.utils.cpp_extension import ROCM_HOME
             includes += [
                 '{}/hiprand/include'.format(ROCM_HOME),
-                '{}/rocrand/include'.format(ROCM_HOME)
+                '{}/rocrand/include'.format(ROCM_HOME),
+                '{}/hip/include/'.format(ROCM_HOME)
             ]
         return includes
