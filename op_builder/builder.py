@@ -30,6 +30,11 @@ except ImportError:
         f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
     )
 
+try:
+    from torch.utils.hipify import hipify_python
+except ImportError:
+    print()
+
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
 
@@ -427,9 +432,38 @@ class OpBuilder(ABC):
         extra_include_paths = [
             self.deepspeed_src_path(path) for path in self.include_paths()
         ]
+        if self.is_rocm_pytorch():
+            from torch.utils.cpp_extension import _get_build_directory
+            from torch.utils.cpp_extension import _is_cuda_file
+            c_sources = []
+            for s in sources:
+                if not _is_cuda_file(s):
+                    c_sources.append(s)
+            build_directory = _get_build_directory(self.name, verbose=True)
+            hipify_python.hipify(project_directory=build_directory,
+                                 output_directory=build_directory,
+                                 includes=os.path.join(build_directory,
+                                                       '*'),
+                                 extra_files=[
+                                     os.path.abspath(s)
+                                     for s in self.strip_empty_entries(c_sources)
+                                 ],
+                                 show_detailed=True,
+                                 is_pytorch_extension=True)
+            c_sources = [hipify_python.get_hip_file_path(s) for s in c_sources]
+
+            new_sources = []
+            for src in sources:
+                if _is_cuda_file(src):
+                    new_sources.append(src)
+
+            for src in c_sources:
+                src = Path(src)
+                new_sources.append(os.path.join(src.parent.parent, src.name))
+
         op_module = load(
             name=self.name,
-            sources=self.strip_empty_entries(sources),
+            sources=self.strip_empty_entries(new_sources),
             extra_include_paths=self.strip_empty_entries(extra_include_paths),
             extra_cflags=self.strip_empty_entries(self.cxx_args()),
             extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
@@ -540,7 +574,16 @@ class CUDAOpBuilder(OpBuilder):
         if sys.platform == "win32":
             return ['-O2']
         else:
-            return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
+            if OpBuilder._is_rocm_pytorch:
+                return [
+                    '-O3',
+                    '-std=c++14',
+                    '-g',
+                    '-Wno-reorder',
+                    '-D__HIP_PLATFORM_AMD__'
+                ]
+            else:
+                return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
         args = ['-O3']
