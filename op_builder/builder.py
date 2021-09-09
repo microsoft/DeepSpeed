@@ -456,14 +456,15 @@ class OpBuilder(ABC):
             for src in sources:
                 if _is_cuda_file(src):
                     new_sources.append(src)
-
             for src in c_sources:
                 src = Path(src)
                 new_sources.append(os.path.join(src.parent.parent, src.name))
 
+            sources = new_sources
+
         op_module = load(
             name=self.name,
-            sources=self.strip_empty_entries(new_sources),
+            sources=self.strip_empty_entries(sources),
             extra_include_paths=self.strip_empty_entries(extra_include_paths),
             extra_cflags=self.strip_empty_entries(self.cxx_args()),
             extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
