@@ -8,6 +8,7 @@ import random
 import time
 import copy
 from torch import nn
+from common import skipIfRocm
 from modelingpreln import BertEncoder as BertEncoderPreln
 from modeling import BertEncoder as BertEncoderPostln
 from modeling import BertConfig, BertLayerNorm
@@ -268,6 +269,7 @@ def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
                              #(3,128,51,2,24,False,False, 0.1),
                              #(3,128,54,2,24,False,True, 0.2),
                          ]) # yapf: disable
+@skipIfRocm()
 def test_backward(batch_size,
                   hidden_size,
                   seq_len,

@@ -14,7 +14,7 @@ PipeTopo = PipeDataParallelTopology
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.utils import RepeatingLoader
 
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 from simple_model import args_from_dict
 
 HIDDEN_DIM = 32
@@ -56,6 +56,7 @@ def simple_args(tmpdir):
     return args
 
 
+@skipIfRocm()
 def test_pipe_module_sequential(sequential_model, simple_args):
     batch_input = torch.randn(1, HIDDEN_DIM)
 

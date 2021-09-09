@@ -8,11 +8,29 @@ from torch.multiprocessing import Process
 import deepspeed
 
 import pytest
+from functools import wraps
+import unittest
 
 from pathlib import Path
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
+
+TEST_WITH_ROCM = os.getenv('DEEPSPEED_TEST_WITH_ROCM', '0') == '1'
+
+
+def skipIfRocm(reason="test doesn't currently work on the ROCm stack"):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if TEST_WITH_ROCM:
+                raise unittest.SkipTest(reason)
+            else:
+                fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def distributed_test(world_size=2, backend='nccl'):
@@ -51,6 +69,7 @@ def distributed_test(world_size=2, backend='nccl'):
 
             # make sure all ranks finish at the same time
             torch.distributed.barrier()
+
             # tear down after test completes
             torch.distributed.destroy_process_group()
 

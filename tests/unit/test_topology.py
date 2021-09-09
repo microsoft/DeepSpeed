@@ -7,7 +7,7 @@ from deepspeed.runtime.pipe.topology import PipelineParallelGrid as Grid
 from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
 from deepspeed.runtime.pipe.topology import _prime_factors
 
-from common import distributed_test
+from common import distributed_test, skipIfRocm
 
 
 def test_topology_2d():
@@ -157,6 +157,7 @@ def test_topology_comm_list():
     assert topo.get_axis_comm_lists('jeff') == []
 
 
+@skipIfRocm()
 @distributed_test(world_size=4)
 def test_grid_pipe_data():
     topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
@@ -183,6 +184,7 @@ def test_grid_pipe_data():
     assert torch.all(rank_tensor == sum(data_group))
 
 
+@skipIfRocm("Skipped as this test fails on ROCm")
 @distributed_test(world_size=4)
 def test_stage_to_global():
     topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
