@@ -1,5 +1,6 @@
+#include <cuda.h>
+#include <cuda_fp16.h>
 #include "custom_cuda_layers.h"
-
 inline __device__ float gelu(const float x)
 {
     const float sqrt_param = 0.79788456080286535587989211986876f;

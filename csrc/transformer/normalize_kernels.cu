@@ -1,3 +1,5 @@
+#include <cuda.h>
+#include <cuda_fp16.h>
 #include "custom_cuda_layers.h"
 
 namespace cg = cooperative_groups;

@@ -1,7 +1,8 @@
+#include <cuda.h>
+#include <cuda_fp16.h>
 #include <math.h>
 #include "custom_cuda_layers.h"
 #include "general_kernels.h"
-
 namespace cg = cooperative_groups;
 
 dim3 get_attn_softmax_grid(int batch_size, int heads, int sequence_length, int threads)

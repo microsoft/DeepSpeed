@@ -1,5 +1,3 @@
-#include <cuda.h>
-#include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>
 

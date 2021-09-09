@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cuda.h>
-#include <cuda_fp16.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -10,7 +8,6 @@
 #else
 #include <cooperative_groups.h>
 #endif
-#include <curand_kernel.h>
 
 #include "context.h"
 #include "cublas_wrappers.h"

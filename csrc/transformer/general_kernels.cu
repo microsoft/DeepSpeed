@@ -1,5 +1,6 @@
+#include <cuda.h>
+#include <cuda_fp16.h>
 #include "general_kernels.h"
-
 namespace cg = cooperative_groups;
 
 template <typename T>
