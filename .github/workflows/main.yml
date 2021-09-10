@@ -36,7 +36,8 @@ jobs:
         run: |
           unset TORCH_CUDA_ARCH_LIST # only jit compile for current arch
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
+          cd tests
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose unit/
 
   nv-torch12-p40:
     runs-on: [self-hosted, nvidia, torch12, p40]
@@ -60,7 +61,8 @@ jobs:
       - name: Unit tests
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
+          cd tests
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose unit/
 
   # unit tests running on amd gpus
   amd:
@@ -94,4 +96,5 @@ jobs:
       - name: Unit tests
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
+          cd tests
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose unit/

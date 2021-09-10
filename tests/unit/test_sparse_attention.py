@@ -240,7 +240,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
 
 def _skip_on_cuda_compatability():
     #pytest.skip("Skip these tests for now until we get our docker image fixed.")
-    if torch.cuda.get_device_capability()[0] >= 7:
+    if torch.cuda.get_device_capability()[0] < 7:
         pytest.skip("needs higher compute capability than 7")
     cuda_major = int(torch.version.cuda.split('.')[0]) * 10
     cuda_minor = int(torch.version.cuda.split('.')[1])
