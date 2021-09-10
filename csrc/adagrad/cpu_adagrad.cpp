@@ -217,29 +217,10 @@ void Adagrad_Optimizer::Step_4(float* _params,
             grad_4[2].data = SIMD_DIV(momentum_4[2].data, grad_4[2].data);
             grad_4[3].data = SIMD_DIV(momentum_4[3].data, grad_4[3].data);
 
-            // UPDATE TERM
-            grad_4[0].data = SIMD_MUL(step_size_4.data, grad_4[0].data);
-            grad_4[1].data = SIMD_MUL(step_size_4.data, grad_4[1].data);
-            grad_4[2].data = SIMD_MUL(step_size_4.data, grad_4[2].data);
-            grad_4[3].data = SIMD_MUL(step_size_4.data, grad_4[3].data);
-
-            // STORE UPDATE TERM TO GRAD'S MEMORY
-            SIMD_STORE2(grads + i, grad_4[0].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH, grad_4[1].data, half_precision);
-            SIMD_STORE2(grads + i + (SIMD_WIDTH << 1), grad_4[2].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH * 3, grad_4[3].data, half_precision);
-
-            //            param_4[0].data = SIMD_FMA(grad_4[0].data, step_size_4.data,
-            //            param_4[0].data); param_4[1].data = SIMD_FMA(grad_4[1].data,
-            //            step_size_4.data, param_4[1].data); param_4[2].data =
-            //            SIMD_FMA(grad_4[2].data, step_size_4.data, param_4[2].data);
-            //            param_4[3].data = SIMD_FMA(grad_4[3].data, step_size_4.data,
-            //            param_4[3].data);
-
-            param_4[0].data = SIMD_ADD(grad_4[0].data, param_4[0].data);
-            param_4[1].data = SIMD_ADD(grad_4[1].data, param_4[1].data);
-            param_4[2].data = SIMD_ADD(grad_4[2].data, param_4[2].data);
-            param_4[3].data = SIMD_ADD(grad_4[3].data, param_4[3].data);
+            param_4[0].data = SIMD_FMA(grad_4[0].data, step_size_4.data, param_4[0].data);
+            param_4[1].data = SIMD_FMA(grad_4[1].data, step_size_4.data, param_4[1].data);
+            param_4[2].data = SIMD_FMA(grad_4[2].data, step_size_4.data, param_4[2].data);
+            param_4[3].data = SIMD_FMA(grad_4[3].data, step_size_4.data, param_4[3].data);
 
             SIMD_STORE2(_params + i, param_4[0].data, half_precision);
             SIMD_STORE2(_params + i + SIMD_WIDTH, param_4[1].data, half_precision);
@@ -429,34 +410,14 @@ void Adagrad_Optimizer::Step_8(float* _params,
             grad_4[6].data = SIMD_DIV(momentum_4[6].data, grad_4[6].data);
             grad_4[7].data = SIMD_DIV(momentum_4[7].data, grad_4[7].data);
 
-            // UPDATE TERM
-            grad_4[0].data = SIMD_MUL(step_size_4.data, grad_4[0].data);
-            grad_4[1].data = SIMD_MUL(step_size_4.data, grad_4[1].data);
-            grad_4[2].data = SIMD_MUL(step_size_4.data, grad_4[2].data);
-            grad_4[3].data = SIMD_MUL(step_size_4.data, grad_4[3].data);
-            grad_4[4].data = SIMD_MUL(step_size_4.data, grad_4[4].data);
-            grad_4[5].data = SIMD_MUL(step_size_4.data, grad_4[5].data);
-            grad_4[6].data = SIMD_MUL(step_size_4.data, grad_4[6].data);
-            grad_4[7].data = SIMD_MUL(step_size_4.data, grad_4[7].data);
-
-            // STORE UPDATE TERM TO GRAD'S MEMORY
-            SIMD_STORE2(grads + i, grad_4[0].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH, grad_4[1].data, half_precision);
-            SIMD_STORE2(grads + i + (SIMD_WIDTH << 1), grad_4[2].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH * 3, grad_4[3].data, half_precision);
-            SIMD_STORE2(grads + i + (SIMD_WIDTH << 2), grad_4[4].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH * 5, grad_4[5].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH * 6, grad_4[6].data, half_precision);
-            SIMD_STORE2(grads + i + SIMD_WIDTH * 7, grad_4[7].data, half_precision);
-
-            param_4[0].data = SIMD_ADD(grad_4[0].data, param_4[0].data);
-            param_4[1].data = SIMD_ADD(grad_4[1].data, param_4[1].data);
-            param_4[2].data = SIMD_ADD(grad_4[2].data, param_4[2].data);
-            param_4[3].data = SIMD_ADD(grad_4[3].data, param_4[3].data);
-            param_4[4].data = SIMD_ADD(grad_4[4].data, param_4[4].data);
-            param_4[5].data = SIMD_ADD(grad_4[5].data, param_4[5].data);
-            param_4[6].data = SIMD_ADD(grad_4[6].data, param_4[6].data);
-            param_4[7].data = SIMD_ADD(grad_4[7].data, param_4[7].data);
+            param_4[0].data = SIMD_FMA(grad_4[0].data, step_size_4.data, param_4[0].data);
+            param_4[1].data = SIMD_FMA(grad_4[1].data, step_size_4.data, param_4[1].data);
+            param_4[2].data = SIMD_FMA(grad_4[2].data, step_size_4.data, param_4[2].data);
+            param_4[3].data = SIMD_FMA(grad_4[3].data, step_size_4.data, param_4[3].data);
+            param_4[4].data = SIMD_FMA(grad_4[4].data, step_size_4.data, param_4[4].data);
+            param_4[5].data = SIMD_FMA(grad_4[5].data, step_size_4.data, param_4[5].data);
+            param_4[6].data = SIMD_FMA(grad_4[6].data, step_size_4.data, param_4[6].data);
+            param_4[7].data = SIMD_FMA(grad_4[7].data, step_size_4.data, param_4[7].data);
 
             SIMD_STORE2(_params + i, param_4[0].data, half_precision);
             SIMD_STORE2(_params + i + SIMD_WIDTH, param_4[1].data, half_precision);
@@ -470,11 +431,9 @@ void Adagrad_Optimizer::Step_8(float* _params,
             if (dev_params) {
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t), param_4[0].data, half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
-                           param_4[2].data, half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2].data, half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2),
-                           param_4[4].data, half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2), param_4[4].data, half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5].data, half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6].data, half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7].data, half_precision);
