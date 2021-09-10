@@ -16,11 +16,6 @@ import deepspeed
 
 import sys
 
-from common import skipIfRocm
-
-#if not deepspeed.ops.__installed_ops__['transformer']:
-#    pytest.skip("transformer kernels are not installed", allow_module_level=True)
-
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     if verbose:
@@ -236,7 +231,6 @@ def run_forward(ds_config, seq_len, atol=1e-2, verbose=False, test_bsz=None):
                              (8,8192,128,64,3,False,True),
                              (1,256,2048,32,3,True,True),
                          ]) # yapf: disable
-@skipIfRocm("Skipped as this test fails on ROCm")
 def test_forward(batch_size,
                  hidden_size,
                  seq_len,
