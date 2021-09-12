@@ -74,7 +74,8 @@ void Adagrad_Optimizer::Step(float* _params,
 
             SIMD_STORE2(_params + i, param_4.data, half_precision);
 
-            if (dev_params) SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t), param_4.data, half_precision);
+            if (dev_params)
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t), param_4.data, half_precision);
 
             SIMD_STORE(_exp_avg_sq + i, variance_4.data);
         }
@@ -229,10 +230,15 @@ void Adagrad_Optimizer::Step_4(float* _params,
 
             if (dev_params) {
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t), param_4[0].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data, half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
+                            param_4[1].data,
+                            half_precision);
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
-                           param_4[2].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data, half_precision);
+                            param_4[2].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
+                            param_4[3].data,
+                            half_precision);
             }
 
             SIMD_STORE(_exp_avg_sq + i, variance_4[0].data);
@@ -430,13 +436,27 @@ void Adagrad_Optimizer::Step_8(float* _params,
 
             if (dev_params) {
                 SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t), param_4[0].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH, param_4[1].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1), param_4[2].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3, param_4[3].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2), param_4[4].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5, param_4[5].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6, param_4[6].data, half_precision);
-                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7, param_4[7].data, half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH,
+                            param_4[1].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 1),
+                            param_4[2].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 3,
+                            param_4[3].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + (SIMD_WIDTH << 2),
+                            param_4[4].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 5,
+                            param_4[5].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 6,
+                            param_4[6].data,
+                            half_precision);
+                SIMD_STORE2(_doubled_buffer[_buf_index] + (i - t) + SIMD_WIDTH * 7,
+                            param_4[7].data,
+                            half_precision);
             }
 
             SIMD_STORE(_exp_avg_sq + i, variance_4[0].data);

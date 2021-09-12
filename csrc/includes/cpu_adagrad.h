@@ -65,13 +65,8 @@
 
 class Adagrad_Optimizer {
 public:
-    Adagrad_Optimizer(float alpha = 1e-2,
-                      float eps = 1e-8,
-                      float weight_decay = 0)
-        : _alpha(alpha),
-          _eps(eps),
-          _weight_decay(weight_decay),
-          _buf_index(false)
+    Adagrad_Optimizer(float alpha = 1e-2, float eps = 1e-8, float weight_decay = 0)
+        : _alpha(alpha), _eps(eps), _weight_decay(weight_decay), _buf_index(false)
     {
         cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
         cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
@@ -109,9 +104,7 @@ public:
     inline void IncrementStep(size_t step)
     {
         _step++;
-        if (_step != step) {
-            _step = step;
-        }
+        if (_step != step) { _step = step; }
     }
     inline void update_state(float lr, float epsilon, float weight_decay)
     {
