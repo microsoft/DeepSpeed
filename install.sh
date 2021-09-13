@@ -171,11 +171,7 @@ else
     tmp_wheel_path="/tmp/deepspeed_wheels"
 
     pdsh -w $hosts "if [ -d $tmp_wheel_path ]; then rm $tmp_wheel_path/*; else mkdir -pv $tmp_wheel_path; fi"
-    if [ -e "/opt/rocm" ]; then
-        pdcp -w $hosts requirements/requirements-rocm.txt ${tmp_wheel_path}/
-    else
-        pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
-    fi
+    pdcp -w $hosts requirements/requirements.txt ${tmp_wheel_path}/
 
     echo "Installing deepspeed"
     pdsh -w $hosts "$PIP_SUDO pip uninstall -y deepspeed"
