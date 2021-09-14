@@ -9,6 +9,8 @@ import deepspeed
 
 import pytest
 
+from pathlib import Path
+
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 
@@ -102,3 +104,8 @@ def distributed_test(world_size=2, backend='nccl'):
         return run_func_decorator
 
     return dist_wrap
+
+
+def test_path(filename):
+    curr_path = Path(__file__).parent
+    return str(curr_path.joinpath(filename))
