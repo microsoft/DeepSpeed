@@ -172,6 +172,8 @@ def replace_transformer_layer(orig_layer_impl,
             transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                 hidden_size=hidden_size,
                 heads=num_attention_heads,
+                epsilon=config.get('layer_norm_eps',
+                                   1e-12),
                 fp16=fp16,
                 pre_layer_norm=preln,
                 mp_size=mp_size,
