@@ -88,7 +88,7 @@ generator.model = deepspeed.init_inference(generator.model,
                                            replace_method='auto')
 
 string = generator("DeepSpeed is", do_sample=True, min_length=50)
-if torch.distributed.get_rank() == 0:
+if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
     print(string)
 
 ```
