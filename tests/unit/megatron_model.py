@@ -2,8 +2,8 @@ import torch
 import os
 import sys
 import math
-from pathlib import Path
 
+from .common import test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
 
 
@@ -19,11 +19,9 @@ def get_gpt2_model(args_others, mp_size=1):
     from megatron.model import GPT2Model
     from megatron.initialize import initialize_megatron
 
-    curr_path = Path(__file__).parent
-
     args_defaults = {
-        'vocab_file': str(curr_path.joinpath('gpt2-vocab.json')),
-        'merge_file': str(curr_path.joinpath('gpt2-merges.txt')),
+        'vocab_file': test_path('gpt2-vocab.json'),
+        'merge_file': test_path('gpt2-merges.txt'),
         'tokenizer_type': 'GPT2BPETokenizer',
     }
 
@@ -55,11 +53,9 @@ class GPT2ModelPipe(PipelineModule):
     def __init__(self, num_layers, mp_size, args_others, topo, **kwargs):
         from megatron.initialize import initialize_megatron
 
-        curr_path = Path(__file__).parent
-
         args_defaults = {
-            'vocab_file': str(curr_path.joinpath('gpt2-vocab.json')),
-            'merge_file': str(curr_path.joinpath('gpt2-merges.txt')),
+            'vocab_file': test_path('gpt2-vocab.json'),
+            'merge_file': test_path('gpt2-merges.txt'),
             'tokenizer_type': 'GPT2BPETokenizer',
         }
 
