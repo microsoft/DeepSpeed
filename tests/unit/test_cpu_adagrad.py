@@ -17,7 +17,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         print("x = {}".format(x.flatten()))
         print("y = {}".format(y.flatten()))
         print('-' * 80)
-    np.testing.assert_allclose(x, y, err_msg="param-update dismatch!", atol=atol)
+    np.testing.assert_allclose(x, y, err_msg="param-update mismatch!", atol=atol)
 
 
 @pytest.mark.parametrize('model_size',
@@ -30,7 +30,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                              (1048576),
                              (30000000),
                          ]) # yapf: disable
-def test_cpu_adam_opt(model_size):
+def test_cpu_adagrad_opt(model_size):
     device = 'cpu'
     rng_state = torch.get_rng_state()
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
@@ -58,7 +58,7 @@ def test_cpu_adam_opt(model_size):
                              (16 * 32, 16 * 256, 16),
                              (16 * 256, 16 * 16384, 16),
                          ]) # yapf: disable
-def test_cpu_adam_opt_sparse_embedding(model_size, vocabulary_size, dim):
+def test_cpu_adagrad_opt_sparse_embedding(model_size, vocabulary_size, dim):
     device = 'cpu'
     rng_state = torch.get_rng_state()
 

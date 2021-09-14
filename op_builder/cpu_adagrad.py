@@ -22,7 +22,7 @@ class CPUAdagradBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.adagrad.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/adagrad/custom_cuda_kernel.cu']
+        return ['csrc/adagrad/cpu_adagrad.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
     def include_paths(self):
         import torch
