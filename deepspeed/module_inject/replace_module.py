@@ -99,6 +99,7 @@ def replace_transformer_layer(orig_layer_impl,
                               preln=True,
                               fp16=True,
                               local_rank=-1,
+                              stochastic_mode=True,
                               training=True,
                               quantize=False,
                               encoder_decoder=False,
@@ -120,6 +121,7 @@ def replace_transformer_layer(orig_layer_impl,
         preln (bool): does the original layer implementation do pre or post layer norm?
         fp16 (bool): fp16 or fp32
         local_rank (int): GPU rank (optional),
+        stochastic_mode (bool): whether to use stochastic mode
         training (bool): specifying whether kernel-injection is done for training/inference (set to false for inference-mode injection)
         quantize_settings (tuple): this setting shows how we can quantize a model for running it through the inference kernels.
                 It includes (quantization_scales, merge_count, mlp_extra_grouping, quantize_groups).
@@ -274,7 +276,7 @@ def replace_transformer_layer(orig_layer_impl,
                 pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
                 huggingface=encoder_decoder,
                 local_rank=local_rank,
-                stochastic_mode=True,
+                stochastic_mode=stochastic_mode,
                 normalize_invertible=True,
                 training=training)
             new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
