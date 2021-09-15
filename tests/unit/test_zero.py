@@ -133,6 +133,7 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
 
 
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
+# also reproduces the https://github.com/microsoft/DeepSpeed/pull/1372
 @pytest.mark.parametrize('zero_stage', [2, 3])
 def test_zero_to_fp32(tmpdir, zero_stage):
 
@@ -168,6 +169,11 @@ def test_zero_to_fp32(tmpdir, zero_stage):
                 self.ll = torch.nn.ModuleList(
                     torch.nn.Linear(hidden_dim,
                                     hidden_dim) for i in range(n_layers))
+                # to reproduce https://github.com/microsoft/DeepSpeed/pull/1372 it is important that
+                # the number of params is uneven - the following adds 4+1 params - the linear
+                # layers are 6 param each + 5 - so total 17 elements (for 1 gpu)
+                self.classifier = torch.nn.Linear(4, 1)
+                self.b = self.register_buffer("buffer", torch.ones(15))
                 self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
             def forward(self, x, y):
