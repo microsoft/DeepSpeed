@@ -36,6 +36,7 @@ from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
+from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
@@ -123,6 +124,8 @@ class DeepSpeedEngine(Module):
         self.block_eigenvalue = None
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
+        self._step_applied = False
+        self._global_grad_norm = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -254,6 +257,19 @@ class DeepSpeedEngine(Module):
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 type(self).__name__,
                 name))
+
+    def get_global_grad_norm(self) -> float:
+        """Return the 2-norm of all gradients. If there is model parallelism,
+        the norm will be global.
+
+        The computed norm will be cached and reused until the next step() pass.
+        .. note::
+            In the presence of model parallelism, this is a collective call
+            and acts as a barrier among ``mpu.get_model_parallel_group()``.
+        Returns:
+            float: norm
+        """
+        return self._global_grad_norm
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -1323,6 +1339,9 @@ class DeepSpeedEngine(Module):
 
         self.optimizer.step()
 
+        if hasattr(self.optimizer, '_global_grad_norm'):
+            self._global_grad_norm = self.optimizer._global_grad_norm
+
         # Quantize the updated parameter if there is no overflow
         if self.quantizer:
             self.quantizer.quantize(
@@ -1648,8 +1667,11 @@ class DeepSpeedEngine(Module):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
-    def load_module_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+    def load_module_state_dict(self, state_dict, strict=True, model_f=None):
+        if model_f:
+            model_f(src=state_dict, dst=self.module)
+        else:
+            self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
         filename = 'zero_pp_rank_{}'.format(dp_rank)
@@ -1699,7 +1721,8 @@ class DeepSpeedEngine(Module):
                         tag=None,
                         load_module_strict=True,
                         load_optimizer_states=True,
-                        load_lr_scheduler_states=True):
+                        load_lr_scheduler_states=True,
+                        model_f=None):
         """Load training checkpoint
 
         Arguments:
@@ -1730,12 +1753,16 @@ class DeepSpeedEngine(Module):
                                                          tag,
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
-                                                         load_lr_scheduler_states=load_lr_scheduler_states)
+                                                         load_lr_scheduler_states=load_lr_scheduler_states,
+                                                         model_f=model_f)
 
         if self.zero_optimization() and load_path is not None:
-            self._load_zero_checkpoint(load_dir,
-                                       tag,
-                                       load_optimizer_states=load_optimizer_states)
+            success = self._load_zero_checkpoint(
+                load_dir,
+                tag,
+                load_optimizer_states=load_optimizer_states)
+            if not success:
+                self.optimizer._restore_from_fp16_weights()
 
         return load_path, client_states
 
@@ -1744,7 +1771,8 @@ class DeepSpeedEngine(Module):
                          tag,
                          load_module_strict=True,
                          load_optimizer_states=True,
-                         load_lr_scheduler_states=True):
+                         load_lr_scheduler_states=True,
+                         model_f=None):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
@@ -1763,7 +1791,8 @@ class DeepSpeedEngine(Module):
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+                                    strict=load_module_strict,
+                                    model_f=model_f)
 
         if load_optimizer_states and self.optimizer is not None and not self.zero_optimization(
         ):
@@ -1815,7 +1844,7 @@ class DeepSpeedEngine(Module):
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
         zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
         if zero_sd_list is None:
-            return
+            return False
 
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
@@ -1824,6 +1853,7 @@ class DeepSpeedEngine(Module):
         print(
             f'loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}'
         )
+        return True
 
     def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size):
         zero_ckpt_names = []
