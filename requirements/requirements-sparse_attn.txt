@@ -1,1 +1,1 @@
-triton==1.0.0.dev20210622
+triton
