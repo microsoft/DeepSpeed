@@ -374,12 +374,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 ``"cpu"``. Defaults to ``False``.
             config_dict_or_path (dict or ``json file``, optional): If provided, provides configuration.
             config (``json file`` or dict, optional): If provided, provides configuration
-                for swapping fp16 params to NVMe.
+                for swapping fp16 params to NVMe. Deprecated, use ``config_dict_or_path`` instead.
             enabled (bool, optional): If ``False``, this context has no
                 effect. Defaults to ``True``.
             dtype (``dtype``, optional): Can be used to change the data type of the parameters.
                 Supported options are ``torch.half`` and ``torch.float``. Defaults to ``None``
-            mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,wolrd_size}.
+            mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,world_size}.
 
         This context accelerates model initialization and enables models that
         are too large to allocate in their entirety in CPU memory. It has the
@@ -487,7 +487,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OFFLOAD_NVME_DEVICE:
-            _ds_config = DeepSpeedConfig(config)
             self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config)
         else:
             self.param_swapper = None
