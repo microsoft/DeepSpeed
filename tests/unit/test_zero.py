@@ -227,14 +227,15 @@ def test_zero_to_fp32(tmpdir, zero_stage):
             orig_state_dict[name] = param.detach().cpu()
         print(orig_state_dict)
 
-        fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
-        #dump_state_dict(fp32_model)
+        if dist.get_rank() == 0:
+            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+            #dump_state_dict(fp32_model)
 
-        fp32_state_dict = fp32_model.state_dict()
-        for name in orig_state_dict.keys():
-            # float() workaround for torch<1.6
-            assert torch.allclose(orig_state_dict[name].float(),
-                                  fp32_state_dict[name].float())
+            fp32_state_dict = fp32_model.state_dict()
+            for name in orig_state_dict.keys():
+                # float() workaround for torch<1.6
+                assert torch.allclose(orig_state_dict[name].float(),
+                                      fp32_state_dict[name].float())
 
     _test_zero_to_fp32()
 
