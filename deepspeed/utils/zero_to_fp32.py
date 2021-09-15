@@ -10,6 +10,7 @@
 import argparse
 import torch
 import glob
+import math
 import os
 from collections import OrderedDict
 
@@ -217,8 +218,16 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     if zero_stage == 3:
         offset *= world_size
 
+    mismatch = False
+    if zero_stage == 2:
+        # Z2 started to align to 4 to improve nccl performance
+        offset_aligned_to_4 = 4 * math.ceil(offset / 4)
+        mismatch = offset_aligned_to_4 != avail_numel
+    elif zero_stage == 3:
+        mismatch = offset != avail_numel
+
     # Sanity check
-    if offset != avail_numel:
+    if mismatch:
         raise ValueError(
             f"consumed {offset} numels out of {avail_numel} - something is wrong")
 
