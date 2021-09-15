@@ -221,7 +221,6 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     def align_to_4(x):
         return 4 * math.ceil(x / 4)
 
-    mismatch = False
     if zero_stage == 2:
         # Z2 started to align to 4 to improve nccl performance
         offset = align_to_4(offset)
