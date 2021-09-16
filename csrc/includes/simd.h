@@ -5,6 +5,8 @@
 #include <x86intrin.h>
 #endif
 
+#if defined(__AVX512__) or defined(__AVX256__)
+
 #define ROUND_DOWN(size, step) ((size) & ~((step)-1))
 
 #define TILE (128 * 1024 * 1024)
@@ -47,18 +49,14 @@
 #define INTV __m128i
 #endif
 
-#if defined(__AVX512__) or defined(__AVX256__)
 union AVX_Data {
 #if defined(__AVX512__)
     __m512 data;
-#else
+#elif defined(__AVX256__)
     __m256 data;
 #endif
     // float data_f[16];
 };
-#endif
-
-#if defined(__AVX512__) or defined(__AVX256__)
 
 template <int span>
 inline void simd_store(float* dst, AVX_Data* src, bool half_precision)

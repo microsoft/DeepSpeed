@@ -47,6 +47,7 @@ public:
         cudaFreeHost(_doubled_buffer[0]);
         cudaFreeHost(_doubled_buffer[1]);
     }
+#if defined(__AVX512__) or defined(__AVX256__)
     template <int span>
     void Step_AVX(size_t* rounded_size,
                   float* _params,
@@ -56,6 +57,7 @@ public:
                   size_t param_size,
                   __half* dev_param = nullptr,
                   bool half_precision = false);
+#endif
     STEP(1)
     STEP(4)
     STEP(8)
@@ -118,6 +120,7 @@ private:
     cudaStream_t _streams[2];
 };
 
+#if defined(__AVX512__) or defined(__AVX256__)
 template <int span>
 void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               float* _params,
@@ -129,7 +132,6 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
                               bool half_precision)
 {
     size_t new_rounded_size = 0;
-#if defined(__AVX512__) or defined(__AVX256__)
 
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -216,5 +218,5 @@ void Adam_Optimizer::Step_AVX(size_t* rounded_size,
         }
     }
     *rounded_size = new_rounded_size;
-#endif
 }
+#endif

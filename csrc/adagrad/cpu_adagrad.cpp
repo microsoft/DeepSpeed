@@ -23,12 +23,13 @@ void Adagrad_Optimizer::Step_1(float* _params,
                                __half* dev_params,
                                bool half_precision)
 {
-    float step_size = -1 * _alpha;
     size_t rounded_size = 0;
+#if defined(__AVX512__) or defined(__AVX256__)
     Step_AVX<1>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
-
+#endif
     if (_param_size > rounded_size) {
+        float step_size = -1 * _alpha;
         __half* grads_cast_h;
         __half* params_cast_h;
         if (half_precision) {
@@ -81,8 +82,10 @@ void Adagrad_Optimizer::Step_4(float* _params,
                                bool half_precision)
 {
     size_t rounded_size = 0;
+#if defined(__AVX512__) or defined(__AVX256__)
     Step_AVX<4>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
+#endif
     if (_param_size > rounded_size)
         Step_1((_params + rounded_size),
                (grads + rounded_size),
@@ -131,8 +134,10 @@ void Adagrad_Optimizer::Step_8(float* _params,
                                bool half_precision)
 {
     size_t rounded_size = 0;
+#if defined(__AVX512__) or defined(__AVX256__)
     Step_AVX<8>(
         &rounded_size, _params, grads, _exp_avg_sq, _param_size, dev_params, half_precision);
+#endif
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
                (grads + rounded_size),
