@@ -14,7 +14,6 @@ if not deepspeed.ops.__compatible_ops__[SparseAttnBuilder.NAME]:
 
 
 def test_sparse_attention_module_availability():
-    return True
     try:
         from deepspeed.ops import sparse_attention
     except ImportError:
@@ -24,7 +23,6 @@ def test_sparse_attention_module_availability():
 
 
 def test_matmul_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import MatMul
     except ImportError:
@@ -34,7 +32,6 @@ def test_matmul_module_availability():
 
 
 def test_softmax_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import Softmax
     except ImportError:
@@ -44,7 +41,6 @@ def test_softmax_module_availability():
 
 
 def test_sparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import SparsityConfig
     except ImportError:
@@ -54,7 +50,6 @@ def test_sparsityconfig_module_availability():
 
 
 def test_densesparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import DenseSparsityConfig
     except ImportError:
@@ -64,7 +59,6 @@ def test_densesparsityconfig_module_availability():
 
 
 def test_fixedsparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import FixedSparsityConfig
     except ImportError:
@@ -74,7 +68,6 @@ def test_fixedsparsityconfig_module_availability():
 
 
 def test_variablesparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import VariableSparsityConfig
     except ImportError:
@@ -84,7 +77,6 @@ def test_variablesparsityconfig_module_availability():
 
 
 def test_bigbirdsparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import BigBirdSparsityConfig
     except ImportError:
@@ -94,7 +86,6 @@ def test_bigbirdsparsityconfig_module_availability():
 
 
 def test_bslongformersparsityconfig_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import BSLongformerSparsityConfig
     except ImportError:
@@ -104,7 +95,6 @@ def test_bslongformersparsityconfig_module_availability():
 
 
 def test_sparseselfattention_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import SparseSelfAttention
     except ImportError:
@@ -114,7 +104,6 @@ def test_sparseselfattention_module_availability():
 
 
 def test_bertsparseselfattention_module_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import BertSparseSelfAttention
     except ImportError:
@@ -124,7 +113,6 @@ def test_bertsparseselfattention_module_availability():
 
 
 def test_sparseattentionutils_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import SparseAttentionUtils
     except ImportError:
@@ -134,7 +122,6 @@ def test_sparseattentionutils_availability():
 
 
 def test_cpp_utils_availability():
-    return True
     try:
         from deepspeed.ops.sparse_attention import cpp_utils
     except ImportError:
