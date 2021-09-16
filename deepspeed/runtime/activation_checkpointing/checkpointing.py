@@ -365,11 +365,14 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
     global contiguous_data_buffers, data_offsets
 
     inputs = []
+    num_non_fp_tensors = 0
     for i, item in enumerate(args):
         if not is_activation_to_checkpoint(item):
             inputs.append(item)
+            num_non_fp_tensors += 1
             continue
-
+        
+        i -= num_non_fp_tensors
         partition_size = get_partition_size(item)
         partition = item.detach().contiguous().view(-1).narrow(
             0,
@@ -427,16 +430,19 @@ def get_partitioned_activations_for_backward(args, inputs, contiguous_checkpoint
     global contiguous_size_buffers, size_offsets
 
     new_args = []
+    num_non_fp_tensors = 0
     for i, (arg, inp) in enumerate(zip(args, inputs)):
         size = torch.tensor(arg.size()) if torch.is_tensor(arg) else None
         if not is_activation_to_checkpoint(arg):
             new_args.append(arg)
             new_args.append(size)
+            num_non_fp_tensors += 1
             continue
 
         arg.data = inp.data
         new_args.append(arg)
-
+        i -= num_non_fp_tensors
+        
         if contiguous_checkpoint:
             numel = size.numel()
             if i >= len(contiguous_size_buffers):
