@@ -13,6 +13,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # LICENSE file in the root directory of this source tree.
 
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
+from torch.profiler import profile, record_function, ProfilerActivity
 
 import time
 from time import perf_counter
@@ -349,29 +350,50 @@ class MOELayer(Base):
         # Reshape into G groups so that each group can distribute tokens equally
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
-        self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
-        dispatched_input = torch.einsum("sec,sm->ecm",
-                                        dispatch_mask.type_as(input[0]),
-                                        reshaped_input)
 
-        #print(f"alltoall called at rank:{dist.get_rank()} with dispatched_input shape:{dispatched_input.shape}")
-        a = time.perf_counter()
-        dispatched_input = _AllToAll.apply(self.group, dispatched_input)
-        b = time.perf_counter()
-        #print(f"alltoall took {b-a} seconds at rank:{dist.get_rank()}")
+        with record_function("deepspeed::moe-gate"):
+            self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
+
+        with record_function("deepspeed::input-einsum"):
+            dispatched_input = torch.einsum("sec,sm->ecm",
+                                            dispatch_mask.type_as(input[0]),
+                                            reshaped_input)
+
+        with record_function("deepspeed::first-all2all"):
+            dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.world_size,
                                                     self.num_local_experts,
                                                     -1,
                                                     d_model)
-        #print(f"reshaped input after alltoall called at rank:{dist.get_rank()} is dispatched_input shape:{dispatched_input.shape}")
-        expert_output = self.experts(dispatched_input)
-        expert_output = _AllToAll.apply(self.group, expert_output)
+
+
+        with record_function("deepspeed::cudasync-before-experts"):
+            torch.cuda.synchronize()
+
+        with record_function("deepspeed::experts::forward"):
+            expert_output = self.experts(dispatched_input)
+        
+        with record_function("deepspeed::cudasync-after-experts"):
+            torch.cuda.synchronize()
+
+        with record_function("deepspeed::second-all2all"):
+            expert_output = _AllToAll.apply(self.group, expert_output)
+
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.world_size * self.num_local_experts,
                                               -1,
                                               d_model)
-        combined_output = torch.einsum("sec,ecm->sm",
-                                       combine_weights.type_as(input[0]),
-                                       expert_output)
-        return combined_output.reshape(input[0].shape)
+
+        with record_function("deepspeed::output-einsum"):
+            combined_output = torch.einsum("sec,ecm->sm",
+                                           combine_weights.type_as(input[0]),
+                                           expert_output)
+            
+            a = combined_output.reshape(input[0].shape)
+        
+        with record_function("deepspeed::cudasync-end-moe"):
+            torch.cuda.synchronize()
+        
+        return a
