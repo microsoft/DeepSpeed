@@ -3,7 +3,7 @@ import os
 import sys
 import math
 
-from .common import test_path
+from common import test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
 
 
