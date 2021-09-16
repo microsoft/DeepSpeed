@@ -37,7 +37,8 @@ jobs:
       - name: Unit tests
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose tests/unit/
+          cd tests
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose unit/
 
   nv-torch18-v100:
     runs-on: [self-hosted, nvidia, torch18, v100]
