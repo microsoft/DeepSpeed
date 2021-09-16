@@ -3,7 +3,7 @@ import os
 import sys
 import math
 
-from common import test_path
+from common import get_test_path
 from deepspeed.pipe import PipelineModule, LayerSpec
 
 
@@ -20,8 +20,8 @@ def get_gpt2_model(args_others, mp_size=1):
     from megatron.initialize import initialize_megatron
 
     args_defaults = {
-        'vocab_file': test_path('gpt2-vocab.json'),
-        'merge_file': test_path('gpt2-merges.txt'),
+        'vocab_file': get_test_path('gpt2-vocab.json'),
+        'merge_file': get_test_path('gpt2-merges.txt'),
         'tokenizer_type': 'GPT2BPETokenizer',
     }
 
@@ -54,8 +54,8 @@ class GPT2ModelPipe(PipelineModule):
         from megatron.initialize import initialize_megatron
 
         args_defaults = {
-            'vocab_file': test_path('gpt2-vocab.json'),
-            'merge_file': test_path('gpt2-merges.txt'),
+            'vocab_file': get_test_path('gpt2-vocab.json'),
+            'merge_file': get_test_path('gpt2-merges.txt'),
             'tokenizer_type': 'GPT2BPETokenizer',
         }
 
