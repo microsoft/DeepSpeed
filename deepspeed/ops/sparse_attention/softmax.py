@@ -185,9 +185,6 @@ class _sparse_softmax(torch.autograd.Function):
                 maxlut,
                 bench,
                 time):
-        global triton
-        if triton is None:
-            triton = importlib.import_module('triton')
 
         apply_scale = False if scale == 1.0 else True
 
@@ -250,9 +247,6 @@ class _sparse_softmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dx):
-        global triton
-        if triton is None:
-            triton = importlib.import_module('triton')
 
         # retrieve from context
         x, lut = ctx.saved_tensors

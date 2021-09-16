@@ -7,8 +7,7 @@ from torch.nn.functional import *
 import torch
 from torch import distributed as dist
 from collections import namedtuple
-from deepspeed.ops.sparse_attention import MatMul, Softmax, SparsityConfig
-import sys
+from deepspeed.ops.sparse_attention import SparsityConfig
 
 
 class SparseSelfAttention(nn.Module):
@@ -64,7 +63,7 @@ class SparseSelfAttention(nn.Module):
 
     # add to cache
     def get_ops(self, H, L):
-        import sys
+        from deepspeed.ops.sparse_attention import MatMul, Softmax
         if L not in SparseSelfAttention.ops:
             sparsity_layout = self.get_layout(L)
             sparse_dot_sdd_nt = MatMul(sparsity_layout,

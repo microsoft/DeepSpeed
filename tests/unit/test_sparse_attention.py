@@ -24,7 +24,7 @@ def test_sparse_attention_module_availability():
 
 def test_matmul_module_availability():
     try:
-        from deepspeed.ops.sparse_attention import MatMul
+        from deepspeed.ops.sparse_attention.matmul import MatMul
     except ImportError:
         print("Sparse MatMul Module is not installed!")
         return False
@@ -33,7 +33,7 @@ def test_matmul_module_availability():
 
 def test_softmax_module_availability():
     try:
-        from deepspeed.ops.sparse_attention import Softmax
+        from deepspeed.ops.sparse_attention.softmax import Softmax
     except ImportError:
         print("Sparse Softmax Module is not installed!")
         return False
@@ -187,7 +187,7 @@ def run_softmax_reference(x, scale, dx, kp_mask, attn_mask, layout, block):
 
 
 def run_softmax_sparse(x, scale, dx, kp_mask, attn_mask, layout, block):
-    from deepspeed.ops.sparse_attention import Softmax
+    from deepspeed.ops.sparse_attention.softmax import Softmax
     sparse_softmax = Softmax(layout, block, bench=False)
 
     dx = dense_to_sparse(dx, layout, block)
@@ -288,7 +288,7 @@ def run_matmul_reference(x, w, mode, trans_a, trans_b, layout, block, dy):
 
 
 def run_matmul_sparse(x, w, mode, trans_a, trans_b, layout, block, dy):
-    from deepspeed.ops.sparse_attention import MatMul
+    from deepspeed.ops.sparse_attention.matmul import MatMul
     x = dense_to_sparse(x, layout, block) if mode == 'dsd' else x
     w = dense_to_sparse(w, layout, block) if mode == 'dds' else w
     dy = dense_to_sparse(dy, layout, block) if mode == 'sdd' else dy
