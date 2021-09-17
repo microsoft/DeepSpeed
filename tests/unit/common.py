@@ -120,6 +120,6 @@ def distributed_test(world_size=2, backend='nccl'):
     return dist_wrap
 
 
-def test_path(filename):
+def get_test_path(filename):
     curr_path = Path(__file__).parent
     return str(curr_path.joinpath(filename))
