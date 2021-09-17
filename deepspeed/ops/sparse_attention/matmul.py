@@ -347,6 +347,11 @@ class _sparse_matmul(torch.autograd.Function):
         batch_size = a.size(0)
         a_outer = a.size(3 if trans_a else 2)
         dtype = a.dtype
+        is_16_multiple = a_inner % 16 == 0
+        is_32_multiple = a_inner % 32 == 0
+        is_64_multiple = a_inner % 64 == 0
+        if not is_16_multiple:
+            raise ValueError('Reduction size for SDD must be a multiple of 16')
         device = a.device
         # create kernel
         total_width = sum([width * pack * pack for width, pack in zip(widths, packs)])
@@ -357,6 +362,11 @@ class _sparse_matmul(torch.autograd.Function):
                         dtype=dtype,
                         device=a.device)
         for lut, width, pack in zip(luts, widths, packs):
+            F32TK = [8, 16]
+            F16TK = [16]
+            F16TK += [32] if is_32_multiple else []
+            F16TK += [64] if is_64_multiple else []
+            TK = {torch.float32: F32TK, torch.float16: F16TK}[dtype]
             num_lock = 1
             meta = {
                 'TM': block * pack,
