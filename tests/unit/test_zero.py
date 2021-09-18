@@ -167,14 +167,14 @@ def test_zero_to_fp32(tmpdir, zero_stage):
             def __init__(self, hidden_dim, n_layers):
                 super().__init__()
                 # to reproduce https://github.com/microsoft/DeepSpeed/pull/1372 it is important that
-                # the number of total params is uneven -
-                # (1) 4 layers are 3*(3+1)=12 elements each, 48 in total
+                # the number of total elements is uneven:
+                # (1) 4 layers of 3*(3+1)=12 elements each, 48 in total
                 self.ll = torch.nn.ModuleList(
                     torch.nn.Linear(hidden_dim,
                                     hidden_dim) for i in range(n_layers))
-                # the following adds 4+1=5 elements
+                # (2) the following adds 4+1=5 elements
                 self.classifier = torch.nn.Linear(4, 1)
-                # so total 48+5=53 (uneven as desired) elements
+                # total 48+5=53 (uneven as desired) elements
                 self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
             def forward(self, x, y):
