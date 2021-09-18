@@ -184,7 +184,7 @@ def test_zero_to_fp32(tmpdir, zero_stage):
                 return self.cross_entropy_loss(hidden, y)
 
         args = args_from_dict(tmpdir, config_dict)
-        hidden_dim = 3 # do not change
+        hidden_dim = 3  # do not change
 
         world_size = dist.get_world_size()
         # we want at least 2x layers as there are gpus to trigger round_robin_fp16_groups reshuffle in zero2

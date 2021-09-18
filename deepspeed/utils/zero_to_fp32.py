@@ -212,7 +212,9 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
                                                  offset,
                                                  partitioned_numel)
                       for i in range(world_size)),
-                0).narrow(0, 0, unpartitioned_numel).view(shape)
+                0).narrow(0,
+                          0,
+                          unpartitioned_numel).view(shape)
             offset += partitioned_numel
 
     if zero_stage == 3:
