@@ -12,6 +12,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # This source code is licensed under the BSD license found in the
 # LICENSE file in the root directory of this source tree.
 
+from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -282,6 +283,9 @@ class TopKGate(torch.nn.Module):
         self.eval_capacity_factor = eval_capacity_factor
         self.min_capacity = min_capacity
         self.noisy_gate_policy = noisy_gate_policy
+        self.timers = SynchronizedWallClockTimer()
+        self.wall_clock_breakdown = True
+        self.gate_time = 0.0
 
     def forward(
         self,
@@ -290,6 +294,12 @@ class TopKGate(torch.nn.Module):
     ) -> Tuple[Tensor,
                Tensor,
                Tensor]:  # type: ignore
+
+        #if torch.distributed.get_rank() == 0:
+            #print(f"forward called on gate module {self.__class__.__name__}")
+        if self.training and self.wall_clock_breakdown:
+            self.timers('TopKGate').start()
+
         if self.wg.weight.dtype != torch.float32:
             self.wg = self.wg.float()
         input_fp32 = input.float()
@@ -297,18 +307,29 @@ class TopKGate(torch.nn.Module):
         if self.noisy_gate_policy == 'Jitter' and self.training:
             input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
         logits = self.wg(input_fp32)
+
         if self.k == 1:
-            return top1gating(
+            gate_output = top1gating(
                 logits,
                 self.capacity_factor if self.training else self.eval_capacity_factor,
                 self.min_capacity,
                 used_token,
                 self.noisy_gate_policy if self.training else None)
+
         else:
-            return top2gating(
+            gate_output = top2gating(
                 logits,
                 self.capacity_factor if self.training else self.eval_capacity_factor)
+            
+        if self.training and self.wall_clock_breakdown:
+            self.timers('TopKGate').stop()
+            self.gate_time = self.timers('TopKGate').elapsed(reset=False) * 1000
+            #print(f"gate_time= {self.gate_time:.2f}")
+            #self.timers.log(['TopKGate'], reset=False)
+            #self.gate_time += t
+            #if torch.distributed.get_rank() == 0:
 
+        return gate_output
 
 class MOELayer(Base):
     """MOELayer module which implements MixtureOfExperts as described in Gshard_.
@@ -338,8 +359,18 @@ class MOELayer(Base):
         self.group = group
         self.world_size = dist.get_world_size(group)
         self.num_local_experts = num_local_experts
+        self.time_falltoall = 0.0
+        self.time_salltoall = 0.0
+        self.time_moe = 0.0
+        self.timers = SynchronizedWallClockTimer()
+        self.wall_clock_breakdown = True
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
+        
+
+        if self.training and self.wall_clock_breakdown:
+            self.timers('moe').start()
+
         # assert len(input) == 1, "only single input Tensor supported"
         # assert len(input[0].shape) == 3 or len(input[0].shape) == 2, "input Tensor must have dimensions: (s)equence, (t)oken, (m)odel"
         # removed wrong assert
@@ -352,15 +383,24 @@ class MOELayer(Base):
         reshaped_input = input[0].reshape(-1, d_model)
 
         with record_function("deepspeed::moe-gate"):
+            #print(f"calling gate")
             self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
+            #print("gate ended")
 
         with record_function("deepspeed::input-einsum"):
             dispatched_input = torch.einsum("sec,sm->ecm",
                                             dispatch_mask.type_as(input[0]),
                                             reshaped_input)
 
+        if self.training and self.wall_clock_breakdown:
+            self.timers('falltoall').start()
+        
         with record_function("deepspeed::first-all2all"):
             dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+        
+        if self.training and self.wall_clock_breakdown:
+            self.timers('falltoall').stop()
+            self.time_falltoall = self.timers('falltoall').elapsed(reset=False) * 1000
 
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.world_size,
@@ -368,18 +408,27 @@ class MOELayer(Base):
                                                     -1,
                                                     d_model)
 
+        sync = False
 
-        with record_function("deepspeed::cudasync-before-experts"):
-            torch.cuda.synchronize()
+        if sync:
+            with record_function("deepspeed::cudasync-before-experts"):
+                torch.cuda.synchronize()
 
         with record_function("deepspeed::experts::forward"):
             expert_output = self.experts(dispatched_input)
         
-        with record_function("deepspeed::cudasync-after-experts"):
-            torch.cuda.synchronize()
+        if sync:
+            with record_function("deepspeed::cudasync-after-experts"):
+                torch.cuda.synchronize()
 
+        if self.training and self.wall_clock_breakdown:
+            self.timers('salltoall').start()
         with record_function("deepspeed::second-all2all"):
             expert_output = _AllToAll.apply(self.group, expert_output)
+        
+        if self.training and self.wall_clock_breakdown:
+            self.timers('salltoall').stop()
+            self.time_salltoall = self.timers('salltoall').elapsed(reset=False) * 1000
 
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.world_size * self.num_local_experts,
@@ -393,7 +442,11 @@ class MOELayer(Base):
             
             a = combined_output.reshape(input[0].shape)
         
-        with record_function("deepspeed::cudasync-end-moe"):
-            torch.cuda.synchronize()
+        if sync:
+            with record_function("deepspeed::cudasync-end-moe"):
+                torch.cuda.synchronize()
         
+        if self.training and self.wall_clock_breakdown:
+            self.timers('moe').stop()
+            self.time_moe = self.timers('moe').elapsed(reset=False) * 1000
         return a
