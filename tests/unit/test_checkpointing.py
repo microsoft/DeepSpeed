@@ -15,6 +15,7 @@ PipeTopo = PipeDataParallelTopology
 from deepspeed.ops.op_builder import FusedLambBuilder, CPUAdamBuilder
 
 from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
+from util import required_torch_version
 
 import argparse
 import pytest
@@ -919,6 +920,9 @@ def test_checkpoint_unknown_tag_validation(tmpdir):
 
 @pytest.mark.parametrize("ep_size", [4])
 def test_checkpoint_moe(tmpdir, ep_size):
+    if not required_torch_version():
+        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
     config_dict = {
         "train_batch_size": 8,
         "steps_per_print": 1,
