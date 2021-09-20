@@ -1322,7 +1322,10 @@ class DeepSpeedEngine(Module):
             moe_time += l.time_moe
             falltoall += l.time_falltoall
             salltoall += l.time_salltoall
+        
+        #TODO: Allreduce/average them across ranks for accurate timing.
 
+        if torch.distributed.get_rank() == 0:
             logger.info(f"rank={torch.distributed.get_rank()} time (ms) | moe: (total: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}) | top-k: {gate_time:.2f}")
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
