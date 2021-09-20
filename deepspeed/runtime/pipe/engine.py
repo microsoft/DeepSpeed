@@ -567,18 +567,12 @@ class PipelineEngine(DeepSpeedEngine):
                 local_part=inputs[1],
                 group=self.grid.get_slice_parallel_group())
 
-            inputs = part_input.full()
-            inputs.requires_grad = True
-            part_input = None
-            self.pipe_buffers['inputs'][buffer_id] = inputs
-            '''
-            inputs = tuple([part_input.full(), inputs[2]])
+            inputs = tuple([part_input.full(), *inputs[2:]])
             inputs[0].requires_grad = True
             # skip mask
             #inputs[1].requires_grad = True
             part_input = None
             self.pipe_buffers['inputs'][buffer_id] = inputs
-            '''
 
         # Zero out the gradients each time we use the tensor because only the data in
         # tensor changes across batches
@@ -588,14 +582,21 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition the outputs if we are not the last stage
         if self.is_pipe_partitioned and not self.is_last_stage():
-            assert torch.is_tensor(outputs)
-            part = PartitionedTensor(tensor=outputs,
+            if isinstance(outputs, tuple):
+                for output in outputs[1:]:
+                    assert torch.is_tensor(output) and (output.requires_grad is False)
+                first_output = outputs[0]
+            elif torch.is_tensor(outputs):
+                first_output = outputs
+            else:
+                raise NotImplementedError
+            part = PartitionedTensor(tensor=first_output,
                                      group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
-            outputs.data = torch.zeros(1)
-            self.pipe_buffers['output_tensors'][buffer_id] = outputs
+            first_output.data = torch.zeros(1)
+            self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
-            outputs = tuple([part.to_meta(), part.data()])
+            outputs = tuple([part.to_meta(), part.data(), *outputs[1:]])
             part = None
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
@@ -653,11 +654,11 @@ class PipelineEngine(DeepSpeedEngine):
                     local_part=outputs[1],
                     group=self.grid.get_slice_parallel_group())
                 self.pipe_buffers['output_tensors'][buffer_id].data = part_output.full()
-                outputs = self.pipe_buffers['output_tensors'][buffer_id]
+                outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[2:])
             else:
                 # Already restored from partition
                 self.pipe_buffers['output_tensors'][buffer_id].data = outputs
-                outputs = self.pipe_buffers['output_tensors'][buffer_id]
+                outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[1:])
 
         grad_tensors = self.grad_layer
         if self.is_grad_partitioned:
@@ -666,7 +667,7 @@ class PipelineEngine(DeepSpeedEngine):
                 meta=self.grad_layer[0],
                 local_part=self.grad_layer[1],
                 group=self.grid.get_slice_parallel_group())
-            grad_tensors = part_grad.full()
+            grad_tensors = (part_grad.full(), *grad_tensors[2:])
             part_grad = None
             #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
 
@@ -889,10 +890,13 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition the gradient
         if self.is_grad_partitioned:
-            assert torch.is_tensor(inputs)
-            part = PartitionedTensor(tensor=inputs.grad,
+            part = PartitionedTensor(tensor=inputs[0].grad,
                                      group=self.grid.get_slice_parallel_group())
-            inputs = tuple([part.to_meta(), part.data()])
+            # Clear the large output data, but save the computation graph
+            # Inject the partitoned tensor into the output before sending
+
+            # XXX Hack
+            inputs = tuple([part.to_meta(), part.data(), *inputs[1:]])
 
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
@@ -986,7 +990,7 @@ class PipelineEngine(DeepSpeedEngine):
                 local_part=outputs[1],
                 group=self.grid.get_slice_parallel_group())
             outputs[0].data = part_output.full()
-            outputs = outputs[0]
+            outputs = tuple([outputs[0], *outputs[2:]])
             # save for backward
             self.pipe_buffers['outputs'][buffer_id] = outputs
 
