@@ -63,6 +63,9 @@ def distributed_test(world_size=2, backend='nccl'):
             # make sure all ranks finish at the same time
             torch.distributed.barrier()
 
+            # tear down after test completes
+            torch.distributed.destroy_process_group()
+
         def dist_launcher(num_procs, *func_args, **func_kwargs):
             """Launch processes and gracefully handle failures. """
 
