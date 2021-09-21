@@ -10,11 +10,22 @@ import deepspeed
 import pytest
 from functools import wraps
 import unittest
+from pathlib import Path
 
 from pathlib import Path
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
+
+
+def find_available_port(port=29503):
+    import socket
+    for i in range(50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(('127.0.0.1', port)) != 0:
+                return str(port)
+        port += 1
+    raise Exception("Unable to find available port for test runs")
 
 
 def distributed_test(world_size=2, backend='nccl'):
@@ -38,7 +49,7 @@ def distributed_test(world_size=2, backend='nccl'):
         def dist_init(local_rank, num_procs, *func_args, **func_kwargs):
             """Initialize torch.distributed and execute the user function. """
             os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = '29503'
+            os.environ['MASTER_PORT'] = '29503'  #find_available_port()
             os.environ['LOCAL_RANK'] = str(local_rank)
             # NOTE: unit tests don't support multi-node so local_rank == global rank
             os.environ['RANK'] = str(local_rank)
@@ -114,6 +125,6 @@ def distributed_test(world_size=2, backend='nccl'):
     return dist_wrap
 
 
-def get_test_path(src):
+def get_test_path(filename):
     curr_path = Path(__file__).parent
-    return str(curr_path.joinpath(src))
+    return str(curr_path.joinpath(filename))
