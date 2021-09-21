@@ -896,7 +896,7 @@ class PipelineEngine(DeepSpeedEngine):
             # Inject the partitoned tensor into the output before sending
 
             # XXX Hack
-            inputs = tuple([part.to_meta(), part.data(), *inputs[1:]])
+            inputs = ([part.to_meta(), part.data(), *[elt.grad for elt in inputs[1:]]])
 
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
@@ -990,7 +990,7 @@ class PipelineEngine(DeepSpeedEngine):
                 local_part=outputs[1],
                 group=self.grid.get_slice_parallel_group())
             outputs[0].data = part_output.full()
-            outputs = tuple([outputs[0], *outputs[2:]])
+            outputs = ([outputs[0], *outputs[2:]])
             # save for backward
             self.pipe_buffers['outputs'][buffer_id] = outputs
 
