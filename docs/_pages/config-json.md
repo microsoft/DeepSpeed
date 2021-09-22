@@ -301,6 +301,7 @@ Enabling and configuring ZeRO memory optimizations
     "elastic_checkpoint" : [true|false],
     "stage3_gather_fp16_weights_on_model_save": [true|false],
     "ignore_unused_parameters": [true|false]
+    "round_robin_gradients": [true|false]
     }
 ```
 
@@ -350,13 +351,19 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                     | Default |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. Only useful when running very large models. | `False` |
+| Copies the gradients to a contiguous buffer as they are produced. Avoids memory fragmentation during backward pass. | `True` |
 
 <i>**grad_hooks**</i>: [boolean]
 
 | Description                                                                                                                                | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| For use with ZeRO stage 1, enable backward hooks to reduce gradients during the backward pass or wait until the end of the backward pass.  | `True`  |  
+| For use with ZeRO stage 1, enable backward hooks to reduce gradients during the backward pass or wait until the end of the backward pass.  | `True`  |
+
+***round_robin_gradients***: [boolean]
+
+| Description                                                                                                                                | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Stage 2 optimization for CPU offloading that parallelizes gradient copying to CPU memory among ranks by fine-grained gradient partitioning. Performance benefit grows with gradient accumulation steps (more copying between optimizer steps) or GPU count (increased parallelism). | `False`  |
 
 ***offload_param***: [dictionary]
 
@@ -368,7 +375,7 @@ Enabling and configuring ZeRO memory optimizations
 
 | Description                                                                                                                                                                                                                    | Default |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Enable offloading of optimizer state to CPU or NVMe, and optimizer computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 3. See [here](#optimizer-offloading) for more details. | `False` |
+| Enable offloading of optimizer state to CPU or NVMe, and optimizer computation to CPU. This frees up GPU memory for larger models or batch sizes. Valid only with stage 2 and 3. See [here](#optimizer-offloading) for more details. | `False` |
 
 ***stage3_max_live_parameters***: [integer]
 
@@ -405,7 +412,7 @@ Enabling and configuring ZeRO memory optimizations
 
 ***cpu_offload***: [boolean]
 
-**Deprecated:** **cpu_offload** is disabled and will be removed in future, please use `offload_optimizer` instead.
+**Deprecated:** **cpu_offload** is deprecated and will be removed in future, please use `offload_optimizer` instead.
 {: .notice--warning}
 
 | Description                                                                                                                                       | Default |
@@ -557,7 +564,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                    | Default |
 | ------------------------------ | ------- |
-| Print train loss every N steps | `10`    |
+| Print progress report every N training steps. The report includes the number of training steps, number of skipped optimizer updates (likely due to overflows in mixed-precision training), current learning rate, and current momentum.  | `10`    |
 
 <i>**wall_clock_breakdown**</i>: [boolean]
 
@@ -709,3 +716,79 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "num_sliding_window_blocks": 3
   }
 ```
+
+### Curriculum Learning
+```json
+  "curriculum_learning": {
+    "enabled": true,
+    "curriculum_type": "seqlen",
+    "min_difficulty": 8,
+    "max_difficulty": 1024,
+    "schedule_type": "fixed_linear",
+    "schedule_config": {
+      "total_curriculum_step": 40000,
+      "difficulty_step": 8
+    }
+  }
+```
+<i>**enabled**</i>: [boolean]
+
+| Description                               | Default |
+| ----------------------------------------- | ------- |
+| Set to true to enable curriculum learning | `false` |
+
+<i>**curriculum_type**</i>: [string]
+
+| Description                                                       | Default |
+| ----------------------------------------------------------------- | ------- |
+| Type of curriculum difficulty metric. Currently support `seqlen`. | N/A |
+
+
+<i>**min_difficulty**</i>: [integer]
+
+| Description                   | Default |
+| ----------------------------- | ------- |
+| The starting difficulty level | N/A |
+
+<i>**max_difficulty**</i>: [integer]
+
+| Description                 | Default |
+| --------------------------- | ------- |
+| The ending difficulty level | N/A  |
+
+<i>**schedule_type**</i>: [string]
+
+| Description                                                                                        | Default |
+| -------------------------------------------------------------------------------------------------- | ------- |
+| Type of curriculum schedule. Currently support `fixed_linear`, `fixed_root`, and `fixed_discrete`. | N/A |
+
+
+<i>**total_curriculum_step**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| Total number of steps for the curriculum learning. One of the `schedule_config` when the `fixed_linear` and `fixed_root` schedule_type are used. | N/A |
+
+<i>**difficulty_step**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| At any time, the curriculum learning difficulty must be multiple of this `difficulty_step`. Set this to multiple of 8 (for FP16 data) or 16 (for INT8 data) to enable NVIDIA Tensor Core acceleration. One of the `schedule_config` when the `fixed_linear` and `fixed_root` schedule_type are used. | N/A |
+
+<i>**root_degree**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| Root degree of the curriculum schedule function. One of the `schedule_config` when the `fixed_root` schedule_type is used. | N/A |
+
+<i>**difficulty**</i>: [list of integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| List of difficulty levels to be used during schedule. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A |
+
+<i>**max_step**</i>: [list of integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| List of which step to change difficulty level. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A |

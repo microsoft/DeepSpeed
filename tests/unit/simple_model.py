@@ -4,6 +4,7 @@ import argparse
 import torch
 
 from deepspeed.pipe import PipelineModule, LayerSpec
+from deepspeed.moe.layer import MoE
 
 
 class SimpleModel(torch.nn.Module):
@@ -17,11 +18,38 @@ class SimpleModel(torch.nn.Module):
 
     def forward(self, x, y):
         hidden_dim = x
-        if self.empty_grad and torch.distributed.get_rank() == 0:
-            hidden_dim = self.linear(hidden_dim) + self.linear2(hidden_dim)
-        else:
-            hidden_dim = self.linear(hidden_dim)
+        hidden_dim = self.linear(hidden_dim)
         return self.cross_entropy_loss(hidden_dim, y)
+
+
+class Curriculum_SimpleModel(SimpleModel):
+    def __init__(self, hidden_dim, empty_grad=False):
+        super(Curriculum_SimpleModel, self).__init__(hidden_dim, empty_grad)
+
+    def forward(self, x, y, **kwargs):
+        seqlen = kwargs.get('curriculum_seqlen', None)
+        loss = super(Curriculum_SimpleModel, self).forward(x, y)
+        return loss, seqlen
+
+
+class SimpleMoEModel(torch.nn.Module):
+    def __init__(self, hidden_dim, num_experts=4):
+        super(SimpleMoEModel, self).__init__()
+        self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+        linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.linear2 = MoE(hidden_size=hidden_dim,
+                           expert=linear2,
+                           num_experts=num_experts,
+                           k=1)
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, x, y):
+        hidden_dim = x
+        hidden_dim = self.linear(hidden_dim)
+        output, _, _ = self.linear2(hidden_dim)
+        hidden_dim = hidden_dim + output
+        sentence_embed = hidden_dim.mean(1)
+        return self.cross_entropy_loss(sentence_embed, y)
 
 
 class UnusedParametersModel(SimpleModel):
@@ -149,9 +177,34 @@ class PLD_SimpleModel(SimpleModel):
         return hidden_dim
 
 
+def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
+    train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
+    train_label = torch.empty(total_samples,
+                              dtype=torch.long,
+                              device=device).random_(hidden_dim)
+    train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
+    return train_dataset
+
+
 def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half):
     batch_size = model.train_micro_batch_size_per_gpu()
-    train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
+    train_dataset = random_dataset(total_samples, hidden_dim, device, dtype=dtype)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    return train_loader
+
+
+def sequence_dataloader(model,
+                        total_samples,
+                        hidden_dim,
+                        device,
+                        seq_len: int = 32,
+                        dtype=torch.half):
+    batch_size = model.train_micro_batch_size_per_gpu()
+    train_data = torch.randn(total_samples,
+                             seq_len,
+                             hidden_dim,
+                             device=device,
+                             dtype=dtype)
     train_label = torch.empty(total_samples,
                               dtype=torch.long,
                               device=device).random_(hidden_dim)

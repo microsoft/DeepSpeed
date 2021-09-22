@@ -39,6 +39,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.gather_fp16_weights_on_model_save = None
 
         self.ignore_unused_parameters = None
+        self.round_robin_gradients = None
 
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
@@ -65,14 +66,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         return zero_config_dict
 
     def _sanity_check(self, zero_config_dict):
-        deprecated_dict = {
-            ZERO_OPTIMIZATION_CPU_OFFLOAD:
-            ZERO_OPTIMIZATION_OFFLOAD_OPTIMIZER,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS:
-            ZERO_OPTIMIZATION_OFFLOAD_PARAM,
-            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY:
+        deprecated_dict = dict(
+            ZERO_OPTIMIZATION_CPU_OFFLOAD=ZERO_OPTIMIZATION_OFFLOAD_OPTIMIZER,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_PARAMS=ZERO_OPTIMIZATION_OFFLOAD_PARAM,
+            ZERO_OPTIMIZATION_CPU_OFFLOAD_USE_PIN_MEMORY=
             f'{ZERO_OPTIMIZATION_OFFLOAD_PARAM} or {ZERO_OPTIMIZATION_OFFLOAD_OPTIMIZER}'
-        }
+        )
 
         for old_key, new_key in deprecated_dict.items():
             if old_key in zero_config_dict:
@@ -186,3 +185,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.legacy_stage1 = get_scalar_param(zero_config_dict,
                                               ZERO_OPTIMIZATION_LEGACY_STAGE1,
                                               ZERO_OPTIMIZATION_LEGACY_STAGE1_DEFAULT)
+
+        self.round_robin_gradients = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS,
+            ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT)
