@@ -6,8 +6,12 @@
 #include <stdlib.h>
 
 #ifdef __HIP_PLATFORM_HCC__
+#define HALF_PRECISION_AVAILABLE = 1
 #include <hip/hip_cooperative_groups.h>
 #else
+#if __CUDA_ARCH__ >= 700
+#define HALF_PRECISION_AVAILABLE = 1
+#endif
 #include <cooperative_groups.h>
 #endif
 #include <curand_kernel.h>

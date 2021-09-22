@@ -39,7 +39,7 @@ __global__ void fused_bias_gelu(__half* input,
                                 int total_count,
                                 int intermediate_size)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
 
     float2* input_cast = reinterpret_cast<float2*>(input);
     const float2* bias_cast = reinterpret_cast<const float2*>(bias);
@@ -117,7 +117,7 @@ __global__ void fused_bias_add(float* input, const float* bias, int total_count,
 
 __global__ void fused_bias_add(__half* input, const __half* bias, int total_count, int hidden_size)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
 
     float2* input_cast = reinterpret_cast<float2*>(input);
     const float2* bias_cast = reinterpret_cast<const float2*>(bias);
@@ -195,7 +195,7 @@ __global__ void fused_bias_residual(__half* input,
                                     int total_count,
                                     int intermediate_size)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
 
     float2* input_cast = reinterpret_cast<float2*>(input);
     const float2* residual_cast = reinterpret_cast<const float2*>(residual);
