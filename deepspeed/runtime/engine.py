@@ -484,8 +484,8 @@ class DeepSpeedEngine(Module):
     def bfloat16_enabled(self):
         return self._config.bfloat16_enabled
 
-    def fp16_master_weights_and_gradients(self):
-        return self._config.fp16_master_weights_and_gradients
+    def bit16_master_weights_and_gradients(self):
+        return self._config.bit16_master_weights_and_gradients
 
     def amp_enabled(self):
         return self._config.amp_enabled
@@ -1037,6 +1037,7 @@ class DeepSpeedEngine(Module):
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
             round_robin_gradients = self.zero_round_robin_gradients()
+            reduced_precision_format = 'BF16' if self.bfloat16_enabled() else 'FP16'
 
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
@@ -1077,8 +1078,8 @@ class DeepSpeedEngine(Module):
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
-                fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
-                ))
+                bit16_master_weights_and_gradients=self.bit16_master_weights_and_gradients(),
+                reduced_precision_format=reduced_precision_format)
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -1752,6 +1753,7 @@ class DeepSpeedEngine(Module):
 
 
     def csr_allreduce(self, csr, dp_group):
+        # new mark for bfloat16
         # Pre-divide for fp16 stability
         csr.values.div_(dist.get_world_size(group=dp_group))
 

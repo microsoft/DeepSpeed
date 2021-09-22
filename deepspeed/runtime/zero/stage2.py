@@ -107,7 +107,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
                  partition_grads=True,
                  round_robin_gradients=False,
                  has_moe_layers=False,
-                 fp16_master_weights_and_gradients=False):
+                 bit16_master_weights_and_gradients=False,
+                 reduced_precision_format='FP16'):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -193,10 +194,12 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.round_robin_gradients = round_robin_gradients
 
         self.extra_large_param_to_reduce = None
-        self.fp16_master_weights_and_gradients = fp16_master_weights_and_gradients
+        self.bit16_master_weights_and_gradients = bit16_master_weights_and_gradients
 
-        if self.fp16_master_weights_and_gradients:
-            assert self.cpu_offload and type(self.optimizer) in [DeepSpeedCPUAdam], f"fp16_master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32. Currenty only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}. Either disable fp16_master_weights_and_gradients or enable ZeRO-2 Offload with DeepSpeedCPUAdam"
+        self.reduced_precision_format = reduced_precision_format
+
+        if self.bit16_master_weights_and_gradients:
+            assert self.cpu_offload and type(self.optimizer) in [DeepSpeedCPUAdam], f"fp16/bf16_master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32. Currenty only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}. Either disable bit16_master_weights_and_gradients or enable ZeRO-2 Offload with DeepSpeedCPUAdam"
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -289,7 +292,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.round_robin_bit16_indices.append(round_robin_indices)
 
             # create flat buffer in CPU and move to GPU
-            self.fp16_groups_flat.append(
+            self.bit16_groups_flat.append(
                 self.flatten_dense_tensors_aligned(
                     self.round_robin_bit16_groups[i],
                     self.nccl_start_alignment_factor *
@@ -319,14 +322,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         (2 * self.nccl_start_alignment_factor) == 0)
 
             # a partition of the fp32 master weights that will be updated by this process
-            if not fp16_master_weights_and_gradients:
+            if not bit16_master_weights_and_gradients:
                 self.single_partition_of_fp32_groups.append(
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
                         self.device).clone().float().detach())
             else:
                 self.single_partition_of_fp32_groups.append(
-                    self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                        self.device).clone().half().detach())
+                    self._reduce_tensor_precision(self.parallel_partitioned_bit16_groups[i][partition_id].to(
+                        self.device).clone()).detach())
 
             # modify optimizer of have flat master weight
             self.single_partition_of_fp32_groups[
@@ -479,6 +482,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
+
+    def _reduce_tensor_precision(self, t):
+        if self.reduced_precision_format == 'FP16':
+            return t.half()
+        elif self.reduced_precision_format == 'BF16':
+            return t.bfloat16()
+        else:
+            raise ValueError("Unsupported reduced precision format")
 
     def _configure_moe_settings(self):
         assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
@@ -997,7 +1008,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #buffer for storing gradients for this parameter in CPU
         def buffer_to_accumulate_to_in_cpu():
-            if not self.fp16_master_weights_and_gradients:
+            if not self.bit16_master_weights_and_gradients:
                 return torch.zeros(param.numel(),
                                    dtype=param.dtype,
                                    device=self.device).pin_memory()
@@ -1009,7 +1020,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #accumulate gradients into param.grad or parts of it that belongs to this parittion
         def accumulate_gradients():
-            if not self.fp16_master_weights_and_gradients:
+            if not self.bit16_master_weights_and_gradients:
                 dest_buffer.copy_(self.accumulated_grads_in_cpu[param_id].view(-1),
                                   non_blocking=True)
                 param.grad.data.view(-1).add_(dest_buffer)
@@ -1028,7 +1039,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         #move accumulated gradients back to CPU
         def copy_gradients_to_cpu():
-            if not self.fp16_master_weights_and_gradients:
+            if not self.bit16_master_weights_and_gradients:
                 self.accumulated_grads_in_cpu[param_id].data.copy_(
                     param.grad.data.view(-1),
                     non_blocking=True)
@@ -1083,7 +1094,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             num_elements)
 
         src_tensor = param.grad.view(-1).narrow(0, source_offset, num_elements)
-        if not self.fp16_master_weights_and_gradients:
+        if not self.bit16_master_weights_and_gradients:
             src_tensor = src_tensor.float()
 
         dest_tensor.copy_(src_tensor, non_blocking=True)
@@ -1683,15 +1694,15 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                fp16_param_groups = [
-                    fp16_partitions[partition_id]
-                    for fp16_partitions in self.parallel_partitioned_bit16_groups
+                bit16_param_groups = [
+                    bit16_partitions[partition_id]
+                    for bit16_partitions in self.parallel_partitioned_bit16_groups
                 ]
-                self.optimizer.step(fp16_param_groups=fp16_param_groups)
+                self.optimizer.step(fp16_param_groups=bit16_param_groups)
             else:
                 self.optimizer.step()
-                for fp16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
-                    fp16_partitions[partition_id].data.copy_(fp32_partition.data)
+                for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
+                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
         else:
             self.optimizer.step()
 

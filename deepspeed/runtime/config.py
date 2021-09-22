@@ -118,11 +118,15 @@ def get_bfloat16_enabled(param_dict):
     else:
         return False
 
-def get_fp16_master_weights_and_grads_enabled(param_dict):
+def get_bit16_master_weights_and_grads_enabled(param_dict):
     if get_fp16_enabled(param_dict):
         return get_scalar_param(param_dict[FP16],
                                 FP16_MASTER_WEIGHTS_AND_GRADS,
                                 FP16_MASTER_WEIGHTS_AND_GRADS_DEFAULT)
+    elif get_bfloat16_enabled(param_dict):
+        return get_scalar_param(param_dict[BFLOAT16],
+                                BF16_MASTER_WEIGHTS_AND_GRADS,
+                                BF16_MASTER_WEIGHTS_AND_GRADS_DEFAULT)
     else:
         return False
 
@@ -798,7 +802,7 @@ class DeepSpeedConfig(object):
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
         assert not (self.fp16_enabled and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
         assert not (self.bfloat16_enabled and (self.zero_optimization_stage != 2)), 'bfloat16 mode is only enabled for Zero2 currently'
-        self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
+        self.bit16_master_weights_and_gradients = get_bit16_master_weights_and_grads_enabled(
             param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)
         self.amp_params = get_amp_params(param_dict)
@@ -969,8 +973,8 @@ class DeepSpeedConfig(object):
         if self.zero_enabled:
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
 
-        if self.fp16_master_weights_and_gradients:
-            assert self.zero_enabled and self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
+        if self.bit16_master_weights_and_gradients:
+            assert self.zero_enabled and self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "Fp16/BF16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled
