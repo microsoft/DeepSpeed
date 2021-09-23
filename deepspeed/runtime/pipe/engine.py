@@ -673,7 +673,7 @@ class PipelineEngine(DeepSpeedEngine):
                 outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[2:])
             else:
                 # Already restored from partition
-                self.pipe_buffers['output_tensors'][buffer_id].data = outputs
+                self.pipe_buffers['output_tensors'][buffer_id].data = outputs[0]
                 outputs = (self.pipe_buffers['output_tensors'][buffer_id], *outputs[1:])
 
         grad_tensors = self.grad_layer
@@ -911,6 +911,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition the gradient
         if self.is_grad_partitioned:
+            assert isinstance(inputs, tuple)
             part = PartitionedTensor(tensor=inputs[0].grad,
                                      group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
