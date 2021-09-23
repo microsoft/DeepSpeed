@@ -68,10 +68,9 @@ class DeepSpeedDataLoader(object):
         self.device_count = device_count
         self.batch_size = batch_size
         self.pin_memory = pin_memory
+        self.len = len(self.data_sampler)
+        self.data = None
         self.dataloader_drop_last = dataloader_drop_last
-        # create self.dataloader and self.data
-        self._create_dataloader()
-        self.len = len(self.data)
 
     def __iter__(self):
         self._create_dataloader()
@@ -86,23 +85,22 @@ class DeepSpeedDataLoader(object):
         return next(self.data)
 
     def _create_dataloader(self):
-        if not self.dataloader:
-            if self.collate_fn is None:
-                self.dataloader = DataLoader(self.dataset,
-                                             batch_size=self.batch_size,
-                                             pin_memory=self.pin_memory,
-                                             sampler=self.data_sampler,
-                                             num_workers=self.num_local_io_workers,
-                                             drop_last=self.dataloader_drop_last)
-            else:
-                self.dataloader = DataLoader(self.dataset,
-                                             batch_size=self.batch_size,
-                                             pin_memory=self.pin_memory,
-                                             sampler=self.data_sampler,
-                                             collate_fn=self.collate_fn,
-                                             num_workers=self.num_local_io_workers,
-                                             drop_last=self.dataloader_drop_last)
-            self.data = (x for x in self.dataloader)
+        if self.collate_fn is None:
+            self.dataloader = DataLoader(self.dataset,
+                                         batch_size=self.batch_size,
+                                         pin_memory=self.pin_memory,
+                                         sampler=self.data_sampler,
+                                         num_workers=self.num_local_io_workers,
+                                         drop_last=self.dataloader_drop_last)
+        else:
+            self.dataloader = DataLoader(self.dataset,
+                                         batch_size=self.batch_size,
+                                         pin_memory=self.pin_memory,
+                                         sampler=self.data_sampler,
+                                         collate_fn=self.collate_fn,
+                                         num_workers=self.num_local_io_workers,
+                                         drop_last=self.dataloader_drop_last)
+        self.data = (x for x in self.dataloader)
 
         return self.dataloader
 
