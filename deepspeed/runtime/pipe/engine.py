@@ -790,7 +790,7 @@ class PipelineEngine(DeepSpeedEngine):
                 assert isinstance(tensor, torch.Tensor)
                 send_shape = torch.LongTensor(data=tensor.size()).to(self.device)
                 send_ndims = torch.LongTensor(data=[len(tensor.size())]).to(self.device)
-                send_dtype = torch.LongTensor(data=self.DTYPE_TO_ID[tensor.dtype]).to(self.device)
+                send_dtype = torch.LongTensor(data=[self.DTYPE_TO_ID[tensor.dtype]]).to(self.device)
                 p2p.send(send_dtype, recv_stage)
                 p2p.send(send_ndims, recv_stage)
                 p2p.send(send_shape, recv_stage)
