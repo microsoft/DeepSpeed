@@ -850,7 +850,7 @@ class PipelineEngine(DeepSpeedEngine):
             for idx in range(num_tensors):
                 recv_dtype = torch.LongTensor(data=[0]).to(self.device)
                 p2p.recv(recv_dtype, send_stage)
-                recv_dtype = recv_dtype.item()
+                recv_dtype = self.ID_TO_DTYPE[recv_dtype.item()]
                 recv_ndims = torch.LongTensor(data=[0]).to(self.device)
                 p2p.recv(recv_ndims, send_stage)
                 recv_ndims = recv_ndims.item()
