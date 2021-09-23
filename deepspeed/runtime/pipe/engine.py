@@ -63,7 +63,7 @@ class PipelineEngine(DeepSpeedEngine):
         torch.int64,
         torch.bool
     ]
-    DTYPE_TO_ID = {id_: dtype for id_, dtype in enumerate(ID_TO_DTYPE)}
+    DTYPE_TO_ID = {dtype: id_ for id_, dtype in enumerate(ID_TO_DTYPE)}
 
     def __init__(self, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
