@@ -49,6 +49,22 @@ class PipelineEngine(DeepSpeedEngine):
     This engine is created by ``deepspeed.initialize()`` when a :class:`PipelineModule`
     is provided.
     """
+    ID_TO_DTYPE = [
+        torch.float32,
+        torch.float64,
+        torch.complex64,
+        torch.complex128,
+        torch.float16,
+        torch.bfloat16,
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.bool
+    ]
+    DTYPE_TO_ID = {id_: dtype for id_, dtype in enumerate(ID_TO_DTYPE)}
+
     def __init__(self, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
@@ -774,6 +790,8 @@ class PipelineEngine(DeepSpeedEngine):
                 assert isinstance(tensor, torch.Tensor)
                 send_shape = torch.LongTensor(data=tensor.size()).to(self.device)
                 send_ndims = torch.LongTensor(data=[len(tensor.size())]).to(self.device)
+                send_dtype = torch.LongTensor(data=self.DTYPE_TO_ID[tensor.dtype]).to(self.device)
+                p2p.send(send_dtype, recv_stage)
                 p2p.send(send_ndims, recv_stage)
                 p2p.send(send_shape, recv_stage)
                 # Useful for performance debugging.
@@ -828,16 +846,19 @@ class PipelineEngine(DeepSpeedEngine):
             count_tensor = torch.LongTensor(data=[0]).to(self.device)
             p2p.recv(count_tensor, send_stage)
             num_tensors = count_tensor.item()
-            recv_shapes = []
+            recv_shapes_and_dtypes = []
             for idx in range(num_tensors):
+                recv_dtype = torch.LongTensor(data=[0]).to(self.device)
+                p2p.recv(recv_dtype, send_stage)
+                recv_dtype = recv_dtype.item()
                 recv_ndims = torch.LongTensor(data=[0]).to(self.device)
                 p2p.recv(recv_ndims, send_stage)
                 recv_ndims = recv_ndims.item()
                 recv_shape = torch.LongTensor([1] * recv_ndims).to(self.device)
                 p2p.recv(recv_shape, send_stage)
-                recv_shapes.append(recv_shape.tolist())
+                recv_shapes_and_dtypes.append((recv_shape.tolist(), recv_dtype))
 
-            buffers = self._allocate_buffers(recv_shapes, num_buffers=1)[0]
+            buffers = self._allocate_buffers(recv_shapes_and_dtypes, num_buffers=1)[0]
             # Convert to tuples if requested.
             if recv_type == 2:
                 buffers = tuple(buffers)
@@ -998,10 +1019,10 @@ class PipelineEngine(DeepSpeedEngine):
         if self.grad_layer is None:
             if isinstance(outputs, torch.Tensor):
                 s = list(outputs.size())
-                self.grad_layer = self._allocate_buffer(s, num_buffers=1)[0]
+                self.grad_layer = self._allocate_buffer(s, dtype=outputs.size, num_buffers=1)[0]
             else:
-                sizes = [list(t.size()) for t in outputs]  # if t.is_floating_point()]
-                self.grad_layer = self._allocate_buffers(sizes, num_buffers=1)[0]
+                sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs]  # if t.is_floating_point()]
+                self.grad_layer = self._allocate_buffers(sizes_and_dtypes, num_buffers=1)[0]
 
         if isinstance(self.grad_layer, torch.Tensor):
             p2p.recv(self.grad_layer, self.next_stage)
@@ -1073,25 +1094,20 @@ class PipelineEngine(DeepSpeedEngine):
                 if t.grad is not None:
                     t.grad.data.zero_()
 
-    def _allocate_zeros(self, shape, fp16=None, **kwargs):
+    def _allocate_zeros(self, shape, **kwargs):
         """ Allocate a tensor of zeros on the engine's device.
 
         Arguments:
             shape: the shape of the tensor to allocate
-            fp16 (bool): whether to use FP16. default: defer to self.fp16_enabled()
             kwargs: passed to torch.zeros()
 
         Returns:
             A tensor from torch.zeros() allocated on self.device.
         """
+        if "dtype" not in kwargs and self.fp16_enabled():
+            kwargs["dtype"] = torch.half
 
-        if fp16 is None:
-            fp16 = self.fp16_enabled()
-
-        if fp16:
-            return torch.zeros(shape, dtype=torch.half, device=self.device, **kwargs)
-        else:
-            return torch.zeros(shape, device=self.device, **kwargs)
+        return torch.zeros(shape, device=self.device, **kwargs)
 
     def _allocate_buffer(self, shape, num_buffers=-1, **kwargs):
         buffers = []
@@ -1101,14 +1117,14 @@ class PipelineEngine(DeepSpeedEngine):
             buffers.append(self._allocate_zeros(shape, **kwargs))
         return buffers
 
-    def _allocate_buffers(self, shapes, requires_grad=False, num_buffers=-1):
+    def _allocate_buffers(self, shapes_and_dtypes, requires_grad=False, num_buffers=-1):
         buffers = []
         if num_buffers == -1:
             num_buffers = self.num_pipe_buffers
         for count in range(num_buffers):
             buffer = []
-            for shape in shapes:
-                buffer.append(self._allocate_zeros(shape, requires_grad=requires_grad))
+            for shape, dtype in shapes_and_dtypes:
+                buffer.append(self._allocate_zeros(shape, dtype=dtype, requires_grad=requires_grad))
             buffers.append(buffer)
         return buffers
 
