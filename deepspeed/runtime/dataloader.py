@@ -5,7 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
-
+from math import ceil
 
 class RepeatingLoader:
     def __init__(self, loader):
@@ -68,7 +68,10 @@ class DeepSpeedDataLoader(object):
         self.device_count = device_count
         self.batch_size = batch_size
         self.pin_memory = pin_memory
-        self.len = len(self.data_sampler)
+        if dataloader_drop_last:
+            self.len = len(self.data_sampler) // self.batch_size
+        else:
+            self.len = ceil(len(self.data_sampler) / self.batch_size)
         self.data = None
         self.dataloader_drop_last = dataloader_drop_last
 
