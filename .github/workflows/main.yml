@@ -68,10 +68,10 @@ jobs:
 
   nv-transformers-v100:
     runs-on: [self-hosted, nvidia, torch18, v100]
-    
+
     steps:
       - uses: actions/checkout@v2
-      
+
       - name: environment
         run: |
           nvidia-smi
