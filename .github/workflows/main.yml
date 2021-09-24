@@ -70,7 +70,7 @@ jobs:
     runs-on: [self-hosted, nvidia, torch18, v100]
     
     steps:
-      -uses: actions/checkout@v2
+      - uses: actions/checkout@v2
       
       - name: environment
         run: |
@@ -92,5 +92,5 @@ jobs:
           git rev-parse --short HEAD
           cd transformers
           pip install .
-          pip install sacrebleu rouge-score nltk parameterized psutil datasets
+          find examples/pytorch -name requirements.txt -exec pip install -r {} \
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --forked --verbose tests/deepspeed
