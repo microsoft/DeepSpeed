@@ -92,5 +92,6 @@ jobs:
           git rev-parse --short HEAD
           cd transformers
           pip install .
-          find examples/pytorch -name requirements.txt -exec pip install -r {} \;
+          # find all reqs, except for image-classification (it requires torch 1.9)
+          find examples/pytorch/ -path examples/pytorch/image-classification -prune -o -name requirements.txt -exec pip install -r {} \;
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --forked --verbose tests/deepspeed
