@@ -37,8 +37,6 @@ lnav:
         url: /docs/config-json/#communication-options
       - title: "FP16"
         url: /docs/config-json/#fp16-training-options
-      - title: "AMP"
-        url: /docs/config-json/#automatic-mixed-precision-amp-training-options
       - title: "Gradient Clipping"
         url: /docs/config-json/#gradient-clipping
       - title: "ZeRO optimizations"
@@ -53,6 +51,8 @@ lnav:
         url: /docs/config-json/#logging
       - title: "Flops Profiler"
         url: /docs/config-json/#flops-profiler
+      - title: "PyTorch Profiler"
+        url: /docs/config-json/#pytorch-profiler
       - title: "Activation checkpointing"
         url: /docs/config-json/#activation-checkpointing
       - title: "Sparse Attention"
@@ -70,8 +70,12 @@ lnav:
         url: /tutorials/bert-pretraining/
       - title: "CIFAR-10"
         url: /tutorials/cifar-10/
+      - title: "Curriculum Learning"
+        url: /tutorials/curriculum-learning/
       - title: "Flops Profiler"
         url: /tutorials/flops-profiler/
+      - title: "PyTorch Profiler"
+        url: /tutorials/pytorch-profiler/
       - title: "GAN"
         url: /tutorials/gan/
       - title: "Inference"
@@ -80,6 +84,8 @@ lnav:
         url: /tutorials/lrrt/
       - title: "Megatron-LM GPT2"
         url: /tutorials/megatron/
+      - title: "Mixture-of-Experts (MoE)"
+        url: /tutorials/mixture-of-experts/
       - title: "Mixture-of-Quantization"
         url: /tutorials/MoQ-tutorial/
       - title: "One-Cycle Schedule"

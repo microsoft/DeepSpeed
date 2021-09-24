@@ -55,6 +55,24 @@ class DeepSpeedConfigError(Exception):
     pass
 
 
+def get_curriculum_enabled(param_dict):
+    if CURRICULUM_LEARNING in param_dict.keys():
+        return get_scalar_param(param_dict[CURRICULUM_LEARNING],
+                                CURRICULUM_ENABLED,
+                                CURRICULUM_ENABLED_DEFAULT)
+    else:
+        return False
+
+
+def get_curriculum_params(param_dict):
+    if CURRICULUM_LEARNING in param_dict.keys():
+        curriculum_params = copy.copy(param_dict[CURRICULUM_LEARNING])
+        curriculum_params.pop(CURRICULUM_ENABLED)
+        return curriculum_params
+    else:
+        return False
+
+
 def get_pld_enabled(param_dict):
     if PROGRESSIVE_LAYER_DROP in param_dict.keys():
         return get_scalar_param(param_dict[PROGRESSIVE_LAYER_DROP],
@@ -92,6 +110,15 @@ def get_amp_params(param_dict):
 def get_fp16_enabled(param_dict):
     if FP16 in param_dict.keys():
         return get_scalar_param(param_dict[FP16], FP16_ENABLED, FP16_ENABLED_DEFAULT)
+    else:
+        return False
+
+
+def get_fp16_master_weights_and_grads_enabled(param_dict):
+    if get_fp16_enabled(param_dict):
+        return get_scalar_param(param_dict[FP16],
+                                FP16_MASTER_WEIGHTS_AND_GRADS,
+                                FP16_MASTER_WEIGHTS_AND_GRADS_DEFAULT)
     else:
         return False
 
@@ -631,6 +658,12 @@ def get_checkpoint_tag_validation_mode(checkpoint_params):
             f"value of {tag_validation_mode}, expecting one of {CHECKPOINT_TAG_VALIDATION_MODES}")
 
 
+def get_dataloader_drop_last(param_dict):
+    return get_scalar_param(param_dict,
+                            DATALOADER_DROP_LAST,
+                            DATALOADER_DROP_LAST_DEFAULT)
+
+
 '''Write deepspeed config files by modifying basic templates.
 Can be used for quicly changing parameters via command line parameters.'''
 
@@ -756,6 +789,8 @@ class DeepSpeedConfig(object):
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
+        self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
+            param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)
         self.amp_params = get_amp_params(param_dict)
         self.loss_scale = get_loss_scale(param_dict)
@@ -812,12 +847,17 @@ class DeepSpeedConfig(object):
         self.pld_enabled = get_pld_enabled(param_dict)
         self.pld_params = get_pld_params(param_dict)
 
+        self.curriculum_enabled = get_curriculum_enabled(param_dict)
+        self.curriculum_params = get_curriculum_params(param_dict)
+
         checkpoint_params = get_checkpoint_params(param_dict)
         validation_mode = get_checkpoint_tag_validation_mode(checkpoint_params)
         self.checkpoint_tag_validation_enabled = validation_mode != ValidationMode.IGNORE
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
 
         self.aio_config = get_aio_config(param_dict)
+
+        self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
     def _batch_assertion(self):
 
@@ -919,6 +959,9 @@ class DeepSpeedConfig(object):
 
         if self.zero_enabled:
             assert self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION, "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(MAX_STAGE_ZERO_OPTIMIZATION)
+
+        if self.fp16_master_weights_and_gradients:
+            assert self.zero_enabled and self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled or self.zero_enabled
