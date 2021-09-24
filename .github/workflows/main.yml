@@ -92,5 +92,5 @@ jobs:
           git rev-parse --short HEAD
           cd transformers
           pip install .
-          find examples/pytorch -name requirements.txt -exec pip install -r {} \
+          find examples/pytorch -name requirements.txt -exec pip install -r {} \;
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --forked --verbose tests/deepspeed
