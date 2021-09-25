@@ -123,10 +123,6 @@ BFLOAT16 = "bfloat16"
 BFLOAT16_ENABLED = "enabled"
 BFLOAT16_ENABLED_DEFAULT = False
 
-# Bfloat16 master and grads
-BF16_MASTER_WEIGHTS_AND_GRADS = "bfloat16_master_weights_and_grads"
-BF16_MASTER_WEIGHTS_AND_GRADS_DEFAULT = False
-
 #########################################
 # FP16 support
 #########################################
