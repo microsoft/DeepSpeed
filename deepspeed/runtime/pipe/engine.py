@@ -49,7 +49,7 @@ class PipelineEngine(DeepSpeedEngine):
     This engine is created by ``deepspeed.initialize()`` when a :class:`PipelineModule`
     is provided.
     """
-    def __init__(self, *super_args, **super_kwargs):
+    def __init__(self, has_bool_tensors=False, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
@@ -57,6 +57,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
+        self.has_bool_tensors = has_bool_tensors
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -837,7 +838,7 @@ class PipelineEngine(DeepSpeedEngine):
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
         # We could do char, but with half() we can eventually flatten with other fp16
         # messages (TODO)
-        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
             outputs = list(outputs)
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
@@ -856,7 +857,7 @@ class PipelineEngine(DeepSpeedEngine):
                                       f'{type(outputs)}')
 
         # Restore the boolean tensor
-        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
             outputs = list(outputs)
             outputs[-1] = outputs[-1].bool()
             outputs = tuple(outputs)
@@ -885,7 +886,7 @@ class PipelineEngine(DeepSpeedEngine):
         # a grad that needs to be communicated. We free the buffer immediately
         # after, so no need to restore it. The receiver also has a hack that skips
         # the recv. This is because NCCL does not let us send torch.BoolTensor :-(.
-        if self.module.__class__.__name__ == 'GPT2ModelPipe':
+        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
             inputs = list(inputs)
             inputs.pop()
             inputs = tuple(inputs)
@@ -948,7 +949,7 @@ class PipelineEngine(DeepSpeedEngine):
 
             # NCCL does not like to send torch.BoolTensor types, so un-cast the
             # attention mask
-            if self.module.__class__.__name__ == 'GPT2ModelPipe':
+            if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
                 recvd[-1] = recvd[-1].bool()
 
             recvd = tuple(recvd)
