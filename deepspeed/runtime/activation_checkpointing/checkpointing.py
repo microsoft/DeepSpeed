@@ -387,7 +387,7 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
                     torch.tensor(()).new_empty([partition_size],
                                                dtype=partition.dtype,
                                                device=buffer_device)
-                    for i in range(num_layers)
+                    for _ in range(num_layers)
                 ]
                 contiguous_data_buffers.append(tensor_list)
                 data_offsets.append(0)
@@ -396,7 +396,7 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
                     torch.tensor(()).new_empty([partition_size],
                                                dtype=partition.dtype,
                                                device=buffer_device)
-                    for i in range(num_layers)
+                    for _ in range(num_layers)
                 ]
                 contiguous_data_buffers[i] = tensor_list
                 data_offsets[i] = 0
