@@ -123,9 +123,9 @@ public:
     void SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                 uint8_t* attn_output_dropout_mask_ptr,
                                 uint8_t* layer_output_dropout_mask_ptr,
-                                T* layer_norm_var,
+                                float* layer_norm_var_f,
                                 T* layer_norm_mean,
-                                T* attn_layer_norm_var,
+                                float* attn_layer_norm_var_f,
                                 T* attn_layer_norm_mean);
 
     inline unsigned GetBatchSize() const { return _batch_size; }

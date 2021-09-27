@@ -202,9 +202,9 @@ class DeepSpeedTransformerFunction(Function):
          attn_prob_dropout_mask,
          attn_output_dropout_mask,
          layer_output_dropout_mask,
-         attn_layer_norm_var,
+         attn_layer_norm_var_f,
          attn_layer_norm_mean,
-         layer_norm_var,
+         layer_norm_var_f,
          layer_norm_mean) = forward_func(config.layer_id,
                                          input,
                                          input_mask,
@@ -228,7 +228,7 @@ class DeepSpeedTransformerFunction(Function):
 
         # For testing only.
         if grads is not None:
-            for i in [2]:
+            for i in [0, 1, 2]:
                 attn_qkvw.register_hook(
                     lambda x,
                     i=i,
@@ -236,7 +236,7 @@ class DeepSpeedTransformerFunction(Function):
                         x[i * attn_ow.size(0):(i + 1) * attn_ow.size(0)],
                         ("Q_W" if i == 0 else "K_W" if i == 1 else "V_W")
                     ]))
-            for i in [2]:
+            for i in [0, 1, 2]:
                 attn_qkvb.register_hook(
                     lambda x,
                     i=i,
@@ -312,8 +312,8 @@ class DeepSpeedTransformerFunction(Function):
             ctx.attn_prob_dropout_mask = attn_prob_dropout_mask
             ctx.attn_output_dropout_mask = attn_output_dropout_mask
             ctx.layer_output_dropout_mask = layer_output_dropout_mask
-            ctx.attn_layer_norm_var = attn_layer_norm_var
-            ctx.layer_norm_var = layer_norm_var
+            ctx.attn_layer_norm_var_f = attn_layer_norm_var_f
+            ctx.layer_norm_var_f = layer_norm_var_f
 
         if inp_size[1] % 16 != 0:
             output = torch.narrow(output, 1, 0, inp_size[1])
@@ -397,9 +397,9 @@ class DeepSpeedTransformerFunction(Function):
              ctx.attn_prob_dropout_mask,
              ctx.attn_output_dropout_mask,
              ctx.layer_output_dropout_mask,
-             ctx.attn_layer_norm_var,
+             ctx.attn_layer_norm_var_f,
              ctx.attn_layer_norm_mean,
-             ctx.layer_norm_var,
+             ctx.layer_norm_var_f,
              ctx.layer_norm_mean,
              (ctx.inp_norm if (ctx.config.pre_layer_norm
                                and ctx.config.normalize_invertible) else input),

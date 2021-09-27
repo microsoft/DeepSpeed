@@ -117,7 +117,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                float epsilon,
                                                bool preLayerNorm,
                                                bool training,
-                                               __half* vars,
+                                               float* vars,
                                                __half* means,
                                                int row_stride)
 {
@@ -179,7 +179,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         variance += vals_f[i].x * vals_f[i].x;
         variance += vals_f[i].y * vals_f[i].y;
     }
-
+    // if (g.thread_rank() == 0) vars[row] = vals_f[0].x * vals_f[0].x;
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
 
     if (g.thread_rank() == 0) shr[gid] = variance;
@@ -197,25 +197,27 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     variance /= (row_stride * 2);
     variance += epsilon;
 
-    __half2 variance_h = __float2half2_rn(variance);
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
     if (training && g.thread_rank() == 0) {
-        vars[row] = __float2half(variance);
+        vars[row] = variance;
         means[row] = __float2half(mean);
     }
     iterations = row_stride / iteration_stride;
+    float var_sqrt_r = rsqrtf(variance);
     for (int i = 0; i < iterations; i++) {
+        vals_f[i].x *= var_sqrt_r;
+        vals_f[i].y *= var_sqrt_r;
         __half2 vals_arr = __float22half2_rn(vals_f[i]);
-        vals_arr = vals_arr * h2rsqrt(variance_h);
         vals_arr =
             vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
         vals_cast[i * iteration_stride + id] = vals_arr;
     }
     if ((high_index) < row_stride) {
+        vals_f[iterations].x *= var_sqrt_r;
+        vals_f[iterations].y *= var_sqrt_r;
         __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
-        vals_arr = vals_arr * h2rsqrt(variance_h);
         vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
         vals_cast[high_index] = vals_arr;
     }
@@ -233,7 +235,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
-                                     T* vars,
+                                     float* vars,
                                      T* means);
 
 template <>
@@ -278,7 +280,7 @@ void launch_bias_residual_layer_norm<__half>(__half* vals,
                                              cudaStream_t stream,
                                              bool preLayerNorm,
                                              bool training,
-                                             __half* vars,
+                                             float* vars,
                                              __half* means)
 {
     int threads = 128;
@@ -401,7 +403,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                float epsilon,
                                                bool preLayerNorm,
                                                bool training,
-                                               __half* vars,
+                                               float* vars,
                                                int row_stride)
 {
 #if __CUDA_ARCH__ >= 700
@@ -463,7 +465,6 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         variance += vals_f[i].x * vals_f[i].x;
         variance += vals_f[i].y * vals_f[i].y;
     }
-
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
 
     if (g.thread_rank() == 0) shr[gid] = variance;
@@ -481,23 +482,25 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     variance /= (row_stride * 2);
     variance += epsilon;
 
-    __half2 variance_h = __float2half2_rn(variance);
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) vars[row] = __float2half(variance);
+    if (training && g.thread_rank() == 0) vars[row] = variance;
+    float var_sqrt_r = rsqrtf(variance);
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
+        vals_f[i].x *= var_sqrt_r;
+        vals_f[i].y *= var_sqrt_r;
         __half2 vals_arr = __float22half2_rn(vals_f[i]);
-        vals_arr = vals_arr * h2rsqrt(variance_h);
         vals_arr =
             vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
         vals_cast[i * iteration_stride + id] = vals_arr;
     }
     if ((high_index) < row_stride) {
+        vals_f[iterations].x *= var_sqrt_r;
+        vals_f[iterations].y *= var_sqrt_r;
         __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
-        vals_arr = vals_arr * h2rsqrt(variance_h);
         vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
         vals_cast[high_index] = vals_arr;
     }
@@ -515,7 +518,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
-                                     T* vars);
+                                     float* vars);
 
 /*
 To tune this launch the following restrictions must be met:
@@ -575,7 +578,7 @@ void launch_bias_residual_layer_norm<__half>(__half* vals,
                                              cudaStream_t stream,
                                              bool preLayerNorm,
                                              bool training,
-                                             __half* vars)
+                                             float* vars)
 {
     int threads = 128;
 
@@ -674,7 +677,7 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
 template <typename T>
 __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
                                    const T* __restrict__ X_data,
-                                   const T* __restrict__ vars,
+                                   const float* vars,
                                    const T* __restrict__ means,
                                    T* __restrict__ gamma_grad,
                                    T* __restrict__ betta_grad,
@@ -699,7 +702,7 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     for (int r = threadIdx.y; r < rows; r += TILE_DIM) {
         float grad = (float)out_grad[offset];
         float val = (float)X_data[offset];
-        val = (val - (float)means[r]) * rsqrtf((float)vars[r]);
+        val = (val - (float)means[r]) * rsqrtf(vars[r]);
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
@@ -841,7 +844,7 @@ __global__ void LayerNormBackward2(const __half* out_grad,
                                    const __half* vals_hat,
                                    const __half* gamma,
                                    const __half* betta,
-                                   const __half* vars,
+                                   const float* vars,
                                    __half* inp_grad,
                                    bool invertible,
                                    int row_stride)
@@ -878,19 +881,26 @@ __global__ void LayerNormBackward2(const __half* out_grad,
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
         vals_arr[i] = out_grad_h[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] =
-            (invertible
-                 ? (vals_hat_h[i * iteration_stride + id] - betta_h[i * iteration_stride + id]) /
-                       gamma_reg
-                 : vals_hat_h[i * iteration_stride + id]);
+        vals_hat_arr[i] = vals_hat_h[i * iteration_stride + id];
+        if (invertible) {
+            float2 beta_f = __half22float2(betta_h[i * iteration_stride + id]);
+            vals_hat_arr[i].x = __half(((float)vals_hat_arr[i].x - beta_f.x) / (float)gamma_reg.x);
+            vals_hat_arr[i].y = __half(((float)vals_hat_arr[i].y - beta_f.y) / (float)gamma_reg.y);
+        }
     }
     if ((high_index) < row_stride) {
         __half2 gamma_reg = gamma_h[high_index];
         vals_arr[iterations] = out_grad_h[high_index];
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] =
-            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
-                        : vals_hat_h[high_index]);
+        vals_hat_arr[iterations] = vals_hat_h[high_index];
+        if (invertible) {
+            float2 beta_f = __half22float2(betta_h[high_index]);
+            vals_hat_arr[iterations].x =
+                __half(((float)vals_hat_arr[iterations].x - beta_f.x) / (float)gamma_reg.x);
+            vals_hat_arr[iterations].y =
+                __half(((float)vals_hat_arr[iterations].y - beta_f.y) / (float)gamma_reg.y);
+        }
+
         iterations++;
     }
     __half var_h = vars[row];
@@ -1011,7 +1021,7 @@ void launch_layerNorm_backward<float>(const float* out_grad,
 template <>
 void launch_layerNorm_backward<__half>(const __half* out_grad,
                                        const __half* vals_hat,
-                                       const __half* vars,
+                                       const float* vars,
                                        const __half* gamma,
                                        __half* gamma_grad,
                                        __half* betta_grad,
@@ -1151,7 +1161,7 @@ __global__ void LayerNormBackward2(const float* out_grad,
 __global__ void LayerNormBackward2(const __half* out_grad,
                                    const __half* X_vals,
                                    const __half* gamma,
-                                   const __half* vars,
+                                   const float* vars,
                                    const __half* means,
                                    __half* inp_grad,
                                    int row_stride)
@@ -1312,7 +1322,7 @@ void launch_layerNorm_backward<float>(const float* out_grad,
 template <>
 void launch_layerNorm_backward<__half>(const __half* out_grad,
                                        const __half* X_data,
-                                       const __half* vars,
+                                       const float* vars,
                                        const __half* means,
                                        const __half* gamma,
                                        __half* gamma_grad,
@@ -1413,7 +1423,7 @@ template <typename T>
 __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
                                              const T* __restrict__ out_grad2,
                                              const T* __restrict__ X_data,
-                                             const T* __restrict__ vars,
+                                             const float* vars,
                                              const T* __restrict__ means,
                                              T* __restrict__ gamma_grad,
                                              T* __restrict__ betta_grad,
@@ -1438,7 +1448,7 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     for (int r = threadIdx.y; r < rows; r += TILE_DIM) {
         float grad = (float)out_grad1[offset] + (float)out_grad2[offset];
         float val = (float)X_data[offset];
-        val = (val - (float)means[r]) * rsqrtf((float)vars[r]);
+        val = (val - (float)means[r]) * rsqrtf(vars[r]);
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
@@ -1578,7 +1588,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              const __half* vals_hat,
                                              const __half* gamma,
                                              const __half* betta,
-                                             const __half* vars,
+                                             const float* vars,
                                              __half* inp_grad,
                                              bool invertible,
                                              int row_stride)
@@ -1619,31 +1629,39 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
         vals_arr[i] = out_grad_h1[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[i] =
-            (invertible
-                 ? (vals_hat_h[i * iteration_stride + id] - betta_h[i * iteration_stride + id]) /
-                       gamma_reg
-                 : vals_hat_h[i * iteration_stride + id]);
+        vals_hat_arr[i] = vals_hat_h[i * iteration_stride + id];
+        if (invertible) {
+            float2 beta_f = __half22float2(betta_h[i * iteration_stride + id]);
+            vals_hat_arr[i].x = __half(((float)vals_hat_arr[i].x - beta_f.x) / (float)gamma_reg.x);
+            vals_hat_arr[i].y = __half(((float)vals_hat_arr[i].y - beta_f.y) / (float)gamma_reg.y);
+        }
     }
     if ((high_index) < row_stride) {
         __half2 gamma_reg = gamma_h[high_index];
         vals_arr[iterations] = out_grad_h1[high_index];
         vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[iterations] =
-            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
-                        : vals_hat_h[high_index]);
+        vals_hat_arr[iterations] = vals_hat_h[high_index];
+        if (invertible) {
+            float2 beta_f = __half22float2(betta_h[high_index]);
+            vals_hat_arr[iterations].x =
+                __half(((float)vals_hat_arr[iterations].x - beta_f.x) / (float)gamma_reg.x);
+            vals_hat_arr[iterations].y =
+                __half(((float)vals_hat_arr[iterations].y - beta_f.y) / (float)gamma_reg.y);
+        }
         iterations++;
     }
-    __half var_h = vars[row];
-    __half2 var_reg = __halves2half2(var_h, var_h);
+    float var_f = vars[row];
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
-        __half2 result_h = (vals_hat_arr[i] * vals_arr[i] * h2sqrt(var_reg));
+        vals_arr_f[i] = __half22float2(vals_arr[i]);
+        float var_sqf = sqrtf(var_f);
+        vals_arr_f[i].x /= var_sqf;
+        vals_arr_f[i].y /= var_sqf;
+        __half2 result_h = (vals_hat_arr[i] * vals_arr[i]);
         float2 result_f = __half22float2(result_h);
-        sum += result_f.x;
-        sum += result_f.y;
-        vals_arr[i] *= h2rsqrt(var_reg);
+        sum += (result_f.x * var_sqf);
+        sum += (result_f.y * var_sqf);
     }
 
     for (int i = 1; i < WARP_SIZE; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -1662,14 +1680,10 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
-    __half2 sum_h = __float2half2_rn(sum);
 
     for (int i = 0; i < iterations; i++) {
-        __half2 temp = ((-sum_h * vals_hat_arr[i]) / (var_reg));
-        vals_arr_f[i] = __half22float2(vals_arr[i]);
-        float2 temp_f = __half22float2(temp);
-        vals_arr_f[i].x += temp_f.x;
-        vals_arr_f[i].y += temp_f.y;
+        vals_arr_f[i].x += (-((float)vals_hat_arr[i].x * sum) / var_f);
+        vals_arr_f[i].y += (-((float)vals_hat_arr[i].y * sum) / var_f);
     }
     sum = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -1696,18 +1710,20 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
-        vals_arr_f[i].x -= sum;
-        vals_arr_f[i].y -= sum;
+        float2 g_reg = __half22float2(out_grad_h2[i * iteration_stride + id]);
+        vals_arr_f[i].x += (sum - g_reg.x);
+        vals_arr_f[i].y += (sum - g_reg.y);
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
 
-        inp_grad_h[i * iteration_stride + id] = temp + out_grad_h2[i * iteration_stride + id];
+        inp_grad_h[i * iteration_stride + id] = temp;
     }
     if ((high_index) < row_stride) {
-        vals_arr_f[iterations].x -= sum;
-        vals_arr_f[iterations].y -= sum;
+        float2 g_reg = __half22float2(out_grad_h2[iterations * iteration_stride + id]);
+        vals_arr_f[iterations].x += (sum - g_reg.x);
+        vals_arr_f[iterations].y += (sum - g_reg.y);
         __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
 
-        inp_grad_h[high_index] = temp + out_grad_h2[high_index];
+        inp_grad_h[high_index] = temp;
     }
 }
 
@@ -1751,7 +1767,7 @@ template <>
 void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
                                                  const __half* out_grad2,
                                                  const __half* vals_hat,
-                                                 const __half* vars,
+                                                 const float* vars,
                                                  const __half* gamma,
                                                  __half* gamma_grad,
                                                  __half* betta_grad,
@@ -1899,7 +1915,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              const __half* out_grad2,
                                              const __half* X_vals,
                                              const __half* gamma,
-                                             const __half* vars,
+                                             const float* vars,
                                              const __half* means,
                                              __half* inp_grad,
                                              int row_stride)
@@ -1950,7 +1966,7 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
 
     __half mean_h = means[row];
     __half var_h = vars[row];
-    __half2 var_reg = __halves2half2(var_h, var_h);
+    __half2 var_reg = __float2half2_rn(var_h);
     __half2 mean_reg = __halves2half2(mean_h, mean_h);
     __half2 xu[NORM_REG];
 
@@ -2068,7 +2084,7 @@ template <>
 void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
                                                  const __half* out_grad2,
                                                  const __half* X_data,
-                                                 const __half* vars,
+                                                 const float* vars,
                                                  const __half* means,
                                                  const __half* gamma,
                                                  __half* gamma_grad,

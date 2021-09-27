@@ -35,7 +35,7 @@ public:
     };
 
     Normalize_Layer(Config config)
-        : config_(config), vars(nullptr), means(nullptr), vals_hat(nullptr)
+        : config_(config), vars_f(nullptr), means(nullptr), vals_hat(nullptr)
     {
     }
 
@@ -59,7 +59,7 @@ public:
                                         stream,
                                         preLayerNorm,
                                         config_.training,
-                                        vars,
+                                        vars_f,
                                         means);
     }
 
@@ -81,7 +81,7 @@ public:
                                         stream,
                                         preLayerNorm,
                                         config_.training,
-                                        vars);
+                                        vars_f);
     }
 
     void Backward(int bsz,
@@ -95,7 +95,7 @@ public:
     {
         launch_layerNorm_backward(out_grad,
                                   norm_in,
-                                  vars,
+                                  vars_f,
                                   means,
                                   gamma,
                                   gamma_grad,
@@ -118,7 +118,7 @@ public:
     {
         launch_layerNorm_backward(out_grad,
                                   norm_out,
-                                  vars,
+                                  vars_f,
                                   gamma,
                                   gamma_grad,
                                   betta_grad,
@@ -143,7 +143,7 @@ public:
         launch_layerNorm_backward_fused_add(out_grad1,
                                             out_grad2,
                                             norm_in,
-                                            vars,
+                                            vars_f,
                                             means,
                                             gamma,
                                             gamma_grad,
@@ -168,7 +168,7 @@ public:
         launch_layerNorm_backward_fused_add(out_grad1,
                                             out_grad2,
                                             norm_out,
-                                            vars,
+                                            vars_f,
                                             gamma,
                                             gamma_grad,
                                             betta_grad,
@@ -182,10 +182,10 @@ public:
 
     inline bool UseMean() const { return config_.useMean; }
 
-    inline void SetVar(T* variance)
+    inline void SetVar(float* var_f)
     {
-        if (!variance) { throw std::runtime_error("Normalize variance is null."); }
-        vars = variance;
+        if (!var_f) { throw std::runtime_error("Normalize variance is null."); }
+        vars_f = var_f;
     }
 
     inline void SetMean(T* mean)
@@ -196,7 +196,7 @@ public:
 
 private:
     Config config_;
-    T* vars;
+    float* vars_f;
     T* means;
     T* vals_hat;
 };

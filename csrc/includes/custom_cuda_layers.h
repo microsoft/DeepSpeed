@@ -86,7 +86,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
-                                     T* vars,
+                                     float* vars,
                                      T* means);
 
 template <typename T>
@@ -100,13 +100,13 @@ void launch_bias_residual_layer_norm(T* vals,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
-                                     T* vars);
+                                     float* vars);
 
 template <typename T>
 void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          const T* out_grad2,
                                          const T* X_data,
-                                         const T* vars,
+                                         const float* vars,
                                          const T* means,
                                          const T* gamma,
                                          T* gamma_grad,
@@ -119,7 +119,7 @@ template <typename T>
 void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          const T* out_grad2,
                                          const T* vals_hat,
-                                         const T* vars,
+                                         const float* vars,
                                          const T* gamma,
                                          T* gamma_grad,
                                          T* betta_grad,
@@ -133,7 +133,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
 template <typename T>
 void launch_layerNorm_backward(const T* out_grad,
                                const T* X_data,
-                               const T* vars,
+                               const float* vars,
                                const T* means,
                                const T* gamma,
                                T* gamma_grad,
@@ -146,7 +146,7 @@ void launch_layerNorm_backward(const T* out_grad,
 template <typename T>
 void launch_layerNorm_backward(const T* out_grad,
                                const T* vals_hat,
-                               const T* vars,
+                               const float* vars,
                                const T* gamma,
                                T* gamma_grad,
                                T* betta_grad,
