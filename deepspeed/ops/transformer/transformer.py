@@ -228,7 +228,7 @@ class DeepSpeedTransformerFunction(Function):
 
         # For testing only.
         if grads is not None:
-            for i in [0, 1, 2]:
+            for i in [2]:
                 attn_qkvw.register_hook(
                     lambda x,
                     i=i,
@@ -236,7 +236,7 @@ class DeepSpeedTransformerFunction(Function):
                         x[i * attn_ow.size(0):(i + 1) * attn_ow.size(0)],
                         ("Q_W" if i == 0 else "K_W" if i == 1 else "V_W")
                     ]))
-            for i in [0, 1, 2]:
+            for i in [2]:
                 attn_qkvb.register_hook(
                     lambda x,
                     i=i,
