@@ -80,7 +80,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
     For usage examples, refer to TODO: DeepSpeed Tutorial
 
     """
-
     def __init__(self,
                  init_optimizer,
                  timers,
@@ -203,7 +202,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-2 with reduce scatter enabled"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-2 with reduce scatter enabled"
 
-
         # param flattened by groups
         self.bit16_groups = []
         self.bit16_groups_flat = []
@@ -270,7 +268,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
             # move all the parameters to cpu to free up GPU space for creating flat buffer
             move_to_cpu(self.bit16_groups[i])
             see_memory_usage(f"After moving param group {i} to CPU", force=False)
-
 
             # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
             # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
@@ -417,7 +414,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                        self.first_offset[i],
                                        self.partition_size[i])
 
-
         # mapping from parameter to partition that it belongs to
         self.param_to_partition_ids = {}
 
@@ -457,7 +453,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if self.dtype == torch.float or self.dtype == torch.bfloat16 or not dynamic_loss_scale:
-            loss_scale_value = 1.0 if ((self.dtype == torch.float) or (self.dtype == torch.bfloat16)) else static_loss_scale
+            loss_scale_value = 1.0 if (
+                (self.dtype == torch.float) or
+                (self.dtype == torch.bfloat16)) else static_loss_scale
 
             self.dynamic_loss_scale = False
             self.loss_scaler = LossScaler(scale=loss_scale_value)
@@ -752,8 +750,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
                         def reduce_partition_and_remove_grads(*notneeded):
                             self.reduce_ready_partitions_and_remove_grads(param, i)
+
                         grad_acc.register_hook(reduce_partition_and_remove_grads)
                         self.grad_accs.append(grad_acc)
+
                     wrapper(param, i)
 
     def get_param_id(self, param):

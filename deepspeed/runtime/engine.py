@@ -75,6 +75,7 @@ except ImportError:
     APEX_INSTALLED = False
     pass
 
+
 def split_half_float_double_csr(tensors):
     dtypes = [
         "torch.cuda.HalfTensor",
@@ -96,6 +97,7 @@ def print_configuration(args, name):
     for arg in sorted(vars(args)):
         dots = '.' * (29 - len(arg))
         logger.info('  {} {} {}'.format(arg, dots, getattr(args, arg)))
+
 
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
@@ -1077,7 +1079,8 @@ class DeepSpeedEngine(Module):
                 partition_grads=zero_stage == ZERO_OPTIMIZATION_GRADIENTS,
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
-                fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients())
+                fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
+                ))
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -1436,9 +1439,13 @@ class DeepSpeedEngine(Module):
 
         # Quantize the updated parameter if there is no overflow
         if self.quantizer:
+            if self.fp16_enabled():
+                tensor_to_quantize = self.optimizer.bit16_groups if self.zero_optimization_stage(
+                ) == 2 else self.optimizer.fp16_groups
+            else:
+                tensor_to_quantize = self.optimizer.param_groups
             self.quantizer.quantize(
-                (self.optimizer.fp16_groups
-                 if self.fp16_enabled() else self.optimizer.param_groups),
+                tensor_to_quantize,
                 (self.optimizer.overflow if self.fp16_enabled() else False),
                 self.eigenvalue_enabled(),
                 block_eigenvalue)
@@ -1748,7 +1755,6 @@ class DeepSpeedEngine(Module):
         for csr in bucket:
             csr_list.append(self.csr_allreduce(csr, dp_group))
         return csr_list
-
 
     def csr_allreduce(self, csr, dp_group):
         # Pre-divide for fp16 stability
@@ -2381,21 +2387,22 @@ class DeepSpeedEngine(Module):
         will be missing and others unsaved and then it'd be impossible to reconstruct state_dict
         from the flattened weights.
 
-        optimizer.fp16_groups seems to be the easiest to use as it's in all zeroX versions.
+        optimizer.bit16_groups seems to be the easiest to use as it's in all zeroX versions.
         """
         param_shapes = OrderedDict()
         cnt = 0
         numel = 0
 
-        # zero2 started using a round_robin_fp16_groups which is a shuffled version of fp16_groups -
+        # zero2 started using a round_robin_bit16_groups which is a shuffled version of bit16_groups -
         # if we don't use it, we get parameters ordered incorrectly
-        if hasattr(self.optimizer, "round_robin_fp16_groups"):
-            fp16_groups = self.optimizer.round_robin_fp16_groups
+        if hasattr(self.optimizer, "round_robin_bit16_groups"):
+            bit16_groups = self.optimizer.round_robin_bit16_groups
         else:
-            fp16_groups = self.optimizer.fp16_groups
+            bit16_groups = self.optimizer.bit16_groups if self.zero_optimization_stage(
+            ) == 2 else self.optimizer.fp16_groups
 
-        for fp16_group in fp16_groups:
-            for param in fp16_group:
+        for bit16_group in bit16_groups:
+            for param in bit16_group:
                 cnt += 1
                 numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
                 shape = param.ds_shape if hasattr(param, "ds_shape") else param.shape

@@ -106,17 +106,22 @@ def get_amp_params(param_dict):
     else:
         return False
 
+
 def get_fp16_enabled(param_dict):
     if FP16 in param_dict.keys():
         return get_scalar_param(param_dict[FP16], FP16_ENABLED, FP16_ENABLED_DEFAULT)
     else:
         return False
 
+
 def get_bfloat16_enabled(param_dict):
     if BFLOAT16 in param_dict.keys():
-        return get_scalar_param(param_dict[BFLOAT16], BFLOAT16_ENABLED, BFLOAT16_ENABLED_DEFAULT)
+        return get_scalar_param(param_dict[BFLOAT16],
+                                BFLOAT16_ENABLED,
+                                BFLOAT16_ENABLED_DEFAULT)
     else:
         return False
+
 
 def get_fp16_master_weights_and_grads_enabled(param_dict):
     if get_fp16_enabled(param_dict):
@@ -137,6 +142,7 @@ def get_loss_scale(param_dict):
     else:
         return FP16_LOSS_SCALE_DEFAULT
 
+
 def get_initial_dynamic_scale(param_dict):
     if get_fp16_enabled(param_dict):
         initial_scale_power = get_scalar_param(param_dict[FP16],
@@ -148,6 +154,7 @@ def get_initial_dynamic_scale(param_dict):
         initial_scale_power = FP16_INITIAL_SCALE_POWER_DEFAULT
 
     return 2**initial_scale_power
+
 
 def get_dynamic_loss_scale_args(param_dict):
     loss_scale_args = None
