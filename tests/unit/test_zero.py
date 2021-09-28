@@ -133,6 +133,7 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
 
 
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
+# also reproduces the https://github.com/microsoft/DeepSpeed/pull/1372
 @pytest.mark.parametrize('zero_stage', [2, 3])
 def test_zero_to_fp32(tmpdir, zero_stage):
 
@@ -165,9 +166,15 @@ def test_zero_to_fp32(tmpdir, zero_stage):
         class MyModel(torch.nn.Module):
             def __init__(self, hidden_dim, n_layers):
                 super().__init__()
+                # to reproduce https://github.com/microsoft/DeepSpeed/pull/1372 it is important that
+                # the number of total elements is uneven:
+                # (1) 4 layers of 3*(3+1)=12 elements each, 48 in total
                 self.ll = torch.nn.ModuleList(
                     torch.nn.Linear(hidden_dim,
                                     hidden_dim) for i in range(n_layers))
+                # (2) the following adds 4+1=5 elements
+                self.classifier = torch.nn.Linear(4, 1)
+                # total 48+5=53 (uneven as desired) elements
                 self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
             def forward(self, x, y):
@@ -177,7 +184,7 @@ def test_zero_to_fp32(tmpdir, zero_stage):
                 return self.cross_entropy_loss(hidden, y)
 
         args = args_from_dict(tmpdir, config_dict)
-        hidden_dim = 2
+        hidden_dim = 3  # do not change
 
         world_size = dist.get_world_size()
         # we want at least 2x layers as there are gpus to trigger round_robin_fp16_groups reshuffle in zero2
@@ -221,14 +228,15 @@ def test_zero_to_fp32(tmpdir, zero_stage):
             orig_state_dict[name] = param.detach().cpu()
         print(orig_state_dict)
 
-        fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
-        #dump_state_dict(fp32_model)
+        if dist.get_rank() == 0:
+            fp32_model = load_state_dict_from_zero_checkpoint(model.module, tmpdir)
+            #dump_state_dict(fp32_model)
 
-        fp32_state_dict = fp32_model.state_dict()
-        for name in orig_state_dict.keys():
-            # float() workaround for torch<1.6
-            assert torch.allclose(orig_state_dict[name].float(),
-                                  fp32_state_dict[name].float())
+            fp32_state_dict = fp32_model.state_dict()
+            for name in orig_state_dict.keys():
+                # float() workaround for torch<1.6
+                assert torch.allclose(orig_state_dict[name].float(),
+                                      fp32_state_dict[name].float())
 
     _test_zero_to_fp32()
 
