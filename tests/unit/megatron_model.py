@@ -76,7 +76,8 @@ class MockGPT2ModelPipe(PipelineModule):
         class ParallelTransformerLayerPipe(ParallelTransformerLayer):
             def forward(self, args):
                 # hardcode attn mask for testing, PP requires the attn_mask to be stashed
-                attention_mask = torch.tensor([[True]], device=torch.cuda.current_device())
+                attention_mask = torch.tensor([[True]],
+                                              device=torch.cuda.current_device())
                 return super().forward(args, attention_mask)
 
         layers = []
