@@ -1,5 +1,4 @@
 import os
-import sys
 from types import SimpleNamespace
 
 import torch
@@ -8,7 +7,7 @@ import pytest
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 
-from common import distributed_test
+from .common import distributed_test
 
 
 def setup_serial_env():

@@ -3,8 +3,8 @@ import torch
 import pytest
 import json
 import argparse
-from common import distributed_test, get_test_path
-from simple_model import SimpleModel, create_config_from_dict, random_dataloader
+from .common import distributed_test, get_test_path
+from .simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
 
 # A test on its own

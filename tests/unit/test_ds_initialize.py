@@ -4,8 +4,8 @@ import torch
 from torch.optim import Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
-from simple_model import args_from_dict, SimpleModel
-from common import distributed_test
+from .simple_model import args_from_dict, SimpleModel
+from .common import distributed_test
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam

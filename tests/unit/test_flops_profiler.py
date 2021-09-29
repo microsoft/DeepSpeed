@@ -2,8 +2,8 @@ import torch
 import deepspeed
 import deepspeed.runtime.utils as ds_utils
 from deepspeed.profiling.flops_profiler import FlopsProfiler, get_model_profile
-from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
-from common import distributed_test
+from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
+from .common import distributed_test
 
 
 def test_flops_profiler_in_ds_training(tmpdir):
