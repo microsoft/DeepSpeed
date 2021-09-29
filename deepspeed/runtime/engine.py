@@ -2591,27 +2591,3 @@ class DeepSpeedEngine(Module):
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)
-
-    def set_train_batch_size(self, train_batch_size):
-        """Adjust the global batch size by increasing or decreasing the size of
-        each micro-batch (i.e., ``train_micro_batch_size_per_gpu``). The number of
-        micro-batches (i.e., gradient accumulation steps) is not changed.
-        Args:
-            train_batch_size (int): The new global batch size for training.
-        Raises:
-            ValueError: if ``train_batch_size`` is not divisible by the
-                configured gradient_accumulation_steps and data parallelism.
-        """
-
-        if train_batch_size % (self.gradient_accumulation_steps() *
-                               self.dp_world_size) != 0:
-            raise ValueError(
-                f'Train batch size must be divisible by gradient_accumulation_steps * data parallelism'
-            )
-
-        new_micro_bsz = train_batch_size // (self.gradient_accumulation_steps() *
-                                             self.dp_world_size)
-
-        # overwrite config
-        self._config.train_batch_size = train_batch_size
-        self._config.train_micro_batch_size_per_gpu = new_micro_bsz
