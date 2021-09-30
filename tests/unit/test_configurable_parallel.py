@@ -9,11 +9,14 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from common import distributed_test
 from simple_model import args_from_dict, create_deepspeed_args
-from megatron_model import get_gpt2_model, get_megatron_version, GPT2ModelPipe
+from megatron_model import get_gpt2_model, get_megatron_version
+from megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
 from deepspeed.utils import RepeatingLoader
 
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
 pytestmark = pytest.mark.skipif(
-    torch.__version__ < '1.5',
+    TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 5),
     reason='Megatron-LM package requires Pytorch version 1.5 or above')
 
 
@@ -49,13 +52,11 @@ class TestConfigurableMP:
             },
         }
 
-        ds_args = args_from_dict(tmpdir, ds_config_dict)
-
         from megatron import mpu
-        model, _, _,_ = deepspeed.initialize(args=ds_args,
-                                            model=model,
-                                            mpu=mpu,
-                                            model_parameters=model.parameters())
+        model, _, _,_ = deepspeed.initialize(model=model,
+                                             mpu=mpu,
+                                             model_parameters=model.parameters(),
+                                             config=ds_config_dict)
         return model
 
     def test_gpt2_basic(self, tmpdir):
@@ -241,13 +242,11 @@ class TestConfigurablePP:
                 }
             },
         }
-
-        ds_args = args_from_dict(tmpdir, ds_config_dict)
         dist.barrier()
 
-        model, _, _,_ = deepspeed.initialize(args=ds_args,
-                                            model=model,
-                                            model_parameters=model.parameters())
+        model, _, _,_ = deepspeed.initialize(model=model,
+                                             model_parameters=model.parameters(),
+                                             config=ds_config_dict)
         return model.cuda()
 
     def get_topology(self, mp, pp, world_size):
@@ -290,7 +289,7 @@ class TestConfigurablePP:
 
             if model.is_first_stage() or model.is_last_stage():
                 inputs = self.get_inputs()
-                loader = RepeatingLoader([((inputs[0], inputs[1]), 0)])
+                loader = RepeatingLoader([(inputs[0], 0)])
                 data_iter = iter(loader)
             else:
                 data_iter = None
@@ -342,7 +341,7 @@ class TestConfigurablePP:
             with torch.no_grad():
                 inputs = [x.cuda() for x in inputs]
                 if model.is_first_stage() or model.is_last_stage():
-                    loader = RepeatingLoader([((inputs[0], inputs[1]), 0)])
+                    loader = RepeatingLoader([(inputs[0], 0)])
                     data_iter = iter(loader)
                 else:
                     data_iter = None
@@ -354,9 +353,8 @@ class TestConfigurablePP:
                 if baseline is not None:
                     # baseline should be [[hidden, True]]]
                     assert len(baseline) == 1
-                    assert len(baseline[0]) == 2
+                    assert len(baseline[0]) == 1
                     assert torch.is_tensor(baseline[0][0])
-                    assert baseline[0][1].numel() == 1
                     output.put(baseline[0][0].cpu())
 
                 state_dict = {}
@@ -389,7 +387,7 @@ class TestConfigurablePP:
                                       load_lr_scheduler_states=False)
                 inputs = [x.cuda() for x in inputs]
                 if model.is_first_stage() or model.is_last_stage():
-                    loader = RepeatingLoader([((inputs[0], inputs[1]), 0)])
+                    loader = RepeatingLoader([(inputs[0], 0)])
                     data_iter = iter(loader)
                 else:
                     data_iter = None
@@ -401,9 +399,8 @@ class TestConfigurablePP:
                 if test is not None:
                     # test should be [[hidden, True]]]
                     assert len(test) == 1
-                    assert len(test[0]) == 2
+                    assert len(test[0]) == 1
                     assert torch.is_tensor(test[0][0])
-                    assert test[0][1].numel() == 1
                     output.put(test[0][0].cpu())
 
             quit_event.wait()

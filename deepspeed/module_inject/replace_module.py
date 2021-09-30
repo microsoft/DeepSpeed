@@ -137,6 +137,9 @@ def replace_transformer_layer(orig_layer_impl,
 
         if inference:
             hidden_size, num_attention_heads = policy.get_hidden_heads()
+            assert num_attention_heads % mp_size == 0,\
+                "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
+                "This is because the attention computation is partitioned evenly among the parallel GPUs."
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
         mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
@@ -232,7 +235,8 @@ def replace_transformer_layer(orig_layer_impl,
                                                             qkvw)
 
             if qkvb is not None:
-                qkvb = qkvb.half()
+                if fp16:
+                    qkvb = qkvb.half()
                 attn_block.attn_qkvb.data = mp_replace.qkv_copy(
                     attn_block.attn_qkvb.data,
                     qkvb)
