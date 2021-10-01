@@ -42,6 +42,7 @@ from deepspeed.runtime.zero.constants import \
 from deepspeed.runtime.csr_tensor import CSRTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
+from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
@@ -77,14 +78,18 @@ except ImportError:
 
 
 def split_half_float_double_csr(tensors):
-    dtypes = [
+    supported_types = [
         "torch.cuda.HalfTensor",
         "torch.cuda.FloatTensor",
         "torch.cuda.DoubleTensor",
         CSRTensor.type()
     ]
+
+    for t in tensors:
+        assert t.type() in supported_types, f"attempting to reduce an unsupported grad type: {t.type()}"
+
     buckets = []
-    for i, dtype in enumerate(dtypes):
+    for i, dtype in enumerate(supported_types):
         bucket = [t for t in tensors if t.type() == dtype]
         if bucket:
             buckets.append((dtype, bucket))
@@ -140,6 +145,8 @@ class DeepSpeedEngine(Module):
         self.dist_backend = "nccl"
         self.has_moe_layers = False
         self.num_experts = None
+        self._step_applied = False
+        self._global_grad_norm = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -169,7 +176,7 @@ class DeepSpeedEngine(Module):
             assert not self.elasticity_enabled(), "Elasticity is not currently supported" \
                 " with model parallelism."
 
-        self._set_distributed_vars()
+        self._set_distributed_vars(args)
 
         if self.tensorboard_enabled() and self.global_rank == 0:
             self.summary_writer = self.get_summary_writer()
@@ -258,6 +265,40 @@ class DeepSpeedEngine(Module):
                 before averaging and applying them.
         """
         return self.train_batch_size, self.train_micro_batch_size_per_gpu, self.gradient_accumulation_steps
+
+    def set_train_batch_size(self, train_batch_size):
+        """Adjust the global batch size by increasing or decreasing the number of
+        micro-batches (i.e., gradient accumulation steps). The size of each micro-batch
+        (i.e., ``train_micro_batch_size_per_gpu``) is not changed.
+        Args:
+            train_batch_size (int): The new global batch size for training.
+        Raises:
+            ValueError: if ``train_batch_size`` is not divisible by the
+                configured micro-batch size and data parallelism.
+        """
+        if train_batch_size % (self.train_micro_batch_size_per_gpu() *
+                               self.dp_world_size) != 0:
+            #print(f'{train_batch_size=} {self.train_micro_batch_size_per_gpu()=} {self.dp_world_size=}')
+            raise ValueError(
+                f'Train batch size must be divisible by micro-batch data parallelism')
+        new_gas = train_batch_size // (self.train_micro_batch_size_per_gpu() *
+                                       self.dp_world_size)
+        # overwrite config
+        self._config.train_batch_size = train_batch_size
+        self._config.gradient_accumulation_steps = new_gas
+
+    def get_global_grad_norm(self) -> float:
+        """Return the 2-norm of all gradients. If there is model parallelism,
+        the norm will be global.
+
+        The computed norm will be cached and reused until the next step() pass.
+        .. note::
+            In the presence of model parallelism, this is a collective call
+            and acts as a barrier among ``mpu.get_model_parallel_group()``.
+        Returns:
+            float: norm
+        """
+        return self._global_grad_norm
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -592,10 +633,13 @@ class DeepSpeedEngine(Module):
         else:
             return None
 
-    def _set_distributed_vars(self):
-        if self.local_rank >= 0:
-            torch.cuda.set_device(self.local_rank)
-            self.device = torch.device("cuda", self.local_rank)
+    def _set_distributed_vars(self, args):
+        device_rank = args.device_rank if args is not None and hasattr(
+            args,
+            'device_rank') else self.local_rank
+        if device_rank >= 0:
+            torch.cuda.set_device(device_rank)
+            self.device = torch.device("cuda", device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
         else:
@@ -1143,6 +1187,18 @@ class DeepSpeedEngine(Module):
     def dataloader_drop_last(self):
         return self._config.dataloader_drop_last
 
+    def was_step_applied(self) -> bool:
+        """Returns True if the latest ``step()`` produced in parameter updates.
+
+        Note that a ``False`` return is not an error condition. Steps are frequently
+        no-ops, such as between gradient accumulation boundaries or when overflows
+        occur.
+
+        Returns:
+            bool: Whether the latest ``step()`` modified model parameters.
+        """
+        return self._step_applied
+
     def deepspeed_io(self,
                      dataset,
                      batch_size=None,
@@ -1429,6 +1485,9 @@ class DeepSpeedEngine(Module):
                                 mpu=self.mpu)
         self.optimizer.step()
 
+        if hasattr(self.optimizer, '_global_grad_norm'):
+            self._global_grad_norm = self.optimizer._global_grad_norm
+
         # Quantize the updated parameter if there is no overflow
         if self.quantizer:
             self.quantizer.quantize(
@@ -1451,12 +1510,19 @@ class DeepSpeedEngine(Module):
         overflow = False
         if hasattr(self.optimizer, 'overflow'):
             overflow = self.optimizer.overflow
+        self._step_applied = not overflow
 
         if overflow:
             self.skipped_steps += 1
         else:
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step(**(lr_kwargs or {}))
+                try:
+                    self.lr_scheduler.step(**(lr_kwargs or {}))
+                except TypeError:
+                    # XXX Hack to work with Megatron 2.0 and DeepSpeed pipelines.
+                    # We don't currently have a way to specify lr_kwargs from
+                    # pipe_engine.train_batch()
+                    self.lr_scheduler.step(increment=self.train_batch_size())
 
         if report_progress and (self.global_steps + 1) % self.steps_per_print() == 0:
             self._report_progress(self.global_steps + 1)
@@ -1475,6 +1541,8 @@ class DeepSpeedEngine(Module):
         assert self.optimizer is not None, "must provide optimizer during " \
                                            "init in order to use step"
         report_progress = self.global_rank == 0 if self.global_rank else True
+
+        self._step_applied = False  # assume False, will flip to True
 
         # Update the model when we reach gradient accumulation boundaries
         if self.is_gradient_accumulation_boundary():
@@ -1697,7 +1765,7 @@ class DeepSpeedEngine(Module):
                         grads.append(grad_data)
 
         split_buckets = split_half_float_double_csr(grads)
-        for i, bucket_tuple in enumerate(split_buckets):
+        for _, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
 
             if self.pipeline_parallelism:
@@ -1706,22 +1774,17 @@ class DeepSpeedEngine(Module):
                 dp_group = groups.get_data_parallel_group()
 
             if bucket_type == CSRTensor.type():
-                # TODO: do we have to do something here?
                 self.csr_allreduce_no_retain(bucket, dp_group=dp_group)
-                #groups.get_data_parallel_group() if self.pipeline_parallelism else self.mpu.get_data_parallel_group())
             else:
-                self.allreduce_no_retain(
-                    bucket,
-                    dp_group=dp_group,
-                    #groups.get_data_parallel_group(),
-                    numel_per_bucket=elements_per_buffer)
+                self.allreduce_no_retain(bucket,
+                                         dp_group=dp_group,
+                                         numel_per_bucket=elements_per_buffer)
 
         if self.has_moe_layers:
             expert_split_buckets = split_half_float_double_csr(expert_grads)
             for i, bucket_tuple in enumerate(expert_split_buckets):
                 bucket_type, bucket = bucket_tuple
                 if bucket_type == CSRTensor.type():
-                    # TODO: do we have to do something here?
                     self.csr_allreduce_no_retain(bucket,
                                                  groups.get_expert_data_parallel_group())
                 else:
@@ -1941,12 +2004,6 @@ class DeepSpeedEngine(Module):
                          load_lr_scheduler_states=True,
                          load_module_only=False):
 
-        # moe branch uses the following three lines
-        load_path = self._get_ckpt_name(load_dir, tag)
-        logger.info(f'rank: {self.global_rank} loading checkpoint: {load_path}')
-        model_checkpoint = torch.load(load_path, map_location=torch.device('cpu'))
-
-        # deepspeed master branch uses a new system now
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
         sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
@@ -1966,11 +2023,9 @@ class DeepSpeedEngine(Module):
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         if self.has_moe_layers:
-            self.load_moe_state_dict(load_dir,
-                                     tag,
-                                     state_dict=model_checkpoint['module'])
+            self.load_moe_state_dict(load_dir, tag, state_dict=checkpoint['module'])
 
-        self.load_module_state_dict(state_dict=model_checkpoint['module'],
+        self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
 
         #TODO: Do the following before we merge to master.
@@ -1990,7 +2045,7 @@ class DeepSpeedEngine(Module):
                 optim_checkpoint = torch.load(optim_load_path,
                                               map_location=torch.device('cpu'))
             else:
-                optim_checkpoint = model_checkpoint
+                optim_checkpoint = checkpoint
 
             if load_optimizer_states and self.optimizer is not None and not self.zero_optimization(
             ):
@@ -2002,16 +2057,16 @@ class DeepSpeedEngine(Module):
                     self.optimizer.load_state_dict(optim_checkpoint['optimizer'])
 
             if load_lr_scheduler_states and self.lr_scheduler is not None:
-                self.lr_scheduler.load_state_dict(model_checkpoint['lr_scheduler'])
+                self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
-            self.csr_tensor_module_names = model_checkpoint['csr_tensor_module_names']
-            self.global_steps = model_checkpoint['global_steps']
-            self.global_samples = model_checkpoint.get(
+            self.csr_tensor_module_names = checkpoint['csr_tensor_module_names']
+            self.global_steps = checkpoint['global_steps']
+            self.global_samples = checkpoint.get(
                 'global_samples',
                 self.global_steps * self.train_batch_size())
-            self.skipped_steps = model_checkpoint['skipped_steps']
-            self.loaded_checkpoint_mp_world_size = model_checkpoint['mp_world_size']
-            self.loaded_checkpoint_dp_world_size = model_checkpoint['dp_world_size']
+            self.skipped_steps = checkpoint['skipped_steps']
+            self.loaded_checkpoint_mp_world_size = checkpoint['mp_world_size']
+            self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
             deepspeed_states = [
                 'module',
                 'csr_tensor_module_names',
@@ -2030,10 +2085,10 @@ class DeepSpeedEngine(Module):
         client_state = {
             key: value
             for key,
-            value in model_checkpoint.items() if not key in deepspeed_states
+            value in checkpoint.items() if not key in deepspeed_states
         }
 
-        if not load_optimizer_states:
+        if not load_optimizer_states and not load_module_only:
             client_state['optimizer'] = optim_checkpoint['optimizer']
 
         return load_path, client_state
@@ -2418,7 +2473,7 @@ class DeepSpeedEngine(Module):
         script = "zero_to_fp32.py"
         src = os.path.join(base_dir, "utils", script)
         dst = os.path.join(save_path, script)
-        logger.info(f"creating recovery script {dst}")
+        #logger.info(f"creating recovery script {dst}")
         copyfile(src, dst)
         # make executable
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
@@ -2535,27 +2590,3 @@ class DeepSpeedEngine(Module):
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)
-
-    def set_train_batch_size(self, train_batch_size):
-        """Adjust the global batch size by increasing or decreasing the size of
-        each micro-batch (i.e., ``train_micro_batch_size_per_gpu``). The number of
-        micro-batches (i.e., gradient accumulation steps) is not changed.
-        Args:
-            train_batch_size (int): The new global batch size for training.
-        Raises:
-            ValueError: if ``train_batch_size`` is not divisible by the
-                configured gradient_accumulation_steps and data parallelism.
-        """
-
-        if train_batch_size % (self.gradient_accumulation_steps() *
-                               self.dp_world_size) != 0:
-            raise ValueError(
-                f'Train batch size must be divisible by gradient_accumulation_steps * data parallelism'
-            )
-
-        new_micro_bsz = train_batch_size // (self.gradient_accumulation_steps() *
-                                             self.dp_world_size)
-
-        # overwrite config
-        self._config.train_batch_size = train_batch_size
-        self._config.train_micro_batch_size_per_gpu = new_micro_bsz
