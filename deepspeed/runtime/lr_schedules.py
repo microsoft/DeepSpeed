@@ -514,7 +514,7 @@ class OneCycle(object):
                                       decay_mom_rate,
                                       last_batch_iteration)
 
-        # Initalize batch iteration tracker
+        # Initialize batch iteration tracker
         self.last_batch_iteration = last_batch_iteration
 
     # Configure cycle shape

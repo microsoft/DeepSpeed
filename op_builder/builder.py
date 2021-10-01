@@ -172,7 +172,7 @@ class OpBuilder(ABC):
         '''
         Test for existence of a function within a tuple of libraries.
 
-        This is used as a smoke test to check whether a certain library is avaiable.
+        This is used as a smoke test to check whether a certain library is available.
         As a test, this creates a simple C program that calls the specified function,
         and then distutils is used to compile that program and link it with the specified libraries.
         Returns True if both the compile and link are successful, False otherwise.
