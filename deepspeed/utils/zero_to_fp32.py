@@ -109,8 +109,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
     # XXX: could make the script more memory efficient for when there are multiple groups - it
     # will require matching the sub-lists of param_shapes for each param group flattened tensor
     fp32_flat_groups = [
-        torch.cat(state_dicts[i]['optimizer_state_dict'][fp32_groups_key],
-                  0) for i in range(len(state_dicts))
+        state_dicts[i]['optimizer_state_dict'][fp32_groups_key] for i in range(len(state_dicts))
     ]
 
     return zero_stage, world_size, param_shapes, fp32_flat_groups
@@ -157,18 +156,26 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
 
     if debug:
         for i in range(world_size):
-            print(f"fp32_flat_groups[i].shape={fp32_flat_groups[i].shape}")
+            for j in range(len(fp32_flat_groups[0])):
+                print(f"fp32_flat_groups[{i}][{j}].shape={fp32_flat_groups[i][j].shape}")
 
     if zero_stage == 2:
         # XXX: memory usage doubles here (zero2)
-        full_single_fp32_vector = torch.cat(fp32_flat_groups, 0)
-        avail_numel = full_single_fp32_vector.numel()
+        num_param_groups = len(fp32_flat_groups[0])
+        merged_single_partition_of_fp32_groups = []
+        for i in range(num_param_groups):
+            merged_partitions = [
+                sd[i] for sd in fp32_flat_groups
+            ]
+            full_single_fp32_vector = torch.cat(merged_partitions, 0)
+            merged_single_partition_of_fp32_groups.append(full_single_fp32_vector)
+        avail_numel = sum([full_single_fp32_vector.numel() for full_single_fp32_vector in merged_single_partition_of_fp32_groups])
     elif zero_stage == 3:
         avail_numel = fp32_flat_groups[0].numel() * world_size
 
     if debug:
-        wanted_params = len(param_shapes)
-        wanted_numel = sum(shape.numel() for shape in param_shapes.values())
+        wanted_params = sum([len(shapes) for shapes in param_shapes])
+        wanted_numel = sum([sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes])
         # not asserting if there is a mismatch due to possible padding
         print(f"Have {avail_numel} numels to process.")
         print(f"Need {wanted_numel} numels in {wanted_params} params.")
@@ -183,65 +190,78 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     # params
     # XXX: for huge models that can't fit into the host's RAM we will have to recode this to support
     # out-of-core computing solution
-    offset = 0
     total_numel = 0
     total_params = 0
-    for name, shape in param_shapes.items():
+    for shapes, full_single_fp32_vector in zip(param_shapes, merged_single_partition_of_fp32_groups):
+        offset = 0
+        avail_numel = full_single_fp32_vector.numel()
+        for name, shape in shapes.items():
 
-        unpartitioned_numel = shape.numel()
-        total_numel += unpartitioned_numel
-        total_params += 1
+            unpartitioned_numel = shape.numel()
+            total_numel += unpartitioned_numel
+            total_params += 1
 
-        if zero_stage == 2:
-            if debug:
-                print(
-                    f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} "
-                )
-            state_dict[name] = full_single_fp32_vector.narrow(
-                0,
-                offset,
-                unpartitioned_numel).view(shape)
-            offset += unpartitioned_numel
-
-        elif zero_stage == 3:
-            partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
-
-            if debug:
-                print(
-                    f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
-                )
-
-            if unpartitioned_numel > 1:
-                # XXX: memory usage doubles here (zero3)
-                state_dict[name] = torch.cat(
-                    tuple(fp32_flat_groups[i].narrow(0,
-                                                     offset,
-                                                     partitioned_numel)
-                          for i in range(world_size)),
-                    0).view(shape)
-            else:
-                # handle an edge case where there is only 1 element (e.g. bias in a tiny test model)
-                state_dict[name] = fp32_flat_groups[0].narrow(
+            if zero_stage == 2:
+                if debug:
+                    print(
+                        f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} "
+                    )
+                state_dict[name] = full_single_fp32_vector.narrow(
                     0,
                     offset,
-                    partitioned_numel).view(shape)
-            offset += partitioned_numel + partitioned_padding_numel
+                    unpartitioned_numel).view(shape)
+                offset += unpartitioned_numel
 
-    if zero_stage == 3:
-        offset *= world_size
+            elif zero_stage == 3:
+                partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
 
-    def align_to_4(x):
-        return 4 * math.ceil(x / 4)
+                if debug:
+                    print(
+                        f"{total_params} {name} full shape: {shape} partition0 numel={partitioned_numel} partitioned_padding_numel={partitioned_padding_numel}"
+                    )
 
-    if zero_stage == 2:
-        # Z2 started to align to 4 to improve nccl performance
-        offset = align_to_4(offset)
-        avail_numel = align_to_4(avail_numel)
+                if unpartitioned_numel > 1:
+                    # XXX: memory usage doubles here (zero3)
+                    state_dict[name] = torch.cat(
+                        tuple(fp32_flat_groups[i].narrow(0,
+                                                         offset,
+                                                         partitioned_numel)
+                              for i in range(world_size)),
+                        0).view(shape)
+                else:
+                    # handle an edge case where there is only 1 element (e.g. bias in a tiny test model)
+                    state_dict[name] = fp32_flat_groups[0].narrow(
+                        0,
+                        offset,
+                        partitioned_numel).view(shape)
+                offset += partitioned_numel + partitioned_padding_numel
 
-    # Sanity check
-    if offset != avail_numel:
-        raise ValueError(
-            f"consumed {offset} numels out of {avail_numel} - something is wrong")
+        if zero_stage == 2:
+            # Z2 started to align to 2*world_size to improve nccl performance. Therefore both offset and
+            # avail_numel can differ by anywhere between 0..2*world_size. Due to two unrelated complex
+            # paddings performed in the code it's almost impossible to predict the exact numbers w/o the
+            # live optimizer object, so we are checking that the numbers are within the right range
+            align_to = 2 * world_size
+
+            def zero2_align(x):
+                    return align_to * math.ceil(x / align_to)
+
+            if debug:
+                print(f"original offset={offset}, avail_numel={avail_numel}")
+
+            offset = zero2_align(offset)
+            avail_numel = zero2_align(avail_numel)
+
+            if debug:
+                print(f"aligned  offset={offset}, avail_numel={avail_numel}")
+
+        elif zero_stage == 3:
+            offset *= world_size
+
+        # Sanity check
+        if offset != avail_numel:
+            raise ValueError(
+                f"consumed {offset} numels out of {avail_numel} - something is wrong")
 
     print(
         f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements"
