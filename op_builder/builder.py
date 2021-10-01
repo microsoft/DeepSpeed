@@ -48,7 +48,7 @@ def installed_cuda_version():
     return int(cuda_major), int(cuda_minor)
 
 
-def get_default_compute_capatabilities():
+def get_default_compute_capabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
     import torch.utils.cpp_extension
     if torch.utils.cpp_extension.CUDA_HOME is not None and installed_cuda_version(
@@ -440,7 +440,7 @@ class CUDAOpBuilder(OpBuilder):
                 cross_compile_archs = cross_compile_archs_env.replace(' ', ';')
             else:
                 if cross_compile_archs is None:
-                    cross_compile_archs = get_default_compute_capatabilities()
+                    cross_compile_archs = get_default_compute_capabilities()
             ccs = cross_compile_archs.split(';')
 
         args = []
