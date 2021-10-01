@@ -701,8 +701,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     handle = self._allgather_param(param,
                                                    async_op=async_op,
                                                    hierarchy=hierarchy)
-                    param.update_status(ZeroParamStatus.INFLIGHT
-                                        if async_op else ZeroParamStatus.AVAILABLE)
+                    param.update_status(ZeroParamStatus.INFLIGHT)
                     handles.append(handle)
                 else:
                     all_gather_list.append(param)
