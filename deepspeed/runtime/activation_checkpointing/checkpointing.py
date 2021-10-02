@@ -376,12 +376,7 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
             num_non_fp_tensors += 1
             continue
 
-        if arg_index >= num_non_fp_tensors:
-            i = arg_index - num_non_fp_tensors
-        else:
-            # to prevent arg_index=0, num_non_fp_tensors=1
-            i = arg_index
-
+        i = arg_index - num_non_fp_tensors
         partition_size = get_partition_size(item)
         partition = item.detach().contiguous().view(-1).narrow(
             0,
@@ -451,12 +446,7 @@ def get_partitioned_activations_for_backward(args, inputs, contiguous_checkpoint
 
         arg.data = inp.data
         new_args.append(arg)
-
-        if arg_index >= num_non_fp_tensors:
-            i = arg_index - num_non_fp_tensors
-        else:
-            # to prevent arg_index=0, num_non_fp_tensors=1
-            i = arg_index
+        i = arg_index - num_non_fp_tensors
 
         if contiguous_checkpoint:
             numel = size.numel()
