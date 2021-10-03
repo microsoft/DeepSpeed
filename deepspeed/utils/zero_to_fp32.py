@@ -10,6 +10,7 @@
 import argparse
 import torch
 import glob
+import math
 import os
 from collections import OrderedDict
 
@@ -52,6 +53,9 @@ def get_optim_files(checkpoint_dir):
 
 
 def parse_model_state(file):
+
+    # load to cpu
+    device = torch.device('cpu')
     state_dict = torch.load(file, map_location=device)
 
     if "buffer_names" not in state_dict:
@@ -118,7 +122,7 @@ def parse_optim_states(files, ds_checkpoint_dir):
 def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     remainder = unpartitioned_numel % world_size
     padding_numel = (world_size - remainder) if remainder else 0
-    partitioned_numel = int(unpartitioned_numel / world_size)
+    partitioned_numel = math.ceil(unpartitioned_numel / world_size)
     return partitioned_numel, padding_numel
 
 
@@ -211,10 +215,31 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
                                                  offset,
                                                  partitioned_numel)
                       for i in range(world_size)),
-                0).view(shape)
-            offset += partitioned_numel + partitioned_padding_numel
+                0).narrow(0,
+                          0,
+                          unpartitioned_numel).view(shape)
+            offset += partitioned_numel
 
-    if zero_stage == 3:
+    if zero_stage == 2:
+        # Z2 started to align to 2*world_size to improve nccl performance. Therefore both offset and
+        # avail_numel can differ by anywhere between 0..2*world_size. Due to two unrelated complex
+        # paddings performed in the code it's almost impossible to predict the exact numbers w/o the
+        # live optimizer object, so we are checking that the numbers are within the right range
+        align_to = 2 * world_size
+
+        def zero2_align(x):
+            return align_to * math.ceil(x / align_to)
+
+        if debug:
+            print(f"original offset={offset}, avail_numel={avail_numel}")
+
+        offset = zero2_align(offset)
+        avail_numel = zero2_align(avail_numel)
+
+        if debug:
+            print(f"aligned  offset={offset}, avail_numel={avail_numel}")
+
+    elif zero_stage == 3:
         offset *= world_size
 
     # Sanity check
@@ -255,7 +280,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
         model.load_state_dict(state_dict)
         # submit to model hub or save the model to share with others
 
-    In this example the ``model`` will no longer be useable in the deepspeed context of the same
+    In this example the ``model`` will no longer be usable in the deepspeed context of the same
     application. i.e. you will need to re-initialize the deepspeed engine, since
     ``model.load_state_dict(state_dict)`` will remove all the deepspeed magic from it.
 
@@ -318,7 +343,7 @@ def load_state_dict_from_zero_checkpoint(model, checkpoint_dir, tag=None):
         model = load_state_dict_from_zero_checkpoint(trainer.model, checkpoint_dir)
         # submit to model hub or save the model to share with others
 
-    Note, that once this was run, the ``model`` will no longer be useable in the deepspeed context
+    Note, that once this was run, the ``model`` will no longer be usable in the deepspeed context
     of the same application. i.e. you will need to re-initialize the deepspeed engine, since
     ``model.load_state_dict(state_dict)`` will remove all the deepspeed magic from it.
 
