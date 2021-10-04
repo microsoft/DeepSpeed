@@ -13,7 +13,7 @@ from packaging import version as pkg_version
 import collections
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -173,13 +173,14 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         if self.has_moe_layers:
             self._configure_moe_settings()
+        self._global_grad_norm = 0.
 
         if mpu is None:
             self.model_parallel_group = None
             self.model_parallel_rank = 0
         else:
             self.model_parallel_group = mpu.get_model_parallel_group()
-            self.model_parallel_rank = mpu.get_model_parallel_rank()
+            self.model_parallel_rank = bwc_tensor_model_parallel_rank(mpu)
 
         self.overflow = False
         self.clip_grad = clip_grad
@@ -195,7 +196,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.fp16_master_weights_and_gradients = fp16_master_weights_and_gradients
 
         if self.fp16_master_weights_and_gradients:
-            assert self.cpu_offload and type(self.optimizer) in [DeepSpeedCPUAdam], f"fp16 master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32. Currenty only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}. Either disable fp16_master_weights_and_gradients or enable ZeRO-2 Offload with DeepSpeedCPUAdam"
+            assert self.cpu_offload and type(self.optimizer) in [DeepSpeedCPUAdam], f"fp16_master_and_gradients requires optimizer to support keeping fp16 master and gradients while keeping the optimizer states in fp32. Currently only supported using ZeRO-Offload with DeepSpeedCPUAdam. But current setting is ZeRO-Offload:{self.cpu_offload} and optimizer type {type(self.optimizer)}. Either disable fp16_master_weights_and_gradients or enable ZeRO-2 Offload with DeepSpeedCPUAdam"
 
         if self.reduce_scatter:
             assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
@@ -223,7 +224,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # These are the parameters that will be updated by this process directly
         self.params_in_partition = []
 
-        # Offset from the first paramter in the the self.params_in_partition
+        # Offset from the first parameter in the the self.params_in_partition
         # the parameter boundaries may not align with partition boundaries
         # so we need to keep track of the offset
         self.first_offset = []
@@ -769,10 +770,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # create a flat tensor aligned at the alignment boundary
     def flatten_dense_tensors_aligned(self, tensor_list, alignment):
-        num_elements = 0
-        for tensor in tensor_list:
-            num_elements = num_elements + tensor.numel()
-
+        num_elements = sum(t.numel() for t in tensor_list)
         remaining = num_elements % alignment
 
         if remaining:
@@ -781,8 +779,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                      device=tensor_list[0].device,
                                      dtype=tensor_list[0].dtype)
             padded_tensor_list = tensor_list + [pad_tensor]
-
-            num_elements = num_elements + elements_to_add
         else:
             padded_tensor_list = tensor_list
 
@@ -908,7 +904,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     partition_id, offset = partition_ids_w_offsets[idx]
 
                     # if dist.get_rank() == 0 and count < 100:
-                    #     print(f"Rank {dist.get_rank()} rank offet id {idx} calculated dp size {dist.get_world_size(group=process_group)} real dp size {dist.get_world_size(self.real_dp_process_group[i])} and dst: {partition_id}")
+                    #     print(f"Rank {dist.get_rank()} rank offset id {idx} calculated dp size {dist.get_world_size(group=process_group)} real dp size {dist.get_world_size(self.real_dp_process_group[i])} and dst: {partition_id}")
                     # count += 1
 
                     # Calculate numel for grad slice depending on partition location
@@ -936,7 +932,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
                 grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
                 # if dist.get_rank() == 0:
-                #     print(f"Rank {dist.get_rank()} rank offet id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
+                #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
                 # dist.barrier()
                 #dist.barrier()
                 dst_rank = _get_global_rank(real_dp_process_group[i], dst)
@@ -1007,7 +1003,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     dest_offset,
                     num_elements)
 
-        #accumulate gradients into param.grad or parts of it that belongs to this parittion
+        #accumulate gradients into param.grad or parts of it that belongs to this partition
         def accumulate_gradients():
             if not self.fp16_master_weights_and_gradients:
                 dest_buffer.copy_(self.accumulated_grads_in_cpu[param_id].view(-1),
@@ -1093,6 +1089,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         total_norm = 0.0
         norm_type = 2.0
         for p in params:
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
+
             if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                 param_id = self.get_param_id(p)
                 # as some model have trainable parameters but skipped in training,
@@ -1160,7 +1160,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                                                   device=torch.cuda.current_device())
             see_memory_usage(f"after copying {total_size} gradients into partition")
 
-        # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
+        # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
         new_grad_tensor = self.grads_in_partition.view(-1).narrow(
             0,
             self.grads_in_partition_offset,
@@ -1250,7 +1250,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.sequential_execution(print_func, message)
 
     def get_grads_to_reduce(self, i, partition_id):
-        def get_reducable_portion(key):
+        def get_reducible_portion(key):
             grad = self.param_dict[key].grad
             total_elements = grad.numel()
             start = self.grad_start_offset[i][partition_id][key]
@@ -1276,7 +1276,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         grads_to_reduce = []
         for key in self.is_grad_computed[i][partition_id]:
-            grad = get_reducable_portion(key)
+            grad = get_reducible_portion(key)
             grads_to_reduce.append(grad)
         return grads_to_reduce
 
@@ -1492,8 +1492,11 @@ class FP16_DeepSpeedZeroOptimizer(object):
         else:
             total_norm = 0.0
             # if dist.get_rank() == 0:
-            #    logger.info(f"Total Norm begining {total_norm}")
+            #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params):
+                # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+                if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                    continue
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
@@ -1622,11 +1625,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             see_memory_usage('After overflow after clearing gradients')
 
-            logger.info(
-                "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step. Attempted loss scale: {}, "
-                "reducing to {}".format(dist.get_rank(),
-                                        prev_scale,
-                                        self.loss_scale))
             self.start_timers(timer_names)
             self.stop_timers(timer_names)
             return
@@ -1647,7 +1645,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                     self.get_grad_norm_direct(self.averaged_gradients[i],
                                               self.params_in_partition[i]))
 
-                # free gradients for all the prameters that are not updated by this process
+                # free gradients for all the parameters that are not updated by this process
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
                 # create a flat gradients for parameters updated by this process
@@ -1676,7 +1674,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.has_moe_layers:
             self._average_expert_grad_norms(norm_groups)
 
-        self.unscale_and_clip_grads(single_partition_grad_groups, norm_groups)
+        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
+        self.unscale_and_clip_grads(single_partition_grad_groups, self._global_grad_norm)
         self.stop_timers([OPTIMIZER_GRADIENTS])
 
         self.start_timers([OPTIMIZER_STEP])
@@ -1763,12 +1762,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 dist.all_reduce(scaled_norm_tensor, group=self.ep_process_group)
                 norm_groups[i] = scaled_norm_tensor.item()
 
-    def unscale_and_clip_grads(self, grad_groups_flat, norm_groups):
-        total_norm = 0.0
-        for norm in norm_groups:
-            total_norm += norm**2.0
-        total_norm = math.sqrt(total_norm)
-
+    def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
         if self.clip_grad > 0.:
