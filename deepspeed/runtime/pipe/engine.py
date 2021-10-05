@@ -599,11 +599,13 @@ class PipelineEngine(DeepSpeedEngine):
         # Partition the outputs if we are not the last stage
         if self.is_pipe_partitioned and not self.is_last_stage():
             if isinstance(outputs, tuple):
-                for output in outputs[1:]:
-                    assert torch.is_tensor(output) and (output.requires_grad is False)
                 first_output = outputs[0]
+                # TODO: Improve pipe partitioning to pass multiple tensors that require grads
+                assert all([torch.is_tensor(elt) and elt.requires_grad is False for elt in outputs[1:]])
+                outputs_tail = outputs[1:]
             elif torch.is_tensor(outputs):
                 first_output = outputs
+                outputs_tail = []
             else:
                 raise NotImplementedError
             part = PartitionedTensor(tensor=first_output,
@@ -612,7 +614,7 @@ class PipelineEngine(DeepSpeedEngine):
             first_output.data = torch.zeros(1)
             self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
-            outputs = tuple([part.to_meta(), part.data()] + outputs[1:] if isinstance(outputs, tuple) else [])
+            outputs = tuple([part.to_meta(), part.data(), *outputs_tail])
             part = None
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
@@ -911,14 +913,20 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Partition the gradient
         if self.is_grad_partitioned:
-            assert isinstance(inputs, tuple)
-            part = PartitionedTensor(tensor=inputs[0].grad,
+            if isinstance(inputs, tuple):
+                first_input = inputs[0]
+                assert all([torch.is_tensor(elt) for elt in inputs[1:]])
+                inputs_grad_tail = [elt.grad for elt in inputs[1:] if elt.grad is not None]
+            elif torch.is_tensor(inputs):
+                first_input = inputs
+                inputs_grad_tail = []
+            else:
+                raise NotImplementedError
+            assert torch.is_tensor(first_input)
+            part = PartitionedTensor(tensor=first_input.grad,
                                      group=self.grid.get_slice_parallel_group())
-            # Clear the large output data, but save the computation graph
-            # Inject the partitoned tensor into the output before sending
 
-            # XXX Hack
-            inputs = ([part.to_meta(), part.data(), *[elt.grad for elt in inputs[1:] if elt.grad is not None]])
+            inputs = ([part.to_meta(), part.data(), *inputs_grad_tail])
 
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
