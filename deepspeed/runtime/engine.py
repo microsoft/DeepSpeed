@@ -780,7 +780,7 @@ class DeepSpeedEngine(Module):
                 self.has_moe_layers = True
                 self.num_experts = module.num_experts
                 break
-	
+
         if self.has_moe_layers:
             for _, module in self.module.named_modules():
                 if isinstance(module, TopKGate):
@@ -1289,100 +1289,88 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
-    #def forward(self, *inputs, **kwargs):
-    #    with record_function("deepspeed::forward"):
-    #        return self.forward_step(self, *inputs, **kwargs)
-
     def forward(self, *inputs, **kwargs):
-        #if self.module.training and self.global_rank == 0:
-        #    print(f"forward called on module {self.module.__class__.__name__} with {len(self.gate_modules)} gate modules")
-        
-        if True:
-            
-            with record_function("deepspeed::forward"):
-                if self.flops_profiler_enabled(
-                ) and self.global_steps == self.flops_profiler_profile_step(
-                ) and self.global_rank == 0:
-                    self.flops_profiler.start_profile(ignore_list=None)
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_profile_step(
+        ) and self.global_rank == 0:
+            self.flops_profiler.start_profile(ignore_list=None)
 
-                if self.module.training and self.progressive_layer_drop:
-                    kwargs.update(self.progressive_layer_drop.get_state())
+        if self.module.training and self.progressive_layer_drop:
+            kwargs.update(self.progressive_layer_drop.get_state())
 
-                if self.module.training and self.curriculum_enabled():
-                    self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
-                    if self.curriculum_params()["curriculum_type"] == "seqlen":
-                        kwargs.update({
-                            "curriculum_seqlen":
-                            self.curriculum_scheduler.get_current_difficulty()
-                        })
+        if self.module.training and self.curriculum_enabled():
+            self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
+            if self.curriculum_params()["curriculum_type"] == "seqlen":
+                kwargs.update({
+                    "curriculum_seqlen":
+                    self.curriculum_scheduler.get_current_difficulty()
+                })
 
-                if self.zero_optimization_partition_weights():
-                    # Enable automated discovery of external parameters by indicating that
-                    # we are in a forward pass.
-                    for module in self.module.modules():
-                        module._parameters._in_forward = True
-                        pass
+        if self.zero_optimization_partition_weights():
+            # Enable automated discovery of external parameters by indicating that
+            # we are in a forward pass.
+            for module in self.module.modules():
+                module._parameters._in_forward = True
+                pass
 
-                if self.wall_clock_breakdown():
-                    self.timers('forward_microstep').start()
-                    self.timers('forward').start()
+        if self.wall_clock_breakdown():
+            self.timers('forward_microstep').start()
+            self.timers('forward').start()
 
-                if self.training_dataloader is None:
-                    self.tput_timer.start()
+        if self.training_dataloader is None:
+            self.tput_timer.start()
 
-                loss = self.module(*inputs, **kwargs)
+        loss = self.module(*inputs, **kwargs)
 
-                if self.zero_optimization_partition_weights():
-                    # Reset the ZeRO-3 state if we are only doing forward-passes (ie evaluation).
-                    if not torch._C.is_grad_enabled():
-                        self.optimizer.param_coordinator.reset_step()
+        if self.zero_optimization_partition_weights():
+            # Reset the ZeRO-3 state if we are only doing forward-passes (ie evaluation).
+            if not torch._C.is_grad_enabled():
+                self.optimizer.param_coordinator.reset_step()
 
-                    # Disable automated discovery of external parameters
-                    for module in self.module.modules():
-                        module._parameters._in_forward = False
+            # Disable automated discovery of external parameters
+            for module in self.module.modules():
+                module._parameters._in_forward = False
 
-                if self.wall_clock_breakdown():
-                    self.timers('forward').stop()
-                    self.timers('forward_microstep').stop()
+        if self.wall_clock_breakdown():
+            self.timers('forward').stop()
+            self.timers('forward_microstep').stop()
 
-                if self.flops_profiler_enabled(
-                ) and self.global_steps == self.flops_profiler_profile_step(
-                ) and self.global_rank == 0:
-                    self.flops_profiler.stop_profile()
-                    self.flops_profiler.print_model_profile(
-                        profile_step=self.global_steps,
-                    module_depth=self.flops_profiler_module_depth(),
-                    top_modules=self.flops_profiler_top_modules(),
-                    detailed=self.flops_profiler_detailed(),
-                    output_file=self.flops_profiler_output_file())
-                    self.flops_profiler.end_profile()
+        if self.flops_profiler_enabled(
+        ) and self.global_steps == self.flops_profiler_profile_step(
+        ) and self.global_rank == 0:
+            self.flops_profiler.stop_profile()
+            self.flops_profiler.print_model_profile(
+                profile_step=self.global_steps,
+                module_depth=self.flops_profiler_module_depth(),
+                top_modules=self.flops_profiler_top_modules(),
+                detailed=self.flops_profiler_detailed(),
+                output_file=self.flops_profiler_output_file())
+            self.flops_profiler.end_profile()
 
-        #self.print_moe_stats()
-        #self.gate_module.timers.log(['TopKGate'], reset=False)
-        
         return loss
-    
-    def print_moe_stats(self):
-        
+
+    def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
         moe_time = 0.0
         falltoall = 0.0
         salltoall = 0.0
-        
+
         for gate in self.gate_modules:
             #logger.info(f"Individual TopK gate time: {gate.gate_time:.2f} ms")
             gate_time += gate.gate_time
-        
+
         for l in self.moe_layers:
             #logger.info(f"MoE layer; total: {l.time_moe:.2f} ms, first alltoall: {l.time_falltoall:.2f}, second alltoall: {l.time_salltoall:.2f}")
             moe_time += l.time_moe
             falltoall += l.time_falltoall
             salltoall += l.time_salltoall
-        
-        #TODO: Allreduce/average them across ranks for accurate timing.
 
-        if torch.distributed.get_rank() == 0:
-            logger.info(f"rank={torch.distributed.get_rank()} time (ms) | moe: (total: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}) | top-k: {gate_time:.2f}")
+        #TODO: Allreduce/average them across ranks for more accurate timing.
+
+        #if torch.distributed.get_rank() == 0:
+        log_dist(
+            f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
+            ranks=[0])
 
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
@@ -1679,6 +1667,7 @@ class DeepSpeedEngine(Module):
                         self.summary_writer.flush()
 
             if self.wall_clock_breakdown():
+                fwd_time = self.timers('forward').elapsed(reset=False) * 1000
                 self.timers.log([
                     'forward',
                     'backward',
@@ -1687,7 +1676,8 @@ class DeepSpeedEngine(Module):
                     'step'
                 ],
                                 reset=False)
-                self.print_moe_stats()
+                if self.has_moe_layers:
+                    self.print_forward_breakdown(fwd_time=fwd_time)
 
         self.micro_steps += 1
 

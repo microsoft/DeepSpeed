@@ -14,7 +14,6 @@ Copyright 2021 The Microsoft DeepSpeed Team
 
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
-from torch.profiler import profile, record_function, ProfilerActivity
 
 import time
 from time import perf_counter
@@ -295,9 +294,7 @@ class TopKGate(torch.nn.Module):
                Tensor,
                Tensor]:  # type: ignore
 
-        #if torch.distributed.get_rank() == 0:
-            #print(f"forward called on gate module {self.__class__.__name__}")
-        if self.training and self.wall_clock_breakdown:
+        if self.wall_clock_breakdown:
             self.timers('TopKGate').start()
 
         if self.wg.weight.dtype != torch.float32:
@@ -320,16 +317,13 @@ class TopKGate(torch.nn.Module):
             gate_output = top2gating(
                 logits,
                 self.capacity_factor if self.training else self.eval_capacity_factor)
-            
-        if self.training and self.wall_clock_breakdown:
+
+        if self.wall_clock_breakdown:
             self.timers('TopKGate').stop()
             self.gate_time = self.timers('TopKGate').elapsed(reset=False) * 1000
-            #print(f"gate_time= {self.gate_time:.2f}")
-            #self.timers.log(['TopKGate'], reset=False)
-            #self.gate_time += t
-            #if torch.distributed.get_rank() == 0:
 
         return gate_output
+
 
 class MOELayer(Base):
     """MOELayer module which implements MixtureOfExperts as described in Gshard_.
@@ -366,39 +360,30 @@ class MOELayer(Base):
         self.wall_clock_breakdown = True
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
-        
 
-        if self.training and self.wall_clock_breakdown:
+        if self.wall_clock_breakdown:
             self.timers('moe').start()
 
-        # assert len(input) == 1, "only single input Tensor supported"
-        # assert len(input[0].shape) == 3 or len(input[0].shape) == 2, "input Tensor must have dimensions: (s)equence, (t)oken, (m)odel"
-        # removed wrong assert
-        # assert input[0].shape[0] % len(self.experts) == 0, "num tokens must be order of number of local experts"
         # Implement Algorithm 2 from GShard paper.
         d_model = input[0].shape[-1]
+
         # Initial implementation -> Reshape into S tokens by dropping sequence dimension.
         # Reshape into G groups so that each group can distribute tokens equally
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
 
-        with record_function("deepspeed::moe-gate"):
-            #print(f"calling gate")
-            self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
-            #print("gate ended")
+        self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
-        with record_function("deepspeed::input-einsum"):
-            dispatched_input = torch.einsum("sec,sm->ecm",
-                                            dispatch_mask.type_as(input[0]),
-                                            reshaped_input)
+        dispatched_input = torch.einsum("sec,sm->ecm",
+                                        dispatch_mask.type_as(input[0]),
+                                        reshaped_input)
 
-        if self.training and self.wall_clock_breakdown:
+        if self.wall_clock_breakdown:
             self.timers('falltoall').start()
-        
-        with record_function("deepspeed::first-all2all"):
-            dispatched_input = _AllToAll.apply(self.group, dispatched_input)
-        
-        if self.training and self.wall_clock_breakdown:
+
+        dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+
+        if self.wall_clock_breakdown:
             self.timers('falltoall').stop()
             self.time_falltoall = self.timers('falltoall').elapsed(reset=False) * 1000
 
@@ -408,25 +393,14 @@ class MOELayer(Base):
                                                     -1,
                                                     d_model)
 
-        sync = False
+        expert_output = self.experts(dispatched_input)
 
-        if sync:
-            with record_function("deepspeed::cudasync-before-experts"):
-                torch.cuda.synchronize()
-
-        with record_function("deepspeed::experts::forward"):
-            expert_output = self.experts(dispatched_input)
-        
-        if sync:
-            with record_function("deepspeed::cudasync-after-experts"):
-                torch.cuda.synchronize()
-
-        if self.training and self.wall_clock_breakdown:
+        if self.wall_clock_breakdown:
             self.timers('salltoall').start()
-        with record_function("deepspeed::second-all2all"):
-            expert_output = _AllToAll.apply(self.group, expert_output)
-        
-        if self.training and self.wall_clock_breakdown:
+
+        expert_output = _AllToAll.apply(self.group, expert_output)
+
+        if self.wall_clock_breakdown:
             self.timers('salltoall').stop()
             self.time_salltoall = self.timers('salltoall').elapsed(reset=False) * 1000
 
@@ -435,18 +409,14 @@ class MOELayer(Base):
                                               -1,
                                               d_model)
 
-        with record_function("deepspeed::output-einsum"):
-            combined_output = torch.einsum("sec,ecm->sm",
-                                           combine_weights.type_as(input[0]),
-                                           expert_output)
-            
-            a = combined_output.reshape(input[0].shape)
-        
-        if sync:
-            with record_function("deepspeed::cudasync-end-moe"):
-                torch.cuda.synchronize()
-        
-        if self.training and self.wall_clock_breakdown:
+        combined_output = torch.einsum("sec,ecm->sm",
+                                       combine_weights.type_as(input[0]),
+                                       expert_output)
+
+        a = combined_output.reshape(input[0].shape)
+
+        if self.wall_clock_breakdown:
             self.timers('moe').stop()
             self.time_moe = self.timers('moe').elapsed(reset=False) * 1000
+
         return a
