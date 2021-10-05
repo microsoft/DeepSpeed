@@ -612,7 +612,7 @@ class PipelineEngine(DeepSpeedEngine):
             first_output.data = torch.zeros(1)
             self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
-            outputs = tuple([part.to_meta(), part.data(), *outputs[1:]])
+            outputs = tuple([part.to_meta(), part.data()] + outputs[1:] if isinstance(outputs, tuple) else [])
             part = None
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
@@ -918,7 +918,7 @@ class PipelineEngine(DeepSpeedEngine):
             # Inject the partitoned tensor into the output before sending
 
             # XXX Hack
-            inputs = ([part.to_meta(), part.data(), *[elt.grad for elt in inputs[1:]]])
+            inputs = ([part.to_meta(), part.data(), *[elt.grad for elt in inputs[1:] if elt.grad is not None]])
 
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
@@ -1022,7 +1022,7 @@ class PipelineEngine(DeepSpeedEngine):
                 s = list(outputs.size())
                 self.grad_layer = self._allocate_buffer(s, dtype=outputs.dtype, num_buffers=1)[0]
             else:
-                sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs]  # if t.is_floating_point()]
+                sizes_and_dtypes = [(list(t.sizee()), t.dtype) for t in outputs if t.is_floating_point()]
                 self.grad_layer = self._allocate_buffers(sizes_and_dtypes, num_buffers=1)[0]
 
         if isinstance(self.grad_layer, torch.Tensor):
