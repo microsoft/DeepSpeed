@@ -283,7 +283,7 @@ class TopKGate(torch.nn.Module):
         self.min_capacity = min_capacity
         self.noisy_gate_policy = noisy_gate_policy
         self.timers = SynchronizedWallClockTimer()
-        self.wall_clock_breakdown = True
+        self.wall_clock_breakdown = False
         self.gate_time = 0.0
 
     def forward(
@@ -357,7 +357,7 @@ class MOELayer(Base):
         self.time_salltoall = 0.0
         self.time_moe = 0.0
         self.timers = SynchronizedWallClockTimer()
-        self.wall_clock_breakdown = True
+        self.wall_clock_breakdown = False
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
 
