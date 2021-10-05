@@ -31,7 +31,7 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capatabilities, OpBuilder
+from op_builder import ALL_OPS, get_default_compute_capabilities, OpBuilder
 
 # fetch rocm state
 is_rocm_pytorch = OpBuilder.is_rocm_pytorch()

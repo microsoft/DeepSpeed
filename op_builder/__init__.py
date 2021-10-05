@@ -11,6 +11,7 @@ from .utils import UtilsBuilder
 from .async_io import AsyncIOBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
+from .builder import get_default_compute_capabilities, OpBuilder
 
 # TODO: infer this list instead of hard coded
 # List of all available ops
