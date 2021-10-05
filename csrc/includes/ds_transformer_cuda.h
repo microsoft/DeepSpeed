@@ -34,7 +34,7 @@ struct BertGemmAlgos {
 template <typename T>
 class BertTransformerLayer {
 public:
-    BertTransformerLayer(int layer_id,
+    BertTransformerLayer(unsigned layer_id,
                          unsigned batch_size,
                          unsigned hidden_size,
                          unsigned num_heads,
@@ -144,7 +144,7 @@ private:
     size_t getWorkspaceSize(int maxBatchSize) const;
 
     // Params
-    int _layer_id;
+    unsigned _layer_id;
     unsigned _batch_size;
     unsigned _hidden_size;
     unsigned _heads;

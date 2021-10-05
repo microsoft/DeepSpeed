@@ -46,7 +46,7 @@ unsigned get_workspace_size(unsigned maxBatchSize,
     CHECK_CONTIGUOUS(x)
 
 template <typename T>
-BertTransformerLayer<T>::BertTransformerLayer(int layer_id,
+BertTransformerLayer<T>::BertTransformerLayer(unsigned layer_id,
                                               unsigned batch_size,
                                               unsigned hidden_size,
                                               unsigned num_heads,
@@ -586,7 +586,7 @@ void BertTransformerLayer<T>::SetSeqLength(unsigned seq_len)
 }
 
 template <typename T>
-int create_transformer_layer(int layer_id,
+int create_transformer_layer(unsigned layer_id,
                              unsigned batch_size,
                              unsigned hidden_dim,
                              unsigned num_heads,
@@ -633,7 +633,7 @@ int create_transformer_layer(int layer_id,
 }
 
 template <typename T>
-std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
+std::vector<torch::Tensor> ds_transformer_forward(unsigned layer_id,
                                                   const torch::Tensor& input,
                                                   const torch::Tensor& input_mask,
                                                   const torch::Tensor& attn_qkvw,
@@ -818,7 +818,7 @@ std::vector<torch::Tensor> ds_transformer_forward(int layer_id,
 }
 
 template <typename T>
-std::vector<torch::Tensor> ds_transformer_backward(int layer_id,
+std::vector<torch::Tensor> ds_transformer_backward(unsigned layer_id,
                                                    const torch::Tensor& grad_output,
                                                    const torch::Tensor& output,
                                                    const torch::Tensor& inp_norm,
