@@ -119,6 +119,8 @@ jobs:
           hipcc --version
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          sudo apt-get update
+          sudo apt-get install -y libaio-dev
       # Runs a set of commands using the runners shell
       - name: Install deepspeed
         run: |
