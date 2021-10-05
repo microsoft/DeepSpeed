@@ -42,8 +42,6 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         Arguments:
             batch_size: The maximum batch size used for running the kernel on each GPU
 
-            max_seq_length: The sequence-length of the model being trained with DeepSpeed
-
             hidden_size: The hidden size of the transformer layer
 
             intermediate_size: The intermediate size of the feed-forward part of transformer layer
@@ -88,7 +86,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
-            huggingface: Enbale if using the HuggingFace interface style for sending out the forward results.
+            huggingface: Enable if using the HuggingFace interface style for sending out the forward results.
 
             training: Enable for training rather than inference.
     """
