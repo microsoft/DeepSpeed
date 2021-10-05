@@ -950,3 +950,65 @@ def test_checkpoint_moe(tmpdir, ep_size):
                                             seq_dataloader=True)
 
     _helper(args)
+
+
+@pytest.mark.parametrize("ep_size", [4])
+def test_checkpoint_moe_and_zero(tmpdir, ep_size):
+    if not required_torch_version():
+        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+    config_dict = {
+        "train_batch_size": 8,
+        "steps_per_print": 1,
+        "fp16": {
+            "enabled": True
+        },
+        "zero_optimization": {
+            "stage": 2,
+        }
+    }
+    hidden_dim = 16
+    args = args_from_dict(tmpdir, config_dict)
+
+    def create_moe_param_groups(model):
+        from deepspeed.moe.utils import is_moe_param
+
+        params_with_weight_decay = {'params': [], 'name': 'weight_decay_params'}
+        moe_params_with_weight_decay = {
+            'params': [],
+            'moe': True,
+            'name': 'weight_decay_moe_params'
+        }
+
+        for module_ in model.modules():
+            moe_params_with_weight_decay['params'].extend([
+                p for n,
+                p in list(module_._parameters.items())
+                if p is not None and is_moe_param(p)
+            ])
+            params_with_weight_decay['params'].extend([
+                p for n,
+                p in list(module_._parameters.items())
+                if p is not None and not is_moe_param(p)
+            ])
+
+        return params_with_weight_decay, moe_params_with_weight_decay
+
+    @distributed_test(world_size=[4])
+    def _helper(args):
+        groups.initialize(ep_size=ep_size)
+        models = [SimpleMoEModel(hidden_dim=hidden_dim) for _ in range(2)]
+        params = [create_moe_param_groups(model) for model in models]
+        optimizers = [torch.optim.AdamW(params=param) for param in params]
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=False,
+                                            fp16=config_dict["fp16"]["enabled"],
+                                            empty_tag=True,
+                                            base_optimizers=optimizers,
+                                            seq_dataloader=True)
+
+    _helper(args)
