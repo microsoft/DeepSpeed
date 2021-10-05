@@ -344,11 +344,23 @@ class MOELayer(Base):
         # removed wrong assert
         # assert input[0].shape[0] % len(self.experts) == 0, "num tokens must be order of number of local experts"
         # Implement Algorithm 2 from GShard paper.
+
+        #print(f"first input in moe = {input[0].shape}")
+        #print(f"second input in moe = {input[1]}")
+        
         d_model = input[0].shape[-1]
+        
+        import deepspeed.utils.groups as groups
+        mp_size = groups.get_model_parallel_world_size()
+        
         # Initial implementation -> Reshape into S tokens by dropping sequence dimension.
         # Reshape into G groups so that each group can distribute tokens equally
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
+
+        if mp_size > 1:
+            print(f'reshaped_input = {reshaped_input.shape}')
+        
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
         dispatched_input = torch.einsum("sec,sm->ecm",
                                         dispatch_mask.type_as(input[0]),
@@ -356,9 +368,24 @@ class MOELayer(Base):
 
         #print(f"alltoall called at rank:{dist.get_rank()} with dispatched_input shape:{dispatched_input.shape}")
         a = time.perf_counter()
-        dispatched_input = _AllToAll.apply(self.group, dispatched_input)
+        if mp_size > 1:
+            print(f'mp_size={mp_size}, model_dim = {d_model}, seqlen = {input[0].shape[0]}, batch_size={input[0].shape[1]}')
+            print(f"dispatched_input at rank {torch.distributed.get_rank()}, shape = {dispatched_input.shape}, norm = {torch.norm(dispatched_input)}")
+        
+            # we want to split dispatched_input into 'mp_size' splits
+            splits = torch.split(dispatched_input, dispatched_input.shape[-1]//mp_size, dim=-1)
+            print(f"splits len = {len(splits)}, split 0 shape = {splits[0].shape}")
+            
+            #for split in splits:
+            dispatched_input = _AllToAll.apply(self.group, splits[mp_rank])
+            
+            #allgather -- think about how this can be done with autograd or use megatron
+            #dist.all_gather(dispatched_input, mp_group)
+
+            dispatched_input = torch.cat(splits, dim=-1)
+
         b = time.perf_counter()
-        #print(f"alltoall took {b-a} seconds at rank:{dist.get_rank()}")
+        print(f"alltoall took {b-a} seconds at rank:{dist.get_rank()}")
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.world_size,
                                                     self.num_local_experts,
