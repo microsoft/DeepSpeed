@@ -2316,7 +2316,9 @@ class DeepSpeedEngine(Module):
             expert_save_dir = self._get_expert_ckpt_name(save_dir, global_expert_id, tag)
             logger.info(
                 f'Saving model expert {global_expert_id} checkpoint: {expert_save_dir}')
-            torch.save(expert_state_dict, expert_save_dir)
+            with open(expert_save_dir, 'wb') as fd:
+                torch.save(expert_state_dict, fd)
+                fd.flush()
 
         # Save optimizer states. They are different across each exp parallel rank.
         optimizer_state = {
@@ -2324,10 +2326,9 @@ class DeepSpeedEngine(Module):
             self.optimizer.state_dict()
             if self.optimizer and not self.zero_optimization() else None
         }
-        torch.save(optimizer_state,
-                   self._get_optimizer_ckpt_name(save_dir,
-                                                 tag,
-                                                 expp_rank))
+        with open(self._get_optimizer_ckpt_name(save_dir, tag, expp_rank), 'wb') as fd:
+            torch.save(optimizer_state, fd)
+            fd.flush()
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
@@ -2354,7 +2355,9 @@ class DeepSpeedEngine(Module):
             }
             state.update(client_state)
             logger.info(f'Saving model checkpoint: {save_path}')
-            torch.save(state, save_path)
+            with open(save_path, 'wb') as fd:
+                torch.save(state, fd)
+                fd.flush()
         self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
@@ -2405,7 +2408,9 @@ class DeepSpeedEngine(Module):
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
         #logger.info('Saving model checkpoint: {}'.format(save_path))
-        torch.save(state, save_path)
+        with open(save_path, 'wb') as fd:
+            torch.save(state, fd)
+            fd.flush()
         self._curr_save_path = None
 
     def _get_buffer_names(self):
@@ -2486,7 +2491,9 @@ class DeepSpeedEngine(Module):
                        param_shapes=self._get_zero_param_shapes(),
                        ds_config=self.config,
                        ds_version=version)
-        torch.save(zero_sd, zero_checkpoint_name)
+        with open(zero_checkpoint_name, 'wb') as fd:
+            torch.save(zero_sd, fd)
+            fd.flush()
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
@@ -2591,4 +2598,30 @@ class DeepSpeedEngine(Module):
         if torch.distributed.get_rank() == 0:
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
-            torch.save(state_dict, path)
+            with open(path, 'wb') as fd:
+                torch.save(state_dict, fd)
+                fd.flush()
+
+    def set_train_batch_size(self, train_batch_size):
+        """Adjust the global batch size by increasing or decreasing the size of
+        each micro-batch (i.e., ``train_micro_batch_size_per_gpu``). The number of
+        micro-batches (i.e., gradient accumulation steps) is not changed.
+        Args:
+            train_batch_size (int): The new global batch size for training.
+        Raises:
+            ValueError: if ``train_batch_size`` is not divisible by the
+                configured gradient_accumulation_steps and data parallelism.
+        """
+
+        if train_batch_size % (self.gradient_accumulation_steps() *
+                               self.dp_world_size) != 0:
+            raise ValueError(
+                f'Train batch size must be divisible by gradient_accumulation_steps * data parallelism'
+            )
+
+        new_micro_bsz = train_batch_size // (self.gradient_accumulation_steps() *
+                                             self.dp_world_size)
+
+        # overwrite config
+        self._config.train_batch_size = train_batch_size
+        self._config.train_micro_batch_size_per_gpu = new_micro_bsz
