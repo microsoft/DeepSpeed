@@ -19,7 +19,6 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.distributed.distributed_c10d import _get_global_rank
 from tensorboardX import SummaryWriter
 
-from torch.profiler import profile, record_function, ProfilerActivity
 from typing import Callable, Dict, Optional, Union, Iterable
 
 from deepspeed.runtime.utils import see_memory_usage
@@ -1290,6 +1289,11 @@ class DeepSpeedEngine(Module):
         return scaled_loss
 
     def forward(self, *inputs, **kwargs):
+        r"""Execute forward propagation
+        Arguments:
+            *inputs: Variable length input list
+            **kwargs: variable length keyword arguments
+        """
         if self.flops_profiler_enabled(
         ) and self.global_steps == self.flops_profiler_profile_step(
         ) and self.global_rank == 0:
