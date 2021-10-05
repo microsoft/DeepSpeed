@@ -70,7 +70,7 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     sum = g.shfl(sum, 0);
     float mean = sum / row_stride;
     if (training)
-        if (g.thread_rank() == 0) means[row] = mean;
+        if (threadIdx.x == 0) means[row] = mean;
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] -= mean;
@@ -94,7 +94,7 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     variance /= row_stride;
     variance += epsilon;
     if (training)
-        if (g.thread_rank() == 0) vars[row] = variance;
+        if (threadIdx.x == 0) vars[row] = variance;
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
@@ -179,10 +179,10 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         variance += vals_f[i].x * vals_f[i].x;
         variance += vals_f[i].y * vals_f[i].y;
     }
-    // if (g.thread_rank() == 0) vars[row] = vals_f[0].x * vals_f[0].x;
+    // if (threadIdx.x  == 0) vars[row] = vals_f[0].x * vals_f[0].x;
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
 
-    if (g.thread_rank() == 0) shr[gid] = variance;
+    if (threadIdx.x == 0) shr[gid] = variance;
 
     b.sync();
 
@@ -200,7 +200,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) {
+    if (training && threadIdx.x == 0) {
         vars[row] = variance;
         means[row] = __float2half(mean);
     }
@@ -380,7 +380,7 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     variance /= row_stride;
     variance += epsilon;
     if (training)
-        if (g.thread_rank() == 0) vars[row] = variance;
+        if (threadIdx.x == 0) vars[row] = variance;
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
@@ -485,24 +485,27 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) vars[row] = variance;
+    if (training && threadIdx.x == 0) vars[row] = variance;
     float var_sqrt_r = rsqrtf(variance);
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_f[i].x *= var_sqrt_r;
         vals_f[i].y *= var_sqrt_r;
-        __half2 vals_arr = __float22half2_rn(vals_f[i]);
-        vals_arr =
-            vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
-        vals_cast[i * iteration_stride + id] = vals_arr;
+        vals_f[i].x = vals_f[i].x * (float)gamma_cast[i * iteration_stride + id].x +
+                      (float)beta_cast[i * iteration_stride + id].x;
+        vals_f[i].y = vals_f[i].y * (float)gamma_cast[i * iteration_stride + id].y +
+                      (float)beta_cast[i * iteration_stride + id].y;
+        vals_cast[i * iteration_stride + id] = __float22half2_rn(vals_f[i]);
     }
     if ((high_index) < row_stride) {
         vals_f[iterations].x *= var_sqrt_r;
         vals_f[iterations].y *= var_sqrt_r;
-        __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
-        vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
-        vals_cast[high_index] = vals_arr;
+        vals_f[iterations].x =
+            vals_f[iterations].x * (float)gamma_cast[high_index].x + (float)beta_cast[high_index].x;
+        vals_f[iterations].y =
+            vals_f[iterations].y * (float)gamma_cast[high_index].y + (float)beta_cast[high_index].y;
+        vals_cast[high_index] = __float22half2_rn(vals_f[iterations]);
     }
 #endif
 }
@@ -903,16 +906,16 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
         iterations++;
     }
-    __half var_h = vars[row];
-    __half2 var_reg = __halves2half2(var_h, var_h);
+    float var_f = vars[row];
+    float var_sqf = sqrtf(var_f);
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
-        __half2 result_h = (vals_hat_arr[i] * vals_arr[i] * h2sqrt(var_reg));
-        float2 result_f = __half22float2(result_h);
-        sum += result_f.x;
-        sum += result_f.y;
-        vals_arr[i] *= h2rsqrt(var_reg);
+        vals_arr_f[i] = __half22float2(vals_arr[i]);
+        sum += ((float)vals_hat_arr[i].x * vals_arr_f[i].x * var_sqf);
+        sum += ((float)vals_hat_arr[i].y * vals_arr_f[i].y * var_sqf);
+        vals_arr_f[i].x /= var_sqf;
+        vals_arr_f[i].y /= var_sqf;
     }
 
     for (int i = 1; i < WARP_SIZE; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -931,14 +934,10 @@ __global__ void LayerNormBackward2(const __half* out_grad,
 
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
-    __half2 sum_h = __float2half2_rn(sum);
 
     for (int i = 0; i < iterations; i++) {
-        __half2 temp = ((-sum_h * vals_hat_arr[i]) / (var_reg));
-        vals_arr_f[i] = __half22float2(vals_arr[i]);
-        float2 temp_f = __half22float2(temp);
-        vals_arr_f[i].x += temp_f.x;
-        vals_arr_f[i].y += temp_f.y;
+        vals_arr_f[i].x -= (((float)vals_hat_arr[i].x * sum) / var_f);
+        vals_arr_f[i].y -= (((float)vals_hat_arr[i].y * sum) / var_f);
     }
     sum = 0.f;
 
@@ -1651,17 +1650,15 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
         iterations++;
     }
     float var_f = vars[row];
+    float var_sqf = sqrtf(var_f);
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
         vals_arr_f[i] = __half22float2(vals_arr[i]);
-        float var_sqf = sqrtf(var_f);
+        sum += (vals_arr_f[i].x * var_sqf * (float)vals_hat_arr[i].x);
+        sum += (vals_arr_f[i].y * var_sqf * (float)vals_hat_arr[i].y);
         vals_arr_f[i].x /= var_sqf;
         vals_arr_f[i].y /= var_sqf;
-        __half2 result_h = (vals_hat_arr[i] * vals_arr[i]);
-        float2 result_f = __half22float2(result_h);
-        sum += (result_f.x * var_sqf);
-        sum += (result_f.y * var_sqf);
     }
 
     for (int i = 1; i < WARP_SIZE; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -1682,8 +1679,8 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     sum /= (2 * row_stride);
 
     for (int i = 0; i < iterations; i++) {
-        vals_arr_f[i].x += (-((float)vals_hat_arr[i].x * sum) / var_f);
-        vals_arr_f[i].y += (-((float)vals_hat_arr[i].y * sum) / var_f);
+        vals_arr_f[i].x -= (((float)vals_hat_arr[i].x * sum) / var_f);
+        vals_arr_f[i].y -= (((float)vals_hat_arr[i].y * sum) / var_f);
     }
     sum = 0.f;
     for (int i = 0; i < iterations; i++) {
