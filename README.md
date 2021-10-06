@@ -222,3 +222,4 @@ Conduct](https://opensource.microsoft.com/codeofconduct/). For more information 
 4. Community Tutorials
     * [DeepSpeed: All the tricks to scale to gigantic models](https://www.youtube.com/watch?v=pDGI668pNg0)
     * [Turing-NLG, DeepSpeed and the ZeRO optimizer](https://www.youtube.com/watch?v=tC01FRB0M7w)
+
