@@ -17,8 +17,8 @@ from .linear import LinearModuleForZeroStage3, LinearFunctionForZeroStage3
 from .offload_constants import *
 
 from ..utils import see_memory_usage
-from deepspeed.utils import log_dist, init_distributed
-from deepspeed.utils.debug import debug_param2name_id_shape, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
+from deepspeed.utils import log_dist, init_distributed, logger
+from deepspeed.utils.debug import debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
 from ..config import DeepSpeedConfig
@@ -223,8 +223,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         self.mem_efficient_linear = mem_efficient_linear
         self.enabled = enabled
         self._set_dtype(ds_config, dtype)
-        assert self.dtype in [
-            torch.half, torch.float], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.float]"
+        assert self.dtype in [torch.half, torch.float], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.float]"
 
     def __enter__(self):
         if not self.enabled:
@@ -233,10 +232,34 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def partition_after(f):
             @functools.wraps(f)
             def wrapper(module, *args, **kwargs):
+
+                # important logic: We want to run post_init only after child's __init__ is
+                # completed, and do nothing after __init__ of any of its parents and grandparents in
+                # the inheritance ancestry. This way the partitioning will need to happen only once
+                # when the whole object is ready to be partitioned and not before. This is because
+                # often the child module will need to tweak the weights - for example running a
+                # custom weights init function. So if a parent created the weights param, the child
+                # won't need to gather it in order to tweak it
+
                 print_rank_0(f'Before initializing {module.__class__.__name__}',
                              force=False)
+
+                is_child_module = False
+                if not hasattr(module, "_ds_child_entered"):
+                    # child's __init__ was called, since parents all see the same object they can now skip post_init
+                    is_child_module = True
+                    setattr(module, "_ds_child_entered", True)
+
                 f(module, *args, **kwargs)
-                self._post_init_method(module)
+
+                if is_child_module:
+                    # child's __init__ is done, now we can run a single post_init on the child object
+                    delattr(module, "_ds_child_entered")
+
+                    print_rank_0(f'Running post_init for {module.__class__.__name__}',
+                                 force=False)
+                    self._post_init_method(module)
+
                 print_rank_0(
                     f'After initializing followed by post init for {module.__class__.__name__}',
                     force=False)
@@ -356,7 +379,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 effect. Defaults to ``True``.
             dtype (``dtype``, optional): Can be used to change the data type of the parameters.
                 Supported options are ``torch.half`` and ``torch.float``. Defaults to ``None``
-            mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,wolrd_size}
+            mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,world_size}.
 
         This context accelerates model initialization and enables models that
         are too large to allocate in their entirety in CPU memory. It has the
@@ -427,6 +450,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 model = deepspeed.zero.Init(module=model)
         """
+        if config is not None:
+            config_dict_or_path = config
+            logger.warning(
+                f'zero.Init: the `config` argument is deprecated. Please use `config_dict_or_path` instead.'
+            )
 
         _ds_config = DeepSpeedConfig(config_dict_or_path,
                                      mpu) if config_dict_or_path is not None else None
@@ -472,21 +500,21 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 self._convert_to_deepspeed_param(param)
                 param.partition()
 
-    def _validate_remote_device(self, remote_device, _ds_config):
-        if _ds_config is not None:
+    def _validate_remote_device(self, remote_device, ds_config):
+        if ds_config is not None:
             if remote_device in [None, OFFLOAD_CPU_DEVICE]:
-                if _ds_config.zero_config.offload_param is not None:
-                    offload_param_device = _ds_config.zero_config.offload_param[
+                if ds_config.zero_config.offload_param is not None:
+                    offload_param_device = ds_config.zero_config.offload_param[
                         OFFLOAD_PARAM_DEVICE]
                     assert offload_param_device != OFFLOAD_NVME_DEVICE, \
                         f"{OFFLOAD_PARAM_DEVICE} in DeepSpeed Config cannot be {offload_param_device} if remote device is {remote_device}."
 
             if remote_device == OFFLOAD_NVME_DEVICE:
-                assert _ds_config.zero_config.offload_param is not None, \
-                    f'{OFFLOAD_PARAM} must be defined in DeepSpeed Config if remote device is {OFFLOAD_NVME_DEVICE}.'
+                assert ds_config.zero_config.offload_param is not None, \
+                f'{OFFLOAD_PARAM} must be defined in DeepSpeed Config if remote device is {OFFLOAD_NVME_DEVICE}.'
 
-                assert _ds_config.zero_config.offload_param[OFFLOAD_PARAM_NVME_PATH] is not None, \
-                    f'{OFFLOAD_PARAM_NVME_PATH} in DeepSpeed Config cannot be None if remote device is {OFFLOAD_NVME_DEVICE}'
+                assert ds_config.zero_config.offload_param[OFFLOAD_PARAM_NVME_PATH] is not None, \
+                f'{OFFLOAD_PARAM_NVME_PATH} in DeepSpeed Config cannot be None if remote device is {OFFLOAD_NVME_DEVICE}'
 
     def _post_init_method(self, module):
         #see_memory_usage(f"Before converting parmas in {module.__class__.__name__}", force=False)
@@ -552,7 +580,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def partition(param_list=None, hierarchy=0, has_been_updated=False):
             cls = param
             print_rank_0(
-                f"{'--'*hierarchy}----Partitioning param with id {cls.ds_id} dev {cls.device} shape {cls.shape}"
+                f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}"
             )
             if param_list is None:
                 param_list = [cls]
@@ -573,7 +601,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                 accumulate=False):
             cls = param
             print_rank_0(
-                f"{'--'*hierarchy}----Partitioning param gradient with id {cls.ds_id}")
+                f"{'--'*hierarchy}----Partitioning param gradient with id {debug_param2name_id_shape_device(cls)}"
+            )
             if param_list is None:
                 param_list = [cls]
                 if isinstance(partition_buffers, torch.Tensor):
@@ -669,7 +698,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # self._param_status(param)
 
     def _partition_param(self, param, buffer=None, has_been_updated=False):
-        assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot parititon a param in flight"
+        assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot partition a param in flight"
 
         global reuse_buffers
         #print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
@@ -1030,7 +1059,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if not accumulate:
                 dest_tensor.copy_(src_tensor)
 
-            # if source and destinatoin are on same device,
+            # if source and destination are on same device,
             # add to the provided buffer
             elif src_tensor.device == dest_tensor.device:
                 dest_tensor.add_(src_tensor)
@@ -1076,6 +1105,9 @@ class GatheredParameters:
             fwd_module (``torch.nn.Module``, optional): If specified, ``params`` will be
                 registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
+
+        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
+        if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
         ========

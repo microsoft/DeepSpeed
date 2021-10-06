@@ -31,7 +31,16 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capatabilities
+from op_builder import ALL_OPS, get_default_compute_capabilities
+
+RED_START = '\033[31m'
+RED_END = '\033[0m'
+ERROR = f"{RED_START} [ERROR] {RED_END}"
+
+
+def abort(msg):
+    print(f"{ERROR} {msg}")
+    assert False, msg
 
 
 def fetch_requirements(path):
@@ -79,7 +88,7 @@ if torch_available and not torch.cuda.is_available():
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
 ext_modules = []
 
@@ -101,16 +110,29 @@ def command_exists(cmd):
         return result.wait() == 0
 
 
-def op_enabled(op_name):
+def op_envvar(op_name):
     assert hasattr(ALL_OPS[op_name], 'BUILD_VAR'), \
         f"{op_name} is missing BUILD_VAR field"
-    env_var = ALL_OPS[op_name].BUILD_VAR
+    return ALL_OPS[op_name].BUILD_VAR
+
+
+def op_enabled(op_name):
+    env_var = op_envvar(op_name)
     return int(os.environ.get(env_var, BUILD_OP_DEFAULT))
 
 
+compatible_ops = dict.fromkeys(ALL_OPS.keys(), False)
 install_ops = dict.fromkeys(ALL_OPS.keys(), False)
 for op_name, builder in ALL_OPS.items():
     op_compatible = builder.is_compatible()
+    compatible_ops[op_name] = op_compatible
+
+    # If op is requested but not available, throw an error
+    if op_enabled(op_name) and not op_compatible:
+        env_var = op_envvar(op_name)
+        if env_var not in os.environ:
+            builder.warning(f"One can disable {op_name} with {env_var}=0")
+        abort(f"Unable to pre-compile {op_name}")
 
     # If op is compatible update install reqs so it can potentially build/run later
     if op_compatible:
@@ -122,8 +144,6 @@ for op_name, builder in ALL_OPS.items():
         assert torch_available, f"Unable to pre-compile {op_name}, please first install torch"
         install_ops[op_name] = op_enabled(op_name)
         ext_modules.append(builder.builder())
-
-compatible_ops = {op_name: op.is_compatible() for (op_name, op) in ALL_OPS.items()}
 
 print(f'Install Ops={install_ops}')
 
@@ -229,7 +249,8 @@ setup(name='deepspeed',
       classifiers=[
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8'
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9'
       ],
       license='MIT',
       ext_modules=ext_modules,

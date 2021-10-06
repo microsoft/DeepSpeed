@@ -37,6 +37,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
 
             num_hidden_layers: The number of transformer layers
 
+            layer_norm_eps: The epsilon value for the layer norm
+
             local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
                 to use if the model already set the current device, otherwise need to set it
                 so that the transformer kernel can work on the right device
@@ -66,6 +68,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  intermediate_size=-1,
                  heads=-1,
                  num_hidden_layers=-1,
+                 layer_norm_eps=1e-12,
                  local_rank=-1,
                  mp_size=1,
                  fp16=False,
@@ -87,7 +90,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.pre_layer_norm = pre_layer_norm
         self.local_rank = local_rank
         self.stochastic_mode = stochastic_mode
-        self.epsilon = 1.0e-5  # 1e-12
+        self.epsilon = layer_norm_eps
         self.mp_size = mp_size
         self.q_int8 = q_int8
         self.encoder_decoder = encoder_decoder
@@ -137,10 +140,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                 q_groups,
                 merge_count,
                 qkv_merging):
-
-        while len(input_mask.shape) < 4:
-            input_mask = input_mask.unsqueeze(0)
-
         def _transpose_for_scores(x, key=False, reshape=False):
             attention_head_size = x.shape[-1] // num_attention_heads_per_partition
             new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
@@ -160,7 +159,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       (hidden_size_per_partition,)
             return x.view(*new_x_layer_shape)
 
-        def compute_attention(qkv_out):
+        def compute_attention(qkv_out, input_mask):
             score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16 or not config.triangular_masking) else \
                                     inference_cuda_module.softmax_context_fp16
             if not config.triangular_masking:
@@ -211,12 +210,17 @@ class DeepSpeedSelfAttentionFunction(Function):
                     True) / (norm_factor if config.scale_attention else 1.0)
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
+            no_masking = input_mask is None
+            if no_masking:
+                input_mask = torch.empty(1)
+
             if layer_past is None:
                 attn_key_value = score_context_func(
                     mixed_query,
                     (key_layer1 if unfused_mode else key_layer),
                     torch.empty(1),
-                    (input_mask if config.triangular_masking else input_mask.float()),
+                    (input_mask
+                     if config.triangular_masking or no_masking else input_mask.float()),
                     (value_layer1 if unfused_mode else value_layer),
                     torch.empty(1),
                     num_attention_heads_per_partition,
@@ -224,13 +228,15 @@ class DeepSpeedSelfAttentionFunction(Function):
                     (not unfused_mode),
                     config.triangular_masking,
                     config.local_attention,
-                    config.window_size)
+                    config.window_size,
+                    no_masking)
             else:
                 attn_key_value = score_context_func(
                     mixed_query,
                     (key_layer1 if unfused_mode else past_key.type_as(key_layer)),
                     (key_layer1 if unfused_mode else key_layer),
-                    (input_mask if config.triangular_masking else input_mask.float()),
+                    (input_mask
+                     if config.triangular_masking or no_masking else input_mask.float()),
                     (value_layer1 if unfused_mode else past_value.type_as(value_layer)),
                     (value_layer1 if unfused_mode else value_layer),
                     num_attention_heads_per_partition,
@@ -238,7 +244,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                     (not unfused_mode),
                     config.triangular_masking,
                     config.local_attention,
-                    config.window_size)
+                    config.window_size,
+                    no_masking)
             #import pdb;pdb.set_trace()
             if unfused_mode:
                 context_layer, _, _ = attn_key_value
@@ -270,7 +277,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None))
-            context_layer, key_layer, value_layer = compute_attention(qkv_out)
+            context_layer, key_layer, value_layer = compute_attention(qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow)
 
             return output, key_layer, value_layer, context_layer
@@ -521,7 +528,7 @@ class DeepSpeedTransformerInference(nn.Module):
 
             config: An object of DeepSpeedInferenceConfig
             mp_group: Model parallelism group initialized on the modeling side.
-            quantize_scales: This arguement groups all the layers' scales used for quantization
+            quantize_scales: This argument groups all the layers' scales used for quantization
             quantize_groups: Number of groups used for quantizing the model
             merge_count: Shows the number of model-parallel checkpoints merged before running inference.
                 We use this argument to control the quantization scale for the model parameters if a bigger
@@ -592,42 +599,50 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
+
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
         input_type = input.dtype
-        if (self.config.fp16 or self.config.q_int8) and input.dtype == torch.float:
+
+        if (self.config.fp16 or self.config.q_int8) \
+            and input.dtype == torch.float:
             input = input.half()
 
-        attention_output = self.attention(input,
-                                          input_mask,
-                                          head_mask,
-                                          layer_past,
-                                          get_present,
-                                          encoder_hidden_states,
-                                          encoder_attention_mask,
-                                          output_attentions,
-                                          self.norm_w,
-                                          self.norm_b)
+        with torch.no_grad():
+            attention_output = self.attention(input,
+                                              input_mask,
+                                              head_mask,
+                                              layer_past,
+                                              get_present,
+                                              encoder_hidden_states,
+                                              encoder_attention_mask,
+                                              output_attentions,
+                                              self.norm_w,
+                                              self.norm_b)
 
-        if get_present:
-            attention_output, p_key, p_value, _ = attention_output
-            presents = (p_key, p_value)
-        elif output_attentions:
-            attention_output, _, _, context_output = attention_output
-        else:
-            attention_output, _, _, _ = attention_output
-        output = self.mlp(attention_output, input, self.attention.attn_ob)
+            if get_present:
+                attention_output, p_key, p_value, _ = attention_output
+                presents = (p_key, p_value)
+            elif output_attentions:
+                attention_output, _, _, context_output = attention_output
+            else:
+                attention_output, _, _, _ = attention_output
+            output = self.mlp(attention_output, input, self.attention.attn_ob)
+
+            if not self.config.pre_layer_norm:
+                ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                        inference_cuda_module.layer_norm_fp32
+                output = ds_layernorm(output,
+                                      self.norm_w,
+                                      self.norm_b,
+                                      self.config.epsilon)
+
+            if input_type != output.dtype:
+                output = output.to(input_type)
+
         if get_present:
             output = (output, presents)
-
-        if not self.config.pre_layer_norm:
-            ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                    inference_cuda_module.layer_norm_fp32
-            output = ds_layernorm(output, self.norm_w, self.norm_b, self.config.epsilon)
-
-        if torch.is_tensor(output) and input_type != output.dtype:
-            output = output.to(input_type)
 
         if self.config.encoder_decoder:
             return (output, )

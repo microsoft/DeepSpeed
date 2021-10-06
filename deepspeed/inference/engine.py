@@ -17,6 +17,8 @@ from ..pipe import PipelineModule
 
 
 class InferenceEngine(Module):
+    inference_mp_group = None
+
     def __init__(self,
                  model,
                  mp_size=1,
@@ -44,15 +46,6 @@ class InferenceEngine(Module):
         self.quantize_merge_count = 1
         self.quantization_scales = None
 
-        if self.mpu:
-            self.mp_world_size = dist.get_world_size(
-                group=self.mpu.get_model_parallel_group())
-            self.mp_group = self.mpu.get_model_parallel_group()
-        elif self.mp_world_size > 1 and not dist.is_initialized():
-            self._create_model_parallel_group()
-        else:
-            self.module.to(torch.cuda.current_device())
-
         self._check_quantize_setting(quantization_setting)
 
         if self.checkpoint:
@@ -62,12 +55,21 @@ class InferenceEngine(Module):
         if self.dtype:
             self._convert_to_dtype()
 
+        if self.mpu:
+            self.mp_world_size = dist.get_world_size(
+                group=self.mpu.get_model_parallel_group())
+            self.mp_group = self.mpu.get_model_parallel_group()
+        elif self.mp_world_size > 1:
+            self._create_model_parallel_group()
+
         # apply injection policy
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
                 self._apply_injection_policy(client_module, injection_policy)
         elif replace_method == 'auto':
             self._apply_injection_policy()
+
+        self.module.to(torch.cuda.current_device())
 
         if self.mp_world_size > 1:
             self.model_orig_fwd = self.module.forward
@@ -87,22 +89,20 @@ class InferenceEngine(Module):
 
     def _create_model_parallel_group(self):
         # Call the init process
+        if InferenceEngine.inference_mp_group is None:
+            init_distributed()
 
-        init_distributed()
+            local_rank = int(os.getenv('LOCAL_RANK', '0'))
+            torch.cuda.set_device(local_rank)
 
-        local_rank = int(os.getenv('LOCAL_RANK', '0'))
-        torch.cuda.set_device(local_rank)
-
-        ranks = [i for i in range(self.mp_world_size)]
-        self.mp_group = dist.new_group(ranks)
-
-        self.module.to(torch.cuda.current_device())
-        for p in self.module.parameters():
-            if torch.is_tensor(p):
-                dist.broadcast(p, 0)
+            ranks = [i for i in range(self.mp_world_size)]
+            self.mp_group = dist.new_group(ranks)
+            InferenceEngine.inference_mp_group = self.mp_group
+        else:
+            self.mp_group = InferenceEngine.inference_mp_group
 
     def _check_quantize_setting(self, quantization_setting):
-        self.quatize_bits = 8
+        self.quantize_bits = 8
         self.mlp_extra_grouping = False
         self.quantize_groups = 1
         if quantization_setting is None:
@@ -177,7 +177,7 @@ class InferenceEngine(Module):
             quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
             model, self.quantization_scales = quantizer.model_quantize(self.module,
                                                                         self.injection_dict,
-                                                                        self.quatize_bits,
+                                                                        self.quantize_bits,
                                                                         self.quantize_groups)
         elif self.dtype == torch.half:
             self.module.half()
@@ -188,18 +188,9 @@ class InferenceEngine(Module):
         for input in inputs:
             if torch.is_tensor(input):
                 input = input.to(torch.cuda.current_device())
-                if self.mp_world_size > 1:
-                    if not input.is_contiguous():
-                        input = input.contiguous()
-                    dist.broadcast(input, 0)
-
         for k in kwargs:
             if torch.is_tensor(kwargs[k]):
                 kwargs[k] = kwargs[k].to(torch.cuda.current_device())
-                if self.mp_world_size > 1:
-                    if not kwargs[k].is_contiguous():
-                        kwargs[k] = kwargs[k].contiguous()
-                    dist.broadcast(kwargs[k], 0)
 
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
@@ -213,18 +204,16 @@ class InferenceEngine(Module):
                 for input in inputs:
                     if torch.is_tensor(input):
                         input = input.to(torch.cuda.current_device())
-                        if self.mp_world_size > 1:
-                            if not input.is_contiguous():
-                                input = input.contiguous()
-                            dist.broadcast(input, 0)
-
+                        if not input.is_contiguous():
+                            input = input.contiguous()
                 for k in kwargs:
                     if torch.is_tensor(kwargs[k]):
                         kwargs[k] = kwargs[k].to(torch.cuda.current_device())
-                        if self.mp_world_size > 1:
-                            if not kwargs[k].is_contiguous():
-                                kwargs[k] = kwargs[k].contiguous()
-                            dist.broadcast(kwargs[k], 0)
+                        if not kwargs[k].is_contiguous():
+                            kwargs[k] = kwargs[k].contiguous()
+                        dist.broadcast(kwargs[k], 0)
 
-            return self.model_orig_fwd(*inputs, **kwargs)
-        return self.module(*inputs, **kwargs)
+            outputs = self.model_orig_fwd(*inputs, **kwargs)
+        else:
+            outputs = self.module(*inputs, **kwargs)
+        return outputs
