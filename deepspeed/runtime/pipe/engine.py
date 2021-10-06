@@ -584,7 +584,7 @@ class PipelineEngine(DeepSpeedEngine):
                 local_part=inputs[1],
                 group=self.grid.get_slice_parallel_group())
 
-            inputs = tuple([part_input.full(), *inputs[2:]])
+            inputs = (part_input.full(), *inputs[2:])
             inputs[0].requires_grad = True
             # skip mask
             #inputs[1].requires_grad = True
@@ -618,7 +618,7 @@ class PipelineEngine(DeepSpeedEngine):
             first_output.data = torch.zeros(1)
             self.pipe_buffers['output_tensors'][buffer_id] = first_output
             # Inject the partitioned tensor into the output before sending
-            outputs = tuple([part.to_meta(), part.data(), *outputs_tail])
+            outputs = (part.to_meta(), part.data(), *outputs_tail)
             part = None
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
@@ -933,7 +933,7 @@ class PipelineEngine(DeepSpeedEngine):
             part = PartitionedTensor(tensor=first_input.grad,
                                      group=self.grid.get_slice_parallel_group())
 
-            inputs = ([part.to_meta(), part.data(), *inputs_grad_tail])
+            inputs = (part.to_meta(), part.data(), *inputs_grad_tail)
 
         # XXX Terrible hack
         # Drop the attention mask from the input buffer here. It does not have
