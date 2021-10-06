@@ -610,7 +610,7 @@ class PipelineEngine(DeepSpeedEngine):
                 first_output = outputs
                 outputs_tail = []
             else:
-                raise NotImplementedError
+                raise ValueError("expecting a tensor or a tuple of tensors")
             part = PartitionedTensor(tensor=first_output,
                                      group=self.grid.get_slice_parallel_group())
             # Clear the large output data, but save the computation graph
@@ -927,7 +927,7 @@ class PipelineEngine(DeepSpeedEngine):
                 first_input = inputs
                 inputs_grad_tail = []
             else:
-                raise NotImplementedError
+                raise ValueError("expecting a tensor or a tuple of tensors")
             assert torch.is_tensor(first_input)
             part = PartitionedTensor(tensor=first_input.grad,
                                      group=self.grid.get_slice_parallel_group())
