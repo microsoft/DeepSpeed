@@ -78,14 +78,18 @@ except ImportError:
 
 
 def split_half_float_double_csr(tensors):
-    dtypes = [
+    supported_types = [
         "torch.cuda.HalfTensor",
         "torch.cuda.FloatTensor",
         "torch.cuda.DoubleTensor",
         CSRTensor.type()
     ]
+
+    for t in tensors:
+        assert t.type() in supported_types, f"attempting to reduce an unsupported grad type: {t.type()}"
+
     buckets = []
-    for i, dtype in enumerate(dtypes):
+    for i, dtype in enumerate(supported_types):
         bucket = [t for t in tensors if t.type() == dtype]
         if bucket:
             buckets.append((dtype, bucket))
@@ -654,7 +658,7 @@ class DeepSpeedEngine(Module):
             ompi_local_rank = os.environ.get("OMPI_COMM_WORLD_LOCAL_RANK")
             local_rank = os.environ.get('LOCAL_RANK', ompi_local_rank)
             assert ompi_local_rank == local_rank, f"LOCAL_RANK ({local_rank}) != OMPI_COMM_WORLD_LOCAL_RANK ({ompi_local_rank}), " \
-                "not sure how to proceed as we're seeing conficting local rank info."
+                "not sure how to proceed as we're seeing conflicting local rank info."
             os.environ['LOCAL_RANK'] = local_rank
 
         self.local_rank = int(os.environ['LOCAL_RANK'])
@@ -818,7 +822,7 @@ class DeepSpeedEngine(Module):
         if not self.amp_enabled():
             self._broadcast_model()
 
-    #check if parmaeters are duplicated in optimizer param_groups
+    #check if parameters are duplicated in optimizer param_groups
     def _check_for_duplicates(self, optimizer):
         for name, param in self.module.named_parameters():
             param_id = id(param)
@@ -826,12 +830,12 @@ class DeepSpeedEngine(Module):
             def ids_list(group):
                 return [id(param) for param in group]
 
-            occurance = sum([
+            occurrence = sum([
                 ids_list(group['params']).count(param_id)
                 if param_id in ids_list(group['params']) else 0
                 for group in optimizer.param_groups
             ])
-            assert occurance <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behaviour."
+            assert occurrence <= 1, f"Parameter with name: {name} occurs multiple times in optimizer.param_groups. Make sure it only appears once to prevent undefined behaviour."
 
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
@@ -914,7 +918,7 @@ class DeepSpeedEngine(Module):
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
 
-            # Optimizer name of Adam forces AdamW logic unless adam_w_mode is explictly set
+            # Optimizer name of Adam forces AdamW logic unless adam_w_mode is explicitly set
             effective_adam_w_mode = self.optimizer_name(
             ) == ADAMW_OPTIMIZER or adam_w_mode
 
@@ -1226,7 +1230,7 @@ class DeepSpeedEngine(Module):
         if route == ROUTE_TRAIN:
             deepspeed_io_timer = self.tput_timer
 
-        # If mpu is provied, forward world size and parallel rank to sampler.
+        # If mpu is provided, forward world size and parallel rank to sampler.
         data_parallel_world_size = None
         data_parallel_rank = None
         if self.mpu is not None:
@@ -1507,7 +1511,7 @@ class DeepSpeedEngine(Module):
 
         report_progress = self.global_rank == 0 if self.global_rank else True
 
-        # Check overlow here since in DS fp16 optimizer, the overflow is updated in above step() function.
+        # Check overflow here since in DS fp16 optimizer, the overflow is updated in above step() function.
         overflow = False
         if hasattr(self.optimizer, 'overflow'):
             overflow = self.optimizer.overflow
@@ -1766,7 +1770,7 @@ class DeepSpeedEngine(Module):
                         grads.append(grad_data)
 
         split_buckets = split_half_float_double_csr(grads)
-        for i, bucket_tuple in enumerate(split_buckets):
+        for _, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
 
             if self.pipeline_parallelism:
@@ -1775,22 +1779,17 @@ class DeepSpeedEngine(Module):
                 dp_group = groups.get_data_parallel_group()
 
             if bucket_type == CSRTensor.type():
-                # TODO: do we have to do something here?
                 self.csr_allreduce_no_retain(bucket, dp_group=dp_group)
-                #groups.get_data_parallel_group() if self.pipeline_parallelism else self.mpu.get_data_parallel_group())
             else:
-                self.allreduce_no_retain(
-                    bucket,
-                    dp_group=dp_group,
-                    #groups.get_data_parallel_group(),
-                    numel_per_bucket=elements_per_buffer)
+                self.allreduce_no_retain(bucket,
+                                         dp_group=dp_group,
+                                         numel_per_bucket=elements_per_buffer)
 
         if self.has_moe_layers:
             expert_split_buckets = split_half_float_double_csr(expert_grads)
             for i, bucket_tuple in enumerate(expert_split_buckets):
                 bucket_type, bucket = bucket_tuple
                 if bucket_type == CSRTensor.type():
-                    # TODO: do we have to do something here?
                     self.csr_allreduce_no_retain(bucket,
                                                  groups.get_expert_data_parallel_group())
                 else:
@@ -2447,7 +2446,7 @@ class DeepSpeedEngine(Module):
 
         optimizer.fp16_groups seems to be the easiest to use as it's in all zeroX versions.
         """
-        param_shapes = OrderedDict()
+        param_group_shapes = []
         cnt = 0
         numel = 0
 
@@ -2459,6 +2458,7 @@ class DeepSpeedEngine(Module):
             fp16_groups = self.optimizer.fp16_groups
 
         for fp16_group in fp16_groups:
+            param_shapes = OrderedDict()
             for param in fp16_group:
                 cnt += 1
                 numel += param.ds_numel if hasattr(param, "ds_numel") else param.numel()
@@ -2470,9 +2470,10 @@ class DeepSpeedEngine(Module):
 
                 # uncomment to debug zero_to_fp32.py problems
                 # if self.global_rank == 0: print(f"saving param {name} {shape} (numel={shape.numel()})")
+            param_group_shapes.append(param_shapes)
         # if self.global_rank == 0: print(f"Total saved {numel} numels in {cnt} params")
 
-        return param_shapes
+        return param_group_shapes
 
     def _copy_recovery_script(self, save_path):
         base_dir = os.path.dirname(os.path.dirname(__file__))
