@@ -1110,16 +1110,16 @@ class PipelineEngine(DeepSpeedEngine):
         return buffers
 
     def forward(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``. """
+        raise PipelineError("Only train_batch() and eval_batch() are accessible in pipeline mode.")
 
     def backward(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``. """
+        raise PipelineError("Only train_batch() and eval_batch() are accessible in pipeline mode.")
 
     def step(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``. """
+        raise PipelineError("Only train_batch() and eval_batch() are accessible in pipeline mode.")
 
     def mem_status(self, msg, print_rank=-1, reset_max=False):
         return
