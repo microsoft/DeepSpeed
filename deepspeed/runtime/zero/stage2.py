@@ -2002,7 +2002,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
     # Restore base optimizer fp32 weights from ZeRO fp16 or bfloat16 weights
     def _restore_from_bit16_weights(self):
-        for group_id, bit16_partitions, fp32_partition in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
+        for group_id, (bit16_partitions, fp32_partition) in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
             fp32_partition.data.copy_(bit16_partitions[partition_id].data)
 
