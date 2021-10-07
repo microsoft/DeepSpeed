@@ -589,10 +589,8 @@ class PipelineEngine(DeepSpeedEngine):
             # skip mask
             #inputs[1].requires_grad = True
             part_input = None
-            if len(inputs) == 1:
-                self.pipe_buffers['inputs'][buffer_id] = inputs[0]
-            else:
-                self.pipe_buffers['inputs'][buffer_id] = inputs
+            inputs = inputs[0] if len(inputs) == 1 else inputs
+            self.pipe_buffers['inputs'][buffer_id] = inputs
 
         # Zero out the gradients each time we use the tensor because only the data in
         # tensor changes across batches
