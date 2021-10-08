@@ -225,7 +225,7 @@ class DeepSpeedEngine(Module):
         self.csr_tensor_module_names = set()
         if self.sparse_gradients_enabled():
             for name, module in self.module.named_modules():
-                if isinstance(module, torch.nn.Embedding):
+                if isinstance(module, (torch.nn.Embedding, torch.nn.EmbeddingBag)):
                     self.csr_tensor_module_names.add(name + ".weight")
                     logger.info("Will convert {} to sparse (csr) "
                                 "tensor during training".format(name))
@@ -1798,8 +1798,10 @@ class DeepSpeedEngine(Module):
         allreduced_csrs = self.csr_allreduce_bucket(bucket, dp_group)
         # Densify csr tensor and copy back to original location
         for csr in allreduced_csrs:
-            dense_tensor = csr.to_dense()
-            csr.orig_dense_tensor.copy_(dense_tensor)
+            if csr.is_sparse:
+                csr.orig_dense_tensor.data = csr.to_sparse()
+            else:
+                csr.orig_dense_tensor.copy_(csr.to_dense())
 
     def csr_allreduce_bucket(self, bucket, dp_group):
         csr_list = []
@@ -1809,7 +1811,7 @@ class DeepSpeedEngine(Module):
 
     def csr_allreduce(self, csr, dp_group):
         # Pre-divide for fp16 stability
-        csr.values.div_(dist.get_world_size(group=dp_group))
+        csr.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
         indices_device_list = self.csr_all_gather(csr.indices, dp_group)
         values_device_list = self.csr_all_gather(csr.values, dp_group)
@@ -1846,8 +1848,8 @@ class DeepSpeedEngine(Module):
         for dev_idx, t in enumerate(tensor_list):
             size = all_sizes[dev_idx][0]
             tensors.append(
-                t.index_select(0,
-                               torch.LongTensor(range(size)).to(self.device)))
+                t.index_select(0, torch.arange(size, dtype=torch.long, device=self.device))
+            )
 
         return tensors
 

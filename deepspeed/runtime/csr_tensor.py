@@ -12,15 +12,24 @@ class CSRTensor(object):
     """ Compressed Sparse Row (CSR) Tensor """
     def __init__(self, dense_tensor=None):
         self.orig_dense_tensor = dense_tensor
+        self.is_sparse = dense_tensor.is_sparse
         if dense_tensor is not None:
-            result = torch.sum(dense_tensor, dim=1)
-            self.indices = result.nonzero().flatten()
-            self.values = dense_tensor[self.indices]
+            if dense_tensor.is_sparse:
+                dense_tensor = dense_tensor.coalesce()
+                self.indices = dense_tensor.indices().flatten()
+                self.values = dense_tensor.values()
+            else:
+                result = torch.sum(dense_tensor, dim=1)
+                self.indices = result.nonzero().flatten()
+                self.values = dense_tensor[self.indices]
             self.dense_size = list(dense_tensor.size())
         else:
             self.indices = None
             self.values = None
             self.dense_size = None
+
+    def to_sparse(self):
+        return torch.sparse_coo_tensor(self.indices.unsqueeze(0), self.values, self.dense_size)
 
     @staticmethod
     def type():
