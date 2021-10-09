@@ -658,7 +658,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self._global_grad_norm = 0.
 
         self._convert_to_zero_parameters()
-        
+
         for m in module.modules():
             _init_external_params(m)
 
@@ -925,8 +925,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
-
-
 
     def _convert_to_zero_parameters(self):
         non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
