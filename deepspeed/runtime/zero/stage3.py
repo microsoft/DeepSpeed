@@ -218,8 +218,9 @@ class PrefetchCoordinator(object):
 
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != self.sub_module_trace[self.step_id]:
+            expected_id = self.sub_module_trace[self.step_id]
             print_rank_0(
-                f"Tracing failed. Prefetching is disabled at sub-module: {sub_module.id}",
+                f"Tracing failed at step {self.step_id} sub-module: {sub_module.id}, expected {expected_id}. Prefetching is disabled ",
                 force=True)
             return []
 
@@ -686,11 +687,16 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.timer_names = set()
         self._global_grad_norm = 0.
 
-        if not all(is_zero_param(p) for p in module.parameters()):
-            group = None
-            if mpu:
-                group = mpu.get_data_parallel_group()
-            Init(module=module, data_parallel_group=group, dtype=self.dtype)
+        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
+        if non_zero_params:
+            zero_params = [p for p in module.parameters() if is_zero_param(p)]
+            if zero_params:
+                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
+            else:
+                group = None
+                if mpu:
+                    group = mpu.get_data_parallel_group()
+                Init(module=module, data_parallel_group=group, dtype=self.dtype)
 
         for m in module.modules():
             _init_external_params(m)

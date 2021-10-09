@@ -479,7 +479,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         self._validate_remote_device(remote_device, _ds_config)
 
-        self.avaliable_parameter_numel = 0
+        self.available_parameter_numel = 0
 
         # Remote device is the device where parameter partiitons are stored
         #It can be same as local_device or it could be CPU or NVMe.
@@ -497,11 +497,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # If we are provided an already-allocated module to prepare.
         if module is not None:
             assert isinstance(module, torch.nn.Module)
-            for param in module.parameters(recurse=True):
-                if is_zero_param(param):
-                    continue
-                self._convert_to_deepspeed_param(param)
-                param.partition()
+            self._convert_to_zero_parameters(module.parameters(recurse=True))
+
+    def _convert_to_zero_parameters(self, param_list):
+        for param in param_list:
+            if is_zero_param(param):
+                continue
+            self._convert_to_deepspeed_param(param)
+            param.partition()
 
     def _validate_remote_device(self, remote_device, ds_config):
         if ds_config is not None:
@@ -645,6 +648,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             self._synchronize_communication(param_list, handle_list)
 
+        def convert_to_zero_parameters(param_list):
+            self._convert_to_zero_parameters(param_list)
+
         # Collectives for gathering and partitioning parameters
         param.all_gather = all_gather
         param.partition = partition
@@ -661,7 +667,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Status utilities
         param.update_status = update_status
         param.get_available_parameter_numel = get_available_parameter_numel
+
         param.synchronize_communication = synchronize_communication
+        param.convert_to_zero_parameters = convert_to_zero_parameters
 
     def _aligned_size(self, param):
         return param.ds_numel + self._padding_size(param)
@@ -1138,14 +1146,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _update_param_status(self, new_status, old_status, numel):
         if old_status == ZeroParamStatus.AVAILABLE:
-            self.avaliable_parameter_numel -= numel
-            assert self.avaliable_parameter_numel >= 0, f'available_parameter numel is negative: {self.avaliable_parameter_numel}'
+            self.available_parameter_numel -= numel
 
         if new_status == ZeroParamStatus.AVAILABLE:
-            self.avaliable_parameter_numel += numel
+            self.available_parameter_numel += numel
+
+        assert self.available_parameter_numel >= 0, f'available_parameter numel is negative: {self.available_parameter_numel}'
 
     def _get_available_parameter_numel(self):
-        return self.avaliable_parameter_numel
+        return self.available_parameter_numel
 
     def _synchronize_communication(self, param_list, handle_list):
         for param, handle in zip(param_list, handle_list):
