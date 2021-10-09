@@ -100,7 +100,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return outputs
 
 
-#for each tensor in outputs run the forward_funciton and register backward_function as hook
+#for each tensor in outputs run the forward_function and register backward_function as hook
 def _apply_forward_and_backward_to_tensors_only(module,
                                                 forward_function,
                                                 backward_function,
@@ -145,9 +145,8 @@ class ZeROOrderedDict(OrderedDict):
 
         if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
-                print_rank_0(
-                    f'Registering external parameter from getter {key} param = {param.ds_id} status = {param.ds_status}',
-                    force=False)
+                print_rank_0(f'Registering external parameter from getter {key}',
+                             force=False)
                 register_external_parameter(FWD_MODULE_STACK[-1], param)
                 param.all_gather()
 
@@ -179,7 +178,7 @@ class PrefetchCoordinator(object):
         # maps sub_module id to submodule objects
         self.id_to_sub_module_map = {}
 
-        # stores the total number of parmeters in each sub_module
+        # stores the total number of parameters in each sub_module
         self.id_to_sub_module_size_map = {}
 
         self.trace_completed = False
@@ -218,10 +217,9 @@ class PrefetchCoordinator(object):
 
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != self.sub_module_trace[self.step_id]:
-            expected_id = self.sub_module_trace[self.step_id]
             print_rank_0(
-                f"Tracing failed at step {self.step_id} sub-module: {sub_module.id}, expected {expected_id}. Prefetching is disabled ",
-                force=True)
+                f"Tracing failed. Prefetching is disabled at sub-module: {debug_module2name_id(sub_module)}"
+            )
             return []
 
         params_to_prefetch = []
@@ -295,17 +293,28 @@ class PrefetchCoordinator(object):
 
 class PartitionedParameterCoordinator(object):
     def __init__(self,
+                 comm_stream=None,
                  max_reuse_distance_in_numel=500000000,
                  max_available_parameters_in_numel=700000000):
 
         self.in_flight_handles = []
         self.params_in_flight = []
+        self.comm_stream = comm_stream if comm_stream is not None else torch.cuda.current_stream(
+        )
         self.prefetch_coordinator = PrefetchCoordinator()
         self.hierarchy = 0
+
+        self.total_available_parameter_numel = 0
         self.max_available_parameters_in_numel = max_available_parameters_in_numel
 
         # max distance between two use of the module beyond which module is released
         self.max_reuse_distance_in_numel = max_reuse_distance_in_numel
+
+    def _increment_available_parameter_numel(self, increment):
+        self.total_available_parameter_numel += increment
+
+    def _decrement_available_parameter_numel(self, decrement):
+        self.total_available_parameter_numel -= decrement
 
     '''-----------------------Tracing and Prefetching ---------------'''
 
@@ -337,45 +346,32 @@ class PartitionedParameterCoordinator(object):
 
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
-    def prefetch_next_sub_modules(self,
-                                  sub_module,
-                                  available_parameter_numel,
-                                  prefetch_numel=5000000,
-                                  nvme=False):
+    def prefetch_next_sub_modules(self, sub_module, numel=5000000, nvme=False):
+
+        params_to_prefetch = []
         if not self.prefetch_coordinator.trace_completed:
-            return
+            return params_to_prefetch
 
         # prefetch if there is no current prefetching in flight
-        if self.in_flight_handles:
-            return
-
-        # prefetch if available numel limit not reached
-        total_available_parameter_numel = available_parameter_numel + len(
-            self.in_flight_handles)
-        if total_available_parameter_numel < self.max_available_parameters_in_numel:
-            print_rank_0(
-                f"{'--' * self.hierarchy}--PreFetching possible available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                force=False)
-
+        if not self.in_flight_handles and self.total_available_parameter_numel < self.max_available_parameters_in_numel:
             params_to_prefetch = self.prefetch_coordinator.get_params_to_prefetch(
                 sub_module,
-                numel=prefetch_numel)
+                numel=numel)
 
             self._all_gather(params_to_prefetch, async_op=True)
             for param in params_to_prefetch:
-                assert param.ds_status == ZeroParamStatus.INFLIGHT, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.INFLIGHT}'
+                param.ds_status = ZeroParamStatus.INFLIGHT
 
-                print_rank_0(
-                    f"{'--' * self.hierarchy}--PreFetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                    force=False)
+                # keeping track of number of elements consumed by available parameters
+                self._increment_available_parameter_numel(param.ds_numel)
 
             if nvme:
                 self._prefetch_nvme_param_partitions(sub_module, params_to_prefetch)
 
-            self._print_prefetch_elements_info(sub_module, params_to_prefetch)
-            print_rank_0(
-                f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                force=False)
+        self._print_prefetch_elements_info(sub_module, params_to_prefetch)
+        print_rank_0(
+            f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {self.total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+            force=False)
 
     def _print_prefetch_elements_info(self, sub_module, params_to_prefetch):
         sub_module_numel = 0.0
@@ -436,12 +432,8 @@ class PartitionedParameterCoordinator(object):
                 )
                 partitioned_params.append(param)
 
-                total_available_parameter_numel = param.get_available_parameter_numel()
-
-                print_rank_0(
-                    f"{'--' * self.hierarchy}--Fetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                    force=False)
-
+                # keeping track of number of elements consumed by available parameters
+                self._increment_available_parameter_numel(param.ds_numel)
                 print_rank_0(f"Incrementing with parameter id {param.ds_id}")
 
             if param.ds_status == ZeroParamStatus.INFLIGHT:
@@ -458,14 +450,12 @@ class PartitionedParameterCoordinator(object):
         if partitioned_params or params_in_flight:
             self._synchronize_communication()
 
-        for param in params_to_fetch:
-            assert param.ds_status == ZeroParamStatus.AVAILABLE, f'fetch_sub_module param {param.ds_id} unavail status = {param.ds_status}'
-
-
-#            print_rank_0(
-#                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
-#                force=False)
-#           print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
+        for _, param in sub_module.named_parameters(recurse=False):
+            param.ds_status = ZeroParamStatus.AVAILABLE
+            print_rank_0(
+                f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
+                force=False)
+        #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
 
     def release_sub_module(self, sub_module):
         self.hierarchy -= 1
@@ -493,12 +483,8 @@ class PartitionedParameterCoordinator(object):
                     f"{'--' * self.hierarchy}--Releasing parameter {debug_param2name_id_numel(param)} active sub modules {param.ds_active_sub_modules} and keep for later {self._keep_for_later(sub_module)}",
                     force=False)
 
-                total_available_parameter_numel = param.get_available_parameter_numel()
-
-                print_rank_0(
-                    f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                    force=False)
-
+                # Keeping track of number of elements that are consumed by available parameters
+                self._decrement_available_parameter_numel(param.ds_numel)
                 see_memory_usage(
                     f"Before releasing param {debug_param2name_id_numel(param)}",
                     force=False)
@@ -507,7 +493,7 @@ class PartitionedParameterCoordinator(object):
                     f"After releasing param {debug_param2name_id_numel(param)}",
                     force=False)
 
-                assert param.ds_status == ZeroParamStatus.NOT_AVAILABLE, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.NOT_AVAILABLE}'
+                param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             else:
 
                 print_rank_0(
@@ -518,14 +504,9 @@ class PartitionedParameterCoordinator(object):
         param.ds_active_sub_modules = 0
         if param.ds_status == ZeroParamStatus.AVAILABLE:
             print_rank_0(
-                f"Releasing unpartitioned param {debug_param2name_id_numel(param)} active sub-modules {param.ds_active_sub_modules} and persisitence {param.ds_persist}"
+                f"Releasing unpartitioned param {debug_param2name_id_numel(param)} active sub-modules {param.ds_active_sub_modules} and persistence {param.ds_persist}"
             )
-            total_available_parameter_numel = param.get_available_parameter_numel()
-
-            print_rank_0(
-                f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-                force=False)
-
+            self._decrement_available_parameter_numel(param.ds_numel)
             param.partition()
 
     def _keep_for_later(self, sub_module):
@@ -539,35 +520,25 @@ class PartitionedParameterCoordinator(object):
         return reuse_distance_in_numel < self.max_reuse_distance_in_numel
 
     def _all_gather(self, partitioned_params, async_op=False):
-        handles = partitioned_params[0].all_gather(
-            param_list=partitioned_params,
-            async_op=async_op,
-            hierarchy=self.hierarchy) if partitioned_params else None
+        with torch.cuda.stream(self.comm_stream):
+            handles = partitioned_params[0].all_gather(
+                param_list=partitioned_params,
+                async_op=async_op,
+                hierarchy=self.hierarchy) if partitioned_params else None
 
         if handles is not None:
             self.in_flight_handles.extend(handles)
             self.params_in_flight.extend(partitioned_params)
 
-    def _synchronize_communication(self):
+    def _synchronize_communication(self, synchronize_streams=True):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
-
-        if len(self.params_in_flight) > 0:
-            avail_params = [param.ds_id for param in self.params_in_flight]
-            status_params = [param.ds_status for param in self.params_in_flight]
-
-            self.params_in_flight[0].synchronize_communication(
-                self.params_in_flight,
-                self.in_flight_handles)
-
-            for param in self.params_in_flight:
-                assert param.ds_status == ZeroParamStatus.AVAILABLE, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.AVAILABLE}'
-
-            total_available_parameter_numel = self.params_in_flight[
-                0].get_available_parameter_numel()
-            print_rank_0(
-                f'_sync_comm marks available params = {avail_params} status = {status_params} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}',
-                force=False)
-
+        for handle, param in zip(self.in_flight_handles, self.params_in_flight):
+            if handle is not None:
+                with torch.cuda.stream(self.comm_stream):
+                    handle.wait()
+            param.ds_status = ZeroParamStatus.AVAILABLE
+        self.comm_stream.synchronize()
+        torch.cuda.synchronize() if synchronize_streams else None
         self.in_flight_handles = []
         self.params_in_flight = []
 
@@ -684,20 +655,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
-        self.timer_names = set()
         self._global_grad_norm = 0.
 
-        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
-        if non_zero_params:
-            zero_params = [p for p in module.parameters() if is_zero_param(p)]
-            if zero_params:
-                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
-            else:
-                group = None
-                if mpu:
-                    group = mpu.get_data_parallel_group()
-                Init(module=module, data_parallel_group=group, dtype=self.dtype)
-
+        self._convert_to_zero_parameters()
+        
         for m in module.modules():
             _init_external_params(m)
 
@@ -756,11 +717,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         fetch_stream = torch.cuda.Stream() if self.overlap_comm else None
         self.param_coordinator = PartitionedParameterCoordinator(
+            comm_stream=fetch_stream,
             max_reuse_distance_in_numel=int(max_reuse_distance),
             max_available_parameters_in_numel=int(max_live_parameters))
 
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 
+        #self.param_coordinator = PartitionedParameterCoordinator(comm_stream=torch.cuda.Stream())
         #-------------Stage 3 Setup-------------------#
         # parameters smaller than the threshold will be collectively gathered at the
         # end of the optimizer step and will be kept till the end of the backward pass
@@ -843,7 +806,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
                          force=False)
 
-        # Optimizer ensor swapping
+        # Optimizer tensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
@@ -935,7 +898,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         # stores if a grad in a partition has been computed or not
         self.is_grad_computed = {}
 
-        # will store the averaged gradients required by this parititon
+        # will store the averaged gradients required by this paritition
         self.averaged_gradients = {}
 
         #creates backward hooks for gradient partitioning
@@ -962,6 +925,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
+
+
+
+    def _convert_to_zero_parameters(self):
+        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
+        if non_zero_params:
+            zero_params = [p for p in module.parameters() if is_zero_param(p)]
+            if zero_params:
+                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
+            else:
+                group = None
+                if mpu:
+                    group = mpu.get_data_parallel_group()
+                Init(module=module, data_parallel_group=group, dtype=self.dtype)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
@@ -1079,7 +1056,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 src.data = dest.data
                 src.status = PartitionedParamStatus.AVAILABLE
             else:
-                assert src.status == PartitionedParamStatus.AVAILABLE, "Partitioned Parm must be avialable here"
+                assert src.status == PartitionedParamStatus.AVAILABLE, "Partitioned Param must be available here"
                 if not avoid_copy:
                     dest.data.copy_(src.data)
                 src.data = dest.data
@@ -1208,7 +1185,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                       flat_offset,
                                       total_elements)
                         print_rank_0(
-                            f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elemets {flat_offset + total_elements}",
+                            f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elements {flat_offset + total_elements}",
                             force=False)
                     #these parameters reside in NVME and
                     elif self.params_in_nvme_and_cpu:
@@ -1427,6 +1404,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
+        self._register_hooks_recursively(self.module)
 
         #reset step at the beginning of forward
         def _pre_forward_hook(module, *args):
@@ -1434,15 +1412,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         #reset step if in inference mode
         def _end_of_forward_hook(module, *args):
+
             if not torch._C.is_grad_enabled():
                 self.param_coordinator.reset_step()
 
         #likely one of them should be enough but just to be safe
-        self.module.register_forward_pre_hook(_pre_forward_hook)
-        self._register_hooks_recursively(self.module)
         self.module.register_forward_hook(_end_of_forward_hook)
+        self.module.register_forward_pre_hook(_pre_forward_hook)
 
-        # Add top todule to stack trace
+        # Add top module to stack trace
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(self.module)
 
@@ -1582,30 +1560,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
-        FORWARD_FETCH = 'forward_fetch'
-        FORWARD_PREFETCH = 'forward_prefetch'
 
         self.param_coordinator.record_trace(sub_module)
 
-        self.timer_names.add(FORWARD_FETCH)
-        self.start_timers([FORWARD_FETCH])
         self.param_coordinator.fetch_sub_module(sub_module)
-        self.stop_timers([FORWARD_FETCH])
-
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
             force=False)
 
-        self.timer_names.add(FORWARD_PREFETCH)
-        self.start_timers([FORWARD_PREFETCH])
         self.param_coordinator.prefetch_next_sub_modules(
             sub_module,
-            available_parameter_numel=self.fp16_groups[0]
-            [0].get_available_parameter_numel(),
-            prefetch_numel=self.prefetch_elements,
+            numel=self.prefetch_elements,
             nvme=self.params_in_nvme_and_cpu)
-        self.stop_timers([FORWARD_PREFETCH])
-
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after prefetch",
             force=False)
@@ -1625,22 +1591,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def pre_sub_module_backward_function(self, sub_module):
         self.param_coordinator.record_trace(sub_module)
-        BACKWARD_FETCH = 'backward_fetch'
-        BACKWARD_PREFETCH = 'backward_prefetch'
 
-        self.timer_names.add(BACKWARD_FETCH)
-        self.start_timers([BACKWARD_FETCH])
         self.param_coordinator.fetch_sub_module(sub_module)
-        self.stop_timers([BACKWARD_FETCH])
 
-        self.timer_names.add(BACKWARD_PREFETCH)
-        self.start_timers([BACKWARD_PREFETCH])
-        self.param_coordinator.prefetch_next_sub_modules(
-            sub_module,
-            available_parameter_numel=self.fp16_groups[0]
-            [0].get_available_parameter_numel(),
-            prefetch_numel=self.prefetch_elements)
-        self.stop_timers([BACKWARD_PREFETCH])
+        self.param_coordinator.prefetch_next_sub_modules(sub_module,
+                                                         numel=self.prefetch_elements)
 
         self.param_coordinator.increment_step(sub_module)
 
@@ -1848,7 +1803,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         see_memory_usage(f"End ipg_epilogue", force=False)
 
     # resets all partition to no reduced
-    # sets remianing grads to the total number of grads in each partition
+    # sets remaining grads to the total number of grads in each partition
     # set is grad computed to false for all grads in partition
     def reset_partition_gradient_structures(self):
         total_partitions = dist.get_world_size(group=self.dp_process_group)
@@ -1927,9 +1882,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             for param in param_group:
                 if param.requires_grad:
                     #print_rank_0(f" Before all gather {param.device}, {param.shape}")
-                    print_rank_0(
-                        f" Before all gather {param.ds_id} {param.ds_status} {param.device}, {param.shape}",
-                        force=False)
 
                     # The hook must be created in un-partitioned parameter
                     param.all_gather()
@@ -2198,7 +2150,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     #    self.reduction_stream.synchronize()
 
                     if self.gradient_accumulation_steps > 1:
-                        # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
+                        # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
                         fp16_grad_tensor = self.grads_in_partition[i].narrow(
                             0,
                             dest_offset,
@@ -2231,7 +2183,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                 param,
                                 fp32_grad_tensor)
                 else:
-                    # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
+                    # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
                     fp16_grad_tensor = self.grads_in_partition[i].narrow(
                         0,
                         dest_offset,
@@ -2306,7 +2258,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sequential_execution(print_func, message)
 
     def get_grads_to_reduce(self, i, partition_id):
-        def get_reducable_portion(key):
+        def get_reducible_portion(key):
             grad = self.param_dict[key].grad
             total_elements = grad.numel()
             start = self.grad_start_offset[i][partition_id][key]
@@ -2332,7 +2284,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         grads_to_reduce = []
         for key in self.is_grad_computed[i][partition_id]:
-            grad = get_reducable_portion(key)
+            grad = get_reducible_portion(key)
             grads_to_reduce.append(grad)
         return grads_to_reduce
 
@@ -2533,7 +2485,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         else:
             total_norm = 0.0
             # if dist.get_rank() == 0:
-            #    logger.info(f"Total Norm begining {total_norm}")
+            #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
@@ -2633,7 +2585,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             return
 
         for name in timer_names:
-            self.timers(name).stop(reset=False)
+            self.timers(name).stop()
 
     def _pre_step(self):
         self.micro_step_id = INITIAL_MICRO_STEP_ID
@@ -2810,8 +2762,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def _post_step(self, timer_names=set()):
         if self.offload_optimizer:
             self.reset_cpu_buffers()
-        else:
-            self.averaged_gradients = {}
 
         #Gathering persisting parameters
         if len(self.persistent_parameters) > 0:
@@ -2845,21 +2795,21 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self._overflow_check_and_loss_scale_update():
             if self.swap_optimizer:
                 self.optimizer_swapper.log_timers()
-
-            self.log_timers(self.timer_names)
             return
 
         norm_groups = self._get_norm_groups()
         self._global_grad_norm = get_global_norm(norm_list=norm_groups)
 
-        self.timer_names.add('optimizer_step')
+        timer_names = set()
+
+        timer_names.add('optimizer_step')
         self.start_timers(['optimizer_step'])
 
         #update parameters one sub group at a time
         for sub_group_id, group in enumerate(self.fp16_groups):
 
             #prepare optimizer states, gradients and fp32 parameters for update
-            self._prepare_sub_group(sub_group_id, self.timer_names)
+            self._prepare_sub_group(sub_group_id, timer_names)
 
             #scale the fp32 gradients
             self.unscale_and_clip_grads(sub_group_id, self._global_grad_norm)
@@ -2871,15 +2821,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._reassign_or_swap_out_partitioned_parameters(sub_group_id)
 
             #release memory or swap out optimizer states of fp32 parameters
-            self._release_sub_group(sub_group_id, self.timer_names)
+            self._release_sub_group(sub_group_id, timer_names)
 
         self.stop_timers(['optimizer_step'])
 
-        self._post_step(self.timer_names)
+        self._post_step(timer_names)
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
-        # Dump gradient norms for debbuging
+        # Dump gradient norms for debugging
         for i, _ in enumerate(self.fp16_groups):
             print(f'Pre-Step Dump Norms for Group {i} FP16P, FP16G, FP32G, FP32GUC')
             for fp16_param, fp32_grad in zip(self.fp16_groups[i], debug_fp32_grads[i]):
@@ -2891,7 +2841,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 print(f'Pre-Step Norms {i} {param_id} = {norm_list}')
 
     def dump_post_step_gradients(self):
-        # Dump gradient norms for debbuging
+        # Dump gradient norms for debugging
         for i, group in enumerate(self.fp16_groups):
             print(
                 f'Post-Step Dump Norms for Group {i} FP16P, FP16DS, FP16FLAT, FP32FLAT')
@@ -3011,7 +2961,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         """
         self.micro_step_id += 1
         print_rank_0(
-            f"Total fully available parameters {self.fp16_groups[0][0].get_available_parameter_numel()}"
+            f"Total fully available parameters {self.param_coordinator.total_available_parameter_numel}"
         )
 
         if self.swap_optimizer:
@@ -3197,7 +3147,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def refresh_fp32_params(self):
         self._restore_from_fp16_weights()
 
-    # Extract flattened partion for current rank from all partitions
+    # Extract flattened partition for current rank from all partitions
     def _get_flattened_partition(self, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)
