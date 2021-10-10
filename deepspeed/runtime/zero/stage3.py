@@ -145,8 +145,9 @@ class ZeROOrderedDict(OrderedDict):
 
         if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
-                print_rank_0(f'Registering external parameter from getter {key}',
-                             force=False)
+                print_rank_0(
+                    f'Registering external parameter from getter {key} param = {param.ds_id} status = {param.ds_status}',
+                    force=False)
                 register_external_parameter(FWD_MODULE_STACK[-1], param)
                 param.all_gather()
 
@@ -293,28 +294,17 @@ class PrefetchCoordinator(object):
 
 class PartitionedParameterCoordinator(object):
     def __init__(self,
-                 comm_stream=None,
                  max_reuse_distance_in_numel=500000000,
                  max_available_parameters_in_numel=700000000):
 
         self.in_flight_handles = []
         self.params_in_flight = []
-        self.comm_stream = comm_stream if comm_stream is not None else torch.cuda.current_stream(
-        )
         self.prefetch_coordinator = PrefetchCoordinator()
         self.hierarchy = 0
-
-        self.total_available_parameter_numel = 0
         self.max_available_parameters_in_numel = max_available_parameters_in_numel
 
         # max distance between two use of the module beyond which module is released
         self.max_reuse_distance_in_numel = max_reuse_distance_in_numel
-
-    def _increment_available_parameter_numel(self, increment):
-        self.total_available_parameter_numel += increment
-
-    def _decrement_available_parameter_numel(self, decrement):
-        self.total_available_parameter_numel -= decrement
 
     '''-----------------------Tracing and Prefetching ---------------'''
 
@@ -346,32 +336,45 @@ class PartitionedParameterCoordinator(object):
 
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
-    def prefetch_next_sub_modules(self, sub_module, numel=5000000, nvme=False):
-
-        params_to_prefetch = []
+    def prefetch_next_sub_modules(self,
+                                  sub_module,
+                                  available_parameter_numel,
+                                  prefetch_numel=5000000,
+                                  nvme=False):
         if not self.prefetch_coordinator.trace_completed:
-            return params_to_prefetch
+            return
 
         # prefetch if there is no current prefetching in flight
-        if not self.in_flight_handles and self.total_available_parameter_numel < self.max_available_parameters_in_numel:
+        if self.in_flight_handles:
+            return
+
+        # prefetch if available numel limit not reached
+        total_available_parameter_numel = available_parameter_numel + len(
+            self.in_flight_handles)
+        if total_available_parameter_numel < self.max_available_parameters_in_numel:
+            print_rank_0(
+                f"{'--' * self.hierarchy}--PreFetching possible available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                force=False)
+
             params_to_prefetch = self.prefetch_coordinator.get_params_to_prefetch(
                 sub_module,
-                numel=numel)
+                numel=prefetch_numel)
 
             self._all_gather(params_to_prefetch, async_op=True)
             for param in params_to_prefetch:
-                param.ds_status = ZeroParamStatus.INFLIGHT
+                assert param.ds_status == ZeroParamStatus.INFLIGHT, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.INFLIGHT}'
 
-                # keeping track of number of elements consumed by available parameters
-                self._increment_available_parameter_numel(param.ds_numel)
+                print_rank_0(
+                    f"{'--' * self.hierarchy}--PreFetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                    force=False)
 
             if nvme:
                 self._prefetch_nvme_param_partitions(sub_module, params_to_prefetch)
 
-        self._print_prefetch_elements_info(sub_module, params_to_prefetch)
-        print_rank_0(
-            f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {self.total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
-            force=False)
+            self._print_prefetch_elements_info(sub_module, params_to_prefetch)
+            print_rank_0(
+                f"{'--' * self.hierarchy}--PreFetching parameters {[param.ds_id for param in params_to_prefetch]} and available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                force=False)
 
     def _print_prefetch_elements_info(self, sub_module, params_to_prefetch):
         sub_module_numel = 0.0
@@ -432,8 +435,12 @@ class PartitionedParameterCoordinator(object):
                 )
                 partitioned_params.append(param)
 
-                # keeping track of number of elements consumed by available parameters
-                self._increment_available_parameter_numel(param.ds_numel)
+                total_available_parameter_numel = param.get_available_parameter_numel()
+
+                print_rank_0(
+                    f"{'--' * self.hierarchy}--Fetching parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                    force=False)
+
                 print_rank_0(f"Incrementing with parameter id {param.ds_id}")
 
             if param.ds_status == ZeroParamStatus.INFLIGHT:
@@ -450,12 +457,14 @@ class PartitionedParameterCoordinator(object):
         if partitioned_params or params_in_flight:
             self._synchronize_communication()
 
-        for _, param in sub_module.named_parameters(recurse=False):
-            param.ds_status = ZeroParamStatus.AVAILABLE
-            print_rank_0(
-                f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
-                force=False)
-        #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
+        for param in params_to_fetch:
+            assert param.ds_status == ZeroParamStatus.AVAILABLE, f'fetch_sub_module param {param.ds_id} unavail status = {param.ds_status}'
+
+
+#            print_rank_0(
+#                f"Param id {param.ds_id}, Shape {param.shape}, device {param.device} norm {param.norm()}",
+#                force=False)
+#           print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
 
     def release_sub_module(self, sub_module):
         self.hierarchy -= 1
@@ -483,8 +492,12 @@ class PartitionedParameterCoordinator(object):
                     f"{'--' * self.hierarchy}--Releasing parameter {debug_param2name_id_numel(param)} active sub modules {param.ds_active_sub_modules} and keep for later {self._keep_for_later(sub_module)}",
                     force=False)
 
-                # Keeping track of number of elements that are consumed by available parameters
-                self._decrement_available_parameter_numel(param.ds_numel)
+                total_available_parameter_numel = param.get_available_parameter_numel()
+
+                print_rank_0(
+                    f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                    force=False)
+
                 see_memory_usage(
                     f"Before releasing param {debug_param2name_id_numel(param)}",
                     force=False)
@@ -493,7 +506,7 @@ class PartitionedParameterCoordinator(object):
                     f"After releasing param {debug_param2name_id_numel(param)}",
                     force=False)
 
-                param.ds_status = ZeroParamStatus.NOT_AVAILABLE
+                assert param.ds_status == ZeroParamStatus.NOT_AVAILABLE, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.NOT_AVAILABLE}'
             else:
 
                 print_rank_0(
@@ -506,7 +519,12 @@ class PartitionedParameterCoordinator(object):
             print_rank_0(
                 f"Releasing unpartitioned param {debug_param2name_id_numel(param)} active sub-modules {param.ds_active_sub_modules} and persistence {param.ds_persist}"
             )
-            self._decrement_available_parameter_numel(param.ds_numel)
+            total_available_parameter_numel = param.get_available_parameter_numel()
+
+            print_rank_0(
+                f"{'--' * self.hierarchy}--Releasing parameter {param.ds_id} numel {param.ds_numel} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}",
+                force=False)
+
             param.partition()
 
     def _keep_for_later(self, sub_module):
@@ -520,25 +538,35 @@ class PartitionedParameterCoordinator(object):
         return reuse_distance_in_numel < self.max_reuse_distance_in_numel
 
     def _all_gather(self, partitioned_params, async_op=False):
-        with torch.cuda.stream(self.comm_stream):
-            handles = partitioned_params[0].all_gather(
-                param_list=partitioned_params,
-                async_op=async_op,
-                hierarchy=self.hierarchy) if partitioned_params else None
+        handles = partitioned_params[0].all_gather(
+            param_list=partitioned_params,
+            async_op=async_op,
+            hierarchy=self.hierarchy) if partitioned_params else None
 
         if handles is not None:
             self.in_flight_handles.extend(handles)
             self.params_in_flight.extend(partitioned_params)
 
-    def _synchronize_communication(self, synchronize_streams=True):
+    def _synchronize_communication(self):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
-        for handle, param in zip(self.in_flight_handles, self.params_in_flight):
-            if handle is not None:
-                with torch.cuda.stream(self.comm_stream):
-                    handle.wait()
-            param.ds_status = ZeroParamStatus.AVAILABLE
-        self.comm_stream.synchronize()
-        torch.cuda.synchronize() if synchronize_streams else None
+
+        if len(self.params_in_flight) > 0:
+            avail_params = [param.ds_id for param in self.params_in_flight]
+            status_params = [param.ds_status for param in self.params_in_flight]
+
+            self.params_in_flight[0].synchronize_communication(
+                self.params_in_flight,
+                self.in_flight_handles)
+
+            for param in self.params_in_flight:
+                assert param.ds_status == ZeroParamStatus.AVAILABLE, f'param {param.ds_id} is {param.ds_status} instead of {ZeroParamStatus.AVAILABLE}'
+
+            total_available_parameter_numel = self.params_in_flight[
+                0].get_available_parameter_numel()
+            print_rank_0(
+                f'_sync_comm marks available params = {avail_params} status = {status_params} available {total_available_parameter_numel}, max limit {self.max_available_parameters_in_numel}',
+                force=False)
+
         self.in_flight_handles = []
         self.params_in_flight = []
 
@@ -655,9 +683,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
+        self.timer_names = set()
         self._global_grad_norm = 0.
 
-        self._convert_to_zero_parameters()
+        self._convert_to_zero_parameters(module, mpu)
 
         for m in module.modules():
             _init_external_params(m)
@@ -717,13 +746,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         fetch_stream = torch.cuda.Stream() if self.overlap_comm else None
         self.param_coordinator = PartitionedParameterCoordinator(
-            comm_stream=fetch_stream,
             max_reuse_distance_in_numel=int(max_reuse_distance),
             max_available_parameters_in_numel=int(max_live_parameters))
 
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 
-        #self.param_coordinator = PartitionedParameterCoordinator(comm_stream=torch.cuda.Stream())
         #-------------Stage 3 Setup-------------------#
         # parameters smaller than the threshold will be collectively gathered at the
         # end of the optimizer step and will be kept till the end of the backward pass
@@ -926,7 +953,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
 
-    def _convert_to_zero_parameters(self):
+    def _convert_to_zero_parameters(self, module, mpu):
         non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
         if non_zero_params:
             zero_params = [p for p in module.parameters() if is_zero_param(p)]
@@ -1402,7 +1429,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
-        self._register_hooks_recursively(self.module)
 
         #reset step at the beginning of forward
         def _pre_forward_hook(module, *args):
@@ -1410,15 +1436,15 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         #reset step if in inference mode
         def _end_of_forward_hook(module, *args):
-
             if not torch._C.is_grad_enabled():
                 self.param_coordinator.reset_step()
 
         #likely one of them should be enough but just to be safe
-        self.module.register_forward_hook(_end_of_forward_hook)
         self.module.register_forward_pre_hook(_pre_forward_hook)
+        self._register_hooks_recursively(self.module)
+        self.module.register_forward_hook(_end_of_forward_hook)
 
-        # Add top module to stack trace
+        # Add top todule to stack trace
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(self.module)
 
@@ -1568,8 +1594,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.param_coordinator.prefetch_next_sub_modules(
             sub_module,
-            numel=self.prefetch_elements,
+            available_parameter_numel=self.fp16_groups[0]
+            [0].get_available_parameter_numel(),
+            prefetch_numel=self.prefetch_elements,
             nvme=self.params_in_nvme_and_cpu)
+
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after prefetch",
             force=False)
@@ -1592,8 +1621,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.param_coordinator.fetch_sub_module(sub_module)
 
-        self.param_coordinator.prefetch_next_sub_modules(sub_module,
-                                                         numel=self.prefetch_elements)
+        self.param_coordinator.prefetch_next_sub_modules(
+            sub_module,
+            available_parameter_numel=self.fp16_groups[0]
+            [0].get_available_parameter_numel(),
+            prefetch_numel=self.prefetch_elements)
 
         self.param_coordinator.increment_step(sub_module)
 
@@ -2583,7 +2615,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             return
 
         for name in timer_names:
-            self.timers(name).stop()
+            self.timers(name).stop(reset=False)
 
     def _pre_step(self):
         self.micro_step_id = INITIAL_MICRO_STEP_ID
@@ -2793,21 +2825,21 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if self._overflow_check_and_loss_scale_update():
             if self.swap_optimizer:
                 self.optimizer_swapper.log_timers()
+
+            self.log_timers(self.timer_names)
             return
 
         norm_groups = self._get_norm_groups()
         self._global_grad_norm = get_global_norm(norm_list=norm_groups)
 
-        timer_names = set()
-
-        timer_names.add('optimizer_step')
+        self.timer_names.add('optimizer_step')
         self.start_timers(['optimizer_step'])
 
         #update parameters one sub group at a time
         for sub_group_id, group in enumerate(self.fp16_groups):
 
             #prepare optimizer states, gradients and fp32 parameters for update
-            self._prepare_sub_group(sub_group_id, timer_names)
+            self._prepare_sub_group(sub_group_id, self.timer_names)
 
             #scale the fp32 gradients
             self.unscale_and_clip_grads(sub_group_id, self._global_grad_norm)
@@ -2819,11 +2851,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._reassign_or_swap_out_partitioned_parameters(sub_group_id)
 
             #release memory or swap out optimizer states of fp32 parameters
-            self._release_sub_group(sub_group_id, timer_names)
+            self._release_sub_group(sub_group_id, self.timer_names)
 
         self.stop_timers(['optimizer_step'])
 
-        self._post_step(timer_names)
+        self._post_step(self.timer_names)
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
@@ -2959,7 +2991,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         """
         self.micro_step_id += 1
         print_rank_0(
-            f"Total fully available parameters {self.param_coordinator.total_available_parameter_numel}"
+            f"Total fully available parameters {self.fp16_groups[0][0].get_available_parameter_numel()}"
         )
 
         if self.swap_optimizer:
