@@ -146,6 +146,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.device = torch.cuda.current_device() if not self.cpu_offload else 'cpu'
 
         self.dp_process_group = dp_process_group
+        self.original_dp_process_group = dp_process_group
 
         #expert parallel group
         self.ep_process_group = expert_parallel_group
@@ -537,6 +538,22 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.grads_in_partition = None
             self.grads_in_partition_offset = 0
 
+
+    def update_dp_process_group(self, dp_process_group):
+        if dp_process_group is None:
+            return 
+        
+        assert not self.has_moe_layers, f'Updating DP progress group is invalid for MoE training'
+
+        self.dp_process_group = dp_process_group
+        self.real_dp_process_group = [
+            dp_process_group for i in range(len(self.optimizer.param_groups))
+        ]
+
+    def restore_dp_process_group(self):
+        self.update_dp_process_group(self.original_dp_process_group)
+
+
     def initialize_optimizer_states(self):
 
         for i, group in enumerate(self.fp16_groups):
@@ -665,6 +682,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # are in self.averaged_gradients
         self.zero_grad()
         see_memory_usage(f"End ipg_epilogue")
+
 
     # resets all partition to no reduced
     # sets remaining grads to the total number of grads in each partition
@@ -838,7 +856,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def gradient_reduction_w_predivide(self, tensor):
 
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
-
         tensor_to_allreduce = tensor
 
         if self.allreduce_always_fp32:
@@ -1314,6 +1331,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
         tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
 
+        logger.info(f'rank {dist.get_rank()} all_reduce micro_step = {self.micro_step_id} world_size = {dist.get_world_size(self.dp_process_group)}')
         if rank is None:
             #    "All Reducing"
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
@@ -1530,6 +1548,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                            return_tensor_list=False):
         flat_tensor_list = []
         current_size = 0
+
         for i, tensor in enumerate(tensor_list):
             if tensor.grad is None:
                 tensor.grad = torch.zeros_like(tensor)
@@ -1605,6 +1624,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         """
         self.micro_step_id = -1
 
+        self.restore_dp_process_group()
+        logger.info(f'rank {dist.get_rank()} step with world size = {dist.get_world_size(self.dp_process_group)}')
         see_memory_usage(f"In step before checking overflow")
 
         # First compute norm for all group so we know if there is overflow

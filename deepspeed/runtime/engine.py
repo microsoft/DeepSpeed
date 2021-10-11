@@ -1028,8 +1028,7 @@ class DeepSpeedEngine(Module):
                 elastic_checkpoint=self.zero_elastic_checkpoint(),
                 mpu=self.mpu,
                 postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_predivide=self.gradient_predivide)
+                gradient_predivide_factor=self.gradient_predivide_factor())
         elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
@@ -1308,7 +1307,7 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    def backward(self, loss, allreduce_gradients=True, release_loss=False):
+    def backward(self, loss, allreduce_gradients=True, release_loss=False, dp_process_group=None):
         r"""Execute backward pass on the loss
 
         Arguments:
@@ -1352,6 +1351,8 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization():
             self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
             )
+            if dp_process_group is not None:
+                self.optimizer.update_dp_process_group(dp_process_group)
             self.optimizer.backward(loss)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries

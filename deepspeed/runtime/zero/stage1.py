@@ -419,6 +419,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
 
         return params_in_rank_sub_partition, params_in_rank_sub_partitions_offsets, params_not_local
 
+    def update_dp_process_group(self, dp_process_group):
+        pass 
+
+    def restore_dp_process_group(self):
+        pass 
+
     def get_flat_sub_partitions(self,
                                 comm_tensor_list,
                                 comm_param_offsets,
