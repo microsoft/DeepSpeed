@@ -113,6 +113,7 @@ def get_fp16_enabled(param_dict):
     else:
         return False
 
+
 def get_bfloat16_enabled(param_dict):
     if BFLOAT16 in param_dict.keys():
         return get_scalar_param(param_dict[BFLOAT16],
@@ -120,6 +121,7 @@ def get_bfloat16_enabled(param_dict):
                                 BFLOAT16_ENABLED_DEFAULT)
     else:
         return False
+
 
 def get_fp16_master_weights_and_grads_enabled(param_dict):
     if get_fp16_enabled(param_dict):
@@ -139,6 +141,7 @@ def get_loss_scale(param_dict):
         return 1.0
     else:
         return FP16_LOSS_SCALE_DEFAULT
+
 
 def get_initial_dynamic_scale(param_dict):
     if get_fp16_enabled(param_dict):

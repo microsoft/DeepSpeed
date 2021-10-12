@@ -504,6 +504,7 @@ class PartitionedParameterCoordinator:
         if swap_in_params:
             swap_in_params[0].nvme_swapper.swap_in(swap_in_params, async_op=True)
 
+
 class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
@@ -2091,7 +2092,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             total_norm = -1
 
         return total_norm
-
 
     @instrument_w_nvtx
     def __partition_grads(self,

@@ -103,6 +103,7 @@ def print_configuration(args, name):
         dots = '.' * (29 - len(arg))
         logger.info('  {} {} {}'.format(arg, dots, getattr(args, arg)))
 
+
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training.
     """
