@@ -54,6 +54,7 @@ ADAM_W_MODE_DEFAULT = True
 class DeepSpeedConfigError(Exception):
     pass
 
+
 def get_curriculum_enabled(param_dict):
     if CURRICULUM_LEARNING in param_dict.keys():
         return get_scalar_param(param_dict[CURRICULUM_LEARNING],
@@ -70,6 +71,7 @@ def get_curriculum_params(param_dict):
         return curriculum_params
     else:
         return False
+
 
 def get_pld_enabled(param_dict):
     if PROGRESSIVE_LAYER_DROP in param_dict.keys():

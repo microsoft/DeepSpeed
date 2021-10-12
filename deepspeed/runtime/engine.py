@@ -126,6 +126,9 @@ class DeepSpeedEngine(Module):
         self.dist_backend = "nccl"
         self._step_applied = False
         self._global_grad_norm = None
+        self._is_gradient_accumulation_boundary = None
+        self._engine_backward_invoked = False
+        self.scale_wrt_gas = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -217,7 +220,7 @@ class DeepSpeedEngine(Module):
 
         if self.pld_enabled():
             self.progressive_layer_drop = self._configure_progressive_layer_drop()
-        
+
         if self.curriculum_enabled():
             self.curriculum_scheduler = self._configure_curriculum_scheduler()
 
@@ -1147,7 +1150,7 @@ class DeepSpeedEngine(Module):
 
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
-        
+
         if self.module.training and self.curriculum_enabled():
             self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
             if self.curriculum_params()["curriculum_type"] == "seqlen":
@@ -1223,6 +1226,10 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: is deprecated, ignored, and will soon be removed'
         """
+
+        self._engine_backward_invoked = True
+        if self.scale_wrt_gas is not None:
+            scale_wrt_gas = self.scale_wrt_gas
 
         if not allreduce_gradients:
             logger.warning(
@@ -1311,8 +1318,14 @@ class DeepSpeedEngine(Module):
         Returns:
             bool: if the current step is a gradient accumulation boundary.
         """
-        return (self.micro_steps + 1) % \
-            self.gradient_accumulation_steps() == 0
+        if self._is_gradient_accumulation_boundary is None:
+            return (self.micro_steps + 1) % \
+                self.gradient_accumulation_steps() == 0
+        else:
+            return self._is_gradient_accumulation_boundary
+
+    def set_gradient_accumulation_boundary(self, is_boundary):
+        self._is_gradient_accumulation_boundary = is_boundary
 
     def zero_grad(self):
         """
@@ -1381,6 +1394,9 @@ class DeepSpeedEngine(Module):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
+        assert self._engine_backward_invoked, "please call engine.backward() before engine.step()!"
+        self._engine_backward_invoked = False
+
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
             self.timers('step').start()

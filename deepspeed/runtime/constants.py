@@ -352,6 +352,7 @@ CURRICULUM_LEARNING = "curriculum_learning"
 CURRICULUM_ENABLED = "enabled"
 CURRICULUM_ENABLED_DEFAULT = False
 
+
 #########################################
 # Validation modes
 #########################################
