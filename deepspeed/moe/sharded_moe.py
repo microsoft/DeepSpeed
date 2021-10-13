@@ -111,8 +111,8 @@ def top1gating(logits: torch.Tensor,
     gates = F.softmax(logits, dim=1)
 
     # gates has shape of SE
-    num_tokens = gates.shape[0]
-    num_experts = gates.shape[1]
+    num_tokens = int(gates.shape[0])
+    num_experts = int(gates.shape[1])
     # round-up
     capacity = math.ceil((num_tokens / num_experts) * capacity_factor)
     if capacity < min_capacity:
