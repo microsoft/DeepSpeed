@@ -1306,13 +1306,16 @@ class DeepSpeedEngine(Module):
         if self.module.training and self.progressive_layer_drop:
             kwargs.update(self.progressive_layer_drop.get_state())
 
-        if self.module.training and self.curriculum_enabled():
-            self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
-            if self.curriculum_params()["curriculum_type"] == "seqlen":
-                kwargs.update({
-                    "curriculum_seqlen":
-                    self.curriculum_scheduler.get_current_difficulty()
-                })
+        if self.__class__.__name__ != "PipelineEngine":
+            # TODO: The above if condition is a HACK since for PipelineEngine
+            # it's difficult to inject argument in forward pass.
+            if self.module.training and self.curriculum_enabled():
+                self.curriculum_scheduler.update_difficulty(self.global_steps + 1)
+                if self.curriculum_params()["curriculum_type"] == "seqlen":
+                    kwargs.update({
+                        "curriculum_seqlen":
+                        self.curriculum_scheduler.get_current_difficulty()
+                    })
 
         if self.zero_optimization_partition_weights():
             # Enable automated discovery of external parameters by indicating that
@@ -2073,6 +2076,8 @@ class DeepSpeedEngine(Module):
         #           If the consistency check fails, crash with a message telling users
         #           to turn on load_module_only.
 
+        self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
+
         if load_module_only:
             deepspeed_states = ['module']
             if self.optimizer is not None and self.fp16_enabled():
@@ -2105,7 +2110,6 @@ class DeepSpeedEngine(Module):
                 self.global_steps * self.train_batch_size())
             self.skipped_steps = checkpoint['skipped_steps']
             self.loaded_checkpoint_mp_world_size = checkpoint['mp_world_size']
-            self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
             deepspeed_states = [
                 'module',
                 'csr_tensor_module_names',
