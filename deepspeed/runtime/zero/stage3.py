@@ -2778,10 +2778,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         if alloc_retries > self.__n_caching_allocator_flushes:
             if dist.get_rank() == 0:
                 logger.warning(
-                    "%d pytorch allocator cache flushes. this happens "
-                    "when there is high memory pressure and is highly detrimental to "
+                    "%d pytorch allocator cache flushes since last step. this happens "
+                    "when there is high memory pressure and is detrimental to "
                     "performance. if this is happening frequently consider adjusting "
-                    "settings to reduce memory consumption",
+                    "settings to reduce memory consumption. If you are unable to "
+                    "make the cache flushes go away consider adding "
+                    "torch.cuda.empty_cache() calls in your training loop to ensure "
+                    "that all ranks flush their caches at the same time",
                     alloc_retries - self.__n_caching_allocator_flushes)
             self.__n_caching_allocator_flushes = alloc_retries
 
