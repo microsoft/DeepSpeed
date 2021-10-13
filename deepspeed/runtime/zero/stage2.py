@@ -1713,6 +1713,8 @@ class FP16_DeepSpeedZeroOptimizer(object):
         if self.cpu_offload:
             self.reset_cpu_buffers()
 
+        all_gather_times = []
+        import time 
         self.start_timers([OPTIMIZER_ALLGATHER])
         # gather the updated weights from everyone
         for group_id, partitioned_params in enumerate(self.parallel_partitioned_fp16_groups):
@@ -1744,10 +1746,22 @@ class FP16_DeepSpeedZeroOptimizer(object):
                         num_elements).detach()
                     shard_list.append(curr_shard)
 
+                torch.cuda.synchronize()
+                pre = time.perf_counter()
                 dist.all_gather(shard_list,
                                 shard_list[partition_id],
                                 group=self.real_dp_process_group[group_id])
+                torch.cuda.synchronize()
+                duration = time.perf_counter() - pre
+                all_gather_times.append(duration)
+
         self.stop_timers([OPTIMIZER_ALLGATHER])
+
+        if dist.get_rank() == 0:
+            sum_times = sum(all_gather_times)
+            all_gather_times.sort()
+            print(f'all_gather_times[{len(all_gather_times)}] = {all_gather_times}')
+            print(f'sum all_gather_times = {sum_times}')
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):
