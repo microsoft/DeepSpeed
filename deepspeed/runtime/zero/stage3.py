@@ -487,6 +487,9 @@ class PartitionedParameterCoordinator:
         """swap in parameter partitions from nvme for those parameters that will be used
         after the ones that are already being prefetched into full parameters
         """
+        if not self.trace_complete:
+            return
+
         numel_in_flight = sum(param.ds_numel for param in self.__inflight_param_registry)
 
         numel_considered = 0
