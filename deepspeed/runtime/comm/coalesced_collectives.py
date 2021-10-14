@@ -52,9 +52,16 @@ def reduce_scatter_coalesced(
     this_rank = torch.distributed.get_rank(group)
     world_sz = torch.distributed.get_world_size(group)
 
-    partition_lst_for_each_tensor = tuple(
-        torch.chunk(tensor.view(-1),
-                    world_sz) for tensor in tensors)
+    partition_lst_for_each_tensor = [None] * len(tensors)
+    for tensor_idx, tensor in enumerate(tensors):
+        flattened_tensor = tensor.view(-1)
+        chunk_sz = math.ceil(tensor.numel() / world_sz)
+        partition_lst_for_each_tensor[tensor_idx] = [
+            flattened_tensor[rank * chunk_sz:rank * chunk_sz + chunk_sz]
+            for rank in range(0,
+                              world_sz)
+        ]
+
     padded_partition_sz_for_each_tensor = tuple(
         math.ceil(t.numel() / world_sz) for t in tensors)
 
