@@ -34,6 +34,32 @@ from ..config import DeepSpeedConfig
 param_count = 0
 partitioned_param_data_shape = [0]
 
+if hasattr(torch.distributed, "_all_gather_base"):
+
+    def torch_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+        return instrument_w_nvtx(torch.distributed._all_gather_base)(
+            output_tensor,
+            input_tensor,
+            group=group,
+            async_op=True,
+        )
+else:
+    logger.warning(
+        "unable to find torch.distributed._all_gather_base. will fall back to "
+        "torch.distributed.all_gather which will result in suboptimal performance. "
+        "please consider upgrading your pytorch installation.")
+
+    def torch_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+        output_tensors = list(
+            torch.chunk(output_tensor,
+                        torch.distributed.get_world_size(group)))
+        return instrument_w_nvtx(torch.distributed.all_gather)(
+            output_tensors,
+            input_tensor,
+            group=group,
+            async_op=True,
+        )
+
 
 def print_rank_0(message, debug=False, force=False):
     rank = torch.distributed.get_rank()
@@ -791,12 +817,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             instrument_w_nvtx(torch.cat)([p.ds_tensor.data for p in params],
                                          out=partitions[self.rank])
 
-            handle = instrument_w_nvtx(torch.distributed._all_gather_base)(
-                flat_tensor,
-                partitions[self.rank],
-                group=self.ds_process_group,
-                async_op=True,
-            )
+            handle = torch_allgather_fn(partitions[self.rank],
+                                        flat_tensor,
+                                        self.ds_process_group)
 
             return AllGatherCoalescedHandle(
                 allgather_handle=handle,

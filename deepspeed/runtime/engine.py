@@ -1323,8 +1323,7 @@ class DeepSpeedEngine(Module):
         if self.training_dataloader is None:
             self.tput_timer.start()
 
-        with torch.cuda.nvtx.range("DeepspeedEngine.forward::module_forward"):
-            loss = self.module(*inputs, **kwargs)
+        loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
             # Reset the ZeRO-3 state if we are only doing forward-passes (ie evaluation).
