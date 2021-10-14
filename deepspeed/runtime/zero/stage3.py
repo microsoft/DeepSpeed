@@ -1456,14 +1456,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
 
-        @instrument_w_nvtx
-        def _pre_forward_hook(_, *args) -> None:
-            """makes sure all ranks start .forward() at the same time so that we
-            don't accidentally mix allgathers for different steps/sets of parameters
-            """
-            torch.cuda.synchronize()
-            dist.barrier()
-
         #reset step if in inference mode
         @instrument_w_nvtx
         def _end_of_forward_hook(module, *args):
@@ -1472,7 +1464,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.param_coordinator.reset_step()
 
         #likely one of them should be enough but just to be safe
-        self.module.register_forward_pre_hook(_pre_forward_hook)
         self._register_hooks_recursively(self.module)
         self.module.register_forward_hook(_end_of_forward_hook)
 
