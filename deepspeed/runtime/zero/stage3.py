@@ -362,7 +362,19 @@ class PartitionedParameterCoordinator:
             debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
                 with torch.cuda.stream(self.__allgather_stream):
+                    while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
+                            0].query():
+                        self.__ongoing_fetch_events.popleft()
+                    if len(self.__ongoing_fetch_events
+                           ) > self.__max_ongoing_fetch_events:
+                        self.__ongoing_fetch_events.popleft().synchronize()
+
                     self.__inflight_param_registry.pop(param).wait()
+
+                    event = Event()
+                    event.record()
+                    self.__ongoing_fetch_events.append(event)
+
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         torch.cuda.current_stream().wait_stream(self.__allgather_stream)
 
@@ -433,16 +445,7 @@ class PartitionedParameterCoordinator:
 
         if partitioned_params:
             with torch.cuda.stream(self.__allgather_stream):
-                # only allow a certain number of fetch events to be queued at once
-                while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
-                        0].query():
-                    self.__ongoing_fetch_events.popleft()
-                if len(self.__ongoing_fetch_events) > self.__max_ongoing_fetch_events:
-                    self.__ongoing_fetch_events.popleft().synchronize()
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
-                event = Event()
-                event.record()
-                self.__ongoing_fetch_events.append(event)
 
             for param in partitioned_params:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
