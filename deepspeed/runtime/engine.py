@@ -1365,7 +1365,6 @@ class DeepSpeedEngine(Module):
 
         return loss
 
-
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
         moe_time = 0.0
@@ -1388,7 +1387,6 @@ class DeepSpeedEngine(Module):
         log_dist(
             f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
             ranks=[0])
-
 
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
