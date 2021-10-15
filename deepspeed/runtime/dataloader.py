@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from math import ceil
 
+
 class RepeatingLoader:
     def __init__(self, loader):
         """Wraps an iterator to allow for infinite iteration. This is especially useful
