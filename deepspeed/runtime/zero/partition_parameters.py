@@ -942,6 +942,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     psize = partition_sizes[param_idx]
                     partition = allgather_params[param_idx].narrow(0, i * psize, psize)
                     output_list.append(partition)
+                    if not partition.is_cuda:
+                        logger.warning(f'param {param_idx}, partition {i} is not on CUDA, partition shape {partition.size()}')
 
                 # back to old all_gather function signature
                 h = all_gather(output_list,
