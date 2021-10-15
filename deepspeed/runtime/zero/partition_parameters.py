@@ -3,6 +3,7 @@
 Licensed under the MIT license.
 """
 
+import math
 import os
 import time
 import types
@@ -473,6 +474,16 @@ class InsertPostInitMethodToModuleSubClasses(object):
             self.dtype = dtype or torch.half
 
 
+class AllGatherHandle:
+    def __init__(self, handle, param: Parameter) -> None:
+        self.__handle = handle
+        self.__param = param
+
+    def wait(self) -> None:
+        instrument_w_nvtx(self.__handle.wait)()
+        self.__param.ds_status = ZeroParamStatus.AVAILABLE
+
+
 class AllGatherCoalescedHandle:
     def __init__(
             self,
@@ -777,6 +788,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         @instrument_w_nvtx
         def all_gather_coalesced(params: Iterable[Parameter],
                                  safe_mode: bool = False) -> AllGatherCoalescedHandle:
+
             # fetches from nvme if the partition is not available and in nvme
             self._ensure_availability_of_partitioned_params(params)
 
@@ -804,29 +816,51 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 # otherwise could mix data between tensors.
                 assert_ints_same_as_other_ranks([p.ds_tensor.ds_numel for p in params])
 
-            partition_sz = sum(p.ds_tensor.ds_numel for p in params)
-            flat_tensor = torch.empty(partition_sz * self.world_size,
-                                      dtype=get_only_unique_item(p.dtype
-                                                                 for p in params),
-                                      device=self.local_device,
-                                      requires_grad=False)
-            partitions: List[Parameter] = []
-            for i in range(self.world_size):
-                partitions.append(flat_tensor.narrow(0, partition_sz * i, partition_sz))
+            if len(params) == 1:
+                # have an opportunity to avoid some intermediate memory allocations
+                param, = params
+                param_buffer = torch.empty(
+                    math.ceil(param.ds_numel / self.world_size) * self.world_size,
+                    dtype=param.dtype,
+                    device=param.device,
+                    requires_grad=False,
+                )
+                handle = torch_allgather_fn(
+                    param.ds_tensor,
+                    param_buffer,
+                    self.ds_process_group,
+                )
+                param.data = param_buffer.narrow(0,
+                                                 0,
+                                                 param.ds_numel).view(param.ds_shape)
+                return AllGatherHandle(handle, param)
+            else:
+                partition_sz = sum(p.ds_tensor.ds_numel for p in params)
+                flat_tensor = torch.empty(partition_sz * self.world_size,
+                                          dtype=get_only_unique_item(p.dtype
+                                                                     for p in params),
+                                          device=self.local_device,
+                                          requires_grad=False)
+                partitions: List[Parameter] = []
+                for i in range(self.world_size):
+                    partitions.append(
+                        flat_tensor.narrow(0,
+                                           partition_sz * i,
+                                           partition_sz))
 
-            instrument_w_nvtx(torch.cat)([p.ds_tensor.data for p in params],
-                                         out=partitions[self.rank])
+                instrument_w_nvtx(torch.cat)([p.ds_tensor.data for p in params],
+                                             out=partitions[self.rank])
 
-            handle = torch_allgather_fn(partitions[self.rank],
-                                        flat_tensor,
-                                        self.ds_process_group)
+                handle = torch_allgather_fn(partitions[self.rank],
+                                            flat_tensor,
+                                            self.ds_process_group)
 
-            return AllGatherCoalescedHandle(
-                allgather_handle=handle,
-                params=params,
-                partitions=partitions,
-                world_size=self.world_size,
-            )
+                return AllGatherCoalescedHandle(
+                    allgather_handle=handle,
+                    params=params,
+                    partitions=partitions,
+                    world_size=self.world_size,
+                )
 
         def partition(param_list=None, hierarchy=0, has_been_updated=False):
             cls = param
