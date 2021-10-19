@@ -127,6 +127,7 @@ def top1gating(logits: torch.Tensor,
 
     # mask only used tokens
     if used_token is not None:
+        print("s,se->se", used_token.size(), mask1.size(), used_token.type(), mask1.type())
         mask1 = used_token.reshape(used_token.shape[0], -1) * mask1
 
     # gating decisions
@@ -165,6 +166,7 @@ def top1gating(logits: torch.Tensor,
     gates = gates * mask1_float
 
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
+    print("se,sc->sec", gates.size(), locations1_sc.size(), gates.type(), locations1_sc.type())
     combine_weights = torch.bmm(
         gates.reshape(gates.shape[0],
                       gates.shape[1],
@@ -231,10 +233,12 @@ def top2gating(logits: torch.Tensor,
     # Normalize gate probabilities
     mask1_float = mask1.float()
     mask2_float = mask2.float()
+    print("se,se->s", gates.size(), mask1_float.size(), gates.type(), mask1_float.type())
     gates1_s = torch.sum(gates.reshape(gates.shape[0],
                                        -1) * mask1_float,
                          dim=1).reshape(1,
                                         -1)
+    print("se,se->s", gates.size(), mask2_float.size(), gates.type(), mask2_float.type())
     gates2_s = torch.sum(gates.reshape(gates.shape[0],
                                        -1) * mask2_float,
                          dim=1).reshape(1,
@@ -246,10 +250,13 @@ def top2gating(logits: torch.Tensor,
     gates2_s /= denom_s
 
     # Calculate combine_weights and dispatch_mask
+    print("s,se->se", gates1_s.size(), mask1_float.size(), gates1_s.type(), mask1_float.type())
     gates1 = gates1_s.reshape(gates1_s.shape[0], -1) * mask1_float
+    print("s,se->se", gates2_s.size(), mask2_float.size(), gates2_s.type(), mask2_float.type())
     gates2 = gates2_s.reshape(gates2_s.shape[0], -1) * mask2_float
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
     locations2_sc = F.one_hot(locations2_s, num_classes=capacity).float()
+    print("se,sc->sec", gates1.size(), locations1_sc.size(), gates1.type(), locations1_sc.type())
     combine1_sec = torch.bmm(
         gates1.reshape(gates1.shape[0],
                        gates1.shape[1],
@@ -257,6 +264,7 @@ def top2gating(logits: torch.Tensor,
         locations1_sc.reshape(locations1_sc.shape[0],
                               1,
                               locations1_sc.shape[1]).to(gates1))
+    print("se,sc->sec", gates2.size(), locations2_sc.size(), gates2.type(), locations2_sc.type())
     combine2_sec = torch.bmm(
         gates2.reshape(gates2.shape[0],
                        gates2.shape[1],
@@ -400,6 +408,7 @@ class MOELayer(Base):
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
         dispatch_mask = dispatch_mask.type_as(input[0])
+        print("sec,sm->ecm", dispatch_mask .size(), reshaped_input.size(), dispatch_mask .type(), reshaped_input.type())
         dispatched_input = torch.matmul(
             dispatch_mask.to(reshaped_input).reshape(dispatch_mask.shape[0],
                                                      -1).t(),
@@ -437,6 +446,7 @@ class MOELayer(Base):
                                               d_model)
 
         combine_weights = combine_weights.type_as(input[0])
+        print("sec,ecm->sm", combine_weights.size(), expert_output.size(), combine_weights.type(), expert_output.type())
         combined_output = torch.matmul(
             combine_weights.reshape(combine_weights.shape[0],
                                     -1),
