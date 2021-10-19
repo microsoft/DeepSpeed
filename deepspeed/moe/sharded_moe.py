@@ -376,7 +376,7 @@ class MOELayer(Base):
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
         dispatch_mask = dispatch_mask.type_as(input[0])
-        dispatched_input = torch.matmul(dispatch_mask.to(reshaped_input).permute(1,2,0), reshaped_input)
+        dispatched_input = torch.matmul(dispatch_mask.to(reshaped_input).reshape(dispatch_mask.shape[0], -1).t(), reshaped_input)
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
