@@ -97,9 +97,38 @@ import torch.nn.functional as F
 import math
 
 
-def printf(s, i1, i2, i3, i4):
-    with open("/tmp/flog.txt","a") as flog:
-        flog.write("%s %s %s %s %s\n" % (s, i1, i2, i3, i4))
+# einsum rewrites are on par or more performant
+# switch can be bubbled up in future
+use_einsum = False
+def einsum(rule, a, b):
+    if use_einsum:
+        return torch.einsum(rule, a, b)
+    elif rule == 's,se->se' :
+        return a.reshape(a.shape[0], -1) * b
+    elif rule == 'se,sc->sec' :
+        return a.unsqueeze(2) * b.unsqueeze(1)
+    elif rule == 'se,se->s' :
+        return torch.bmm(a.unsqueeze(1), b.unsqueeze(2)).reshape(-1)
+    elif rule == 'sec,sm->ecm' :
+        s = a.shape[0]
+        e = a.shape[1]
+        c = a.shape[2]
+        m = b.shape[1]
+        return torch.matmul(a.reshape(s, -1).t(), b).reshape(e,c,m)
+    elif rule == 'sec,ecm->sm' :
+        return torch.matmul(a.reshape(a.shape[0], -1), b.reshape(-1, b.shape[-1]))
+    elif rule == 'ks,ksm->sm' :
+        k = b.shape[0]
+        s = b.shape[1]
+        m = b.shape[2]
+        # [k, s] -> [s, k] -> [s, 1, k]
+        a = a.t().unsqueeze(1)
+        # [k,s,m] -> [k, sm] -> [sm, k] -> [s, m, k]
+        b = b.reshape(k, -1).t().reshape(s, m, k)
+        # bmm([s, 1, k], [s, m, k]^t) -> [s, m, 1]
+        return torch.bmm(a, b.transpose(1, 2)).squeeze(2)
+    else:
+        return torch.einsum(rule, a, b)
 
 def top1gating(logits: torch.Tensor,
                capacity_factor: float,
@@ -131,8 +160,7 @@ def top1gating(logits: torch.Tensor,
 
     # mask only used tokens
     if used_token is not None:
-        printf("s,se->se", used_token.size(), mask1.size(), used_token.type(), mask1.type())
-        mask1 = used_token.reshape(used_token.shape[0], -1) * mask1
+        mask1 = einsum("s,se->se", used_token, mask1)
 
     # gating decisions
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
@@ -170,14 +198,7 @@ def top1gating(logits: torch.Tensor,
     gates = gates * mask1_float
 
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
-    printf("se,sc->sec", gates.size(), locations1_sc.size(), gates.type(), locations1_sc.type())
-    combine_weights = torch.bmm(
-        gates.reshape(gates.shape[0],
-                      gates.shape[1],
-                      1),
-        locations1_sc.reshape(locations1_sc.shape[0],
-                              1,
-                              locations1_sc.shape[1]).to(gates))
+    combine_weights = einsum("se,sc->sec", gates, locations1_sc)
 
     dispatch_mask = combine_weights.bool()
 
@@ -237,16 +258,8 @@ def top2gating(logits: torch.Tensor,
     # Normalize gate probabilities
     mask1_float = mask1.float()
     mask2_float = mask2.float()
-    printf("se,se->s", gates.size(), mask1_float.size(), gates.type(), mask1_float.type())
-    gates1_s = torch.sum(gates.reshape(gates.shape[0],
-                                       -1) * mask1_float,
-                         dim=1).reshape(1,
-                                        -1)
-    printf("se,se->s", gates.size(), mask2_float.size(), gates.type(), mask2_float.type())
-    gates2_s = torch.sum(gates.reshape(gates.shape[0],
-                                       -1) * mask2_float,
-                         dim=1).reshape(1,
-                                        -1)
+    gates1_s = einsum("se,se->s", gates, mask1_float)
+    gates2_s = einsum("se,se->s", gates, mask2_float)
     denom_s = gates1_s + gates2_s
     # Avoid divide-by-zero
     denom_s = torch.clamp(denom_s, min=torch.finfo(denom_s.dtype).eps)
@@ -254,28 +267,12 @@ def top2gating(logits: torch.Tensor,
     gates2_s /= denom_s
 
     # Calculate combine_weights and dispatch_mask
-    printf("s,se->se", gates1_s.size(), mask1_float.size(), gates1_s.type(), mask1_float.type())
-    gates1 = gates1_s.reshape(gates1_s.shape[0], -1) * mask1_float
-    printf("s,se->se", gates2_s.size(), mask2_float.size(), gates2_s.type(), mask2_float.type())
-    gates2 = gates2_s.reshape(gates2_s.shape[0], -1) * mask2_float
+    gates1 = einsum("s,se->se", gates1_s, mask1_float)
+    gates2 = einsum("s,se->se", gates2_s, mask2_float)
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
     locations2_sc = F.one_hot(locations2_s, num_classes=capacity).float()
-    printf("se,sc->sec", gates1.size(), locations1_sc.size(), gates1.type(), locations1_sc.type())
-    combine1_sec = torch.bmm(
-        gates1.reshape(gates1.shape[0],
-                       gates1.shape[1],
-                       1),
-        locations1_sc.reshape(locations1_sc.shape[0],
-                              1,
-                              locations1_sc.shape[1]).to(gates1))
-    printf("se,sc->sec", gates2.size(), locations2_sc.size(), gates2.type(), locations2_sc.type())
-    combine2_sec = torch.bmm(
-        gates2.reshape(gates2.shape[0],
-                       gates2.shape[1],
-                       1),
-        locations2_sc.reshape(locations2_sc.shape[0],
-                              1,
-                              locations2_sc.shape[1]).to(gates2))
+    combine1_sec = einsum("se,sc->sec", gates1, locations1_sc)
+    combine2_sec = einsum("se,sc->sec", gates2, locations2_sc)
     combine_weights = combine1_sec + combine2_sec
     dispatch_mask = combine_weights.bool()
 
@@ -411,12 +408,9 @@ class MOELayer(Base):
 
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
-        dispatch_mask = dispatch_mask.type_as(input[0])
-        printf("sec,sm->ecm", dispatch_mask .size(), reshaped_input.size(), dispatch_mask .type(), reshaped_input.type())
-        dispatched_input = torch.matmul(
-            dispatch_mask.to(reshaped_input).reshape(dispatch_mask.shape[0],
-                                                     -1).t(),
-            reshaped_input)
+        dispatched_input = einsum("sec,sm->ecm",
+                                        dispatch_mask.type_as(input[0]),
+                                        reshaped_input)
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
@@ -449,13 +443,9 @@ class MOELayer(Base):
                                               -1,
                                               d_model)
 
-        combine_weights = combine_weights.type_as(input[0])
-        printf("sec,ecm->sm", combine_weights.size(), expert_output.size(), combine_weights.type(), expert_output.type())
-        combined_output = torch.matmul(
-            combine_weights.reshape(combine_weights.shape[0],
-                                    -1),
-            expert_output.reshape(-1,
-                                  expert_output.shape[-1]))
+        combined_output = einsum("sec,ecm->sm",
+                                       combine_weights.type_as(input[0]),
+                                       expert_output)
 
         a = combined_output.reshape(input[0].shape)
 
