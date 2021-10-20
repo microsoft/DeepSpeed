@@ -38,7 +38,6 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          mkdir /tmp
           TORCH_EXTENSIONS_DIR=./torch-extensions pytest --durations=0 --forked --verbose unit/
           cat /tmp/flog.txt
 
