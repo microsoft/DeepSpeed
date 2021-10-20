@@ -98,7 +98,7 @@ import math
 
 
 def printf(s, i1, i2, i3, i4):
-    with open("flog.txt","a") as flog:
+    with open("/tmp/flog.txt","a") as flog:
         flog.write("%s %s %s %s %s\n" % (s, i1, i2, i3, i4))
 
 def top1gating(logits: torch.Tensor,
