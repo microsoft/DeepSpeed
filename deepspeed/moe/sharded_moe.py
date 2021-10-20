@@ -96,28 +96,29 @@ import torch.nn.functional as F
 
 import math
 
-
 # einsum rewrites are on par or more performant
 # switch can be bubbled up in future
 use_einsum = False
+
+
 def einsum(rule, a, b):
     if use_einsum:
         return torch.einsum(rule, a, b)
-    elif rule == 's,se->se' :
+    elif rule == 's,se->se':
         return a.reshape(a.shape[0], -1) * b
-    elif rule == 'se,sc->sec' :
+    elif rule == 'se,sc->sec':
         return a.unsqueeze(2) * b.unsqueeze(1)
-    elif rule == 'se,se->s' :
+    elif rule == 'se,se->s':
         return torch.bmm(a.unsqueeze(1), b.unsqueeze(2)).reshape(-1)
-    elif rule == 'sec,sm->ecm' :
+    elif rule == 'sec,sm->ecm':
         s = a.shape[0]
         e = a.shape[1]
         c = a.shape[2]
         m = b.shape[1]
-        return torch.matmul(a.reshape(s, -1).t(), b).reshape(e,c,m)
-    elif rule == 'sec,ecm->sm' :
+        return torch.matmul(a.reshape(s, -1).t(), b).reshape(e, c, m)
+    elif rule == 'sec,ecm->sm':
         return torch.matmul(a.reshape(a.shape[0], -1), b.reshape(-1, b.shape[-1]))
-    elif rule == 'ks,ksm->sm' :
+    elif rule == 'ks,ksm->sm':
         k = b.shape[0]
         s = b.shape[1]
         m = b.shape[2]
@@ -129,6 +130,7 @@ def einsum(rule, a, b):
         return torch.bmm(a, b.transpose(1, 2)).squeeze(2)
     else:
         return torch.einsum(rule, a, b)
+
 
 def top1gating(logits: torch.Tensor,
                capacity_factor: float,
@@ -409,8 +411,8 @@ class MOELayer(Base):
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
         dispatched_input = einsum("sec,sm->ecm",
-                                        dispatch_mask.type_as(input[0]),
-                                        reshaped_input)
+                                  dispatch_mask.type_as(input[0]),
+                                  reshaped_input)
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
@@ -444,8 +446,8 @@ class MOELayer(Base):
                                               d_model)
 
         combined_output = einsum("sec,ecm->sm",
-                                       combine_weights.type_as(input[0]),
-                                       expert_output)
+                                 combine_weights.type_as(input[0]),
+                                 expert_output)
 
         a = combined_output.reshape(input[0].shape)
 
