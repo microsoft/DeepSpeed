@@ -98,11 +98,11 @@ import math
 
 # einsum rewrites are on par or more performant
 # switch can be bubbled up in future
-use_einsum = False
+USE_EINSUM = True
 
 
 def einsum(rule, a, b):
-    if use_einsum:
+    if USE_EINSUM:
         return torch.einsum(rule, a, b)
     elif rule == 's,se->se':
         return a.reshape(a.shape[0], -1) * b
