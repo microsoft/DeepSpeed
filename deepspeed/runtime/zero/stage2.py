@@ -1992,7 +1992,6 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _restore_from_fp32_weights(self, all_state_dict):
         merged_single_partition_of_fp32_groups = []
 
-
         for i in range(len(self.single_partition_of_fp32_groups)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             merged_partitions = [
@@ -2047,7 +2046,9 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 sd['base_optimizer_state'][i] for sd in all_state_dict
             ]
             if self.is_moe_group(self.optimizer.param_groups[i]):
-                all_partition_group_states = [all_partition_group_states[dist.get_rank()]]
+                all_partition_group_states = [
+                    all_partition_group_states[dist.get_rank()]
+                ]
             for key in all_partition_group_states[0].keys():
                 all_partition_states = [
                     all_states[key] for all_states in all_partition_group_states

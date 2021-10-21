@@ -958,7 +958,8 @@ def test_checkpoint_moe(tmpdir, ep_size):
 
     _helper(args)
 
-@pytest.mark.parametrize("ep_size, load_optim_states", [(4, True),(4, False)])
+
+@pytest.mark.parametrize("ep_size, load_optim_states", [(4, True), (4, False)])
 def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
@@ -966,7 +967,7 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     config_dict = {
         "train_batch_size": 4,
         "steps_per_print": 1,
-		"optimizer": {
+        "optimizer": {
             "type": 'Adam',
             "params": {
                 "lr": 0.00015,
@@ -1029,6 +1030,7 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
                                             seq_dataloader=True)
 
     _helper(args)
+
 
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_checkpoint_load_module_only(tmpdir, zero_stage):
