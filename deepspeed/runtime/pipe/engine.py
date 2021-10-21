@@ -1060,7 +1060,7 @@ class PipelineEngine(DeepSpeedEngine):
                 local_part=outputs[1],
                 group=self.grid.get_slice_parallel_group())
             outputs[0].data = part_output.full()
-            outputs = ([outputs[0], *outputs[2:]])
+            outputs = (outputs[0], *outputs[2:])
             # save for backward
             self.pipe_buffers['outputs'][buffer_id] = outputs
 
@@ -1072,8 +1072,7 @@ class PipelineEngine(DeepSpeedEngine):
                                                         dtype=outputs.dtype,
                                                         num_buffers=1)[0]
             else:
-                sizes_and_dtypes = [(list(t.size()),
-                                     t.dtype) for t in outputs if t.is_floating_point()]
+                sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs]
                 self.grad_layer = self._allocate_buffers(sizes_and_dtypes,
                                                          num_buffers=1)[0]
 
