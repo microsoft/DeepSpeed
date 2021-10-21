@@ -951,17 +951,27 @@ def test_checkpoint_moe(tmpdir, ep_size):
 
     _helper(args)
 
-
-@pytest.mark.parametrize("ep_size", [4])
-def test_checkpoint_moe_and_zero(tmpdir, ep_size):
+@pytest.mark.parametrize("ep_size, load_optim_states", [(4, True),(4, False)])
+def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
     config_dict = {
-        "train_batch_size": 8,
+        "train_batch_size": 4,
         "steps_per_print": 1,
+		"optimizer": {
+            "type": 'Adam',
+            "params": {
+                "lr": 0.00015,
+                "betas": [0.8,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7
+            }
+        },
         "fp16": {
-            "enabled": True
+            "enabled": True,
+            "initial_scale_power": 8
         },
         "zero_optimization": {
             "stage": 2,
@@ -1004,7 +1014,7 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size):
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
-                                            load_optimizer_states=True,
+                                            load_optimizer_states=load_optim_states,
                                             load_lr_scheduler_states=False,
                                             fp16=config_dict["fp16"]["enabled"],
                                             empty_tag=True,
