@@ -1072,7 +1072,12 @@ class PipelineEngine(DeepSpeedEngine):
                                                         dtype=outputs.dtype,
                                                         num_buffers=1)[0]
             else:
-                sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs]
+                if self.is_grad_partitioned:
+                    sizes_and_dtypes = [(list(t.size()), t.dtype) for t in outputs]
+                else:
+                    sizes_and_dtypes = [(list(t.size()),
+                                         t.dtype) for t in outputs
+                                        if t.is_floating_point()]
                 self.grad_layer = self._allocate_buffers(sizes_and_dtypes,
                                                          num_buffers=1)[0]
 
