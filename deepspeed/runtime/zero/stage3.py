@@ -620,11 +620,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
 
-        if not all(is_zero_param(p) for p in module.parameters()):
-            group = None
-            if mpu:
-                group = mpu.get_data_parallel_group()
-            Init(module=module, data_parallel_group=group, dtype=self.dtype)
+        self._convert_to_zero_parameters(module, mpu)
 
         for m in module.modules():
             _init_external_params(m)
@@ -989,6 +985,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             device_buffer = cpu_buffer.to(orig_device)
             for tensor, offset, tensor_numel in tensor_offsets:
                 tensor.data = device_buffer.narrow(0, offset, tensor_numel)
+
+    def _convert_to_zero_parameters(self, module, mpu):
+        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
+        if non_zero_params:
+            zero_params = [p for p in module.parameters() if is_zero_param(p)]
+            if zero_params:
+                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
+            else:
+                group = None
+                if mpu:
+                    group = mpu.get_data_parallel_group()
+                Init(module=module, data_parallel_group=group, dtype=self.dtype)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
