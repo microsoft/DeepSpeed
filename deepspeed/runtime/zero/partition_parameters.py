@@ -38,12 +38,17 @@ partitioned_param_data_shape = [0]
 if hasattr(torch.distributed, "_all_gather_base"):
 
     def torch_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
-        return instrument_w_nvtx(torch.distributed._all_gather_base)(
-            output_tensor,
-            input_tensor,
-            group=group,
-            async_op=True,
-        )
+        try:
+            return instrument_w_nvtx(torch.distributed._all_gather_base)(
+                output_tensor,
+                input_tensor,
+                group=group,
+                async_op=True,
+            )
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"output_tensor: {output_tensor.device}, input_tensor: {input_tensor.device}"
+            ) from e
 else:
     logger.warning(
         "unable to find torch.distributed._all_gather_base. will fall back to "
@@ -825,24 +830,25 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param_buffer = torch.empty(
                     math.ceil(param.ds_numel / self.world_size) * self.world_size,
                     dtype=param.dtype,
-                    device=param.device,
+                    device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
                 handle = torch_allgather_fn(
-                    param.ds_tensor,
+                    param.ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
                     self.ds_process_group,
                 )
                 param.data = param_buffer.narrow(0,
                                                  0,
-                                                 param.ds_numel).view(param.ds_shape)
+                                                 param.ds_numel).view(param.ds_shape).to(
+                                                     param.device)
                 return AllGatherHandle(handle, param)
             else:
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
                 flat_tensor = torch.empty(partition_sz * self.world_size,
                                           dtype=get_only_unique_item(p.dtype
                                                                      for p in params),
-                                          device=self.local_device,
+                                          device=torch.cuda.current_device(),
                                           requires_grad=False)
                 partitions: List[Parameter] = []
                 for i in range(self.world_size):
@@ -851,8 +857,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz * i,
                                            partition_sz))
 
-                instrument_w_nvtx(torch.cat)([p.ds_tensor.data for p in params],
-                                             out=partitions[self.rank])
+                instrument_w_nvtx(torch.cat)(
+                    [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
+                    out=partitions[self.rank])
 
                 handle = torch_allgather_fn(partitions[self.rank],
                                             flat_tensor,
