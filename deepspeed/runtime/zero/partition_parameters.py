@@ -923,7 +923,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 "active_sub_modules": slf.ds_active_sub_modules,
             }
 
-          def convert_to_zero_parameters(param_list):
+        def convert_to_zero_parameters(param_list):
             self._convert_to_zero_parameters(param_list)
 
         # Collectives for gathering and partitioning parameters
