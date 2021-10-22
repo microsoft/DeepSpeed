@@ -697,9 +697,9 @@ class DeepSpeedEngine(Module):
         if self.config is None:
             assert hasattr(args, 'deepspeed_config') and args.deepspeed_config is not None, \
                 'DeepSpeed requires --deepspeed_config to specify configuration file'
-
-            assert os.path.isfile(args.deepspeed_config), \
-                'DeepSpeed configuration file: {} is not an existing file'.format(args.deepspeed_config)
+            if not isinstance(args.deepspeed_config, dict):
+                assert os.path.isfile(args.deepspeed_config), \
+                    'DeepSpeed configuration file: {} is not an existing file'.format(args.deepspeed_config)
 
     def _is_supported_optimizer(self, optimizer_name):
         return optimizer_name in DEEPSPEED_OPTIMIZERS or \
