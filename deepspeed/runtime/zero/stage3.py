@@ -2735,6 +2735,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             Not supporting closure.
             """
         self._pre_step()
+        self._partition_all_parameters()
 
         #checks for overflow, adjust the loss scale accordingly
         if self._overflow_check_and_loss_scale_update():
@@ -2930,10 +2931,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         self.param_coordinator.reset_step()
-        '''Partitioning Parameters that were not partitioned
-        Usually if parameters of modules whose input parameters do not require
-        grad computation do not trigger post call and will therefore will remain unpartitioned '''
-        self._partition_all_parameters()
 
         if self.swap_optimizer:
             self.optimizer_swapper.post_backward()
@@ -2962,6 +2959,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):
+        """Partitioning Parameters that were not partitioned usually if parameters
+        of modules whose input parameters do not require grad computation do not
+        trigger post call and will therefore will remain unpartitioned"""
         self.param_coordinator.release_and_reset_all()
         for param in iter_params(self.module, recurse=True):
             if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
