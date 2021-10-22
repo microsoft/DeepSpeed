@@ -919,7 +919,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         local_tensors = []
         for param in param_list:
             partition_sizes.append(param.ds_tensor.ds_numel)
-            local_tensors.append(param.ds_tensor)
+            local_tensors.append(param.ds_tensor.cuda())
 
         # allocate memory for allgather params
         allgather_params = []
