@@ -2773,7 +2773,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self._post_step(timer_names)
 
         # warn user about caching allocator flushes
-        alloc_retries = torch.cuda.memory_stats()["num_alloc_retries"]
+        alloc_retries = torch.cuda.memory_stats()["num_alloc_retries"] if hasattr(
+            torch.cuda,
+            "memory_stats") else 0
         if alloc_retries > self.__n_caching_allocator_flushes:
             if dist.get_rank() == 0:
                 logger.warning(
