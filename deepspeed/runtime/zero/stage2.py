@@ -2054,15 +2054,20 @@ class FP16_DeepSpeedZeroOptimizer(object):
             all_partition_group_states = [
                 sd['base_optimizer_state'][i] for sd in all_state_dict
             ]
-            
-            print(f'group {i} is moe: {self.is_moe_group(self.optimizer.param_groups[i])}')
+
+            print(
+                f'group {i} is moe: {self.is_moe_group(self.optimizer.param_groups[i])}')
             print(f'len all_partition_group_states = {len(all_partition_group_states)}')
 
             if self.is_moe_group(self.optimizer.param_groups[i]):
                 ranks = self.get_ep_ranks(dist.get_rank())
-                all_partition_group_states = [all_partition_group_states[i] for i in ranks]
+                all_partition_group_states = [
+                    all_partition_group_states[i] for i in ranks
+                ]
 
-            print(f'len all_partition_group_states after fix = {len(all_partition_group_states)}')
+            print(
+                f'len all_partition_group_states after fix = {len(all_partition_group_states)}'
+            )
 
             for key in all_partition_group_states[0].keys():
                 all_partition_states = [
