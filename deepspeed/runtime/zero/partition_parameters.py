@@ -916,6 +916,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def partitioned_size():
             return self._partitioned_size(param)
 
+        def item_override():
+            param.all_gather()
+            return param._orig_item()
+
         def ds_summary(slf: torch.Tensor) -> dict:
             return {
                 "id": slf.ds_id,
@@ -933,6 +937,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         def convert_to_zero_parameters(param_list):
             self._convert_to_zero_parameters(param_list)
 
+        def allgather_before(func: Callable) -> Callable:
+            def wrapped(*args, **kwargs):
+                param.all_gather()
+                return func(*args, **kwargs)
+
+            return wrapped
+
         # Collectives for gathering and partitioning parameters
         param.all_gather = all_gather
         param.all_gather_coalesced = all_gather_coalesced
@@ -947,6 +958,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.padding_size = padding_size
         param.partitioned_size = partitioned_size
         param.ds_summary = types.MethodType(ds_summary, param)
+
+        param.item = allgather_before(param.item)
 
         param.convert_to_zero_parameters = convert_to_zero_parameters
 
