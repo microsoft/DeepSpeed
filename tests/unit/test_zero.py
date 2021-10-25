@@ -504,25 +504,20 @@ class EltwiseMultiplicationTestNetwork(Module):
                 ZeroParamStatus.AVAILABLE
             } if prefetching else {ZeroParamStatus.NOT_AVAILABLE})
 
-        _assert_partition_status(
-            self.__layer1,
-            {ZeroParamStatus.INFLIGHT if prefetching else ZeroParamStatus.NOT_AVAILABLE})
+        layerwise_expected_states = {
+            ZeroParamStatus.INFLIGHT if prefetching else ZeroParamStatus.NOT_AVAILABLE,
+            ZeroParamStatus.AVAILABLE,
+        }
+
+        _assert_partition_status(self.__layer1, layerwise_expected_states)
         hidden1 = self.__layer1(x)
         _assert_partition_status(self.__layer1, {ZeroParamStatus.NOT_AVAILABLE})
 
-        _assert_partition_status(self.__layer2,
-                                 {
-                                     ZeroParamStatus.AVAILABLE
-                                     if prefetching else ZeroParamStatus.NOT_AVAILABLE
-                                 })
+        _assert_partition_status(self.__layer2, layerwise_expected_states)
         hidden2 = self.__layer2(hidden1)
         _assert_partition_status(self.__layer2, {ZeroParamStatus.NOT_AVAILABLE})
 
-        _assert_partition_status(self.__layer3,
-                                 {
-                                     ZeroParamStatus.AVAILABLE
-                                     if prefetching else ZeroParamStatus.NOT_AVAILABLE
-                                 })
+        _assert_partition_status(self.__layer3, layerwise_expected_states)
         y_hat = self.__layer3(hidden2)
         _assert_partition_status(self.__layer3,
                                  {
@@ -677,7 +672,6 @@ def test_zero3_param_partitioning_base(
         ])
 
         for train_iter in range(3):
-            _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
             activations = ds_engine(
                 x=torch.ones((m,
                               n),
@@ -695,7 +689,6 @@ def test_zero3_param_partitioning_base(
             assert torch.allclose(activations["loss"], expected_loss)
 
             ds_engine.backward(activations["loss"].sum())
-            _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
             # check the gradients
             grad_partitions = ds_engine.optimizer.get_fp32_grad_partitions()
@@ -754,6 +747,9 @@ def test_zero3_param_partitioning_base(
         # TODO. add testing for this - for now we just call it to make sure it
         # doesnt throw
         ds_engine.optimizer.step()
+        # taking an optimizer step invalidates all parameters, make sure everything
+        # has been partitioned afterwards
+        _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
     _test_zero3_param_partitioning()
 
@@ -929,7 +925,6 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
 
             # TODO. finish writing this test
             ds_engine.backward(activations[-1].sum())
-            _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
             avgd_gradients = ds_engine.optimizer.averaged_gradients
             assert set(avgd_gradients.keys()) == {0}, "should only have one parameter group"
@@ -1190,5 +1185,6 @@ def test_zero3_param_partitioning_base_bf16(
         # TODO. add testing for this - for now we just call it to make sure it
         # doesnt throw
         ds_engine.optimizer.step()
+        _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
 
     _test_zero3_param_partitioning()
