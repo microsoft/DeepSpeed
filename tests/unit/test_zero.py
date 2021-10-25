@@ -547,7 +547,7 @@ class EltwiseMultiplicationTestNetwork(Module):
 @pytest.mark.parametrize("fp16_enabled", [True, False])
 @pytest.mark.parametrize("contiguous_gradients", [True, False])
 @pytest.mark.parametrize("offload_optimizer", [True, False])
-@pytest.mark.parametrize("zero_grad", [True])
+@pytest.mark.parametrize("zero_grad", [True, False])
 @pytest.mark.parametrize("iteration", list(range(1)))
 def test_zero3_param_partitioning_base(
         param_persistence_threshold: int,

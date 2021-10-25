@@ -886,16 +886,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.grads_in_partition = None
 
         if self.offload_optimizer:
-            self.accumulated_grads_in_cpu = {}
             self.norm_for_param_grads = {}
             self.local_overflow = False
-            self.temp_grad_buffer_for_gpu_offload = torch.zeros(
-                largest_partitioned_param_numel,
-                device=torch.cuda.current_device(),
-                dtype=self.dtype)
-            self.temp_grad_gpu_buffer = torch.zeros(largest_partitioned_param_numel,
-                                                    device=torch.cuda.current_device(),
-                                                    dtype=self.dtype)
+
         see_memory_usage(f"After CPU Offload initialization", force=False)
 
         # stores if a partition has been reduced in this step
@@ -2020,22 +2013,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 #print(f"param id {param_id} i:{i}, ds_tensor {num_elements} numel {param.numel()}")
                 current_offset += num_elements
 
-    def async_accumulate_grad_in_cpu_via_gpu(self, grad, acc_grad_cpu_partition):
-
-        # copy to a preexisiting buffer to avoid memory allocation penalty
-        dest_buffer = self.temp_grad_buffer_for_gpu_offload.view(-1).narrow(
-            0,
-            0,
-            grad.numel())
-
-        if self.micro_step_id > 0:
-            dest_buffer.copy_(acc_grad_cpu_partition.view(-1), non_blocking=True)
-            grad.data.view(-1).add_(dest_buffer)
-
-        # at the boundary we will send 32bit directly
-        if not self.is_gradient_accumulation_boundary:
-            acc_grad_cpu_partition.data.copy_(grad.data.view(-1), non_blocking=True)
-
     def _constant_buffered_norm2(self, input, buffer_size=250000000):
         norm = None
         for part in input.view(-1).split(buffer_size):
@@ -2106,11 +2083,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 continue
 
             # move or accumulate gradient partition to target buffer
-            grad_buffer = (self.temp_grad_gpu_buffer if self.offload_optimizer else
-                           self.__param_id_to_grad_partition[param.ds_id]).narrow(
-                               0,
-                               0,
-                               grad_partition.numel())
+            grad_buffer = self.__param_id_to_grad_partition[param.ds_id].narrow(
+                0,
+                0,
+                grad_partition.numel())
             if self.micro_step_id == 0:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
             elif grad_buffer.is_cuda:
@@ -2118,21 +2094,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             else:
                 # if dst is CPU, copy first to src device, do the addition
                 # there, then move back to dst. adding directly to cpu is very slow
-                tmp_grad_dst = torch.empty_like(grad_partition)
-                tmp_grad_dst.copy_(grad_buffer, non_blocking=True)
-                tmp_grad_dst.add_(grad_partition)
-                grad_buffer.copy_(tmp_grad_dst, non_blocking=True)
+                cuda_grad_buffer = grad_buffer.to(grad_partition.device,
+                                                  non_blocking=True)
+                cuda_grad_buffer.add_(grad_partition)
+                grad_buffer.copy_(cuda_grad_buffer, non_blocking=True)
+
+                # use the CUDA buffer from now on so this sequence + later copy to
+                # fp32 buffer can be all be done async
+                grad_buffer = cuda_grad_buffer
 
             # offload the gradient partition if applicable
             if self.offload_optimizer:
-                i, dest_offset, num_elements = self.grad_position[self.get_param_id(param)]
+                i, dest_offset, _ = self.grad_position[self.get_param_id(param)]
                 offload_fp32_gradients = {}
                 offload_fp32_offsets = {}
-
-                if self.gradient_accumulation_steps > 1:
-                    fp16_grad_tensor = self.__param_id_to_grad_partition[param.ds_id]
-                    self.async_accumulate_grad_in_cpu_via_gpu(grad_buffer,
-                                                              fp16_grad_tensor)
 
                 if self.is_gradient_accumulation_boundary:
                     # Credit to our user David Minn
