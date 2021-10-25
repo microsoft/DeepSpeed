@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.distributed as dist
 import deepspeed
@@ -40,6 +41,14 @@ def test_sparse_adam(tmpdir):
         engine, _, _, _ = deepspeed.initialize(model=model,
                                               optimizer=optimizer,
                                               config=config_dict)
+
+        weights_before = [
+            i.weight.clone() for i in engine.modules()
+            if isinstance(i,
+                          (torch.nn.EmbeddingBag,
+                           torch.nn.Embedding))
+        ]
+
         loss = torch.nn.BCEWithLogitsLoss()
         x = torch.tensor([1,
                           2,
@@ -54,8 +63,17 @@ def test_sparse_adam(tmpdir):
         offsets = torch.tensor([0, 4], dtype=torch.long, device=engine.device)
         y = torch.tensor([[1.0], [0.0]], device=engine.device)
         res = engine(x, offsets)
-        with pytest.raises(AssertionError):
-            engine.backward(loss(res, y))
+        engine.backward(loss(res, y))
         engine.step()
+
+        weights_after = [
+            i.weight for i in engine.modules() if isinstance(i,
+                                                             (torch.nn.EmbeddingBag,
+                                                              torch.nn.Embedding))
+        ]
+        for a, b in zip(weights_before, weights_after):
+            assert not torch.allclose(
+                a,
+                b)  # If the weights are updated, they will be different.
 
     _test(model, optimizer)

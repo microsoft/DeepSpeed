@@ -232,7 +232,9 @@ class DeepSpeedEngine(Module):
                 if self.sparse_gradients_enabled() or module.sparse:
                     self.sparse_tensor_module_names.add(name + ".weight")
                     if self.sparse_gradients_enabled():
-                        logger.info("Will convert {} to sparse tensor during training".format(name))
+                        logger.info(
+                            "Will convert {} to sparse tensor during training".format(
+                                name))
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
@@ -1795,8 +1797,7 @@ class DeepSpeedEngine(Module):
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
-                if self.sparse_gradients_enabled(
-                ) or param_name in self.sparse_tensor_module_names:
+                if param_name in self.sparse_tensor_module_names:
                     if is_moe_param:
                         expert_grads.append(SparseTensor(grad_data))
                     else:
@@ -1828,8 +1829,9 @@ class DeepSpeedEngine(Module):
             for i, bucket_tuple in enumerate(expert_split_buckets):
                 bucket_type, bucket = bucket_tuple
                 if bucket_type == SparseTensor.type():
-                    self.sparse_allreduce_no_retain(bucket,
-                                                 groups.get_expert_data_parallel_group())
+                    self.sparse_allreduce_no_retain(
+                        bucket,
+                        groups.get_expert_data_parallel_group())
                 else:
                     # Separate between diff groups
                     self.allreduce_no_retain(
@@ -1891,8 +1893,10 @@ class DeepSpeedEngine(Module):
         for dev_idx, t in enumerate(tensor_list):
             size = all_sizes[dev_idx][0]
             tensors.append(
-                t.index_select(0, torch.arange(size, dtype=torch.long, device=self.device))
-            )
+                t.index_select(0,
+                               torch.arange(size,
+                                            dtype=torch.long,
+                                            device=self.device)))
 
         return tensors
 
