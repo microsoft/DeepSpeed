@@ -2089,6 +2089,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 grad_partition.numel())
             if self.micro_step_id == 0:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
+                # ensure grad buffer is a CUDA buffer to speed up the next few
+                # operations and so it can be used asynchronously
+                grad_buffer = grad_buffer.to(grad_partition.device, non_blocking=True)
             elif grad_buffer.is_cuda:
                 grad_buffer.add_(grad_partition)
             else:
@@ -2098,9 +2101,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                                   non_blocking=True)
                 cuda_grad_buffer.add_(grad_partition)
                 grad_buffer.copy_(cuda_grad_buffer, non_blocking=True)
-
-                # use the CUDA buffer from now on so this sequence + later copy to
-                # fp32 buffer can be all be done async
+                # ensure grad buffer is a CUDA buffer to speed up the next few
+                # operations and so it can be used asynchronously
                 grad_buffer = cuda_grad_buffer
 
             # offload the gradient partition if applicable
@@ -2129,7 +2131,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                             i].grad.narrow(0,
                                            dest_offset,
                                            grad_buffer.numel())
-                        fp32_grad_tensor.copy_(grad_buffer.float(), non_blocking=True)
+                        fp32_grad_tensor.copy_(grad_buffer)
 
             # free the gradient
             param.grad.record_stream(torch.cuda.current_stream())
