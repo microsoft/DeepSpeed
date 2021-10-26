@@ -91,6 +91,7 @@ def reduce_scatter_coalesced(
         tensor_partition_flat_buffer = instrument_w_nvtx(
             torch.cat)(tensor_partitions_lst_with_padding)
 
+    tensor_partition_flat_buffer.div_(world_sz)  # pre-divide
     tensor_partition_buffer_for_each_rank: List[Tensor] = torch.chunk(
         tensor_partition_flat_buffer,
         world_sz)
@@ -99,9 +100,6 @@ def reduce_scatter_coalesced(
     torch_reduce_scatter_fn(tensor_partition_flat_buffer,
                             tensor_partition_buffer_for_each_rank[this_rank],
                             group)
-
-    # post-divide
-    tensor_partition_buffer_for_each_rank[this_rank].div_(world_sz)
 
     # reverse procedure of the interleaving done previously, done on the
     # result of the batched reduce-scatter
