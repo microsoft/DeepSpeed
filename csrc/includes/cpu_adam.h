@@ -1,68 +1,21 @@
 #pragma once
 
-#if (__x86_64__ || __i386__)
-#include <cpuid.h>
-#include <x86intrin.h>
-#endif
-
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 #include <cassert>
-#include "context.h"
-#include "cublas_v2.h"
 #include "cuda.h"
-#include "curand.h"
+#include "custom_cuda_layers.h"
+#include "simd.h"
 
-#define CUDA_CHECK(callstr)                                                                    \
-    {                                                                                          \
-        cudaError_t error_code = callstr;                                                      \
-        if (error_code != cudaSuccess) {                                                       \
-            std::cerr << "CUDA error " << error_code << " at " << __FILE__ << ":" << __LINE__; \
-            assert(0);                                                                         \
-        }                                                                                      \
-    }
-
-#define TILE (128 * 1024 * 1024)
-
-#if defined(__AVX512__)
-#define SIMD_STORE(a, d) _mm512_storeu_ps(a, d)
-#define SIMD_LOAD(x) _mm512_loadu_ps(x)
-#define SIMD_SET(x) _mm512_set1_ps(x)
-#define SIMD_MUL(x, y) _mm512_mul_ps(x, y)
-#define SIMD_FMA(x, y, c) _mm512_fmadd_ps(x, y, c)
-#define SIMD_SQRT(x) _mm512_sqrt_ps(x)
-#define SIMD_DIV(x, y) _mm512_div_ps(x, y)
-#define SIMD_WIDTH 16
-
-#define SIMD_LOAD2(x, h) \
-    ((h) ? _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)x)) : _mm512_loadu_ps(x))
-#define SIMD_STORE2(x, d, h)                                                                      \
-    ((h) ? _mm256_store_ps(x, _mm256_castsi256_ps(_mm512_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT))) \
-         : _mm512_storeu_ps(x, d))
-
-#define INTV __m256i
-#else
-#if defined(__AVX256__)
-#define SIMD_STORE(a, d) _mm256_storeu_ps(a, d)
-#define SIMD_LOAD(x) _mm256_loadu_ps(x)
-#define SIMD_SET(x) _mm256_set1_ps(x)
-#define SIMD_MUL(x, y) _mm256_mul_ps(x, y)
-#define SIMD_FMA(x, y, c) _mm256_fmadd_ps(x, y, c)
-#define SIMD_SQRT(x) _mm256_sqrt_ps(x)
-#define SIMD_DIV(x, y) _mm256_div_ps(x, y)
-#define SIMD_WIDTH 8
-#define SIMD_LOAD2(x, h) \
-    ((h) ? _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)x)) : _mm256_loadu_ps(x))
-
-#define SIMD_STORE2(x, d, h)                                                                \
-    ((h) ? _mm_store_ps(x, _mm_castsi128_ps(_mm256_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT))) \
-         : _mm256_storeu_ps(x, d))
-
-#define INTV __m128i
-
-#endif
-#endif
+#define STEP(SPAN)                                \
+    void Step_##SPAN(float* _params,              \
+                     float* grads,                \
+                     float* _exp_avg,             \
+                     float* _exp_avg_sq,          \
+                     size_t _param_size,          \
+                     __half* dev_param = nullptr, \
+                     bool half_precision = false);
 
 class Adam_Optimizer {
 public:
@@ -94,30 +47,20 @@ public:
         cudaFreeHost(_doubled_buffer[0]);
         cudaFreeHost(_doubled_buffer[1]);
     }
-    void Step(float* _params,
-              float* grads,
-              float* _exp_avg,
-              float* _exp_avg_sq,
-              size_t param_size,
-              __half* dev_param = nullptr,
-              bool half_precision = false);
-
-    void Step_4(float* _params,
-                float* grads,
-                float* _exp_avg,
-                float* _exp_avg_sa,
-                size_t param_size,
-                __half* dev_param = nullptr,
-                bool half_precision = false);
-
-    void Step_8(float* _params,
-                float* grads,
-                float* _exp_avg,
-                float* _exp_avg_sq,
-                size_t _param_size,
-                __half* dev_params = nullptr,
-                bool half_precision = false);
-
+#if defined(__AVX512__) or defined(__AVX256__)
+    template <int span>
+    void Step_AVX(size_t* rounded_size,
+                  float* _params,
+                  float* grads,
+                  float* _exp_avg,
+                  float* _exp_avg_sq,
+                  size_t param_size,
+                  __half* dev_param = nullptr,
+                  bool half_precision = false);
+#endif
+    STEP(1)
+    STEP(4)
+    STEP(8)
     inline void SynchronizeStreams()
     {
         for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
@@ -157,17 +100,6 @@ public:
     }
 
 private:
-#if defined(__AVX512__) or defined(__AVX256__)
-    union AVX_Data {
-#if defined(__AVX512__)
-        __m512 data;
-#else
-        __m256 data;
-#endif
-        // float data_f[16];
-    };
-#endif
-
     float _alpha;
     float _betta1;
     float _betta2;
@@ -187,3 +119,104 @@ private:
 
     cudaStream_t _streams[2];
 };
+
+#if defined(__AVX512__) or defined(__AVX256__)
+template <int span>
+void Adam_Optimizer::Step_AVX(size_t* rounded_size,
+                              float* _params,
+                              float* grads,
+                              float* _exp_avg,
+                              float* _exp_avg_sq,
+                              size_t _param_size,
+                              __half* dev_params,
+                              bool half_precision)
+{
+    size_t new_rounded_size = 0;
+
+    AVX_Data betta1_4;
+    betta1_4.data = SIMD_SET(_betta1);
+    AVX_Data betta2_4;
+    betta2_4.data = SIMD_SET(_betta2);
+
+    float betta1_minus1 = 1 - _betta1;
+    float betta2_minus1 = 1 - _betta2;
+    AVX_Data betta1_minus1_4;
+    betta1_minus1_4.data = SIMD_SET(betta1_minus1);
+    AVX_Data betta2_minus1_4;
+    betta2_minus1_4.data = SIMD_SET(betta2_minus1);
+
+    AVX_Data bias2_sqrt;
+    bias2_sqrt.data = SIMD_SET(_bias_correction2);
+
+    AVX_Data eps_4;
+    eps_4.data = SIMD_SET(_eps);
+
+    float step_size = -1 * _alpha / _bias_correction1;
+    AVX_Data step_size_4;
+    step_size_4.data = SIMD_SET(step_size);
+
+    float w_decay = -1 * _alpha * _weight_decay;
+    AVX_Data weight_decay4;
+    if (_weight_decay > 0)
+        weight_decay4.data = (_adamw_mode ? SIMD_SET(w_decay) : SIMD_SET(_weight_decay));
+    new_rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * span);
+    for (size_t t = 0; t < new_rounded_size; t += TILE) {
+        size_t copy_size = TILE;
+        if ((t + TILE) > new_rounded_size) copy_size = new_rounded_size - t;
+        size_t offset = copy_size + t;
+        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
+#pragma omp parallel for
+        for (size_t i = t; i < offset; i += SIMD_WIDTH * span) {
+            AVX_Data grad_4[span];
+            simd_load<span>(grad_4, grads + i, half_precision);
+
+            AVX_Data momentum_4[span];
+            simd_load<span>(momentum_4, _exp_avg + i, false);
+
+            AVX_Data variance_4[span];
+            simd_load<span>(variance_4, _exp_avg_sq + i, false);
+
+            AVX_Data param_4[span];
+            simd_load<span>(param_4, _params + i, half_precision);
+
+            if (_weight_decay > 0 && !_adamw_mode) {
+                simd_fma<span>(grad_4, param_4, weight_decay4, grad_4);
+            }
+
+            simd_mul<span>(momentum_4, momentum_4, betta1_4);
+            simd_fma<span>(momentum_4, grad_4, betta1_minus1_4, momentum_4);
+            simd_mul<span>(variance_4, variance_4, betta2_4);
+            simd_mul<span>(grad_4, grad_4, grad_4);
+            simd_fma<span>(variance_4, grad_4, betta2_minus1_4, variance_4);
+            simd_sqrt<span>(grad_4, variance_4);
+            simd_fma<span>(grad_4, grad_4, bias2_sqrt, eps_4);
+            simd_div<span>(grad_4, momentum_4, grad_4);
+
+            if (_weight_decay > 0 && _adamw_mode) {
+                simd_fma<span>(param_4, param_4, weight_decay4, param_4);
+            }
+
+            simd_fma<span>(param_4, grad_4, step_size_4, param_4);
+
+            simd_store<span>(_params + i, param_4, half_precision);
+            if (dev_params) {
+                simd_store<span>(_doubled_buffer[_buf_index] + (i - t), param_4, half_precision);
+            }
+            simd_store<span>(_exp_avg + i, momentum_4, false);
+            simd_store<span>(_exp_avg_sq + i, variance_4, false);
+        }
+
+        if (dev_params) {
+            if (half_precision)
+                launch_param_update_half(
+                    _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
+            else
+                launch_param_update(
+                    _doubled_buffer[_buf_index], dev_params + t, copy_size, _streams[_buf_index]);
+
+            _buf_index = !_buf_index;
+        }
+    }
+    *rounded_size = new_rounded_size;
+}
+#endif

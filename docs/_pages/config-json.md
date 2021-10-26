@@ -4,7 +4,7 @@ title: "DeepSpeed Configuration JSON"
 
 ### Batch Size Related Parameters
 
-**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicty, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
+**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
 {: .notice--warning}
 
 <i>**train_batch_size**</i>: [integer]
@@ -173,7 +173,7 @@ Example of <i>**scheduler**</i>
 
 | Description                                                                                                              | Default |
 | ------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. | `false` |
+| Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. This feature is essentially deprecated as we don't see use cases for it as much anymore. It should be noted that this feature is not compatible with [torch.sparse](https://pytorch.org/docs/stable/sparse.html) related features. | `false` |
 
 ### FP16 training options
 
@@ -662,7 +662,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                              | Default |
 | -------------------------------------------------------------------------------------------------------- | ------- |
-| Total number of activation checkpoints used to allocate memory buffer for contiguous_memoty_optimization | `None`  |
+| Total number of activation checkpoints used to allocate memory buffer for contiguous_memory_optimization | `None`  |
 
 <i>**synchronize_checkpoint_boundary**</i>: [boolean]
 
