@@ -4,6 +4,9 @@ import deepspeed
 import pytest
 from .common import distributed_test
 
+import deepspeed.utils.groups as groups
+
+
 
 def test_sparse_adam(tmpdir):
     config_dict = {"train_batch_size": 2, "steps_per_print": 1, "sparse_gradients": True}
@@ -54,8 +57,15 @@ def test_sparse_adam(tmpdir):
         offsets = torch.tensor([0, 4], dtype=torch.long, device=engine.device)
         y = torch.tensor([[1.0], [0.0]], device=engine.device)
         res = engine(x, offsets)
-        with pytest.raises(AssertionError):
-            engine.backward(loss(res, y))
+        engine.backward(loss(res, y))
         engine.step()
+
+        results = [
+            engine.all_gather_scalar(i,
+                                     groups.get_data_parallel_group())
+            for i in model.emb.parameters()
+        ]
+        for res in results:
+            assert torch.allclose(res[0], res[1])
 
     _test(model, optimizer)
