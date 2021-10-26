@@ -2288,13 +2288,14 @@ class DeepSpeedEngine(Module):
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
+        if self.zero_optimization_partition_weights():
+            self.optimizer.save_checkpoint_epilogue()
+
         # Save latest checkpoint tag
+        torch.distributed.barrier()
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
-
-        if self.zero_optimization_partition_weights():
-            self.optimizer.save_checkpoint_epilogue()
 
         return True
 
