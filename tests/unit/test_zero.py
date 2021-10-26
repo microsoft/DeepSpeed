@@ -750,6 +750,7 @@ def test_zero3_param_partitioning_base(
         # taking an optimizer step invalidates all parameters, make sure everything
         # has been partitioned afterwards
         _assert_partition_status(ds_engine, {ZeroParamStatus.NOT_AVAILABLE})
+        assert not math.isclose(ds_engine.optimizer._global_grad_norm, 0.0)
 
     _test_zero3_param_partitioning()
 

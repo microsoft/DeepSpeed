@@ -2114,6 +2114,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     if grad_partition is not None:
                         self.gpu_sum.add_(grad_partition.float().sum())
 
+                    self.norm_for_param_grads[self.get_param_id(
+                        param)] = self._constant_buffered_norm2(grad_buffer)
+
                     if self._swappable_optimizer_subgroup(i):
                         if not i in offload_fp32_gradients.keys():
                             offload_fp32_gradients[i] = []
