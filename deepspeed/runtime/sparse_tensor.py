@@ -29,7 +29,9 @@ class SparseTensor(object):
             self.dense_size = None
 
     def to_coo_tensor(self):
-        return torch.sparse_coo_tensor(self.indices.unsqueeze(0), self.values, self.dense_size)
+        return torch.sparse_coo_tensor(self.indices.unsqueeze(0),
+                                       self.values,
+                                       self.dense_size)
 
     @staticmethod
     def type():
