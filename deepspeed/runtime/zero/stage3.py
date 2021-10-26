@@ -632,10 +632,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         # external parameters
         _inject_parameters(module, ZeROOrderedDict)
 
-        self.gpu_sum: Tensor = torch.zeros(1,
-                                           dtype=torch.float,
-                                           device=torch.cuda.current_device(),
-                                           requires_grad=False)
+        self.__inf_or_nan_tracker: Tensor = torch.zeros(
+            1,
+            dtype=torch.bool,
+            device=torch.cuda.current_device(),
+            requires_grad=False)
 
         ###################### offload optimizer setup ##################################
         self.optimizer_swapper = None
@@ -1960,8 +1961,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     [p.ds_id for p in self.__params_in_ipg_bucket])
 
             grad_partitions = self.__avg_scatter_grads(self.__params_in_ipg_bucket)
-            for partition in grad_partitions:
-                self.gpu_sum.add_(partition.float().sum())
             self.__partition_grads(self.__params_in_ipg_bucket, grad_partitions)
 
             self.__params_in_ipg_bucket.clear()
@@ -2027,14 +2026,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #self.norm_for_param_grads[param_id] = param.grad.data.double().norm(2)
         #Using a more memory efficient version
         self.norm_for_param_grads[param_id] = self._constant_buffered_norm2(param.grad)
-
-    def update_overflow_tracker_for_param_grad(self, param):
-        #Credit to our user David Minn
-        if param.grad is not None:
-            if self.overlap_comm:
-                self.gpu_sum = self.gpu_sum + param.grad.data.float().sum()
-            elif self._has_inf_or_nan(param.grad.data):
-                self.local_overflow = True
 
     def async_inplace_copy_grad_to_fp32_buffer_from_gpu(self, param, fp32_grad_tensor):
         with torch.cuda.stream(self.copy_grad_stream):
@@ -2105,6 +2096,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # operations and so it can be used asynchronously
                 grad_buffer = cuda_grad_buffer
 
+            self.__inf_or_nan_tracker.logical_or_(torch.isinf(grad_buffer).any())
+            self.__inf_or_nan_tracker.logical_or_(torch.isnan(grad_buffer).any())
+
             # offload the gradient partition if applicable
             if self.offload_optimizer:
                 i, dest_offset, _ = self.grad_position[self.get_param_id(param)]
@@ -2112,10 +2106,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 offload_fp32_offsets = {}
 
                 if self.is_gradient_accumulation_boundary:
-                    # Credit to our user David Minn
-                    if grad_partition is not None:
-                        self.gpu_sum.add_(grad_partition.float().sum())
-
                     self.norm_for_param_grads[self.get_param_id(
                         param)] = self._constant_buffered_norm2(grad_buffer)
 
@@ -2814,6 +2804,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
             if clip > 1:
                 combined_scale = clip * self.loss_scale
+        # to maintain behavior of averaging over accumulation steps
+        combined_scale *= self.micro_step_id + 1
 
         for grad in grad_groups_flat:
             if isinstance(grad, list):
@@ -2845,8 +2837,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def has_overflow(self, partition_gradients=True):
         if partition_gradients:
             with torch.cuda.stream(self.__reduce_and_partition_stream):
-                self.local_overflow = self._has_inf_or_nan(self.gpu_sum)
-                self.gpu_sum.zero_()
+                self.local_overflow = bool(self.__inf_or_nan_tracker.item())
+                self.__inf_or_nan_tracker.zero_()
 
             overflow = self.local_overflow
             #overflow = self.has_overflow_partitioned_grads_serial()
