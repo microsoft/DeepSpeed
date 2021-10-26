@@ -327,30 +327,7 @@ class PartitionedParameterCoordinator:
             }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
-        if self.trace_complete:
-            # go through the parameters we need for the current module and pop them
-            # off the fetch queue so that they aren't prefetched later.
-            # if params have already been popped off the fetch queue by earlier
-            # prefetches we won't look for them here
-            discarded_from_prefetch_queue = set()
-            params_not_already_fetched = set(
-                filter(
-                    lambda p: self.__most_recent_step_id_param_fetched_for[p] < self.
-                    __step_id,
-                    params_to_fetch))
-            while self.__param_queue and len(discarded_from_prefetch_queue) < len(
-                    params_not_already_fetched):
-                param_in_trace = self.__param_queue.popleft()
-                self.__most_recent_step_id_param_fetched_for[
-                    param_in_trace.param] = param_in_trace.step_id_last_used_at
-                discarded_from_prefetch_queue.add(param_in_trace.param)
-            if discarded_from_prefetch_queue != params_not_already_fetched:
-                raise RuntimeError(
-                    f"tracing error at step {self.__step_id}: "
-                    f"expected the next {len(params_not_already_fetched)} parameters in the "
-                    f"parameter fetch queue to be {tuple(p.ds_summary() for p in params_not_already_fetched)} "
-                    f"but got {tuple(p.ds_summary() for p in discarded_from_prefetch_queue)}."
-                )
+
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
@@ -378,25 +355,53 @@ class PartitionedParameterCoordinator:
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
         torch.cuda.current_stream().wait_stream(self.__allgather_stream)
 
-        # kick off all gather for params in the next few submodules (prefetch)
-        max_params_to_prefetch = min(
-            self.__max_n_available_params - self.__n_available_params,
-            self.__prefetch_bucket_sz)
-        params_to_prefetch = set()
-        numel_prefetching = 0
-        while self.__param_queue and numel_prefetching < max_params_to_prefetch:
-            param_in_trace: __class__.__ParamInTrace = self.__param_queue.popleft()
-            self.__most_recent_step_id_param_fetched_for[
-                param_in_trace.param] = param_in_trace.step_id_last_used_at
-            if param_in_trace.param not in params_to_prefetch:
-                params_to_prefetch.add(param_in_trace.param)
-                numel_prefetching += param_in_trace.param.ds_numel
-        for param in params_to_prefetch:
-            debug_rank0(f"-prefetch: {param.ds_summary()}")
-        self.__all_gather_params(params_to_prefetch)
+        # kick off parameter prefetches for upcoming modules
+        # don't prefetch if we dont have a completed model trace, or if we aren't
+        # training (throws off the tracing and don't want to prefetch modules for bwd)
+        if self.trace_complete and current_submodule.training:
+            # go through the parameters we need for the current module and pop them
+            # off the fetch queue so that they aren't prefetched later.
+            # if params have already been popped off the fetch queue by earlier
+            # prefetches we won't look for them here
+            discarded_from_prefetch_queue = set()
+            params_not_already_fetched = set(
+                filter(
+                    lambda p: self.__most_recent_step_id_param_fetched_for[p] < self.
+                    __step_id,
+                    params_to_fetch))
+            while self.__param_queue and len(discarded_from_prefetch_queue) < len(
+                    params_not_already_fetched):
+                param_in_trace = self.__param_queue.popleft()
+                self.__most_recent_step_id_param_fetched_for[
+                    param_in_trace.param] = param_in_trace.step_id_last_used_at
+                discarded_from_prefetch_queue.add(param_in_trace.param)
+            if discarded_from_prefetch_queue != params_not_already_fetched:
+                raise RuntimeError(
+                    f"tracing error at step {self.__step_id}: "
+                    f"expected the next {len(params_not_already_fetched)} parameters in the "
+                    f"parameter fetch queue to be {tuple(p.ds_summary() for p in params_not_already_fetched)} "
+                    f"but got {tuple(p.ds_summary() for p in discarded_from_prefetch_queue)}."
+                )
 
-        if self.__prefetch_nvme:
-            self.__prefetch_nvme_param_partitions()
+            # kick off all gather for params in the next few submodules (prefetch)
+            max_params_to_prefetch = min(
+                self.__max_n_available_params - self.__n_available_params,
+                self.__prefetch_bucket_sz)
+            params_to_prefetch = set()
+            numel_prefetching = 0
+            while self.__param_queue and numel_prefetching < max_params_to_prefetch:
+                param_in_trace: __class__.__ParamInTrace = self.__param_queue.popleft()
+                self.__most_recent_step_id_param_fetched_for[
+                    param_in_trace.param] = param_in_trace.step_id_last_used_at
+                if param_in_trace.param not in params_to_prefetch:
+                    params_to_prefetch.add(param_in_trace.param)
+                    numel_prefetching += param_in_trace.param.ds_numel
+            for param in params_to_prefetch:
+                debug_rank0(f"-prefetch: {param.ds_summary()}")
+            self.__all_gather_params(params_to_prefetch)
+
+            if self.__prefetch_nvme:
+                self.__prefetch_nvme_param_partitions()
 
         self.__step_id += 1
 
