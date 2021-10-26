@@ -1797,8 +1797,7 @@ class DeepSpeedEngine(Module):
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
-                if self.sparse_gradients_enabled(
-                ) or param_name in self.sparse_tensor_module_names:
+                if param_name in self.sparse_tensor_module_names:
                     if is_moe_param:
                         expert_grads.append(SparseTensor(grad_data))
                     else:
