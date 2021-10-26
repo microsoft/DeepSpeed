@@ -7,7 +7,6 @@ from .common import distributed_test
 import deepspeed.utils.groups as groups
 
 
-
 def test_sparse_adam(tmpdir):
     config_dict = {"train_batch_size": 2, "steps_per_print": 1, "sparse_gradients": True}
 
