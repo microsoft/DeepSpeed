@@ -8,7 +8,6 @@ import math
 import torch
 import warnings
 import hashlib
-import torch.distributed as dist
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
 
@@ -61,6 +60,9 @@ from ..moe.layer import MoE
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
+
+# Set to torch.distributed or deepspeed.comm based inside DeepSpeedEngine init
+dist = None
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -150,6 +152,14 @@ class DeepSpeedEngine(Module):
         self.moe_layers = []
         self._step_applied = False
         self._global_grad_norm = None
+        # TODO: Use a new ds_config flag for it. Hardcode for now
+        self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
+
+        global dist
+        #if self.use_ds_comm:
+        import deepspeed.comm as dist
+        #else:
+        #import torch.distributed as dist
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -161,14 +171,20 @@ class DeepSpeedEngine(Module):
         if self.config is None and config_params is not None:
             self.config = config_params
 
-        if dist_init_required is None:
-            dist_init_required = not dist.is_initialized()
+        # TODO: Potentially remove this dist_init_required and always initialize if not already done?
+        #if dist_init_required is None:
+        #    dist_init_required = not dist.is_initialized()
 
-        if dist_init_required is False:
-            assert dist.is_initialized() is True, "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
-        else:
-            # Initialize torch distributed if needed
-            init_distributed(dist_backend=self.dist_backend)
+        #if dist_init_required is False:
+        #    assert dist.is_initialized() is True, "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
+        #else:
+        #if True:
+        # Initialize default process group via deepspeed.comm. or torch.distributed if needed
+        #if self.use_ds_comm:
+        #dist.init_process_group(backend=self.dist_backend, use_deepspeed=True)
+        #else:
+        dist.init_process_group(backend=self.dist_backend,
+                                use_deepspeed=self.use_ds_comm)
 
         see_memory_usage(f"DeepSpeed Engine: Before args sanity test")
         self._do_args_sanity_check(args)

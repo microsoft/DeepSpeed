@@ -50,6 +50,9 @@ engine = deepspeed.init(model)
 """
 
 import torch
+import deepspeed.comm as dist
+#import torch.distributed as dist
+
 from deepspeed.utils import logger, log_dist
 
 # Model parallel group that the current rank belongs to.
@@ -136,11 +139,11 @@ def initialize_model_parallel(model_parallel_size_):
             model_parallel_size_),
         [0])
     # Get world size and rank. Ensure some consistencies.
-    assert torch.distributed.is_initialized()
-    world_size = torch.distributed.get_world_size()
+    assert dist.is_initialized()
+    world_size = dist.get_world_size()
     model_parallel_size = min(model_parallel_size_, world_size)
     ensure_divisibility(world_size, model_parallel_size)
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
 
     # Build the data parallel groups.
     global _DATA_PARALLEL_GROUP
@@ -148,7 +151,7 @@ def initialize_model_parallel(model_parallel_size_):
         'data parallel group is already initialized'
     for i in range(model_parallel_size):
         ranks = range(i, world_size, model_parallel_size)
-        group = torch.distributed.new_group(ranks)
+        group = dist.new_group(ranks)
         if i == (rank % model_parallel_size):
             _DATA_PARALLEL_GROUP = group
 
@@ -158,7 +161,7 @@ def initialize_model_parallel(model_parallel_size_):
         'model parallel group is already initialized'
     for i in range(world_size // model_parallel_size):
         ranks = range(i * model_parallel_size, (i + 1) * model_parallel_size)
-        group = torch.distributed.new_group(ranks)
+        group = dist.new_group(ranks)
         if i == (rank // model_parallel_size):
             _MODEL_PARALLEL_GROUP = group
 
@@ -174,7 +177,7 @@ def initialize_expert_parallel(expert_parallel_size_):
         expert_parallel_group = [0, 1], [2,3], [4,5], [6,7], [8,9] - no all reduce, but all to all
         data_parallel_group = [0,1,...,15] - all reduce is only on non-MoE
     """
-    assert torch.distributed.is_initialized()
+    assert dist.is_initialized()
 
     log_dist(
         'initializing deepspeed expert parallel group with size {}'.format(
@@ -192,7 +195,7 @@ def initialize_expert_parallel(expert_parallel_size_):
         'expert data parallel group is already initialized'
     for i in range(expert_parallel_size_):
         ranks = range(i, world_size, expert_parallel_size_)
-        group = torch.distributed.new_group(ranks)
+        group = dist.new_group(ranks)
 
         # TODO: remove
         log_dist(
@@ -207,7 +210,7 @@ def initialize_expert_parallel(expert_parallel_size_):
         'expert parallel group is already initialized'
     for i in range(world_size // expert_parallel_size_):
         ranks = range(i * expert_parallel_size_, (i + 1) * expert_parallel_size_)
-        group = torch.distributed.new_group(ranks)
+        group = dist.new_group(ranks)
 
         # TODO: remove
         log_dist(f'creating expert parallel process group with ranks: {list(ranks)}',
@@ -229,12 +232,12 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu):
         expert_parallel_group = [0,2,4,6], [8,10,12,14]             [1,3,5,7], [9,11,13,15]
         expert_data_parallel_group = [0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[]
     """
-    assert torch.distributed.is_initialized(), "torch distributed is not initialized"
+    assert dist.is_initialized(), "dist is not initialized"
     assert mpu.model_parallel_is_initialized(), "model parallel group is not initialized"
     model_parallel_size_ = mpu.get_model_parallel_world_size()
 
-    world_size = torch.distributed.get_world_size()
-    rank = torch.distributed.get_rank()
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
     dp_world_size = mpu.get_data_parallel_world_size()
     dp_rank = mpu.get_data_parallel_rank()
 
@@ -264,7 +267,7 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu):
             ranks = range(i * model_parallel_size_ + j,
                           world_size,
                           expert_parallel_size_ * model_parallel_size_)
-            group = torch.distributed.new_group(ranks)
+            group = dist.new_group(ranks)
 
             # TODO: remove
             log_dist(
@@ -277,7 +280,7 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu):
             ranks = range(i * expert_parallel_size_ * model_parallel_size_ + j,
                           (i + 1) * expert_parallel_size_ * model_parallel_size_,
                           model_parallel_size_)
-            group = torch.distributed.new_group(ranks)
+            group = dist.new_group(ranks)
 
             # TODO: remove
             log_dist(f'creating expert parallel process group with ranks: {list(ranks)}',
@@ -337,33 +340,33 @@ def get_data_parallel_group():
 
 def get_model_parallel_world_size():
     """Return world size for the model parallel group."""
-    return torch.distributed.get_world_size(group=get_model_parallel_group())
+    return dist.get_world_size(group=get_model_parallel_group())
 
 
 def get_expert_parallel_world_size():
     """Return world size for the expert parallel group."""
-    return torch.distributed.get_world_size(group=get_expert_parallel_group())
+    return dist.get_world_size(group=get_expert_parallel_group())
 
 
 def get_expert_data_parallel_world_size():
     """Return world size for the expert data parallel group."""
-    return torch.distributed.get_world_size(group=get_expert_data_parallel_group())
+    return dist.get_world_size(group=get_expert_data_parallel_group())
 
 
 def get_model_parallel_rank():
     """Return my rank for the model parallel group."""
-    return torch.distributed.get_rank(group=get_model_parallel_group())
+    return dist.get_rank(group=get_model_parallel_group())
 
 
 def get_expert_parallel_rank():
     """Return my rank for the expert parallel group."""
-    return torch.distributed.get_rank(group=get_expert_parallel_group())
+    return dist.get_rank(group=get_expert_parallel_group())
 
 
 def get_model_parallel_src_rank():
     """Calculate the global rank corresponding to a local rank zero
     in the model parallel group."""
-    global_rank = torch.distributed.get_rank()
+    global_rank = dist.get_rank()
     local_world_size = get_model_parallel_world_size()
     return (global_rank // local_world_size) * local_world_size
 
@@ -371,24 +374,24 @@ def get_model_parallel_src_rank():
 def get_expert_parallel_src_rank():
     """Calculate the global rank corresponding to a local rank zero
     in the expert parallel group."""
-    global_rank = torch.distributed.get_rank()
+    global_rank = dist.get_rank()
     local_world_size = get_expert_parallel_world_size()
     return (global_rank // local_world_size) * local_world_size
 
 
 def get_expert_data_parallel_rank():
     """Return my rank for the expert data parallel group."""
-    return torch.distributed.get_rank(group=get_expert_data_parallel_group())
+    return dist.get_rank(group=get_expert_data_parallel_group())
 
 
 def get_data_parallel_world_size():
     """Return world size for the data parallel group."""
-    return torch.distributed.get_world_size(group=get_data_parallel_group())
+    return dist.get_world_size(group=get_data_parallel_group())
 
 
 def get_data_parallel_rank():
     """Return my rank for the data parallel group."""
-    return torch.distributed.get_rank(group=get_data_parallel_group())
+    return dist.get_rank(group=get_data_parallel_group())
 
 
 def destroy_model_parallel():
