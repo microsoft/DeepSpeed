@@ -548,6 +548,9 @@ class DeepSpeedEngine(Module):
     def allreduce_always_fp32(self):
         return self._config.allreduce_always_fp32
 
+    def allreduce_always_fp16(self):
+        return self._config.allreduce_always_fp16
+
     def postscale_gradients(self):
         return not self._config.prescale_gradients
 
@@ -1742,6 +1745,8 @@ class DeepSpeedEngine(Module):
 
         if self.allreduce_always_fp32():
             tensor_to_allreduce = tensor.float()
+        elif self.allreduce_always_fp16():
+            tensor_to_allreduce = tensor.half()
 
         if self.postscale_gradients():
             if self.gradient_predivide_factor() != 1.0:
@@ -1754,8 +1759,12 @@ class DeepSpeedEngine(Module):
                     tensor_to_allreduce.mul_(self.gradient_predivide_factor() /
                                              dist.get_world_size(group=dp_group))
         else:
-            tensor_to_allreduce.div_(dist.get_world_size(group=dp_group))
+            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
+
+        if (self.allreduce_always_fp32()
+                or self.allreduce_always_fp16()) and tensor is not tensor_to_allreduce:
+            tensor.data = tensor_to_allreduce.data
 
         if self.allreduce_always_fp32() and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
@@ -1879,16 +1888,16 @@ class DeepSpeedEngine(Module):
         assert value.dim() in [1, 2]
         if value.dim() == 1:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size)])
+                value = torch.cat([value, value.new_empty(fill_size)])
             tensor_list = [
-                value.new_zeros(max_size)
+                value.new_empty(max_size)
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
         else:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size, value.size()[1])])
+                value = torch.cat([value, value.new_empty(fill_size, value.size()[1])])
             tensor_list = [
-                value.new_zeros(max_size,
+                value.new_empty(max_size,
                                 value.size()[1])
                 for _ in range(dist.get_world_size(group=dp_group))
             ]

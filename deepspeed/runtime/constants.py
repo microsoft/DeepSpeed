@@ -195,6 +195,18 @@ FP32_ALLREDUCE = "fp32_allreduce"
 FP32_ALLREDUCE_DEFAULT = False
 
 #########################################
+# FP16 AllReduce
+#########################################
+# FP16 All reduce. By default, this feature is not enabled. For sparse gradients indices will be converted to int32.
+# Users can configure in ds_config.json as below example:
+FP16_ALLREDUCE_FORMAT = '''
+FP16 Allreduce should be enabled as:
+"fp16_allreduce": true
+'''
+FP16_ALLREDUCE = "fp16_allreduce"
+FP16_ALLREDUCE_DEFAULT = False
+
+#########################################
 # Scale/predivide gradients before allreduce
 #########################################
 # Prescale gradients. By default, this feature is not enabled.

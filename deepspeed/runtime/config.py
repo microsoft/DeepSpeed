@@ -202,6 +202,10 @@ def get_allreduce_always_fp32(param_dict):
     return get_scalar_param(param_dict, FP32_ALLREDUCE, FP32_ALLREDUCE_DEFAULT)
 
 
+def get_allreduce_always_fp16(param_dict):
+    return get_scalar_param(param_dict, FP16_ALLREDUCE, FP16_ALLREDUCE_DEFAULT)
+
+
 def get_prescale_gradients(param_dict):
     return get_scalar_param(param_dict, PRESCALE_GRADIENTS, PRESCALE_GRADIENTS_DEFAULT)
 
@@ -778,6 +782,11 @@ class DeepSpeedConfig(object):
 
         self.disable_allgather = get_disable_allgather(param_dict)
         self.allreduce_always_fp32 = get_allreduce_always_fp32(param_dict)
+        self.allreduce_always_fp16 = get_allreduce_always_fp16(param_dict)
+        if self.allreduce_always_fp32 and self.allreduce_always_fp16:
+            raise ValueError(
+                "allreduce_always_fp32 and allreduce_always_fp16 can not be both set to True"
+            )
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)

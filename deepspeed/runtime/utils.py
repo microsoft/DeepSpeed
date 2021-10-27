@@ -266,7 +266,8 @@ class CheckOverflow(object):
             # if x is half, the .float() incurs an additional deep copy, but it's necessary if
             # Pytorch's .sum() creates a one-element tensor of the same type as x
             # (which is true for some recent version of pytorch).
-            cpu_sum = float(x.float().sum())
+            cpu_sum = float(torch.sparse.sum(x.float())) if x.is_sparse else float(
+                x.float().sum())
             # More efficient version that can be used if .sum() returns a Python scalar
             # cpu_sum = float(x.sum())
         except RuntimeError as instance:
