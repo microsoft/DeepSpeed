@@ -1,6 +1,6 @@
 import math
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 from collections import defaultdict
 
 from deepspeed.runtime.zero.utils import _initialize_parameter_parallel_groups

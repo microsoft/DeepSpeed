@@ -16,7 +16,7 @@ from bisect import bisect_left, bisect_right
 
 import torch
 from torch._six import inf
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from deepspeed.utils import groups, logger
 from numpy import prod

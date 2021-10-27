@@ -1,7 +1,7 @@
 import logging
 import sys
 
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 log_levels = {
     "debug": logging.DEBUG,

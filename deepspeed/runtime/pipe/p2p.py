@@ -6,7 +6,7 @@ import pickle
 import typing
 
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 # To query whether we have send/recv support
 from packaging.version import Version

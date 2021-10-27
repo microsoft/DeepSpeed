@@ -8,7 +8,7 @@ Functionality of swapping tensors to/from (NVMe) storage devices.
 import os
 from enum import Enum
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from deepspeed.utils.logging import logger
 from deepspeed.ops.aio import AsyncIOBuilder

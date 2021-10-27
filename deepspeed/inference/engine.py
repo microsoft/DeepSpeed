@@ -5,7 +5,7 @@ import torch
 import os
 from datetime import timedelta
 from torch.nn.modules import Module
-import torch.distributed as dist
+import deepspeed.comm as dist
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer

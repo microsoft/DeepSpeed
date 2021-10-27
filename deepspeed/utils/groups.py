@@ -51,7 +51,7 @@ engine = deepspeed.init(model)
 
 import torch
 import deepspeed.comm as dist
-#import torch.distributed as dist
+#import deepspeed.comm as dist
 
 from deepspeed.utils import logger, log_dist
 

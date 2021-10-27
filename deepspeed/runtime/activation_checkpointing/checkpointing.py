@@ -16,7 +16,7 @@ b886b7bb972afe72bac0f5de4f42a4a7bae8ebef
 import copy
 import torch
 import contextlib
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 import mmap
 from torch import _C

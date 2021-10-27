@@ -159,7 +159,7 @@ class DeepSpeedEngine(Module):
         #if self.use_ds_comm:
         import deepspeed.comm as dist
         #else:
-        #import torch.distributed as dist
+        #import deepspeed.comm as dist
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)

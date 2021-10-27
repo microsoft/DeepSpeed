@@ -1,6 +1,6 @@
 import time
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 import numpy as np
 import argparse
 import deepspeed

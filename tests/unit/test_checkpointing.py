@@ -1,6 +1,6 @@
 import torch
 
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 import deepspeed
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer

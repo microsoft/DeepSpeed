@@ -1,7 +1,7 @@
 from deepspeed.moe.utils import is_moe_param, split_params_grads_into_shared_and_expert_params, split_params_into_shared_and_expert_params
 import torch
 from torch._utils import _flatten_dense_tensors
-import torch.distributed as dist
+import deepspeed.comm as dist
 import pytest
 
 import deepspeed.runtime.utils as ds_utils

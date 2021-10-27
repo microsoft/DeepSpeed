@@ -9,7 +9,7 @@ from collections import defaultdict, OrderedDict
 import itertools
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
-import torch.distributed as dist
+import deepspeed.comm as dist
 import math
 from torch._six import inf
 from torch.autograd import Variable

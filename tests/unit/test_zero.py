@@ -3,7 +3,7 @@ import pytest
 import json
 import argparse
 import os
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from common import distributed_test
 from simple_model import SimpleModel, random_dataloader, args_from_dict

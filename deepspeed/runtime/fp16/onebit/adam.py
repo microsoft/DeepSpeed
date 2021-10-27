@@ -6,7 +6,7 @@ import torch
 import importlib
 import numpy as np
 import time
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from deepspeed.utils.logging import logger
 

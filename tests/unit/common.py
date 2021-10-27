@@ -2,7 +2,7 @@ import os
 import time
 
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 from torch.multiprocessing import Process
 
 import deepspeed

@@ -1,5 +1,5 @@
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 from deepspeed.utils import logger
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.adam import FusedAdam
