@@ -159,11 +159,36 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       (hidden_size_per_partition,)
             return x.view(*new_x_layer_shape)
 
+        def backup_attention(mixed_query, key_layer, value_layer, input_mask):
+            if layer_past is not None:
+                past_key, past_value = layer_past
+                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-2)
+                value_layer = torch.cat((past_value.type_as(value_layer),
+                                         value_layer),
+                                        dim=-2)
+            query = _transpose_for_scores(mixed_query, False)
+            key = _transpose_for_scores(key_layer, True)
+            value = _transpose_for_scores(value_layer, False)
+            p = torch.matmul(query, key)
+
+            ds_softmax = inference_cuda_module.softmax_fp16 if config.fp16 else \
+                            inference_cuda_module.softmax_fp32
+            p = ds_softmax(p / (float(key.size(-2))**0.5),
+                           input_mask,
+                           True,
+                           False,
+                           False,
+                           256)
+            p = p.to(value.dtype)
+            context_layer = torch.matmul(p, value)
+            context_layer = _transpose_for_context(context_layer)
+            return context_layer, key_layer, value_layer
+
         def compute_attention(qkv_out, input_mask):
-            score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16 or not config.triangular_masking) else \
+            score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
                                     inference_cuda_module.softmax_context_fp16
-            if not config.triangular_masking:
-                qkv_out = qkv_out.float()
+            #if not config.triangular_masking:
+            #    qkv_out = qkv_out.float()
 
             if merge_count > 0 and config.q_int8:
                 split_dim = (qkv_out.dim() - 1)
@@ -187,9 +212,14 @@ class DeepSpeedSelfAttentionFunction(Function):
                  value_layer) = torch.split(qkv_out,
                                             (qkv_out.shape[-1] // 3),
                                             dim=(qkv_out.dim() - 1))
-
+            no_masking = input_mask is None
+            if no_masking:
+                input_mask = torch.empty(1)
             head_size = (mixed_query.shape[-1] // num_attention_heads_per_partition)
-
+            #return backup_attention(mixed_query,
+            #     key_layer,
+            #     value_layer,
+            #     input_mask)
             unfused_mode = not config.specialized_mode or \
                                 mixed_query.shape[1] >= 32 or head_size > 128
 
@@ -210,17 +240,12 @@ class DeepSpeedSelfAttentionFunction(Function):
                     True) / (norm_factor if config.scale_attention else 1.0)
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
-            no_masking = input_mask is None
-            if no_masking:
-                input_mask = torch.empty(1)
-
             if layer_past is None:
                 attn_key_value = score_context_func(
                     mixed_query,
                     (key_layer1 if unfused_mode else key_layer),
                     torch.empty(1),
-                    (input_mask
-                     if config.triangular_masking or no_masking else input_mask.float()),
+                    (input_mask),
                     (value_layer1 if unfused_mode else value_layer),
                     torch.empty(1),
                     num_attention_heads_per_partition,
@@ -235,8 +260,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                     mixed_query,
                     (key_layer1 if unfused_mode else past_key.type_as(key_layer)),
                     (key_layer1 if unfused_mode else key_layer),
-                    (input_mask
-                     if config.triangular_masking or no_masking else input_mask.float()),
+                    (input_mask),
                     (value_layer1 if unfused_mode else past_value.type_as(value_layer)),
                     (value_layer1 if unfused_mode else value_layer),
                     num_attention_heads_per_partition,
@@ -254,8 +278,8 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             # Transpose Context
             context_layer = _transpose_for_context(context_layer)
-            if (config.fp16 or config.q_int8) and not config.triangular_masking:
-                context_layer = context_layer.half()
+            #if (config.fp16 or config.q_int8) and not config.triangular_masking:
+            #    context_layer = context_layer.half()
 
             return context_layer, key_layer, value_layer
 
@@ -552,14 +576,13 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config = config
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
-
-        self.attention = DeepSpeedSelfAttention(config,
+        self.attention = DeepSpeedSelfAttention(self.config,
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
                                                 merge_count,
                                                 qkv_merging)
-        self.mlp = DeepSpeedMLP(config,
+        self.mlp = DeepSpeedMLP(self.config,
                                 mp_group,
                                 quantize_scales,
                                 quantize_groups,
@@ -599,7 +622,7 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
-
+        #self.config.triangular_masking = False
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
