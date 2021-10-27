@@ -286,7 +286,7 @@ from .utils import ReduceOp
 
 def reduce(tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
     global cdb
-    return reduce(tensor=tensor, dst=dst, op=op, group=group, async_op=async_op)
+    return cdb.reduce(tensor=tensor, dst=dst, op=op, group=group, async_op=async_op)
 
 
 def reduce_scatter(output, input_list, op=ReduceOp.SUM, group=None, async_op=False):

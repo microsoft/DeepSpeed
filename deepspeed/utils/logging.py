@@ -1,8 +1,6 @@
 import logging
 import sys
 
-import deepspeed.comm as dist
-
 log_levels = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -57,6 +55,7 @@ def log_dist(message, ranks=None, level=logging.INFO):
         level (int)
 
     """
+    import deepspeed.comm as dist
     should_log = not dist.is_initialized()
     ranks = ranks or []
     my_rank = dist.get_rank() if dist.is_initialized() else -1

@@ -70,17 +70,22 @@ class TorchBackend(Backend):
                                             group=group,
                                             async_op=async_op)
 
-    def reduce(tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
         return torch.distributed.reduce(tensor=tensor,
                                         dst=dst,
-                                        op=op,
+                                        op=self._reduce_op(op),
                                         group=group,
                                         async_op=async_op)
 
-    def reduce_scatter(output, input_list, op=ReduceOp.SUM, group=None, async_op=False):
+    def reduce_scatter(self,
+                       output,
+                       input_list,
+                       op=ReduceOp.SUM,
+                       group=None,
+                       async_op=False):
         return torch.distributed.reduce_scatter(output=output,
                                                 input_list=input_list,
-                                                op=op,
+                                                op=self._reduce_op(op),
                                                 group=group,
                                                 async_op=async_op)
 

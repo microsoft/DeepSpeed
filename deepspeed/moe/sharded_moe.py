@@ -78,7 +78,7 @@ import deepspeed.comm as dist
 class _AllToAll(torch.autograd.Function):
     @staticmethod
     def forward(ctx: Any,
-                group: dist.ProcessGroup,
+                group: torch.distributed.ProcessGroup,
                 input: Tensor) -> Tensor:  # type: ignore
         ctx.group = group
         input = input.contiguous()
