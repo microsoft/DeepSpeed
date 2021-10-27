@@ -237,7 +237,7 @@ class PartitionedParameterCoordinator:
         self.__max_reuse_dist_in_numel: int = max_reuse_distance_in_numel
         # queue for parameters to fetch. parameters will be popped off the left
         # side of the dequeue as they are fetched
-        self.__param_queue: collections.deque = None
+        self.__param_queue: Deque[__class__.__ParamInTrace] = None
         self.__prefetch_bucket_sz: int = prefetch_bucket_sz
         self.__prefetch_nvme: bool = prefetch_nvme
         self.hierarchy: int = 0
@@ -499,15 +499,16 @@ class PartitionedParameterCoordinator:
 
         numel_considered = 0
         swap_in_params = []
-        for _, param in self.__param_queue:
+        for param_in_trace in self.__param_queue:
+            param = param_in_trace.param
             if param.nvme_swapper is None:
-                raise RuntimeError(
-                    f"expected param {param.ds_summary()} to have nvme swapper")
+                continue
             if (numel_considered > 2 * numel_in_flight or len(swap_in_params) >=
                     param.nvme_swapper.available_swap_in_buffers()):
                 break
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                 swap_in_params.append(param)
+            numel_considered += param.ds_numel
 
         if swap_in_params:
             swap_in_params[0].nvme_swapper.swap_in(swap_in_params, async_op=True)
