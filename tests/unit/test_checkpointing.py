@@ -30,7 +30,7 @@ def compare_deepspeed_states(saved_model, loaded_model):
     # These are compared in more depth in other places
     assert hasattr(loaded_model, 'module')
 
-    assert saved_model.csr_tensor_module_names == loaded_model.csr_tensor_module_names
+    assert saved_model.sparse_tensor_module_names == loaded_model.sparse_tensor_module_names
     assert saved_model.skipped_steps == loaded_model.skipped_steps
     assert saved_model.global_steps == loaded_model.global_steps
 
@@ -950,6 +950,90 @@ def test_checkpoint_moe(tmpdir, ep_size):
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
                                             load_optimizer_states=True,
+                                            load_lr_scheduler_states=False,
+                                            fp16=config_dict["fp16"]["enabled"],
+                                            empty_tag=True,
+                                            base_optimizers=optimizers,
+                                            seq_dataloader=True)
+
+    _helper(args)
+
+
+@pytest.mark.parametrize("ep_size, load_optim_states",
+                         [(4,
+                           True),
+                          (4,
+                           False),
+                          (2,
+                           True),
+                          (2,
+                           False)])
+def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
+    if not required_torch_version():
+        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+    config_dict = {
+        "train_batch_size": 8,
+        "steps_per_print": 1,
+        "optimizer": {
+            "type": 'Adam',
+            "params": {
+                "lr": 0.00015,
+                "betas": [0.8,
+                          0.999],
+                "eps": 1e-8,
+                "weight_decay": 3e-7
+            }
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": 2,
+        }
+    }
+    hidden_dim = 16
+    args = args_from_dict(tmpdir, config_dict)
+
+    def create_moe_param_groups(model):
+        from deepspeed.moe.utils import is_moe_param
+
+        params_with_weight_decay = {'params': [], 'name': 'weight_decay_params'}
+        moe_params_with_weight_decay = {
+            'params': [],
+            'moe': True,
+            'name': 'weight_decay_moe_params'
+        }
+
+        for module_ in model.modules():
+            moe_params_with_weight_decay['params'].extend([
+                p for n,
+                p in list(module_._parameters.items())
+                if p is not None and is_moe_param(p)
+            ])
+            params_with_weight_decay['params'].extend([
+                p for n,
+                p in list(module_._parameters.items())
+                if p is not None and not is_moe_param(p)
+            ])
+
+        return params_with_weight_decay, moe_params_with_weight_decay
+
+    @distributed_test(world_size=[4])
+    def _helper(args):
+        groups.initialize(ep_size=ep_size)
+        models = [
+            SimpleMoEModel(hidden_dim=hidden_dim,
+                           num_experts=ep_size) for _ in range(2)
+        ]
+        params = [create_moe_param_groups(model) for model in models]
+        optimizers = [torch.optim.AdamW(params=param) for param in params]
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=load_optim_states,
                                             load_lr_scheduler_states=False,
                                             fp16=config_dict["fp16"]["enabled"],
                                             empty_tag=True,
