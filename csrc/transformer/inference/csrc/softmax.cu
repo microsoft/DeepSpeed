@@ -94,11 +94,13 @@ __global__ void attn_softmax_v2(__half* vals,
                                       (data_id + 3) > window_stride)
                                          ? __half2float(vals[data_id + 3])
                                          : minus_infinity;
-                    if (mask && recompute) {
-                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
-                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
+                    if (mask && recompute) 
+                    {
+                        low_data[i].x  += __half2float(mask[data_id + mask_offset]);
+                        low_data[i].y  += __half2float(mask[data_id + mask_offset + 1]);
                         high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
                         high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
+                        
                     }
                 } else {
                     low_data[i].x = data_id > window_stride ? __half2float(vals[data_id])
@@ -122,20 +124,23 @@ __global__ void attn_softmax_v2(__half* vals,
                             high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
                     }
                 }
-                // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
+                //if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
                 max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
                 max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
                 max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
                 max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
-            } else {
-                low_data[i].x = minus_infinity;
-                low_data[i].y = minus_infinity;
+            } 
+            else 
+            {
+                low_data[i].x =  minus_infinity;
+                low_data[i].y =  minus_infinity;
                 high_data[i].x = minus_infinity;
                 high_data[i].y = minus_infinity;
             }
         }
 
-        for (int i = 1; i < WARP_SIZE; i *= 2) {
+        for (int i = 1; i < WARP_SIZE; i *= 2) 
+        {
             auto temp = g.shfl_xor(max_val, i);
             max_val = (temp > max_val ? temp : max_val);
         }
@@ -157,8 +162,8 @@ __global__ void attn_softmax_v2(__half* vals,
         }
         float sum = 0;
         for (int i = 0; i < iterations; i++) {
-            low_data[i].x = __expf(low_data[i].x - max_val);
-            low_data[i].y = __expf(low_data[i].y - max_val);
+            low_data[i].x =  __expf(low_data[i].x - max_val);
+            low_data[i].y =  __expf(low_data[i].y - max_val);
             high_data[i].x = __expf(high_data[i].x - max_val);
             high_data[i].y = __expf(high_data[i].y - max_val);
 
@@ -388,20 +393,19 @@ void launch_attn_softmax_v2(T* vals,
     const int iterations = (sequence_length - 1) / (reduce_width << 2) + 1;
 
     if (sequence_length <= 32768)
-        attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(
-            vals,
-            mask,
-            triangular,
-            recompute,
-            local_attention,
-            window_size,
-            total_count,
-            (triangular ? (heads * batch_size) : heads),
-            sequence_length,
-            num_seq,
-            scale,
-            iterations,
-            reduce_width);
+        attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(vals,
+                                                            mask,
+                                                            triangular,
+                                                            recompute,
+                                                            local_attention,
+                                                            window_size,
+                                                            total_count,
+                                                            (triangular ? (heads * batch_size) : heads),
+                                                            sequence_length,
+                                                            num_seq,
+                                                            scale,
+                                                            iterations,
+                                                            reduce_width);
     else
         throw std::runtime_error("Unsupport Seq_Length!");
 }
