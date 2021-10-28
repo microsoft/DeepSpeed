@@ -141,16 +141,16 @@ class TorchBackend(Backend):
         return torch.distributed.barrier()
 
     def get_rank(self, group=None):
-        return torch.distributed.get_rank(group)
+        return torch.distributed.get_rank(group=group)
 
     def get_world_size(self, group=None):
-        return torch.distributed.get_world_size(group)
+        return torch.distributed.get_world_size(group=group)
 
     def is_initialized(self):
         return torch.distributed.is_initialized()
 
-    def get_backend(group=None):
-        return torch.distributed.get_backend(group=None)
+    def get_backend(self, group=None):
+        return torch.distributed.get_backend(group=group)
 
     def new_group(self, ranks):
         logger.info(f"new group called with {ranks}")
