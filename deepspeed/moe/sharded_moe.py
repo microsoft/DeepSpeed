@@ -136,8 +136,10 @@ def top1gating(logits: torch.Tensor,
                capacity_factor: float,
                min_capacity: int,
                used_token: torch.Tensor = None,
-               noisy_gate_policy: Optional[str] = None
-               drop_tokens: bool = True) -> Tuple[Tensor, Tensor, Tensor]:
+               noisy_gate_policy: Optional[str] = None,
+               drop_tokens: bool = True) -> Tuple[Tensor,
+                                                  Tensor,
+                                                  Tensor]:
     """Implements Top1Gating on logits."""
     if noisy_gate_policy == 'RSample':
         logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
