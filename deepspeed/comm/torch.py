@@ -44,8 +44,8 @@ class TorchBackend(Backend):
         if not isinstance(op, torch.distributed.ReduceOp):
             if op == ReduceOp.SUM:
                 op = torch.distributed.ReduceOp.SUM
-            elif op == ReduceOp.PROD:
-                op = torch.distributed.ReduceOp.PROD
+            elif op == ReduceOp.PRODUCT:
+                op = torch.distributed.ReduceOp.PRODUCT
             elif op == ReduceOp.AVG:
                 op = torch.distributed.ReduceOp.AVG
             elif op == ReduceOp.MIN:
