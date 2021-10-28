@@ -45,7 +45,9 @@ def distributed_test(world_size=2, backend='nccl'):
             # turn off NCCL logging if set
             os.environ.pop('NCCL_DEBUG', None)
 
-            deepspeed.init_distributed(dist_backend=backend)
+            dist.init_process_group(backend=backend)
+            print(f'dist initialized with cdb = {dist.cdb}')
+            dist.barrier()
 
             if torch.cuda.is_available():
                 torch.cuda.set_device(local_rank)
@@ -53,9 +55,9 @@ def distributed_test(world_size=2, backend='nccl'):
             run_func(*func_args, **func_kwargs)
 
             # make sure all ranks finish at the same time
-            torch.distributed.barrier()
+            dist.barrier()
             # tear down after test completes
-            torch.distributed.destroy_process_group()
+            dist.destroy_process_group()
 
         def dist_launcher(num_procs, *func_args, **func_kwargs):
             """Launch processes and gracefully handle failures. """

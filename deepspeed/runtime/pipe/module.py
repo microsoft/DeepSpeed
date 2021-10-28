@@ -130,6 +130,8 @@ class PipelineModule(nn.Module):
         """
 
         super().__init__()
+        if not dist.is_initialized():
+            print(f"dist {dist.cdb} not it")
 
         if num_stages is None and topology is None:
             raise RuntimeError('must provide num_stages or topology')

@@ -52,6 +52,9 @@ class NcclBackend(Backend):
             self.initalized = True
             self.single_gpu_mode = False
 
+    def destroy_process_group(self, group=None):
+        pass
+
     def new_group(self, ranks):
         # TODO: Change this to use comm_op.new_group when the impl. is ready.
         if not torch.distributed.is_initialized():

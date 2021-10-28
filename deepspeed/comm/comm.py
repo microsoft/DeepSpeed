@@ -168,15 +168,20 @@ def init_torch_backend(backend):
     global cdb
     global ds_world_rank
     global ds_world_size
-    import torch.distributed as dist
-    if dist.is_initialized():
+    #import torch.distributed as dist
+    if cdb is not None and cdb.is_initialized():
         if ds_world_rank == 0:
             logger.info('torch.distributed already initialized')
-        cdb = dist
+
     else:
         if ds_world_rank == 0:
             logger.info('Initializing TorchBackend in DeepSpeed')
         cdb = TorchBackend(rank=ds_world_rank, size=ds_world_size, dist_backend=backend)
+
+
+def destroy_process_group(group=None):
+    global cdb
+    return cdb.destroy_process_group(group=group)
 
 
 def new_group(ranks):
@@ -304,6 +309,7 @@ def all_reduce(tensor, op=ReduceOp.SUM, group=None, async_op=False):
     # timers.start()
     # TensorBoard logging for comm calls.?
     global cdb
+    print(f'op = {op}, cdb= {cdb.name}')
     return cdb.all_reduce(tensor, op, group, async_op)
 
 

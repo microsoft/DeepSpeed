@@ -26,7 +26,7 @@ class TorchBackend(Backend):
         self.init_process_group(name, rank, size, dist_backend)
 
     def init_process_group(self, name='torch', rank=0, size=1, dist_backend="nccl"):
-        if size <= 1:
+        if size <= -1:
             # Do not initialize torch distributed but only yourself
             self.initialized = True
             # Future functionality to support ds.initialize() on a single GPU
@@ -65,8 +65,10 @@ class TorchBackend(Backend):
                    op=torch.distributed.ReduceOp.SUM,
                    group=None,
                    async_op=False):
+        op = self._reduce_op(op)
+        print('op = {op}')
         return torch.distributed.all_reduce(tensor=tensor,
-                                            op=self._reduce_op(op),
+                                            op=op,
                                             group=group,
                                             async_op=async_op)
 
@@ -153,6 +155,9 @@ class TorchBackend(Backend):
     def new_group(self, ranks):
         logger.info(f"new group called with {ranks}")
         return torch.distributed.new_group(ranks)
+
+    def destroy_process_group(self, group=None):
+        return torch.distributed.destroy_process_group(group=group)
 
 
 # The functions below are kept global so they can be used without creating a TorchBackend object
