@@ -1,5 +1,5 @@
 import numpy as np
-from deepspeed.utils import log_dist
+from deepspeed.utils import logger
 
 
 class ProgressiveLayerDrop(object):
@@ -17,7 +17,7 @@ class ProgressiveLayerDrop(object):
         self.theta = theta
         self.gamma = gamma
         self.current_theta = 1.0
-        log_dist(f'Enabled progressive layer dropping (theta = {self.theta})', ranks=[0])
+        logger.info(f'Enabled progressive layer dropping (theta = {self.theta})')
 
     def get_state(self):
         kwargs = {'progressive_layer_drop': True, 'pld_theta': self.get_theta()}
