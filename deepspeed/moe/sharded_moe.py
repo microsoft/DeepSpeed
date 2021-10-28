@@ -329,6 +329,7 @@ class TopKGate(torch.nn.Module):
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
         self.gate_time = 0.0
+        self.drop_tokens = drop_tokens
 
     def forward(
         self,
@@ -356,7 +357,7 @@ class TopKGate(torch.nn.Module):
                 self.min_capacity,
                 used_token,
                 self.noisy_gate_policy if self.training else None,
-                drop_tokens)
+                self.drop_tokens)
 
         else:
             gate_output = top2gating(
