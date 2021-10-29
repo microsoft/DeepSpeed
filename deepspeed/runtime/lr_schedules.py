@@ -607,8 +607,11 @@ class OneCycle(object):
         return lrs
 
     def _get_decay_mom(self, decay_batch_iteration):
-        decay_interval = decay_batch_iteration / self.decay_step_size
-        mom_decay_factor = (1 + self.decay_mom_rate * decay_interval)
+        try:
+            decay_interval = decay_batch_iteration / self.decay_step_size
+            mom_decay_factor = (1 + self.decay_mom_rate * decay_interval)
+        except ZeroDivisionError:
+            mom_decay_factor = 1.0
         momentums = [(beta0 * mom_decay_factor, beta1) for beta0, beta1 in self.max_moms]
         return momentums
 
@@ -617,8 +620,11 @@ class OneCycle(object):
         after the cycle completes and post cycle decaying of lr/mom is enabled.
         This function treats `self.last_batch_iteration` as the last batch index.
         """
-        decay_interval = decay_batch_iteration / self.decay_step_size
-        lr_decay_factor = (1 + self.decay_lr_rate * decay_interval)
+        try:
+            decay_interval = decay_batch_iteration / self.decay_step_size
+            lr_decay_factor = (1 + self.decay_lr_rate * decay_interval)
+        except ZeroDivisionError:
+            lr_decay_factor = 1.0
         lrs = [cycle_min_lr / lr_decay_factor for cycle_min_lr in self.min_lrs]
 
         return lrs
