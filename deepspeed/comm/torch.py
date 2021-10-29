@@ -16,26 +16,156 @@ from .backend import *
 
 class TorchBackend(Backend):
     """
-        DeepSpeed wrapper class for torch.distributed functionality.
+        A light-weight wrapper class for torch.distributed API.
         Only a subset of functions are wrapped. Once the init_process_group
-        is initialized, standard torch.distributed.func*() can be used diretly
-        so no need to wrap all the functions.
+        is initialized, standard torch.distributed.* can be used diretly
+        so no need to wrap all the functions. We can keep adding wrappers as
+        needed.
     """
     def __init__(self, name='torch', rank=0, size=1, dist_backend="nccl"):
         super(TorchBackend, self).__init__()
         self.init_process_group(name, rank, size, dist_backend)
+        self.torch_version_before_18 = self.older_torch()
 
     def init_process_group(self, name='torch', rank=0, size=1, dist_backend="nccl"):
-        if size <= -1:
-            # Do not initialize torch distributed but only yourself
+        if size <= -1:  # TODO: Revert this to 1 afer investigating PP test failures
+            # Do not initialize torch distributed but only the wrapper itself
             self.initialized = True
             # Future functionality to support ds.initialize() on a single GPU
+            # The idea is to fake that dist backend is initialized even when
+            # it is not so we can run on a single GPU without doing any init_process_group
             self.single_gpu_mode = True
         else:
             init_distributed(dist_backend)
             if torch.distributed.is_initialized():
                 self.initalized = True
                 self.single_gpu_mode = False
+
+    def all_reduce(self,
+                   tensor,
+                   op=torch.distributed.ReduceOp.SUM,
+                   group=None,
+                   async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        op = self._reduce_op(op)
+        print('op = {op}')
+        return torch.distributed.all_reduce(tensor=tensor,
+                                            op=op,
+                                            group=group,
+                                            async_op=async_op)
+
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.reduce(tensor=tensor,
+                                        dst=dst,
+                                        op=self._reduce_op(op),
+                                        group=group,
+                                        async_op=async_op)
+
+    def reduce_scatter(self,
+                       output,
+                       input_list,
+                       op=ReduceOp.SUM,
+                       group=None,
+                       async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.reduce_scatter(output=output,
+                                                input_list=input_list,
+                                                op=self._reduce_op(op),
+                                                group=group,
+                                                async_op=async_op)
+
+    def broadcast(self, tensor, src, group=None, async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.broadcast(tensor=tensor,
+                                           src=src,
+                                           group=group,
+                                           async_op=async_op)
+
+    def all_gather(self, tensor_list, tensor, group=None, async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.all_gather(tensor_list=tensor_list,
+                                            tensor=tensor,
+                                            group=group,
+                                            async_op=async_op)
+
+    def all_to_all_single(self,
+                          output,
+                          input,
+                          output_split_sizes=None,
+                          input_split_sizes=None,
+                          group=None,
+                          async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.all_to_all_single(output=output,
+                                                   input=input,
+                                                   output_split_sizes=output_split_sizes,
+                                                   input_split_sizes=input_split_sizes,
+                                                   group=group,
+                                                   async_op=async_op)
+
+    def send(self, tensor, dst, group=None, tag=0):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.send(tensor=tensor, dst=dst, group=group, tag=tag)
+
+    def recv(self, tensor, src=None, group=None, tag=0):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.recv(tensor=tensor, src=src, group=group, tag=tag)
+
+    def gather(self, tensor, gather_list=None, dst=0, group=None, async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.gather(tensor=tensor,
+                                        gather_list=gather_list,
+                                        dst=dst,
+                                        group=group,
+                                        async_op=async_op)
+
+    def scatter(self, tensor, scatter_list=None, src=0, group=None, async_op=False):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.scatter(tensor=tensor,
+                                         scatter_list=scatter_list,
+                                         src=src,
+                                         group=group,
+                                         async_op=async_op)
+
+    def barrier(self):
+        return torch.distributed.barrier()
+
+    def get_rank(self, group=None):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.get_rank(group=group)
+
+    def get_world_size(self, group=None):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.get_world_size(group=group)
+
+    def is_initialized(self):
+        return torch.distributed.is_initialized()
+
+    def get_backend(self, group=None):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.get_backend(group=group)
+
+    def new_group(self, ranks):
+        logger.info(f"new group called with {ranks}")
+        return torch.distributed.new_group(ranks)
+
+    def destroy_process_group(self, group=None):
+        group = group.WORLD if self.torch_version_before_18 and group is None else None
+        return torch.distributed.destroy_process_group(group=group)
+
+    def older_torch(self):
+        '''
+            Helper to lookup torch version. For versions less than 1.8, torch.dist
+            used group.WORLD as the default group argument instead of None.
+            See more details at: https://github.com/pytorch/pytorch/pull/48767
+        '''
+        TORCH_MAJOR = int(torch.__version__.split('.')[0])
+        TORCH_MINOR = int(torch.__version__.split('.')[1])
+        if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
+            return True
+        else:
+            return False
 
     def _reduce_op(self, op):
         '''
@@ -59,105 +189,6 @@ class TorchBackend(Backend):
             elif op == ReduceOp.BXOR:
                 op = torch.distributed.ReduceOp.BXOR
         return op
-
-    def all_reduce(self,
-                   tensor,
-                   op=torch.distributed.ReduceOp.SUM,
-                   group=None,
-                   async_op=False):
-        op = self._reduce_op(op)
-        print('op = {op}')
-        return torch.distributed.all_reduce(tensor=tensor,
-                                            op=op,
-                                            group=group,
-                                            async_op=async_op)
-
-    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
-        return torch.distributed.reduce(tensor=tensor,
-                                        dst=dst,
-                                        op=self._reduce_op(op),
-                                        group=group,
-                                        async_op=async_op)
-
-    def reduce_scatter(self,
-                       output,
-                       input_list,
-                       op=ReduceOp.SUM,
-                       group=None,
-                       async_op=False):
-        return torch.distributed.reduce_scatter(output=output,
-                                                input_list=input_list,
-                                                op=self._reduce_op(op),
-                                                group=group,
-                                                async_op=async_op)
-
-    def broadcast(self, tensor, src, group=None, async_op=False):
-        return torch.distributed.broadcast(tensor=tensor,
-                                           src=src,
-                                           group=group,
-                                           async_op=async_op)
-
-    def all_gather(self, tensor_list, tensor, group=None, async_op=False):
-        return torch.distributed.all_gather(tensor_list=tensor_list,
-                                            tensor=tensor,
-                                            group=group,
-                                            async_op=async_op)
-
-    def all_to_all_single(self,
-                          output,
-                          input,
-                          output_split_sizes=None,
-                          input_split_sizes=None,
-                          group=None,
-                          async_op=False):
-        return torch.distributed.all_to_all_single(output=output,
-                                                   input=input,
-                                                   output_split_sizes=output_split_sizes,
-                                                   input_split_sizes=input_split_sizes,
-                                                   group=group,
-                                                   async_op=async_op)
-
-    def send(self, tensor, dst, group=None, tag=0):
-        return torch.distributed.send(tensor=tensor, dst=dst, group=group, tag=tag)
-
-    def recv(self, tensor, src=None, group=None, tag=0):
-        return torch.distributed.recv(tensor=tensor, src=src, group=group, tag=tag)
-
-    def gather(self, tensor, gather_list=None, dst=0, group=None, async_op=False):
-        return torch.distributed.gather(tensor=tensor,
-                                        gather_list=gather_list,
-                                        dst=dst,
-                                        group=group,
-                                        async_op=async_op)
-
-    def scatter(self, tensor, scatter_list=None, src=0, group=None, async_op=False):
-        return torch.distributed.scatter(tensor=tensor,
-                                         scatter_list=scatter_list,
-                                         src=src,
-                                         group=group,
-                                         async_op=async_op)
-
-    def barrier(self):
-        return torch.distributed.barrier()
-
-    def get_rank(self, group=None):
-        return torch.distributed.get_rank(group=group)
-
-    def get_world_size(self, group=None):
-        return torch.distributed.get_world_size(group=group)
-
-    def is_initialized(self):
-        return torch.distributed.is_initialized()
-
-    def get_backend(self, group=None):
-        return torch.distributed.get_backend(group=group)
-
-    def new_group(self, ranks):
-        logger.info(f"new group called with {ranks}")
-        return torch.distributed.new_group(ranks)
-
-    def destroy_process_group(self, group=None):
-        return torch.distributed.destroy_process_group(group=group)
 
 
 # The functions below are kept global so they can be used without creating a TorchBackend object
