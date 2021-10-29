@@ -16,7 +16,7 @@ from torch.autograd import Variable
 
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
@@ -100,7 +100,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return outputs
 
 
-#for each tensor in outputs run the forward_funciton and register backward_function as hook
+#for each tensor in outputs run the forward_function and register backward_function as hook
 def _apply_forward_and_backward_to_tensors_only(module,
                                                 forward_function,
                                                 backward_function,
@@ -178,7 +178,7 @@ class PrefetchCoordinator(object):
         # maps sub_module id to submodule objects
         self.id_to_sub_module_map = {}
 
-        # stores the total number of parmeters in each sub_module
+        # stores the total number of parameters in each sub_module
         self.id_to_sub_module_size_map = {}
 
         self.trace_completed = False
@@ -362,7 +362,7 @@ class PartitionedParameterCoordinator(object):
             for param in params_to_prefetch:
                 param.ds_status = ZeroParamStatus.INFLIGHT
 
-                # keeping track of number of elements consumed by available parmaeters
+                # keeping track of number of elements consumed by available parameters
                 self._increment_available_parameter_numel(param.ds_numel)
 
             if nvme:
@@ -432,7 +432,7 @@ class PartitionedParameterCoordinator(object):
                 )
                 partitioned_params.append(param)
 
-                # keeping track of number of elements consumed by available parmaeters
+                # keeping track of number of elements consumed by available parameters
                 self._increment_available_parameter_numel(param.ds_numel)
                 print_rank_0(f"Incrementing with parameter id {param.ds_id}")
 
@@ -504,7 +504,7 @@ class PartitionedParameterCoordinator(object):
         param.ds_active_sub_modules = 0
         if param.ds_status == ZeroParamStatus.AVAILABLE:
             print_rank_0(
-                f"Releasing unpartitioned param {debug_param2name_id_numel(param)} active sub-modules {param.ds_active_sub_modules} and persisitence {param.ds_persist}"
+                f"Releasing unpartitioned param {debug_param2name_id_numel(param)} active sub-modules {param.ds_active_sub_modules} and persistence {param.ds_persist}"
             )
             self._decrement_available_parameter_numel(param.ds_numel)
             param.partition()
@@ -655,12 +655,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
+        self._global_grad_norm = 0.
 
-        if not all(is_zero_param(p) for p in module.parameters()):
-            group = None
-            if mpu:
-                group = mpu.get_data_parallel_group()
-            Init(module=module, data_parallel_group=group, dtype=self.dtype)
+        self._convert_to_zero_parameters(module, mpu)
 
         for m in module.modules():
             _init_external_params(m)
@@ -809,7 +806,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
                          force=False)
 
-        # Optimizer ensor swapping
+        # Optimizer tensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
@@ -901,7 +898,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         # stores if a grad in a partition has been computed or not
         self.is_grad_computed = {}
 
-        # will store the averaged gradients required by this parititon
+        # will store the averaged gradients required by this paritition
         self.averaged_gradients = {}
 
         #creates backward hooks for gradient partitioning
@@ -928,6 +925,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
+
+    def _convert_to_zero_parameters(self, module, mpu):
+        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
+        if non_zero_params:
+            zero_params = [p for p in module.parameters() if is_zero_param(p)]
+            if zero_params:
+                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
+            else:
+                group = None
+                if mpu:
+                    group = mpu.get_data_parallel_group()
+                Init(module=module, data_parallel_group=group, dtype=self.dtype)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
@@ -1045,7 +1054,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 src.data = dest.data
                 src.status = PartitionedParamStatus.AVAILABLE
             else:
-                assert src.status == PartitionedParamStatus.AVAILABLE, "Partitioned Parm must be avialable here"
+                assert src.status == PartitionedParamStatus.AVAILABLE, "Partitioned Param must be available here"
                 if not avoid_copy:
                     dest.data.copy_(src.data)
                 src.data = dest.data
@@ -1174,7 +1183,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                       flat_offset,
                                       total_elements)
                         print_rank_0(
-                            f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elemets {flat_offset + total_elements}",
+                            f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elements {flat_offset + total_elements}",
                             force=False)
                     #these parameters reside in NVME and
                     elif self.params_in_nvme_and_cpu:
@@ -1409,7 +1418,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.module.register_forward_hook(_end_of_forward_hook)
         self.module.register_forward_pre_hook(_pre_forward_hook)
 
-        # Add top todule to stack trace
+        # Add top module to stack trace
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(self.module)
 
@@ -1792,7 +1801,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         see_memory_usage(f"End ipg_epilogue", force=False)
 
     # resets all partition to no reduced
-    # sets remianing grads to the total number of grads in each partition
+    # sets remaining grads to the total number of grads in each partition
     # set is grad computed to false for all grads in partition
     def reset_partition_gradient_structures(self):
         total_partitions = dist.get_world_size(group=self.dp_process_group)
@@ -2139,7 +2148,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     #    self.reduction_stream.synchronize()
 
                     if self.gradient_accumulation_steps > 1:
-                        # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
+                        # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
                         fp16_grad_tensor = self.grads_in_partition[i].narrow(
                             0,
                             dest_offset,
@@ -2172,7 +2181,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                 param,
                                 fp32_grad_tensor)
                 else:
-                    # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
+                    # The allreduce buffer will be rewritten. Copy the gradients in partition to a new buffer
                     fp16_grad_tensor = self.grads_in_partition[i].narrow(
                         0,
                         dest_offset,
@@ -2247,7 +2256,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sequential_execution(print_func, message)
 
     def get_grads_to_reduce(self, i, partition_id):
-        def get_reducable_portion(key):
+        def get_reducible_portion(key):
             grad = self.param_dict[key].grad
             total_elements = grad.numel()
             start = self.grad_start_offset[i][partition_id][key]
@@ -2273,7 +2282,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         grads_to_reduce = []
         for key in self.is_grad_computed[i][partition_id]:
-            grad = get_reducable_portion(key)
+            grad = get_reducible_portion(key)
             grads_to_reduce.append(grad)
         return grads_to_reduce
 
@@ -2474,7 +2483,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         else:
             total_norm = 0.0
             # if dist.get_rank() == 0:
-            #    logger.info(f"Total Norm begining {total_norm}")
+            #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
@@ -2787,6 +2796,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             return
 
         norm_groups = self._get_norm_groups()
+        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
 
         timer_names = set()
 
@@ -2800,7 +2810,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._prepare_sub_group(sub_group_id, timer_names)
 
             #scale the fp32 gradients
-            self.unscale_and_clip_grads(sub_group_id, norm_groups)
+            self.unscale_and_clip_grads(sub_group_id, self._global_grad_norm)
 
             #apply the optimizer step on the sub group and copy fp32 parameters to fp16
             self._optimizer_step(sub_group_id)
@@ -2817,7 +2827,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
-        # Dump gradient norms for debbuging
+        # Dump gradient norms for debugging
         for i, _ in enumerate(self.fp16_groups):
             print(f'Pre-Step Dump Norms for Group {i} FP16P, FP16G, FP32G, FP32GUC')
             for fp16_param, fp32_grad in zip(self.fp16_groups[i], debug_fp32_grads[i]):
@@ -2829,7 +2839,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 print(f'Pre-Step Norms {i} {param_id} = {norm_list}')
 
     def dump_post_step_gradients(self):
-        # Dump gradient norms for debbuging
+        # Dump gradient norms for debugging
         for i, group in enumerate(self.fp16_groups):
             print(
                 f'Post-Step Dump Norms for Group {i} FP16P, FP16DS, FP16FLAT, FP32FLAT')
@@ -2849,14 +2859,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 norm_list = [param_norm, ds_norm] + unflat_norm
                 print(f'Post-Step Norms {i} {param_id} = {norm_list}')
 
-    def unscale_and_clip_grads(self, sub_group_id, norm_groups):
-
+    def unscale_and_clip_grads(self, sub_group_id, total_norm):
         grad_groups_flat = [self.fp32_partitioned_groups_flat[sub_group_id].grad]
-
-        total_norm = 0.0
-        for norm in norm_groups:
-            total_norm += norm**2.0
-        total_norm = math.sqrt(total_norm)
 
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
@@ -3141,7 +3145,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def refresh_fp32_params(self):
         self._restore_from_fp16_weights()
 
-    # Extract flattened partion for current rank from all partitions
+    # Extract flattened partition for current rank from all partitions
     def _get_flattened_partition(self, all_partition_states):
         partition_id = dist.get_rank(group=self.dp_process_group)
         alignment = dist.get_world_size(group=self.dp_process_group)

@@ -148,6 +148,10 @@ FP16_HYSTERESIS_DEFAULT = 2
 FP16_MIN_LOSS_SCALE = "min_loss_scale"
 FP16_MIN_LOSS_SCALE_DEFAULT = 1
 
+# FP16 master and grads
+FP16_MASTER_WEIGHTS_AND_GRADS = "fp16_master_weights_and_grads"
+FP16_MASTER_WEIGHTS_AND_GRADS_DEFAULT = False
+
 #########################################
 # Apex AMP support
 #########################################
@@ -344,6 +348,14 @@ PLD_THETA_DEFAULT = 1.0
 PLD_GAMMA = "gamma"
 PLD_GAMMA_DEFAULT = 0.001
 
+#########################################
+# Curriculum Learning
+#########################################
+CURRICULUM_LEARNING = "curriculum_learning"
+
+CURRICULUM_ENABLED = "enabled"
+CURRICULUM_ENABLED_DEFAULT = False
+
 
 #########################################
 # Validation modes
@@ -404,3 +416,15 @@ QUANTIZE_ROUNDING_DEFAULT = 0  #nearest
 FP16_MIXED_QUANTIZE_ENABLED_DEFAULT = False
 QUANTIZE_CHANGE_RATIO_DEFAULT = 0.001
 QUANTIZE_VERBOSE_DEFAULT = False
+
+#########################################
+# Drop the last incomplete Batch
+# #########################################
+# dataloader_drop_last. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+DATALOADER_DROP_LAST_FORMAT = '''
+The last incomplete batch can be dropped by setting:
+"dataloader_drop_last": True
+'''
+DATALOADER_DROP_LAST = "dataloader_drop_last"
+DATALOADER_DROP_LAST_DEFAULT = False

@@ -6,19 +6,19 @@ Copyright NVIDIA/Megatron
 Helper functions and classes from multiple sources.
 '''
 
+from deepspeed.moe.utils import is_moe_param, split_params_into_shared_and_expert_params
 import os
 import psutil
 import gc
-from math import ceil
+from math import ceil, sqrt
 from math import floor
 from bisect import bisect_left, bisect_right
 
 import torch
-import torch.distributed as dist
 from torch._six import inf
 import torch.distributed as dist
 
-from deepspeed.utils import logger
+from deepspeed.utils import groups, logger
 from numpy import prod
 
 # pt-1.9 deprecations
@@ -59,24 +59,94 @@ def set_random_seed(seed):
     torch.manual_seed(seed)
 
 
-def move_to_device(item, device):
+def is_model_parallel_parameter(p) -> bool:
+    return hasattr(p, 'model_parallel') and p.model_parallel
+
+
+def bwc_tensor_model_parallel_rank(mpu=None):
+    """Backwards-compatible way of querying the tensor model parallel rank from
+    an ``mpu`` object.
+
+    *Tensor* model parallelism means that tensors are physically split across
+    processes. This contrasts with *pipeline* model parallelism, in which the
+    layers are partitioned but tensors left intact.
+
+    The API for tensor model parallelism has changed across versions and this
+    helper provides a best-effort implementation across versions of ``mpu``
+    objects.  The preferred mechanism is
+    ``mpu.get_tensor_model_parallel_rank()``.
+
+    This should "just work" with both Megatron-LM and DeepSpeed's pipeline
+    parallelism.
+
+    Args:
+        mpu (model parallel unit, optional): The tensor model parallel rank.
+            If ``mpu=None``, returns 0. Defaults to ``None``.
+
+    Returns:
+        int: the rank
     """
-    Move tensor onto device. Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+    if mpu is None:
+        # No model parallelism in easy :)
+        return 0
+
+    if hasattr(mpu, 'get_tensor_model_parallel_rank'):
+        # New Megatron and DeepSpeed convention (post pipeline-parallelism release)
+        return mpu.get_tensor_model_parallel_rank()
+    elif hasattr(mpu, 'get_slice_parallel_rank'):
+        # Some DeepSpeed + pipeline parallelism versions
+        return mpu.get_slice_parallel_rank()
+    else:
+        # Deprecated Megatron and DeepSpeed convention
+        return mpu.get_model_parallel_rank()
+
+
+def copy_to_device(item, device, criterion_func):
+    """
+    Return a copy of tensor on specified device.
+    Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
     Parameters:
-        item: tensor to move or (possibly nested) container of tensors to move.
+        item: tensor to copy or (possibly nested) container of tensors to copy.
         device: target device
+        criterion_func: Function to restrict copy operation to items meet criterion
 
     Returns:
         None
     """
-    if torch.is_tensor(item):
+    if criterion_func(item):
         return item.to(device)
     elif isinstance(item, list):
-        return [move_to_device(v, device) for v in item]
+        return [copy_to_device(v, device, criterion_func) for v in item]
     elif isinstance(item, tuple):
-        return tuple([move_to_device(v, device) for v in item])
+        return tuple([copy_to_device(v, device, criterion_func) for v in item])
     elif isinstance(item, dict):
-        return {k: move_to_device(v, device) for k, v in item.items()}
+        return {k: copy_to_device(v, device, criterion_func) for k, v in item.items()}
+    else:
+        return item
+
+
+def move_to_device(item, device, criterion_func):
+    """
+    Move tensor on to specified device by changing the storage.
+    Works on individual tensors, and tensors contained/nested in lists, tuples, and dicts.
+    Parameters:
+        item: tensor to move or (possibly nested) container of tensors to move.
+        device: target device
+        criterion_func: Function to restrict move operation to items meet criterion
+
+    Returns:
+        None
+    """
+    if criterion_func(item):
+        device_copy = item.to(device)
+        item.data = device_copy.data
+        return item
+    elif isinstance(item, list):
+        return [move_to_device(v, device, criterion_func) for v in item]
+    elif isinstance(item, tuple):
+        return tuple([move_to_device(v, device, criterion_func) for v in item])
+    elif isinstance(item, dict):
+        return {k: move_to_device(v, device, criterion_func) for k, v in item.items()}
     else:
         return item
 
@@ -92,33 +162,41 @@ class CheckOverflow(object):
         self.params = [] if param_groups else None
         self.zero_reduce_scatter = zero_reduce_scatter
         self.deepspeed = deepspeed
+        self.has_moe_params = False
         if param_groups:
             for group in param_groups:
                 for param in group:
                     self.params.append(param)
+                    if is_moe_param(param):
+                        self.has_moe_params = True
 
     def check_using_norm(self, norm_group, reduce_overflow=True):
         # TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
-
+        overflow_gpu = torch.cuda.FloatTensor([overflow])
+        if self.has_moe_params:
+            # In this case, we need to do an all_reduce across
+            # the expert_parallel_group, so that if there was
+            # an overflow due to expert weights, we detect it
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=groups.get_expert_parallel_group())
         if self.mpu is not None:
-            overflow_gpu = torch.cuda.ByteTensor([overflow])
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
                                          group=self.mpu.get_model_parallel_group())
-            overflow = overflow_gpu[0].item()
         elif reduce_overflow:
-            cuda_overflow = torch.cuda.FloatTensor([overflow])
-            dist.all_reduce(cuda_overflow, op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(overflow_gpu, op=torch.distributed.ReduceOp.MAX)
             dist.barrier()
-            overflow = cuda_overflow[0].item()
-
+        overflow = overflow_gpu[0].item()
         return bool(overflow)
 
     def check(self, param_groups=None):
         params = []
+        has_moe_params = False
         if param_groups is None:
             params = self.params
+            has_moe_params = self.has_moe_params
         else:
             assert param_groups is not None, \
                 "self.params and param_groups both cannot be none"
@@ -126,8 +204,10 @@ class CheckOverflow(object):
             for group in param_groups:
                 for param in group:
                     params.append(param)
+                    if is_moe_param(param):
+                        has_moe_params = True
 
-        return self.has_overflow(params)
+        return self.has_overflow(params, has_moe_params=has_moe_params)
 
     # `params` is a list / generator of torch.Variable
     def has_overflow_serial(self, params):
@@ -136,7 +216,9 @@ class CheckOverflow(object):
                 return True
         return False
 
-    def has_overflow(self, params):
+    def has_overflow(self, params, has_moe_params=None):
+        if has_moe_params is None:
+            has_moe_params = self.has_moe_params
         overflow = self.has_overflow_serial(params)
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
@@ -144,6 +226,12 @@ class CheckOverflow(object):
         # torch.distributed.all_reduce(overflow_gpu,
         #                             op=torch.distributed.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
+        if has_moe_params:
+            # All reduce this across expert_parallel_group, so that if an expert
+            # overflows, we detect it here
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=groups.get_expert_parallel_group())
         if self.zero_reduce_scatter:
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -208,8 +296,87 @@ def _handle_overflow(cpu_sum, x, i):
         )
 
 
-def get_grad_norm(parameters, norm_type=2, mpu=None):
+def get_global_norm(norm_list):
+    """ Compute total from a list of norms
+    """
+    total_norm = 0.0
+    for norm in norm_list:
+        total_norm += norm**2.0
+    return sqrt(total_norm)
+
+
+def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     """Clips gradient norm of an iterable of parameters.
+
+    This has been adapted from Nvidia megatron. We add norm averaging
+    to consider MoE params when calculating norm as they will result
+    in different norms across different ranks.
+
+    This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
+    added functionality to handle model parallel parameters. Note that
+    the gradients are modified in place.
+
+    Arguments:
+        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
+            single Tensor that will have gradients normalized
+        max_norm (float or int): max norm of the gradients
+        norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
+            infinity norm.
+
+    Returns:
+        Total norm of the parameters (viewed as a single vector).
+    """
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = list(filter(lambda p: p.grad is not None, parameters))
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
+    if norm_type == inf:
+        total_norm = max(p.grad.data.abs().max() for p in parameters)
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        # Take max across all GPUs.
+        if mpu is not None:
+            torch.distributed.all_reduce(total_norm_cuda,
+                                         op=torch.distributed.ReduceOp.MAX,
+                                         group=mpu.get_model_parallel_group())
+        total_norm = total_norm_cuda[0].item()
+    else:
+        total_norm = 0
+        for p in parameters:
+            if mpu is not None:
+                if (mpu.get_model_parallel_rank() == 0
+                    ) or is_model_parallel_parameter(p):
+                    param_norm = p.grad.data.norm(norm_type)
+                    total_norm += param_norm.item()**norm_type
+            else:
+                param_norm = p.grad.data.float().norm(norm_type)
+                total_norm += param_norm.item()**norm_type
+
+        # Sum across all model parallel GPUs.
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if mpu is not None:
+            torch.distributed.all_reduce(total_norm_cuda,
+                                         op=torch.distributed.ReduceOp.SUM,
+                                         group=mpu.get_model_parallel_group())
+        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+
+    # Need to average total_norm across different GPUs due to the presence of moe params
+    pg = groups.get_data_parallel_group()
+    scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
+
+    scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
+    dist.all_reduce(scaled_norm_tensor, group=pg)
+    total_norm = scaled_norm_tensor.item()
+
+    clip_coef = max_norm / (total_norm + 1e-6)
+    if clip_coef < 1:
+        for p in parameters:
+            p.grad.data.mul_(clip_coef)
+    return total_norm
+
+
+def get_grad_norm(parameters, norm_type=2, mpu=None):
+    """Get grad norm of an iterable of parameters.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
     added functionality to handle model parallel parameters. Note that
@@ -241,15 +408,19 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    param_norm = p.grad.data.float().norm(norm_type)
-                    total_norm += param_norm.item()**norm_type
-            else:
-                param_norm = p.grad.data.float().norm(norm_type)
-                total_norm += param_norm.item()**norm_type
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
+
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.grad.data.float().norm(norm_type)
+            total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -266,8 +437,50 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
     return total_norm
 
 
+def get_grad_zeros(parameters, mpu=None):
+    """Compute the number of grads with zero values.
+
+    This is adapted from get_grad_norm
+
+    Arguments:
+        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
+            single Tensor that will have gradients normalized
+
+    Returns:
+        Total number of params with zero values (viewed as a single vector).
+    """
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = list(filter(lambda p: p.grad is not None, parameters))
+
+    total_zeros = 0.
+    tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
+    for p in parameters:
+        # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+        if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            continue
+
+        # Filter to avoid over-counting replicated tensors from tensor
+        # model parallelism
+        if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+            continue
+
+        count_zeros = p.grad.numel() - torch.count_nonzero(p.grad)
+        total_zeros += count_zeros.item()
+
+    # Sum across all model parallel GPUs.
+    total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    if mpu is not None:
+        torch.distributed.all_reduce(total_zeros_cuda,
+                                     op=torch.distributed.ReduceOp.SUM,
+                                     group=mpu.get_model_parallel_group())
+    total_zeros = total_zeros_cuda[0].item()
+
+    return total_zeros
+
+
 def get_weight_norm(parameters, norm_type=2, mpu=None):
-    """Clips gradient norm of an iterable of parameters.
+    """Get norm of an iterable of parameters.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
     added functionality to handle model parallel parameters. Note that
@@ -298,24 +511,19 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
+        tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
-            if mpu is not None:
-                if (mpu.get_model_parallel_rank() == 0
-                    ) or is_model_parallel_parameter(p):
-                    try:
-                        param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                    except TypeError as err:
-                        param_norm = float(torch.norm(p.float(), norm_type))
+            # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                continue
 
-                    #param_norm = p.data.float().norm(norm_type)
-                    total_norm += param_norm**norm_type
-            else:
-                try:
-                    param_norm = float(torch.norm(p, norm_type, dtype=torch.float32))
-                except TypeError as err:
-                    param_norm = float(torch.norm(p.float(), norm_type))
-                #param_norm = p.data.float().norm(norm_type)
-                total_norm += param_norm**norm_type
+            # Filter to avoid over-counting replicated tensors from tensor
+            # model parallelism
+            if (tensor_mp_rank > 0) and not is_model_parallel_parameter(p):
+                continue
+
+            param_norm = p.data.float().norm(norm_type)
+            total_norm += param_norm**norm_type
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])

@@ -4,7 +4,7 @@ title: "DeepSpeed Configuration JSON"
 
 ### Batch Size Related Parameters
 
-**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicty, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
+**Note:** <i>**train_batch_size**</i> must be equal to  <i>**train_micro_batch_size_per_gpu**</i> * <i>**gradient_accumulation**</i> * number of GPUs. For simplicity, you can choose to only specify two of the three parameters, the last one will be inferred automatically by DeepSpeed.
 {: .notice--warning}
 
 <i>**train_batch_size**</i>: [integer]
@@ -173,7 +173,7 @@ Example of <i>**scheduler**</i>
 
 | Description                                                                                                              | Default |
 | ------------------------------------------------------------------------------------------------------------------------ | ------- |
-| Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. | `false` |
+| Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. This feature is essentially deprecated as we don't see use cases for it as much anymore. It should be noted that this feature is not compatible with [torch.sparse](https://pytorch.org/docs/stable/sparse.html) related features. | `false` |
 
 ### FP16 training options
 
@@ -662,7 +662,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                              | Default |
 | -------------------------------------------------------------------------------------------------------- | ------- |
-| Total number of activation checkpoints used to allocate memory buffer for contiguous_memoty_optimization | `None`  |
+| Total number of activation checkpoints used to allocate memory buffer for contiguous_memory_optimization | `None`  |
 
 <i>**synchronize_checkpoint_boundary**</i>: [boolean]
 
@@ -716,3 +716,79 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "num_sliding_window_blocks": 3
   }
 ```
+
+### Curriculum Learning
+```json
+  "curriculum_learning": {
+    "enabled": true,
+    "curriculum_type": "seqlen",
+    "min_difficulty": 8,
+    "max_difficulty": 1024,
+    "schedule_type": "fixed_linear",
+    "schedule_config": {
+      "total_curriculum_step": 40000,
+      "difficulty_step": 8
+    }
+  }
+```
+<i>**enabled**</i>: [boolean]
+
+| Description                               | Default |
+| ----------------------------------------- | ------- |
+| Set to true to enable curriculum learning | `false` |
+
+<i>**curriculum_type**</i>: [string]
+
+| Description                                                       | Default |
+| ----------------------------------------------------------------- | ------- |
+| Type of curriculum difficulty metric. Currently support `seqlen`. | N/A |
+
+
+<i>**min_difficulty**</i>: [integer]
+
+| Description                   | Default |
+| ----------------------------- | ------- |
+| The starting difficulty level | N/A |
+
+<i>**max_difficulty**</i>: [integer]
+
+| Description                 | Default |
+| --------------------------- | ------- |
+| The ending difficulty level | N/A  |
+
+<i>**schedule_type**</i>: [string]
+
+| Description                                                                                        | Default |
+| -------------------------------------------------------------------------------------------------- | ------- |
+| Type of curriculum schedule. Currently support `fixed_linear`, `fixed_root`, and `fixed_discrete`. | N/A |
+
+
+<i>**total_curriculum_step**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| Total number of steps for the curriculum learning. One of the `schedule_config` when the `fixed_linear` and `fixed_root` schedule_type are used. | N/A |
+
+<i>**difficulty_step**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| At any time, the curriculum learning difficulty must be multiple of this `difficulty_step`. Set this to multiple of 8 (for FP16 data) or 16 (for INT8 data) to enable NVIDIA Tensor Core acceleration. One of the `schedule_config` when the `fixed_linear` and `fixed_root` schedule_type are used. | N/A |
+
+<i>**root_degree**</i>: [integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| Root degree of the curriculum schedule function. One of the `schedule_config` when the `fixed_root` schedule_type is used. | N/A |
+
+<i>**difficulty**</i>: [list of integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| List of difficulty levels to be used during schedule. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A |
+
+<i>**max_step**</i>: [list of integer]
+
+| Description                                                     | Default |
+| --------------------------------------------------------------- | ------- |
+| List of which step to change difficulty level. One of the `schedule_config` when the `fixed_discrete` schedule_type is used. | N/A |
