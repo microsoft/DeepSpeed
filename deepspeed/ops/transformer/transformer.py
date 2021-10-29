@@ -86,7 +86,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
-            return_tuple: Enable if using the return_tuple interface style for sending out the forward results.
+            huggingface: Enable if using the HuggingFace interface style for sending out the forward results.
 
             training: Enable for training rather than inference.
     """
@@ -109,7 +109,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False,
-                 return_tuple=False,
+                 huggingface=False,
                  training=True):
         super(DeepSpeedTransformerConfig,
               self).__init__(
@@ -134,7 +134,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
-        self.return_tuple = return_tuple
+        self.huggingface = huggingface
 
     @classmethod
     def from_dict(cls, json_object):
@@ -316,7 +316,7 @@ class DeepSpeedTransformerFunction(Function):
         if inp_size[1] % 16 != 0:
             output = torch.narrow(output, 1, 0, inp_size[1])
 
-        if config.return_tuple:
+        if config.huggingface:
             return (output, )  # outputs -> (output) : outputs[0] = output
         else:
             return output
