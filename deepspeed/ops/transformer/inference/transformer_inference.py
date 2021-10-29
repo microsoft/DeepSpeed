@@ -27,41 +27,28 @@ class TransformerConfig():
 
 class DeepSpeedInferenceConfig(TransformerConfig):
     """Initialize the DeepSpeed Transformer Config.
-
         Arguments:
             hidden_size: The hidden size of the transformer layer
-
             intermediate_size: The intermediate size of the feed-forward part of transformer layer
-
             heads: The number of heads in the self-attention of the transformer layer
-
             num_hidden_layers: The number of transformer layers
-
             layer_norm_eps: The epsilon value for the layer norm
-
             local_rank: Optional: The rank of GPU running the transformer kernel, it is not required
                 to use if the model already set the current device, otherwise need to set it
                 so that the transformer kernel can work on the right device
-
             mp_size (optional): This argument is mainly used to create the parameters on the kernel side
                 using model-parallel architecture. If the client model already takes care of this, there is no
                 need to pass this argument.
-
             fp16: Enable half-precision computation
-
             pre_layer_norm: Select between Pre-LN or Post-LN transformer architecture
-
             stochastic_mode:  Enable for high performance, please note that this flag has some level of
                 non-determinism and can produce different results on different runs.  However, we have seen
                 that by enabling it, the pretraining tasks such as BERT are not affected and can obtain
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
-
             encoder_decoder: DeepSpeed-Inference currently support the encoder-only architecture! We will add
                 the required features to support both soon!
-
             scale_attention: If true, both q and k are scaled by 1/sqrt(attention_heads) before attention computation.
-
     """
     def __init__(self,
                  hidden_size=-1,
@@ -159,36 +146,11 @@ class DeepSpeedSelfAttentionFunction(Function):
                                       (hidden_size_per_partition,)
             return x.view(*new_x_layer_shape)
 
-        def backup_attention(mixed_query, key_layer, value_layer, input_mask):
-            if layer_past is not None:
-                past_key, past_value = layer_past
-                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=-2)
-                value_layer = torch.cat((past_value.type_as(value_layer),
-                                         value_layer),
-                                        dim=-2)
-            query = _transpose_for_scores(mixed_query, False)
-            key = _transpose_for_scores(key_layer, True)
-            value = _transpose_for_scores(value_layer, False)
-            p = torch.matmul(query, key)
-
-            ds_softmax = inference_cuda_module.softmax_fp16 if config.fp16 else \
-                            inference_cuda_module.softmax_fp32
-            p = ds_softmax(p / (float(key.size(-2))**0.5),
-                           input_mask,
-                           True,
-                           False,
-                           False,
-                           256)
-            p = p.to(value.dtype)
-            context_layer = torch.matmul(p, value)
-            context_layer = _transpose_for_context(context_layer)
-            return context_layer, key_layer, value_layer
-
         def compute_attention(qkv_out, input_mask):
-            score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16) else \
+            score_context_func = inference_cuda_module.softmax_context_fp32 if (not config.fp16 or not config.triangular_masking) else \
                                     inference_cuda_module.softmax_context_fp16
-            #if not config.triangular_masking:
-            #    qkv_out = qkv_out.float()
+            if not config.triangular_masking:
+                qkv_out = qkv_out.float()
 
             if merge_count > 0 and config.q_int8:
                 split_dim = (qkv_out.dim() - 1)
@@ -212,14 +174,9 @@ class DeepSpeedSelfAttentionFunction(Function):
                  value_layer) = torch.split(qkv_out,
                                             (qkv_out.shape[-1] // 3),
                                             dim=(qkv_out.dim() - 1))
-            no_masking = input_mask is None
-            if no_masking:
-                input_mask = torch.empty(1)
+
             head_size = (mixed_query.shape[-1] // num_attention_heads_per_partition)
-            #return backup_attention(mixed_query,
-            #     key_layer,
-            #     value_layer,
-            #     input_mask)
+
             unfused_mode = not config.specialized_mode or \
                                 mixed_query.shape[1] >= 32 or head_size > 128
 
@@ -240,12 +197,17 @@ class DeepSpeedSelfAttentionFunction(Function):
                     True) / (norm_factor if config.scale_attention else 1.0)
                 value_layer1 = _transpose_for_scores(value_layer, False, True)
 
+            no_masking = input_mask is None
+            if no_masking:
+                input_mask = torch.empty(1)
+
             if layer_past is None:
                 attn_key_value = score_context_func(
                     mixed_query,
                     (key_layer1 if unfused_mode else key_layer),
                     torch.empty(1),
-                    (input_mask),
+                    (input_mask
+                     if config.triangular_masking or no_masking else input_mask.float()),
                     (value_layer1 if unfused_mode else value_layer),
                     torch.empty(1),
                     num_attention_heads_per_partition,
@@ -260,7 +222,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                     mixed_query,
                     (key_layer1 if unfused_mode else past_key.type_as(key_layer)),
                     (key_layer1 if unfused_mode else key_layer),
-                    (input_mask),
+                    (input_mask
+                     if config.triangular_masking or no_masking else input_mask.float()),
                     (value_layer1 if unfused_mode else past_value.type_as(value_layer)),
                     (value_layer1 if unfused_mode else value_layer),
                     num_attention_heads_per_partition,
@@ -278,8 +241,8 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             # Transpose Context
             context_layer = _transpose_for_context(context_layer)
-            #if (config.fp16 or config.q_int8) and not config.triangular_masking:
-            #    context_layer = context_layer.half()
+            if (config.fp16 or config.q_int8) and not config.triangular_masking:
+                context_layer = context_layer.half()
 
             return context_layer, key_layer, value_layer
 
@@ -545,11 +508,9 @@ class DeepSpeedMLP(nn.Module):
 
 class DeepSpeedTransformerInference(nn.Module):
     """Initialize the DeepSpeed Transformer Layer.
-
         Arguments:
             layer_id: The layer index starting from 0, e.g. if model has 24 transformer layers,
                 layer_id will be 0,1,2...23 when each layer object is instantiated
-
             config: An object of DeepSpeedInferenceConfig
             mp_group: Model parallelism group initialized on the modeling side.
             quantize_scales: This argument groups all the layers' scales used for quantization
@@ -576,13 +537,14 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config = config
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
-        self.attention = DeepSpeedSelfAttention(self.config,
+
+        self.attention = DeepSpeedSelfAttention(config,
                                                 mp_group,
                                                 quantize_scales,
                                                 quantize_groups,
                                                 merge_count,
                                                 qkv_merging)
-        self.mlp = DeepSpeedMLP(self.config,
+        self.mlp = DeepSpeedMLP(config,
                                 mp_group,
                                 quantize_scales,
                                 quantize_groups,
@@ -622,7 +584,7 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
-        #self.config.triangular_masking = False
+
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
