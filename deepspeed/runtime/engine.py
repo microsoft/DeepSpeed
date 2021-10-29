@@ -30,7 +30,7 @@ from deepspeed.runtime.activation_checkpointing import checkpointing as activati
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
-    ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
+    ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
     TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
@@ -39,7 +39,7 @@ from deepspeed.runtime.constants import \
     PLD_THETA, PLD_GAMMA
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
-from deepspeed.runtime.csr_tensor import CSRTensor
+from deepspeed.runtime.sparse_tensor import SparseTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
 from deepspeed.runtime.utils import get_grad_norm
@@ -78,13 +78,13 @@ except ImportError:
     pass
 
 
-def split_half_float_double_csr(tensors):
+def split_half_float_double_sparse(tensors):
     supported_types = [
         "torch.cuda.HalfTensor",
         "torch.cuda.FloatTensor",
         "torch.cuda.DoubleTensor",
         "torch.cuda.BFloat16Tensor",
-        CSRTensor.type()
+        SparseTensor.type()
     ]
 
     for t in tensors:
@@ -224,14 +224,17 @@ class DeepSpeedEngine(Module):
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
 
-        # Bookkeeping for csr support
-        self.csr_tensor_module_names = set()
-        if self.sparse_gradients_enabled():
-            for name, module in self.module.named_modules():
-                if isinstance(module, torch.nn.Embedding):
-                    self.csr_tensor_module_names.add(name + ".weight")
-                    logger.info("Will convert {} to sparse (csr) "
-                                "tensor during training".format(name))
+        # Bookkeeping for sparse support
+        self.sparse_tensor_module_names = set()
+        # if self.sparse_gradients_enabled():
+        for name, module in self.module.named_modules():
+            if isinstance(module, (torch.nn.Embedding, torch.nn.EmbeddingBag)):
+                if self.sparse_gradients_enabled() or module.sparse:
+                    self.sparse_tensor_module_names.add(name + ".weight")
+                    if self.sparse_gradients_enabled():
+                        logger.info(
+                            "Will convert {} to sparse tensor during training".format(
+                                name))
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
@@ -933,7 +936,7 @@ class DeepSpeedEngine(Module):
                 "'max_grad_norm' is not supported as an optimizer parameter, please switch to using the deepspeed parameter 'gradient_clipping' see: https://www.deepspeed.ai/docs/config-json/#gradient-clipping for more details"
             )
 
-        if self.optimizer_name() in [ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
+        if self.optimizer_name() in [ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER]:
             torch_adam = optimizer_parameters.pop(TORCH_ADAM_PARAM, False)
             adam_w_mode = optimizer_parameters.pop(ADAM_W_MODE, ADAM_W_MODE_DEFAULT)
 
@@ -950,10 +953,15 @@ class DeepSpeedEngine(Module):
                                                   **optimizer_parameters)
             else:
                 if self.zero_cpu_offload():
-                    from deepspeed.ops.adam import DeepSpeedCPUAdam
-                    optimizer = DeepSpeedCPUAdam(model_parameters,
-                                                 **optimizer_parameters,
-                                                 adamw_mode=effective_adam_w_mode)
+                    if self.optimizer_name() == ADAGRAD_OPTIMIZER:
+                        from deepspeed.ops.adagrad import DeepSpeedCPUAdagrad
+                        optimizer = DeepSpeedCPUAdagrad(model_parameters,
+                                                        **optimizer_parameters)
+                    else:
+                        from deepspeed.ops.adam import DeepSpeedCPUAdam
+                        optimizer = DeepSpeedCPUAdam(model_parameters,
+                                                     **optimizer_parameters,
+                                                     adamw_mode=effective_adam_w_mode)
                 else:
                     from deepspeed.ops.adam import FusedAdam
                     optimizer = FusedAdam(model_parameters,
@@ -1803,19 +1811,18 @@ class DeepSpeedEngine(Module):
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
-                if self.sparse_gradients_enabled(
-                ) and param_name in self.csr_tensor_module_names:
+                if param_name in self.sparse_tensor_module_names:
                     if is_moe_param:
-                        expert_grads.append(CSRTensor(grad_data))
+                        expert_grads.append(SparseTensor(grad_data))
                     else:
-                        grads.append(CSRTensor(grad_data))
+                        grads.append(SparseTensor(grad_data))
                 else:
                     if is_moe_param:
                         expert_grads.append(grad_data)
                     else:
                         grads.append(grad_data)
 
-        split_buckets = split_half_float_double_csr(grads)
+        split_buckets = split_half_float_double_sparse(grads)
         for _, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
 
@@ -1824,20 +1831,21 @@ class DeepSpeedEngine(Module):
             else:
                 dp_group = groups.get_data_parallel_group()
 
-            if bucket_type == CSRTensor.type():
-                self.csr_allreduce_no_retain(bucket, dp_group=dp_group)
+            if bucket_type == SparseTensor.type():
+                self.sparse_allreduce_no_retain(bucket, dp_group=dp_group)
             else:
                 self.allreduce_no_retain(bucket,
                                          dp_group=dp_group,
                                          numel_per_bucket=elements_per_buffer)
 
         if self.has_moe_layers:
-            expert_split_buckets = split_half_float_double_csr(expert_grads)
+            expert_split_buckets = split_half_float_double_sparse(expert_grads)
             for i, bucket_tuple in enumerate(expert_split_buckets):
                 bucket_type, bucket = bucket_tuple
-                if bucket_type == CSRTensor.type():
-                    self.csr_allreduce_no_retain(bucket,
-                                                 groups.get_expert_data_parallel_group())
+                if bucket_type == SparseTensor.type():
+                    self.sparse_allreduce_no_retain(
+                        bucket,
+                        groups.get_expert_data_parallel_group())
                 else:
                     # Separate between diff groups
                     self.allreduce_no_retain(
@@ -1845,31 +1853,33 @@ class DeepSpeedEngine(Module):
                         dp_group=groups.get_expert_data_parallel_group(),
                         numel_per_bucket=elements_per_buffer)
 
-    def csr_allreduce_no_retain(self, bucket, dp_group):
-        allreduced_csrs = self.csr_allreduce_bucket(bucket, dp_group)
-        # Densify csr tensor and copy back to original location
-        for csr in allreduced_csrs:
-            dense_tensor = csr.to_dense()
-            csr.orig_dense_tensor.copy_(dense_tensor)
+    def sparse_allreduce_no_retain(self, bucket, dp_group):
+        allreduced_sparses = self.sparse_allreduce_bucket(bucket, dp_group)
+        # Densify sparse tensor and copy back to original location
+        for tensor in allreduced_sparses:
+            if tensor.is_sparse:
+                tensor.orig_dense_tensor.data = tensor.to_coo_tensor()
+            else:
+                tensor.orig_dense_tensor.copy_(tensor.to_dense())
 
-    def csr_allreduce_bucket(self, bucket, dp_group):
-        csr_list = []
-        for csr in bucket:
-            csr_list.append(self.csr_allreduce(csr, dp_group))
-        return csr_list
+    def sparse_allreduce_bucket(self, bucket, dp_group):
+        sparse_list = []
+        for sparse in bucket:
+            sparse_list.append(self.sparse_allreduce(sparse, dp_group))
+        return sparse_list
 
-    def csr_allreduce(self, csr, dp_group):
+    def sparse_allreduce(self, sparse, dp_group):
         # Pre-divide for fp16 stability
-        csr.values.div_(dist.get_world_size(group=dp_group))
+        sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
-        indices_device_list = self.csr_all_gather(csr.indices, dp_group)
-        values_device_list = self.csr_all_gather(csr.values, dp_group)
+        indices_device_list = self.sparse_all_gather(sparse.indices, dp_group)
+        values_device_list = self.sparse_all_gather(sparse.values, dp_group)
 
-        csr.indices = torch.cat(indices_device_list)
-        csr.values = torch.cat(values_device_list)
-        return csr
+        sparse.indices = torch.cat(indices_device_list)
+        sparse.values = torch.cat(values_device_list)
+        return sparse
 
-    def csr_all_gather(self, value, dp_group):
+    def sparse_all_gather(self, value, dp_group):
         my_size = torch.LongTensor([value.size()[0]]).to(self.device)
         all_sizes = self.all_gather_scalar(my_size, dp_group)
         max_size = torch.cat(all_sizes).max()
@@ -1898,7 +1908,9 @@ class DeepSpeedEngine(Module):
             size = all_sizes[dev_idx][0]
             tensors.append(
                 t.index_select(0,
-                               torch.LongTensor(range(size)).to(self.device)))
+                               torch.arange(size,
+                                            dtype=torch.long,
+                                            device=self.device)))
 
         return tensors
 
@@ -2117,7 +2129,7 @@ class DeepSpeedEngine(Module):
             if load_lr_scheduler_states and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
-            self.csr_tensor_module_names = checkpoint['csr_tensor_module_names']
+            self.sparse_tensor_module_names = checkpoint['sparse_tensor_module_names']
             self.global_steps = checkpoint['global_steps']
             self.global_samples = checkpoint.get(
                 'global_samples',
@@ -2126,7 +2138,7 @@ class DeepSpeedEngine(Module):
             self.loaded_checkpoint_mp_world_size = checkpoint['mp_world_size']
             deepspeed_states = [
                 'module',
-                'csr_tensor_module_names',
+                'sparse_tensor_module_names',
                 'skipped_steps',
                 'global_steps',
                 'dp_world_size',
@@ -2267,6 +2279,7 @@ class DeepSpeedEngine(Module):
 
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
+        torch.distributed.barrier()
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
@@ -2290,13 +2303,14 @@ class DeepSpeedEngine(Module):
             self._create_zero_checkpoint_files(save_dir, tag)
             self._save_zero_checkpoint(save_dir, tag)
 
-        # Save latest checkpoint tag
-        if save_latest:
-            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
-                fd.write(tag)
-
         if self.zero_optimization_partition_weights():
             self.optimizer.save_checkpoint_epilogue()
+
+        # Save latest checkpoint tag
+        torch.distributed.barrier()
+        if save_latest and self.global_rank == 0:
+            with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                fd.write(tag)
 
         return True
 
@@ -2393,8 +2407,8 @@ class DeepSpeedEngine(Module):
                 'lr_scheduler':
                 self.lr_scheduler.state_dict()
                 if self.lr_scheduler is not None else None,
-                'csr_tensor_module_names':
-                self.csr_tensor_module_names,
+                'sparse_tensor_module_names':
+                self.sparse_tensor_module_names,
                 'skipped_steps':
                 self.skipped_steps,
                 'global_steps':
@@ -2449,7 +2463,7 @@ class DeepSpeedEngine(Module):
                      if self.optimizer and not self.zero_optimization() else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
                      if self.lr_scheduler is not None else None,
-                     csr_tensor_module_names=self.csr_tensor_module_names,
+                     sparse_tensor_module_names=self.sparse_tensor_module_names,
                      skipped_steps=self.skipped_steps,
                      global_steps=self.global_steps,
                      global_samples=self.global_samples,
