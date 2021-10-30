@@ -1326,6 +1326,7 @@ class DeepSpeedEngine(Module):
 
     def set_gradient_accumulation_boundary(self, is_boundary):
         self._is_gradient_accumulation_boundary = is_boundary
+        self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
     def zero_grad(self):
         """

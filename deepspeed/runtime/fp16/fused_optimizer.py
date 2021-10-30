@@ -8,6 +8,7 @@ This file is adapted from FP16_Optimizer in NVIDIA/apex
 import torch
 import math
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+import torch.distributed as dist
 
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
@@ -35,6 +36,9 @@ class FP16_Optimizer(object):
 
         self.fused_adam_legacy = fused_adam_legacy
         self.timers = timers
+
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
 
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
@@ -133,6 +137,14 @@ class FP16_Optimizer(object):
             self.fp32_groups_flat[i].grad = None
 
         return
+
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
 
     def zero_grad(self, set_grads_to_None=True):
         """
@@ -236,6 +248,10 @@ class FP16_Optimizer(object):
         self._update_scale(self.overflow)
         if self.overflow:
             if self.verbose:
+                if self.custom_loss_scaler:
+                    logger.info(
+                        "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step."
+                        .format(dist.get_rank()))
                 log_dist(
                     "Overflow detected. Skipping step. Attempted loss "
                     f"scale: {prev_scale}, reducing to {self.cur_scale}",
@@ -299,7 +315,10 @@ class FP16_Optimizer(object):
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm, apply_scale=True):
         # compute combined scale factor for this group
-        combined_scale = self.cur_scale
+        if self.custom_loss_scaler:
+            combined_scale = self.external_loss_scale
+        else:
+            combined_scale = self.cur_scale
         if self.clip_grad > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.cur_scale) + 1e-6) / self.clip_grad
@@ -320,9 +339,13 @@ class FP16_Optimizer(object):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        scaled_loss = (loss.float()) * self.cur_scale
-
-        scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            # logger.info(f'effective loss scale: {self.external_loss_scale}')
+            scaled_loss.backward()
+        else:
+            scaled_loss = (loss.float()) * self.cur_scale
+            scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
 
     def set_lr(self, lr):
         """Set the learning rate."""
@@ -341,10 +364,15 @@ class FP16_Optimizer(object):
                                      self.min_loss_scale)
                 self.last_overflow_iter = self.cur_iter
                 if self.verbose:
-                    logger.info(f"\nGrad overflow on iteration {self.cur_iter}")
-                    logger.info(
-                        f"Reducing dynamic loss scale from {prev_scale} to {self.cur_scale}"
-                    )
+                    if self.custom_loss_scaler:
+                        logger.info(
+                            "[deepspeed] fp16 dynamic loss scale overflow! Rank {} Skipping step."
+                            .format(dist.get_rank()))
+                    else:
+                        logger.info(f"\nGrad overflow on iteration {self.cur_iter}")
+                        logger.info(
+                            f"Reducing dynamic loss scale from {prev_scale} to {self.cur_scale}"
+                        )
             else:
                 # Ensure self.scale_window updates since last overflow
                 stable_interval = (self.cur_iter - self.last_overflow_iter) - 1
