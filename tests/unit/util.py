@@ -16,8 +16,11 @@ def bf16_required_version_check():
     TORCH_MAJOR = int(torch.__version__.split('.')[0])
     TORCH_MINOR = int(torch.__version__.split('.')[1])
 
-    NCCL_MAJOR = torch.cuda.nccl.version()[0]
-    NCCL_MINOR = torch.cuda.nccl.version()[1]
+    if type(torch.cuda.nccl.version()) != tuple:
+        return False
+    else:
+        NCCL_MAJOR = torch.cuda.nccl.version()[0]
+        NCCL_MINOR = torch.cuda.nccl.version()[1]
 
     CUDA_MAJOR = int(torch_info['cuda_version'].split('.')[0])
     if (TORCH_MAJOR > 1 or
