@@ -12,11 +12,7 @@ import itertools
 
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank, group
-
-try:
-    from torch.distributed.distributed_c10d import _all_gather_base as all_gather
-except:
-    from torch.distributed.distributed_c10d import all_gather
+import torch.distributed as dist
 
 from .linear import LinearModuleForZeroStage3, LinearFunctionForZeroStage3
 from .offload_constants import *
@@ -501,6 +497,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             assert isinstance(module, torch.nn.Module)
             self._convert_to_zero_parameters(module.parameters(recurse=True))
 
+        self.use_all_gather_base = False
+        try:
+            from torch.distributed.distributed_c10d import _all_gather_base as all_gather
+            self.use_all_gather_base = True
+        except:
+            logger.info(
+                f"_all_gather_base API is not available in torch {torch.__version__}")
+
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
             if is_zero_param(param):
@@ -882,13 +886,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         #                                                   param.ds_numel).view(param.ds_shape)
         #            param.data = replicated_tensor.data
         #            return None
-        try:
+        if self.use_all_gather_base:
             # try the _all_gather_base on PyTorch master branch
-            handle = all_gather(flat_tensor,
-                                param.ds_tensor,
-                                group=self.ds_process_group,
-                                async_op=async_op)
-        except:
+            handle = dist._all_gather_base(flat_tensor,
+                                           param.ds_tensor,
+                                           group=self.ds_process_group,
+                                           async_op=async_op)
+        else:
             partitions = []
             for i in range(self.world_size):
                 partitions.append(
@@ -896,13 +900,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                        partition_size * i,
                                        partition_size))
 
-                if i == torch.distributed.get_rank(group=self.ds_process_group):
+                if i == dist.get_rank(group=self.ds_process_group):
                     partitions[i].data.copy_(param.ds_tensor.data, non_blocking=True)
 
-            handle = torch.distributed.all_gather(partitions,
-                                                  partitions[self.rank],
-                                                  group=self.ds_process_group,
-                                                  async_op=async_op)
+            handle = dist.all_gather(partitions,
+                                     partitions[self.rank],
+                                     group=self.ds_process_group,
+                                     async_op=async_op)
 
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
         param.data = replicated_tensor.data
@@ -938,13 +942,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         for param_idx, param in enumerate(param_list):
             input_tensor = local_tensors[param_idx].view(-1)
 
-            try:
+            if self.use_all_gather_base:
                 # try the _all_gather_base from Pytorch master
-                h = all_gather(allgather_params[param_idx],
-                               input_tensor,
-                               group=self.ds_process_group,
-                               async_op=True)
-            except:
+                h = dist._all_gather_base(allgather_params[param_idx],
+                                          input_tensor,
+                                          group=self.ds_process_group,
+                                          async_op=True)
+            else:
                 output_list = []
                 for i in range(self.world_size):
                     psize = partition_sizes[param_idx]
@@ -956,10 +960,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         )
 
                 # back to old all_gather function signature
-                h = all_gather(output_list,
-                               input_tensor,
-                               group=self.ds_process_group,
-                               async_op=True)
+                h = dist.all_gather(output_list,
+                                    input_tensor,
+                                    group=self.ds_process_group,
+                                    async_op=True)
             launch_handles.append(h)
 
         # Wait ensures the operation is enqueued, but not necessarily complete.
