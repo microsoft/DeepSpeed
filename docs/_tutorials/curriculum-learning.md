@@ -110,7 +110,7 @@ We provide two curriculum learning examples for Megatron-LM GPT-2 pre-training:
 
 The first one is at [Megatron-DeepSpeed/tree/main/examples/curriculum_learning](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/curriculum_learning). This integration is based on a newer Megatron-LM fork, and only this curriculum learning example supports pipeline parallelism. However, currently (10/29/2021) we haven't verified ZeRO-2 and ZeRO-3 on this fork. Overall, we highly recommend you to use this example if your model does not require ZeRO-2/3.
 
-The second one is at [DeepSpeedExamples/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning/](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning). This integration is based on a older Megatron-LM hard copy that we will eventually deprecate and this curriculum learning example does not support pipeline parallelism. We recommend you to ONLY use this example if your model requires ZeRO-2/3.
+The second one is at [DeepSpeedExamples/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning/](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM-v1.1.5-ZeRO3/curriculum_learning). This integration is based on an older Megatron-LM hard copy that we will eventually deprecate and this curriculum learning example does not support pipeline parallelism. We recommend you to ONLY use this example if your model requires ZeRO-2/3.
 
 Besides the additional DeepSpeed curriculum learning json configurations described above, there are some other necessary changes on the user side to integrate curriculum learning:
 
