@@ -57,11 +57,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                 a high accuracy level. On the other hand, for the downstream tasks, such as fine-tuning, we recommend
                 to turn it off in order to be able to reproduce the same result through the regular kernel execution.
 
-            encoder_decoder: DeepSpeed-Inference currently support the encoder-only architecture! We will add
-                the required features to support both soon!
-
             scale_attention: If true, both q and k are scaled by 1/sqrt(attention_heads) before attention computation.
-
+            return_tuple: if True, returns the transformer output as a tuple, otherwise returns as a tensor
     """
     def __init__(self,
                  hidden_size=-1,
@@ -75,11 +72,11 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  q_int8=False,
                  pre_layer_norm=True,
                  stochastic_mode=False,
-                 encoder_decoder=False,
                  scale_attention=True,
                  triangular_masking=True,
                  local_attention=False,
-                 window_size=256):
+                 window_size=256,
+                 return_tuple=True):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -93,12 +90,12 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.epsilon = layer_norm_eps
         self.mp_size = mp_size
         self.q_int8 = q_int8
-        self.encoder_decoder = encoder_decoder
         self.scale_attention = scale_attention
         self.specialized_mode = None
         self.triangular_masking = triangular_masking
         self.local_attention = local_attention
         self.window_size = window_size
+        self.return_tuple = return_tuple
 
     @classmethod
     def from_dict(cls, json_object):
@@ -261,6 +258,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
+                print(input.shape)
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
@@ -589,7 +587,6 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
-        #self.config.triangular_masking = False
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
@@ -634,7 +631,7 @@ class DeepSpeedTransformerInference(nn.Module):
         if get_present:
             output = (output, presents)
 
-        if self.config.encoder_decoder:
+        if self.config.return_tuple:
             return (output, )
         else:
             return output
