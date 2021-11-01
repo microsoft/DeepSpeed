@@ -1,0 +1,3 @@
+tqdm
+psutil
+docutils<0.18

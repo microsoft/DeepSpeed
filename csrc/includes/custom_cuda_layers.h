@@ -11,6 +11,15 @@
 #include "context.h"
 #include "cublas_wrappers.h"
 
+#define CUDA_CHECK(callstr)                                                                    \
+    {                                                                                          \
+        cudaError_t error_code = callstr;                                                      \
+        if (error_code != cudaSuccess) {                                                       \
+            std::cerr << "CUDA error " << error_code << " at " << __FILE__ << ":" << __LINE__; \
+            assert(0);                                                                         \
+        }                                                                                      \
+    }
+
 #define MAX_THREADS 1024
 #define THREADS 256
 
@@ -22,6 +31,34 @@
 #define MAX_THREAD_ITERATIONS 8  // Maximum 8K
 #define MAX_WARP_NUM 32
 
+#define MAX_REGISTERS 256
+
+#define MAX_REG 256
+
+template <typename T>
+void launch_quantize_kernel(T* vals,
+                            int total_count,
+                            int group_num,
+                            int num_bits,
+                            cudaStream_t stream);
+template <typename T>
+void launch_sr_quantize_kernel(T* vals,
+                               int total_count,
+                               int group_num,
+                               int num_bits,
+                               cudaStream_t stream);
+template <typename T>
+void launch_quantize_kernel_asym(T* vals,
+                                 int total_count,
+                                 int group_num,
+                                 int num_bits,
+                                 cudaStream_t stream);
+template <typename T>
+void launch_sr_quantize_kernel_asym(T* vals,
+                                    int total_count,
+                                    int group_num,
+                                    int num_bits,
+                                    cudaStream_t stream);
 // Fused bias add with gelu activation
 template <typename T>
 void launch_bias_gelu(const T* input,
@@ -29,7 +66,6 @@ void launch_bias_gelu(const T* input,
                       T* output,
                       int intermediate_size,
                       int batch_size,
-                      int sequence_length,
                       cudaStream_t stream);
 
 template <typename T>
@@ -37,7 +73,6 @@ void launch_gelu(const T* input,
                  T* output,
                  int intermediate_size,
                  int batch_size,
-                 int sequence_length,
                  cudaStream_t stream);
 
 template <typename T>
@@ -46,7 +81,6 @@ void launch_d_gelu(T* d_output,
                    const T* bias,
                    int intermediate_size,
                    int batch_size,
-                   int sequence_length,
                    cudaStream_t stream);
 
 // Custom fused bias add with layer normalization
@@ -57,14 +91,12 @@ void launch_bias_residual_layer_norm(T* vals,
                                      const T* beta,
                                      float epsilon,
                                      int batch_size,
-                                     int sequence_length,
                                      int hidden_dim,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
-                                     bool training = false,
-                                     T* vars = nullptr,
-                                     T* means = nullptr,
-                                     T* vals_hat = nullptr);
+                                     bool training,
+                                     T* vars,
+                                     T* means);
 
 template <typename T>
 void launch_bias_residual_layer_norm(T* vals,
@@ -73,14 +105,11 @@ void launch_bias_residual_layer_norm(T* vals,
                                      const T* beta,
                                      float epsilon,
                                      int batch_size,
-                                     int sequence_length,
                                      int hidden_dim,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
-                                     bool training = false,
-                                     T* vars = nullptr,
-                                     T* vals_hat = nullptr,
-                                     bool save_vals = false);
+                                     bool training,
+                                     T* vars);
 
 template <typename T>
 void launch_layerNorm_backward_fused_add(const T* out_grad1,
@@ -93,7 +122,6 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* betta_grad,
                                          T* inp_grad,
                                          int batch_size,
-                                         int sequence_length,
                                          int hidden_dim,
                                          cudaStream_t stream[2]);
 template <typename T>
@@ -106,7 +134,6 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* betta_grad,
                                          T* inp_grad,
                                          int batch_size,
-                                         int sequence_length,
                                          int hidden_dim,
                                          cudaStream_t stream[2],
                                          bool invertible = false,
@@ -122,7 +149,6 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* betta_grad,
                                T* inp_grad,
                                int batch_size,
-                               int sequence_length,
                                int hidden_dim,
                                cudaStream_t stream[2]);
 
@@ -135,7 +161,6 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* betta_grad,
                                T* inp_grad,
                                int batch_size,
-                               int sequence_length,
                                int hidden_dim,
                                cudaStream_t stream[2],
                                bool invertible = false,
@@ -153,7 +178,6 @@ void launch_layerNorm_backward_nreversible(const T* out_grad,
                                            T* betta_grad,
                                            T* inp_grad,
                                            int batch_size,
-                                           int sequence_length,
                                            int hidden_dim,
                                            cudaStream_t stream[2]);
 
@@ -264,3 +288,6 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
                                        int rows,
                                        int cols,
                                        cudaStream_t stream);
+
+void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
+void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);

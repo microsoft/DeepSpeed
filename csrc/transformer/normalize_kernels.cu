@@ -5,50 +5,52 @@ namespace cg = cooperative_groups;
 /*
 Fused bias add, residual (elementwise) add, and normalization layer.
 
-Unlike the GELU, which doesn't require template parameters, this layer does since it
-does rely fairly heavily on unrolling loops. Currently, I exclude bounds checks and
-assume that the number of elements is a multiple of a power of 2. Default behavior
-for our purposes uses 256 threads for floats, and 128 threads for __half. This restriction
-is a result of using the shift parameter to perform the minimum number of register file
-shuffles necessary, which requires the number of threads in the secondary reduction to
-be 1, 2, 4, 8, 16, or 32. The number of threads here corresponds to the number of complete
-warps in the threadblock.
-
 For FP16, this kernel does not promote to FP32 in order to utilize the 2x throughput for
 __half2 instructions, and avoid the conversion overhead (1/8 of __hal2 arithmetic).
 
 For specific launch constraints, see the launch functions.
 */
 
-template <int row_stride, int iterations>
+#define NORM_REG (MAX_REGISTERS / 4)
+
 __global__ void fused_bias_residual_layer_norm(float* vals,
                                                const float* residual,
                                                const float* gamma,
                                                const float* beta,
                                                float epsilon,
                                                bool preLayerNorm,
-                                               bool training = false,
-                                               float* vars = nullptr,
-                                               float* means = nullptr,
-                                               float* vals_hat = nullptr)
+                                               bool training,
+                                               float* vars,
+                                               float* means,
+                                               int row_stride)
 {
-    constexpr int iteration_stride = row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
-    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
     int row = blockIdx.x;
     int id = threadIdx.x;
-    int gid = id / 32;
+    int gid = id / WARP_SIZE;
 
-    float vals_arr[iterations];
-    __shared__ float shr[iteration_stride >> 5];
+    float vals_arr[NORM_REG];
+    __shared__ float shr[MAX_WARP_NUM];
+
+    residual += (row * row_stride);
+    vals += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = residual[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = residual[i * iteration_stride + id];
         sum += vals_arr[i];
+    }
+    if (high_index < row_stride) {
+        vals_arr[iterations] = residual[high_index];
+        sum += vals_arr[iterations];
+        iterations++;
     }
 
     for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -68,10 +70,11 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     sum = g.shfl(sum, 0);
     float mean = sum / row_stride;
     if (training)
-        if (g.thread_rank() == 0) means[row] = mean;
+        if (threadIdx.x == 0) means[row] = mean;
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
-        variance += (vals_arr[i] - mean) * (vals_arr[i] - mean);
+        vals_arr[i] -= mean;
+        variance += vals_arr[i] * vals_arr[i];
     }
 
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
@@ -91,30 +94,36 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     variance /= row_stride;
     variance += epsilon;
     if (training)
-        if (g.thread_rank() == 0) vars[row] = variance;
+        if (threadIdx.x == 0) vars[row] = variance;
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = (vals_arr[i] - mean) * rsqrtf(variance);
+        vals_arr[i] = vals_arr[i] * rsqrtf(variance);
         vals_arr[i] =
             vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
-        vals[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        vals[i * iteration_stride + id] = vals_arr[i];
+    }
+    if ((high_index) < row_stride) {
+        vals_arr[iterations] = vals_arr[iterations] * rsqrtf(variance);
+        vals_arr[iterations] = vals_arr[iterations] * gamma[high_index] + beta[high_index];
+        vals[high_index] = vals_arr[iterations];
     }
 }
 
-template <int row_stride, int iterations>
 __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                const __half* residual,
                                                const __half* gamma,
                                                const __half* beta,
                                                float epsilon,
                                                bool preLayerNorm,
-                                               bool training = false,
-                                               __half* vars = nullptr,
-                                               __half* means = nullptr,
-                                               __half* vals_hat = nullptr)
+                                               bool training,
+                                               __half* vars,
+                                               __half* means,
+                                               int row_stride)
 {
 #if __CUDA_ARCH__ >= 700
-    constexpr int iteration_stride = row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
@@ -123,19 +132,28 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     int id = threadIdx.x;
     int gid = id >> 5;
 
-    __half2 vals_arr[iterations];
-    float2 vals_f[iterations];
-    __shared__ float shr[iteration_stride >> 5];
+    float2 vals_f[NORM_REG];
+    __shared__ float shr[MAX_WARP_NUM];
 
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
     const __half2* residual_cast = reinterpret_cast<const __half2*>(residual);
 
+    residual_cast += (row * row_stride);
+    vals_cast += (row * row_stride);
+
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_f[i] = __half22float2(residual_cast[row * row_stride + i * iteration_stride + id]);
+        vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
+    }
+    if ((high_index) < row_stride) {
+        vals_f[iterations] = __half22float2(residual_cast[high_index]);
+        sum += vals_f[iterations].x;
+        sum += vals_f[iterations].y;
+        iterations++;
     }
 
     for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -156,8 +174,10 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
 
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
-        variance += (vals_f[i].x - mean) * (vals_f[i].x - mean);
-        variance += (vals_f[i].y - mean) * (vals_f[i].y - mean);
+        vals_f[i].x -= mean;
+        vals_f[i].y -= mean;
+        variance += vals_f[i].x * vals_f[i].x;
+        variance += vals_f[i].y * vals_f[i].y;
     }
 
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
@@ -177,22 +197,27 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     variance /= (row_stride * 2);
     variance += epsilon;
 
-    __half2 mean_h = __float2half2_rn(mean);
     __half2 variance_h = __float2half2_rn(variance);
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) {
+    if (training && threadIdx.x == 0) {
         vars[row] = __float2half(variance);
         means[row] = __float2half(mean);
     }
-
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = __float22half2_rn(vals_f[i]);
-        vals_arr[i] = (vals_arr[i] - mean_h) * h2rsqrt(variance_h);
-        vals_arr[i] = vals_arr[i] * gamma_cast[i * iteration_stride + id] +
-                      beta_cast[i * iteration_stride + id];
-        vals_cast[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        __half2 vals_arr = __float22half2_rn(vals_f[i]);
+        vals_arr = vals_arr * h2rsqrt(variance_h);
+        vals_arr =
+            vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
+        vals_cast[i * iteration_stride + id] = vals_arr;
+    }
+    if ((high_index) < row_stride) {
+        __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
+        vals_arr = vals_arr * h2rsqrt(variance_h);
+        vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
+        vals_cast[high_index] = vals_arr;
     }
 #endif
 }
@@ -204,14 +229,12 @@ void launch_bias_residual_layer_norm(T* vals,
                                      const T* beta,
                                      float epsilon,
                                      int batch_size,
-                                     int sequence_length,
                                      int hidden_dim,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
                                      T* vars,
-                                     T* means,
-                                     T* vals_hat);
+                                     T* means);
 
 template <>
 void launch_bias_residual_layer_norm<float>(float* vals,
@@ -220,42 +243,28 @@ void launch_bias_residual_layer_norm<float>(float* vals,
                                             const float* beta,
                                             float epsilon,
                                             int batch_size,
-                                            int sequence_length,
                                             int hidden_dim,
                                             cudaStream_t stream,
                                             bool preLayerNorm,
                                             bool training,
                                             float* vars,
-                                            float* means,
-                                            float* vals_hat)
+                                            float* means)
 {
-    constexpr int threads = THREADS;
+    int threads = THREADS;
 
-    dim3 grid_dim(batch_size * sequence_length);
+    dim3 grid_dim(batch_size);
+
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
+        throw std::runtime_error("Unsupport hidden_dim.");
 
     dim3 block_dim(threads);
 
-    // There are some limitations to call below functions, now just enumerate the situations.
-    if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<768, 3><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<512, 2><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<1024, 4><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<1536, 6><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<2048, 8><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<2560, 10><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else
-        throw std::runtime_error("Unsupport hidden_dim.");
+    fused_bias_residual_layer_norm<<<grid_dim, block_dim, 0, stream>>>(
+        vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, hidden_dim);
 }
 
 template <>
@@ -265,56 +274,44 @@ void launch_bias_residual_layer_norm<__half>(__half* vals,
                                              const __half* beta,
                                              float epsilon,
                                              int batch_size,
-                                             int sequence_length,
                                              int hidden_dim,
                                              cudaStream_t stream,
                                              bool preLayerNorm,
                                              bool training,
                                              __half* vars,
-                                             __half* means,
-                                             __half* vals_hat)
+                                             __half* means)
 {
-    constexpr int threads = 128;
+    int threads = 128;
 
-    dim3 grid_dim(batch_size * sequence_length);
+    dim3 grid_dim(batch_size);
+
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
+        throw std::runtime_error("Unsupport hidden_dim.");
+
     dim3 block_dim(threads);
 
-    // There are some limitations to call below functions, now just enumerate the situations.
-    if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<384, 3><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<256, 2><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<512, 4><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<768, 6><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<1024, 8><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<1280, 10><<<grid_dim, block_dim, 0, stream>>>(
-            vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, vals_hat);
-    else
-        throw std::runtime_error("Unsupport hidden_dim.");
+    fused_bias_residual_layer_norm<<<grid_dim, block_dim, 0, stream>>>(
+        vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, means, hidden_dim / 2);
 }
 
-template <int row_stride, int iterations>
 __global__ void fused_bias_residual_layer_norm(float* vals,
                                                const float* residual,
                                                const float* gamma,
                                                const float* beta,
                                                float epsilon,
                                                bool preLayerNorm,
-                                               bool training = false,
-                                               float* vars = nullptr,
-                                               float* vals_hat = nullptr,
-                                               bool save_vals = false)
+                                               bool training,
+                                               float* vars,
+                                               int row_stride)
 {
-    constexpr int iteration_stride = row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
@@ -323,14 +320,23 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     int id = threadIdx.x;
     int gid = id / 32;
 
-    float vals_arr[iterations];
-    __shared__ float shr[iteration_stride >> 5];
+    float vals_arr[NORM_REG];
+    __shared__ float shr[MAX_WARP_NUM];
+
+    residual += (row * row_stride);
+    vals += (row * row_stride);
 
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = residual[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = residual[i * iteration_stride + id];
         sum += vals_arr[i];
+    }
+    if ((high_index) < row_stride) {
+        vals_arr[iterations] = residual[high_index];
+        sum += vals_arr[iterations];
+        iterations++;
     }
 
     for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -351,7 +357,8 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     float mean = sum / row_stride;
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
-        variance += (vals_arr[i] - mean) * (vals_arr[i] - mean);
+        vals_arr[i] -= mean;
+        variance += vals_arr[i] * vals_arr[i];
     }
 
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
@@ -371,30 +378,36 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
     variance /= row_stride;
     variance += epsilon;
     if (training)
-        if (g.thread_rank() == 0) vars[row] = variance;
+        if (threadIdx.x == 0) vars[row] = variance;
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = (vals_arr[i] - mean) * rsqrtf(variance);
+        vals_arr[i] = vals_arr[i] * rsqrtf(variance);
         vals_arr[i] =
             vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
-        vals[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        vals[i * iteration_stride + id] = vals_arr[i];
+    }
+    if ((high_index) < row_stride) {
+        vals_arr[iterations] = vals_arr[iterations] * rsqrtf(variance);
+        vals_arr[iterations] = vals_arr[iterations] * gamma[high_index] + beta[high_index];
+        vals[high_index] = vals_arr[iterations];
     }
 }
 
-template <int row_stride, int iterations>
 __global__ void fused_bias_residual_layer_norm(__half* vals,
                                                const __half* residual,
                                                const __half* gamma,
                                                const __half* beta,
                                                float epsilon,
                                                bool preLayerNorm,
-                                               bool training = false,
-                                               __half* vars = nullptr,
-                                               __half* vals_hat = nullptr,
-                                               bool save_vals = false)
+                                               bool training,
+                                               __half* vars,
+                                               int row_stride)
 {
 #if __CUDA_ARCH__ >= 700
-    constexpr int iteration_stride = row_stride / iterations;
+
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
@@ -403,19 +416,28 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     int id = threadIdx.x;
     int gid = id >> 5;
 
-    __half2 vals_arr[iterations];
-    float2 vals_f[iterations];
-    __shared__ float shr[iteration_stride >> 5];
+    float2 vals_f[NORM_REG];
+    __shared__ float shr[MAX_WARP_NUM];
 
     __half2* vals_cast = reinterpret_cast<__half2*>(vals);
     const __half2* residual_cast = reinterpret_cast<const __half2*>(residual);
 
+    residual_cast += (row * row_stride);
+    vals_cast += (row * row_stride);
+
     float sum = 0.f;
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_f[i] = __half22float2(residual_cast[row * row_stride + i * iteration_stride + id]);
+        vals_f[i] = __half22float2(residual_cast[i * iteration_stride + id]);
         sum += vals_f[i].x;
         sum += vals_f[i].y;
+    }
+    if ((high_index) < row_stride) {
+        vals_f[iterations] = __half22float2(residual_cast[high_index]);
+        sum += vals_f[iterations].x;
+        sum += vals_f[iterations].y;
+        iterations++;
     }
 
     for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
@@ -436,8 +458,10 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
 
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
-        variance += (vals_f[i].x - mean) * (vals_f[i].x - mean);
-        variance += (vals_f[i].y - mean) * (vals_f[i].y - mean);
+        vals_f[i].x -= mean;
+        vals_f[i].y -= mean;
+        variance += vals_f[i].x * vals_f[i].x;
+        variance += vals_f[i].y * vals_f[i].y;
     }
 
     for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
@@ -457,19 +481,25 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
     variance /= (row_stride * 2);
     variance += epsilon;
 
-    __half2 mean_h = __float2half2_rn(mean);
     __half2 variance_h = __float2half2_rn(variance);
     const __half2* gamma_cast = reinterpret_cast<const __half2*>(gamma);
     const __half2* beta_cast = reinterpret_cast<const __half2*>(beta);
 
-    if (training && g.thread_rank() == 0) vars[row] = __float2half(variance);
+    if (training && threadIdx.x == 0) vars[row] = __float2half(variance);
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = __float22half2_rn(vals_f[i]);
-        vals_arr[i] = (vals_arr[i] - mean_h) * h2rsqrt(variance_h);
-        vals_arr[i] = vals_arr[i] * gamma_cast[i * iteration_stride + id] +
-                      beta_cast[i * iteration_stride + id];
-        vals_cast[row * row_stride + i * iteration_stride + id] = vals_arr[i];
+        __half2 vals_arr = __float22half2_rn(vals_f[i]);
+        vals_arr = vals_arr * h2rsqrt(variance_h);
+        vals_arr =
+            vals_arr * gamma_cast[i * iteration_stride + id] + beta_cast[i * iteration_stride + id];
+        vals_cast[i * iteration_stride + id] = vals_arr;
+    }
+    if ((high_index) < row_stride) {
+        __half2 vals_arr = __float22half2_rn(vals_f[iterations]);
+        vals_arr = vals_arr * h2rsqrt(variance_h);
+        vals_arr = vals_arr * gamma_cast[high_index] + beta_cast[high_index];
+        vals_cast[high_index] = vals_arr;
     }
 #endif
 }
@@ -481,14 +511,11 @@ void launch_bias_residual_layer_norm(T* vals,
                                      const T* beta,
                                      float epsilon,
                                      int batch_size,
-                                     int sequence_length,
                                      int hidden_dim,
                                      cudaStream_t stream,
                                      bool preLayerNorm,
                                      bool training,
-                                     T* vars,
-                                     T* vals_hat,
-                                     bool save_vals);
+                                     T* vars);
 
 /*
 To tune this launch the following restrictions must be met:
@@ -512,90 +539,29 @@ void launch_bias_residual_layer_norm<float>(float* vals,
                                             const float* beta,
                                             float epsilon,
                                             int batch_size,
-                                            int sequence_length,
                                             int hidden_dim,
                                             cudaStream_t stream,
                                             bool preLayerNorm,
                                             bool training,
-                                            float* vars,
-                                            float* vals_hat,
-                                            bool save_vals)
+                                            float* vars)
 {
-    constexpr int threads = THREADS;
+    int threads = THREADS;
 
-    dim3 grid_dim(batch_size * sequence_length);
+    dim3 grid_dim(batch_size);
+
+    // There are some limitations to call below functions, now just enumerate the situations.
+
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
+        throw std::runtime_error("Unsupport hidden_dim.");
 
     dim3 block_dim(threads);
 
-    // There are some limitations to call below functions, now just enumerate the situations.
-    if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<768, 3><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<512, 2><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<1024, 4><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars,
-                                                                                    vals_hat,
-                                                                                    save_vals);
-    else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<1536, 6><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars,
-                                                                                    vals_hat,
-                                                                                    save_vals);
-    else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<2048, 8><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars,
-                                                                                    vals_hat,
-                                                                                    save_vals);
-    else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<2560, 10><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                     residual,
-                                                                                     gamma,
-                                                                                     beta,
-                                                                                     epsilon,
-                                                                                     preLayerNorm,
-                                                                                     training,
-                                                                                     vars,
-                                                                                     vals_hat,
-                                                                                     save_vals);
-    else
-        throw std::runtime_error("Unsupport hidden_dim.");
+    fused_bias_residual_layer_norm<<<grid_dim, block_dim, 0, stream>>>(
+        vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, hidden_dim);
 }
 
 template <>
@@ -605,89 +571,30 @@ void launch_bias_residual_layer_norm<__half>(__half* vals,
                                              const __half* beta,
                                              float epsilon,
                                              int batch_size,
-                                             int sequence_length,
                                              int hidden_dim,
                                              cudaStream_t stream,
                                              bool preLayerNorm,
                                              bool training,
-                                             __half* vars,
-                                             __half* vals_hat,
-                                             bool save_vals)
+                                             __half* vars)
 {
-    constexpr int threads = 128;
+    int threads = 128;
 
-    dim3 grid_dim(batch_size * sequence_length);
-    dim3 block_dim(threads);
+    dim3 grid_dim(batch_size);
 
     // There are some limitations to call below functions, now just enumerate the situations.
-    if (hidden_dim == 768)
-        fused_bias_residual_layer_norm<384, 3><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 512)
-        fused_bias_residual_layer_norm<256, 2><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 1024)
-        fused_bias_residual_layer_norm<512, 4><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 1536)
-        fused_bias_residual_layer_norm<768, 6><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                   residual,
-                                                                                   gamma,
-                                                                                   beta,
-                                                                                   epsilon,
-                                                                                   preLayerNorm,
-                                                                                   training,
-                                                                                   vars,
-                                                                                   vals_hat,
-                                                                                   save_vals);
-    else if (hidden_dim == 2048)
-        fused_bias_residual_layer_norm<1024, 8><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                    residual,
-                                                                                    gamma,
-                                                                                    beta,
-                                                                                    epsilon,
-                                                                                    preLayerNorm,
-                                                                                    training,
-                                                                                    vars,
-                                                                                    vals_hat,
-                                                                                    save_vals);
-    else if (hidden_dim == 2560)
-        fused_bias_residual_layer_norm<1280, 10><<<grid_dim, block_dim, 0, stream>>>(vals,
-                                                                                     residual,
-                                                                                     gamma,
-                                                                                     beta,
-                                                                                     epsilon,
-                                                                                     preLayerNorm,
-                                                                                     training,
-                                                                                     vars,
-                                                                                     vals_hat,
-                                                                                     save_vals);
-    else
+
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim(threads);
+    fused_bias_residual_layer_norm<<<grid_dim, block_dim, 0, stream>>>(
+        vals, residual, gamma, beta, epsilon, preLayerNorm, training, vars, hidden_dim / 2);
 }
 
 /* Normalize Gamma & Betta gradients
@@ -717,9 +624,8 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     int offset = threadIdx.y * width + idx;
     int y_stride = width * TILE_DIM;
 
-    int pos = blockIdx.x * TILE_DIM + threadIdx.y;
-    float betta_reg = (invertible ? (float)betta[pos] : 0.0f);
-    float gamma_reg = (float)gamma[pos];
+    float betta_reg = (invertible ? (float)betta[idx] : 0.0f);
+    float gamma_reg = (float)gamma[idx];
 
     // Loop across matrix height
     float betta_tmp = 0;
@@ -753,6 +659,7 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
     }
 
     if (threadIdx.x == 0) {
+        int pos = blockIdx.x * TILE_DIM + threadIdx.y;
         betta_grad[pos] = s1;
         gamma_grad[pos] = s2;
     }
@@ -830,17 +737,17 @@ __global__ void LayerNormBackward1(const T* __restrict__ out_grad,
  * We do the backward using the X_hat (X - u) / sqrt(variance) or the output of Normalization.
  */
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2(const float* out_grad,
                                    const float* vals_hat,
                                    const float* gamma,
                                    const float* betta,
                                    const float* vars,
                                    float* inp_grad,
-                                   bool invertible)
+                                   bool invertible,
+                                   int row_stride)
 {
-    constexpr int iterations = row_stride / THREADS;
-    constexpr int iteration_stride = THREADS;  // row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -848,21 +755,34 @@ __global__ void LayerNormBackward2(const float* out_grad,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    float vals_arr[iterations];
-    float vals_hat_arr[iterations];
+    out_grad += (row * row_stride);
+    vals_hat += (row * row_stride);
+    inp_grad += (row * row_stride);
 
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
-        vals_arr[i] = out_grad[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = (invertible ? (vals_hat[row * row_stride + i * iteration_stride + id] -
-                                         betta[i * iteration_stride + id]) /
-                                            gamma_reg
-                                      : vals_hat[row * row_stride + i * iteration_stride + id]);
+        vals_hat_arr[i] =
+            (invertible ? (vals_hat[i * iteration_stride + id] - betta[i * iteration_stride + id]) /
+                              gamma_reg
+                        : vals_hat[i * iteration_stride + id]);
+    }
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad[high_index];
+        vals_arr[iterations] *= gamma_reg;
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat[high_index] - betta[high_index]) / gamma_reg
+                        : vals_hat[high_index]);
+        iterations++;
     }
 
     float var_reg = vars[row];
@@ -912,21 +832,22 @@ __global__ void LayerNormBackward2(const float* out_grad,
     sum = g.shfl(sum, 0);
     sum /= row_stride;
 
-    for (int i = 0; i < iterations; i++)
-        inp_grad[row * row_stride + i * iteration_stride + id] = (vals_arr[i] - sum);
+    iterations = row_stride / iteration_stride;
+    for (int i = 0; i < iterations; i++) inp_grad[i * iteration_stride + id] = (vals_arr[i] - sum);
+    if ((high_index) < row_stride) inp_grad[high_index] = (vals_arr[iterations] - sum);
 }
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2(const __half* out_grad,
                                    const __half* vals_hat,
                                    const __half* gamma,
                                    const __half* betta,
                                    const __half* vars,
                                    __half* inp_grad,
-                                   bool invertible)
+                                   bool invertible,
+                                   int row_stride)
 {
-    constexpr int iteration_stride = THREADS / 2;  // row_stride / iterations;
-    constexpr int iterations = row_stride / iteration_stride;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -934,30 +855,43 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num =
-        (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[iterations];
-    float2 vals_arr_f[iterations];
-    __half2 vals_hat_arr[iterations];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h = reinterpret_cast<const __half2*>(out_grad);
     const __half2* vals_hat_h = reinterpret_cast<const __half2*>(vals_hat);
 
+    inp_grad_h += (row * row_stride);
+    out_grad_h += (row * row_stride);
+    vals_hat_h += (row * row_stride);
+
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
     const __half2* betta_h = (invertible ? reinterpret_cast<const __half2*>(betta) : nullptr);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
-        vals_arr[i] = out_grad_h[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad_h[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = (invertible ? (vals_hat_h[row * row_stride + i * iteration_stride + id] -
-                                         betta_h[i * iteration_stride + id]) /
-                                            gamma_reg
-                                      : vals_hat_h[row * row_stride + i * iteration_stride + id]);
+        vals_hat_arr[i] =
+            (invertible
+                 ? (vals_hat_h[i * iteration_stride + id] - betta_h[i * iteration_stride + id]) /
+                       gamma_reg
+                 : vals_hat_h[i * iteration_stride + id]);
+    }
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h[high_index];
+        vals_arr[iterations] *= gamma_reg;
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
+                        : vals_hat_h[high_index]);
+        iterations++;
     }
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
@@ -1020,12 +954,20 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr_f[i].x -= sum;
         vals_arr_f[i].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
 
-        inp_grad_h[row * row_stride + i * iteration_stride + id] = temp;
+        inp_grad_h[i * iteration_stride + id] = temp;
+    }
+    if ((high_index) < row_stride) {
+        vals_arr_f[iterations].x -= sum;
+        vals_arr_f[iterations].y -= sum;
+        __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
+
+        inp_grad_h[high_index] = temp;
     }
 }
 
@@ -1037,15 +979,13 @@ void launch_layerNorm_backward<float>(const float* out_grad,
                                       float* gamma_grad,
                                       float* betta_grad,
                                       float* inp_grad,
-                                      int batch_size,
-                                      int sequence_length,
+                                      int batch,
                                       int hidden_dim,
                                       cudaStream_t stream[2],
                                       bool invertible,
                                       const float* betta)
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1054,28 +994,18 @@ void launch_layerNorm_backward<float>(const float* out_grad,
         out_grad, vals_hat, gamma, betta, gamma_grad, betta_grad, batch, hidden_dim, invertible);
 
     dim3 grid_dim2(batch);
+
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
+        throw std::runtime_error("Unsupport hidden_dim.");
+
     dim3 block_dim2(threads);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 512)
-        LayerNormBackward2<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2<1536><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2<2048><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2<2560><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else
-        throw std::runtime_error("Unsupport hidden_dim.");
+    LayerNormBackward2<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible, hidden_dim);
 }
 
 template <>
@@ -1086,15 +1016,13 @@ void launch_layerNorm_backward<__half>(const __half* out_grad,
                                        __half* gamma_grad,
                                        __half* betta_grad,
                                        __half* inp_grad,
-                                       int batch_size,
-                                       int sequence_length,
+                                       int batch,
                                        int hidden_dim,
                                        cudaStream_t stream[2],
                                        bool invertible,
                                        const __half* betta)
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1103,28 +1031,20 @@ void launch_layerNorm_backward<__half>(const __half* out_grad,
         out_grad, vals_hat, gamma, betta, gamma_grad, betta_grad, batch, hidden_dim, invertible);
 
     dim3 grid_dim2(batch);
+
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
+        throw std::runtime_error("Unsupport hidden_dim.");
+
     dim3 block_dim2(threads / 2);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2<384><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 512)
-        LayerNormBackward2<256><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2<1280><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else
-        throw std::runtime_error("Unsupport hidden_dim.");
+    LayerNormBackward2<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad, vals_hat, gamma, betta, vars, inp_grad, invertible, hidden_dim / 2);
 }
 
 /* Backward Normalize (Input-Gradient)
@@ -1133,16 +1053,16 @@ void launch_layerNorm_backward<__half>(const __half* out_grad,
  * We do the backward using the input (X)
  */
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2(const float* out_grad,
                                    const float* X_vals,
                                    const float* gamma,
                                    const float* vars,
                                    const float* means,
-                                   float* inp_grad)
+                                   float* inp_grad,
+                                   int row_stride)
 {
-    constexpr int iterations = row_stride / THREADS;
-    constexpr int iteration_stride = THREADS;  // row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1150,25 +1070,35 @@ __global__ void LayerNormBackward2(const float* out_grad,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    float vals_arr[iterations];
+    out_grad += (row * row_stride);
+    X_vals += (row * row_stride);
+    inp_grad += (row * row_stride);
 
+    float vals_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
-        vals_arr[i] = out_grad[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
+    }
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad[high_index];
+        vals_arr[iterations] *= gamma_reg;
+        iterations++;
     }
 
     float var_reg = vars[row];
     float mean_reg = means[row];
 
     float sum = 0;
-    float xu[iterations];
+    float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
-        xu[i] = (X_vals[row * row_stride + i * iteration_stride + id] - mean_reg);
+        xu[i] = (X_vals[i * iteration_stride + id] - mean_reg);
         sum += vals_arr[i] * xu[i];
         vals_arr[i] *= rsqrtf(var_reg);
     }
@@ -1213,20 +1143,21 @@ __global__ void LayerNormBackward2(const float* out_grad,
     sum = g.shfl(sum, 0);
     sum /= row_stride;
 
-    for (int i = 0; i < iterations; i++)
-        inp_grad[row * row_stride + i * iteration_stride + id] = (vals_arr[i] - sum);
+    iterations = row_stride / iteration_stride;
+    for (int i = 0; i < iterations; i++) inp_grad[i * iteration_stride + id] = (vals_arr[i] - sum);
+    if ((high_index) < row_stride) inp_grad[high_index] = (vals_arr[iterations] - sum);
 }
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2(const __half* out_grad,
                                    const __half* X_vals,
                                    const __half* gamma,
                                    const __half* vars,
                                    const __half* means,
-                                   __half* inp_grad)
+                                   __half* inp_grad,
+                                   int row_stride)
 {
-    constexpr int iteration_stride = THREADS / 2;  // row_stride / iterations;
-    constexpr int iterations = row_stride / iteration_stride;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1234,35 +1165,44 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num =
-        (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
+    int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
 
-    __shared__ float partialSum[warp_num];
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[iterations];
-    float2 vals_arr_f[iterations];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h = reinterpret_cast<const __half2*>(out_grad);
     const __half2* vals_hat_h = reinterpret_cast<const __half2*>(X_vals);
 
-    const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
+    inp_grad_h += (row * row_stride);
+    out_grad_h += (row * row_stride);
+    vals_hat_h += (row * row_stride);
 
+    const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
-        vals_arr[i] = out_grad_h[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad_h[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
+    }
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h[high_index];
+        vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
+        iterations++;
     }
     __half mean_h = means[row];
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
     __half2 mean_reg = __halves2half2(mean_h, mean_h);
-    __half2 xu[iterations];
+    __half2 xu[NORM_REG];
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
-        xu[i] = (vals_hat_h[row * row_stride + i * iteration_stride + id] - mean_reg);
+        xu[i] = (vals_hat_h[i * iteration_stride + id] - mean_reg);
         __half2 result_h = (xu[i] * vals_arr[i]);
         float2 result_f = __half22float2(result_h);
         sum += result_f.x;
@@ -1319,11 +1259,18 @@ __global__ void LayerNormBackward2(const __half* out_grad,
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr_f[i].x -= sum;
         vals_arr_f[i].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
-        inp_grad_h[row * row_stride + i * iteration_stride + id] = temp;
+        inp_grad_h[i * iteration_stride + id] = temp;
+    }
+    if ((high_index) < row_stride) {
+        vals_arr_f[iterations].x -= sum;
+        vals_arr_f[iterations].y -= sum;
+        __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
+        inp_grad_h[high_index] = temp;
     }
 }
 
@@ -1336,13 +1283,11 @@ void launch_layerNorm_backward<float>(const float* out_grad,
                                       float* gamma_grad,
                                       float* betta_grad,
                                       float* inp_grad,
-                                      int batch_size,
-                                      int sequence_length,
+                                      int batch,
                                       int hidden_dim,
                                       cudaStream_t stream[2])
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1351,28 +1296,17 @@ void launch_layerNorm_backward<float>(const float* out_grad,
         out_grad, X_data, vars, means, gamma_grad, betta_grad, batch, hidden_dim);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 512)
-        LayerNormBackward2<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2<1536><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2<2048><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2<2560><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads);
+    LayerNormBackward2<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad, X_data, gamma, vars, means, inp_grad, hidden_dim);
 }
 
 template <>
@@ -1384,13 +1318,11 @@ void launch_layerNorm_backward<__half>(const __half* out_grad,
                                        __half* gamma_grad,
                                        __half* betta_grad,
                                        __half* inp_grad,
-                                       int batch_size,
-                                       int sequence_length,
+                                       int batch,
                                        int hidden_dim,
                                        cudaStream_t stream[2])
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1399,28 +1331,19 @@ void launch_layerNorm_backward<__half>(const __half* out_grad,
         out_grad, X_data, vars, means, gamma_grad, betta_grad, batch, hidden_dim);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads / 2);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2<384><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 512)
-        LayerNormBackward2<256><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2<1280><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad, X_data, gamma, vars, means, inp_grad);
-    else
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads / 2);
+    LayerNormBackward2<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad, X_data, gamma, vars, means, inp_grad, hidden_dim / 2);
 }
 
 template <typename T>
@@ -1445,9 +1368,8 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     int offset = threadIdx.y * width + idx;
     int y_stride = width * TILE_DIM;
 
-    int pos = blockIdx.x * TILE_DIM + threadIdx.y;
-    float betta_reg = (invertible ? (float)betta[pos] : 0.0f);
-    float gamma_reg = (float)gamma[pos];
+    float betta_reg = (invertible ? (float)betta[idx] : 0.0f);
+    float gamma_reg = (float)gamma[idx];
 
     // Loop across matrix height
     float betta_tmp = 0;
@@ -1481,6 +1403,7 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     }
 
     if (threadIdx.x == 0) {
+        int pos = blockIdx.x * TILE_DIM + threadIdx.y;
         betta_grad[pos] = s1;
         gamma_grad[pos] = s2;
     }
@@ -1546,7 +1469,6 @@ __global__ void LayerNormBackward1_fused_add(const T* __restrict__ out_grad1,
     }
 }
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
                                              const float* out_grad2,
                                              const float* vals_hat,
@@ -1554,10 +1476,11 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
                                              const float* betta,
                                              const float* vars,
                                              float* inp_grad,
-                                             bool invertible)
+                                             bool invertible,
+                                             int row_stride)
 {
-    constexpr int iterations = row_stride / THREADS;
-    constexpr int iteration_stride = THREADS;  // row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1565,21 +1488,35 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    float vals_arr[iterations];
-    float vals_hat_arr[iterations];
+    out_grad1 += (row * row_stride);
+    out_grad2 += (row * row_stride);
+    vals_hat += (row * row_stride);
+    inp_grad += (row * row_stride);
 
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
-        vals_arr[i] = out_grad1[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad1[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = (invertible ? (vals_hat[row * row_stride + i * iteration_stride + id] -
-                                         betta[i * iteration_stride + id]) /
-                                            gamma_reg
-                                      : vals_hat[row * row_stride + i * iteration_stride + id]);
+        vals_hat_arr[i] =
+            (invertible ? (vals_hat[i * iteration_stride + id] - betta[i * iteration_stride + id]) /
+                              gamma_reg
+                        : vals_hat[i * iteration_stride + id]);
+    }
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad1[high_index];
+        vals_arr[iterations] *= gamma_reg;
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat[high_index] - betta[high_index]) / gamma_reg
+                        : vals_hat[high_index]);
+        iterations++;
     }
 
     float var_reg = vars[row];
@@ -1628,12 +1565,14 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     sum = g.shfl(sum, 0);
     sum /= row_stride;
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
-        inp_grad[row * row_stride + i * iteration_stride + id] =
-            (vals_arr[i] - sum) + out_grad2[row * row_stride + i * iteration_stride + id];
+        inp_grad[i * iteration_stride + id] =
+            (vals_arr[i] - sum) + out_grad2[i * iteration_stride + id];
+    if ((high_index) < row_stride)
+        inp_grad[high_index] = (vals_arr[iterations] - sum) + out_grad2[high_index];
 }
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              const __half* out_grad2,
                                              const __half* vals_hat,
@@ -1641,10 +1580,11 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              const __half* betta,
                                              const __half* vars,
                                              __half* inp_grad,
-                                             bool invertible)
+                                             bool invertible,
+                                             int row_stride)
 {
-    constexpr int iteration_stride = THREADS / 2;  // row_stride / iterations;
-    constexpr int iterations = row_stride / iteration_stride;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1652,13 +1592,12 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num =
-        (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[iterations];
-    float2 vals_arr_f[iterations];
-    __half2 vals_hat_arr[iterations];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     // float2 result[iterations];
 
@@ -1667,18 +1606,33 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     const __half2* out_grad_h2 = reinterpret_cast<const __half2*>(out_grad2);
     const __half2* vals_hat_h = reinterpret_cast<const __half2*>(vals_hat);
 
+    inp_grad_h += (row * row_stride);
+    out_grad_h1 += (row * row_stride);
+    out_grad_h2 += (row * row_stride);
+    vals_hat_h += (row * row_stride);
+
     const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
     const __half2* betta_h = (invertible ? reinterpret_cast<const __half2*>(betta) : nullptr);
-
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
-        vals_arr[i] = out_grad_h1[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad_h1[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[i] = (invertible ? (vals_hat_h[row * row_stride + i * iteration_stride + id] -
-                                         betta_h[i * iteration_stride + id]) /
-                                            gamma_reg
-                                      : vals_hat_h[row * row_stride + i * iteration_stride + id]);
+        vals_hat_arr[i] =
+            (invertible
+                 ? (vals_hat_h[i * iteration_stride + id] - betta_h[i * iteration_stride + id]) /
+                       gamma_reg
+                 : vals_hat_h[i * iteration_stride + id]);
+    }
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h1[high_index];
+        vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
+        vals_hat_arr[iterations] =
+            (invertible ? (vals_hat_h[high_index] - betta_h[high_index]) / gamma_reg
+                        : vals_hat_h[high_index]);
+        iterations++;
     }
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
@@ -1740,13 +1694,20 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr_f[i].x -= sum;
         vals_arr_f[i].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
 
-        inp_grad_h[row * row_stride + i * iteration_stride + id] =
-            temp + out_grad_h2[row * row_stride + i * iteration_stride + id];
+        inp_grad_h[i * iteration_stride + id] = temp + out_grad_h2[i * iteration_stride + id];
+    }
+    if ((high_index) < row_stride) {
+        vals_arr_f[iterations].x -= sum;
+        vals_arr_f[iterations].y -= sum;
+        __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
+
+        inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
 }
 
@@ -1759,15 +1720,13 @@ void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
                                                 float* gamma_grad,
                                                 float* betta_grad,
                                                 float* inp_grad,
-                                                int batch_size,
-                                                int sequence_length,
+                                                int batch,
                                                 int hidden_dim,
                                                 cudaStream_t stream[2],
                                                 bool invertible,
                                                 const float* betta)
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1775,28 +1734,17 @@ void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
         out_grad1, vals_hat, gamma, betta, gamma_grad, betta_grad, batch, hidden_dim, invertible);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2_fused_add<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 512)
-        LayerNormBackward2_fused_add<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2_fused_add<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2_fused_add<1536><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2_fused_add<2048><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2_fused_add<2560><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads);
+    LayerNormBackward2_fused_add<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible, hidden_dim);
 }
 
 template <>
@@ -1808,15 +1756,13 @@ void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
                                                  __half* gamma_grad,
                                                  __half* betta_grad,
                                                  __half* inp_grad,
-                                                 int batch_size,
-                                                 int sequence_length,
+                                                 int batch,
                                                  int hidden_dim,
                                                  cudaStream_t stream[2],
                                                  bool invertible,
                                                  const __half* betta)
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -1825,28 +1771,19 @@ void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
         out_grad1, vals_hat, gamma, betta, gamma_grad, betta_grad, batch, hidden_dim, invertible);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads / 2);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2_fused_add<384><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 512)
-        LayerNormBackward2_fused_add<256><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2_fused_add<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2_fused_add<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2_fused_add<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2_fused_add<1280><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible);
-    else
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads / 2);
+    LayerNormBackward2_fused_add<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad1, out_grad2, vals_hat, gamma, betta, vars, inp_grad, invertible, hidden_dim / 2);
 }
 
 /* Backward Normalize (Input-Gradient)
@@ -1855,17 +1792,17 @@ void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
  * We do the backward using the input (X)
  */
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
                                              const float* out_grad2,
                                              const float* X_vals,
                                              const float* gamma,
                                              const float* vars,
                                              const float* means,
-                                             float* inp_grad)
+                                             float* inp_grad,
+                                             int row_stride)
 {
-    constexpr int iterations = row_stride / THREADS;
-    constexpr int iteration_stride = THREADS;  // row_stride / iterations;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1873,25 +1810,37 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
-    __shared__ float partialSum[warp_num];
+    int warp_num = (THREADS < row_stride ? THREADS : row_stride) / WARP_SIZE;
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    float vals_arr[iterations];
-    float vals_hat_arr[iterations];
+    float vals_arr[NORM_REG];
+    float vals_hat_arr[NORM_REG];
 
+    out_grad1 += (row * row_stride);
+    out_grad2 += (row * row_stride);
+    X_vals += (row * row_stride);
+    inp_grad += (row * row_stride);
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         float gamma_reg = gamma[i * iteration_stride + id];
-        vals_arr[i] = out_grad1[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad1[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = X_vals[row * row_stride + i * iteration_stride + id];
+        vals_hat_arr[i] = X_vals[i * iteration_stride + id];
+    }
+    if ((high_index) < row_stride) {
+        float gamma_reg = gamma[high_index];
+        vals_arr[iterations] = out_grad1[high_index];
+        vals_arr[iterations] *= gamma_reg;
+        vals_hat_arr[iterations] = X_vals[high_index];
+        iterations++;
     }
 
     float var_reg = vars[row];
     float mean_reg = means[row];
 
     float sum = 0;
-    float xu[iterations];
+    float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
         xu[i] = (vals_hat_arr[i] - mean_reg);
         sum += vals_arr[i] * xu[i];
@@ -1938,23 +1887,25 @@ __global__ void LayerNormBackward2_fused_add(const float* out_grad1,
     sum = g.shfl(sum, 0);
     sum /= row_stride;
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
-        inp_grad[row * row_stride + i * iteration_stride + id] =
-            (vals_arr[i] - sum) + out_grad2[row * row_stride + i * iteration_stride + id];
-    ;
+        inp_grad[i * iteration_stride + id] =
+            (vals_arr[i] - sum) + out_grad2[i * iteration_stride + id];
+    if ((high_index) < row_stride)
+        inp_grad[high_index] = (vals_arr[iterations] - sum) + out_grad2[high_index];
 }
 
-template <int row_stride>  // Hidden_Dim
 __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
                                              const __half* out_grad2,
                                              const __half* X_vals,
                                              const __half* gamma,
                                              const __half* vars,
                                              const __half* means,
-                                             __half* inp_grad)
+                                             __half* inp_grad,
+                                             int row_stride)
 {
-    constexpr int iteration_stride = THREADS / 2;  // row_stride / iterations;
-    constexpr int iterations = row_stride / iteration_stride;
+    int iteration_stride = blockDim.x;
+    int iterations = row_stride / iteration_stride;
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
@@ -1962,35 +1913,46 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     int row = blockIdx.x;
     int id = threadIdx.x;
     int wid = id / WARP_SIZE;
-    constexpr int warp_num =
-        (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
+    int warp_num = (iteration_stride < row_stride ? iteration_stride : row_stride) / WARP_SIZE;
 
-    __shared__ float partialSum[warp_num];
+    __shared__ float partialSum[MAX_WARP_NUM];
 
-    __half2 vals_arr[iterations];
-    float2 vals_arr_f[iterations];
-    __half2 vals_hat_arr[iterations];
+    __half2 vals_arr[NORM_REG];
+    float2 vals_arr_f[NORM_REG];
+    __half2 vals_hat_arr[NORM_REG];
 
     __half2* inp_grad_h = reinterpret_cast<__half2*>(inp_grad);
     const __half2* out_grad_h1 = reinterpret_cast<const __half2*>(out_grad1);
     const __half2* out_grad_h2 = reinterpret_cast<const __half2*>(out_grad2);
     const __half2* vals_hat_h = reinterpret_cast<const __half2*>(X_vals);
 
-    const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
+    out_grad_h1 += (row * row_stride);
+    out_grad_h2 += (row * row_stride);
+    inp_grad_h += (row * row_stride);
+    vals_hat_h += (row * row_stride);
 
+    const __half2* gamma_h = reinterpret_cast<const __half2*>(gamma);
+    int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
         __half2 gamma_reg = gamma_h[i * iteration_stride + id];
-        vals_arr[i] = out_grad_h1[row * row_stride + i * iteration_stride + id];
+        vals_arr[i] = out_grad_h1[i * iteration_stride + id];
         vals_arr[i] *= gamma_reg;  // out_grad * gamma
-        vals_hat_arr[i] = vals_hat_h[row * row_stride + i * iteration_stride + id];
+        vals_hat_arr[i] = vals_hat_h[i * iteration_stride + id];
+    }
+    if ((high_index) < row_stride) {
+        __half2 gamma_reg = gamma_h[high_index];
+        vals_arr[iterations] = out_grad_h1[high_index];
+        vals_arr[iterations] *= gamma_reg;  // out_grad * gamma
+        vals_hat_arr[iterations] = vals_hat_h[high_index];
+        iterations++;
     }
 
     __half mean_h = means[row];
     __half var_h = vars[row];
     __half2 var_reg = __halves2half2(var_h, var_h);
     __half2 mean_reg = __halves2half2(mean_h, mean_h);
-    __half2 xu[iterations];
+    __half2 xu[NORM_REG];
 
     float sum = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -2051,12 +2013,18 @@ __global__ void LayerNormBackward2_fused_add(const __half* out_grad1,
     sum = g.shfl(sum, 0);
     sum /= (2 * row_stride);
 
+    iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr_f[i].x -= sum;
         vals_arr_f[i].y -= sum;
         __half2 temp = __float22half2_rn(vals_arr_f[i]);
-        inp_grad_h[row * row_stride + i * iteration_stride + id] =
-            temp + out_grad_h2[row * row_stride + i * iteration_stride + id];
+        inp_grad_h[i * iteration_stride + id] = temp + out_grad_h2[i * iteration_stride + id];
+    }
+    if ((high_index) < row_stride) {
+        vals_arr_f[iterations].x -= sum;
+        vals_arr_f[iterations].y -= sum;
+        __half2 temp = __float22half2_rn(vals_arr_f[iterations]);
+        inp_grad_h[high_index] = temp + out_grad_h2[high_index];
     }
 }
 
@@ -2070,13 +2038,11 @@ void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
                                                 float* gamma_grad,
                                                 float* betta_grad,
                                                 float* inp_grad,
-                                                int batch_size,
-                                                int sequence_length,
+                                                int batch,
                                                 int hidden_dim,
                                                 cudaStream_t stream[2])
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -2085,28 +2051,17 @@ void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
         out_grad1, X_data, vars, means, gamma_grad, betta_grad, batch, hidden_dim);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2_fused_add<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 512)
-        LayerNormBackward2_fused_add<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2_fused_add<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2_fused_add<1536><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2_fused_add<2048><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2_fused_add<2560><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else
+    if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 1;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 2;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads);
+    LayerNormBackward2_fused_add<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad, hidden_dim);
 }
 
 template <>
@@ -2119,13 +2074,11 @@ void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
                                                  __half* gamma_grad,
                                                  __half* betta_grad,
                                                  __half* inp_grad,
-                                                 int batch_size,
-                                                 int sequence_length,
+                                                 int batch,
                                                  int hidden_dim,
                                                  cudaStream_t stream[2])
 {
-    constexpr int threads = THREADS;
-    int batch = batch_size * sequence_length;
+    int threads = THREADS;
 
     dim3 grid_dim(hidden_dim / TILE_DIM);
     dim3 block_dim(TILE_DIM, TILE_DIM);
@@ -2134,26 +2087,17 @@ void launch_layerNorm_backward_fused_add<__half>(const __half* out_grad1,
         out_grad1, X_data, vars, means, gamma_grad, betta_grad, batch, hidden_dim);
 
     dim3 grid_dim2(batch);
-    dim3 block_dim2(threads / 2);
 
-    if (hidden_dim == 768)
-        LayerNormBackward2_fused_add<384><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 512)
-        LayerNormBackward2_fused_add<256><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1024)
-        LayerNormBackward2_fused_add<512><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 1536)
-        LayerNormBackward2_fused_add<768><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2048)
-        LayerNormBackward2_fused_add<1024><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else if (hidden_dim == 2560)
-        LayerNormBackward2_fused_add<1280><<<grid_dim2, block_dim2, 0, stream[1]>>>(
-            out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad);
-    else
+    if (hidden_dim > 8192 && hidden_dim <= 16384)
+        threads <<= 1;
+    else if (hidden_dim > 16384 && hidden_dim <= 32768)
+        threads <<= 2;
+    else if (hidden_dim > 32768 && hidden_dim <= 65536)
+        threads <<= 3;
+    else if (hidden_dim > 65536)
         throw std::runtime_error("Unsupport hidden_dim.");
+
+    dim3 block_dim2(threads / 2);
+    LayerNormBackward2_fused_add<<<grid_dim2, block_dim2, 0, stream[1]>>>(
+        out_grad1, out_grad2, X_data, gamma, vars, means, inp_grad, hidden_dim / 2);
 }

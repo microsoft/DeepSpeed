@@ -34,14 +34,15 @@ struct BertGemmAlgos {
 template <typename T>
 class BertTransformerLayer {
 public:
-    BertTransformerLayer(int layer_id,
-                         int batch_size,
-                         int hidden_size,
-                         int num_heads,
-                         int intermediate_size,
-                         int seq_length,
+    BertTransformerLayer(unsigned layer_id,
+                         unsigned batch_size,
+                         unsigned hidden_size,
+                         unsigned num_heads,
+                         unsigned intermediate_size,
+                         unsigned seq_length,
                          float attn_dropout_ratio,
                          float hidden_output_dropout_ratio,
+                         float layer_norm_eps,
                          bool pre_or_postLayerNorm,
                          const std::vector<std::array<int, 3>>& gemm_algos,
                          bool attn_dropout_checkpoint,
@@ -51,7 +52,7 @@ public:
 
     virtual ~BertTransformerLayer();
 
-    void Forward(int bsz,
+    void Forward(unsigned bsz,
                  const T* input_ptr,
                  const T* input_mask_ptr,
                  const T* attn_qkvw_ptr,
@@ -79,7 +80,7 @@ public:
                  T* gelu_inp_ptr,
                  T* ff2_inp_ptr);
 
-    void Backward(int bsz,
+    void Backward(unsigned bsz,
                   const T* grad_output_ptr,
                   const T* input_ptr,
                   const T* output_ptr,
@@ -121,26 +122,35 @@ public:
 
     void SetIntermediateBuffers(uint8_t* attn_prob_dropout_mask_ptr,
                                 uint8_t* attn_output_dropout_mask_ptr,
-                                uint8_t* layer_output_dropout_mask_ptr);
+                                uint8_t* layer_output_dropout_mask_ptr,
+                                T* layer_norm_var,
+                                T* layer_norm_mean,
+                                T* attn_layer_norm_var,
+                                T* attn_layer_norm_mean);
 
-    inline int GetBatchSize() const { return _batch_size; }
-    inline int GetNumHeads() const { return _heads; }
-    inline int GetSeqLength() const { return _seq_length; }
-    inline int GetHiddenSize() const { return _hidden_size; }
+    inline unsigned GetBatchSize() const { return _batch_size; }
+    inline unsigned GetNumHeads() const { return _heads; }
+    inline unsigned GetSeqLength() const { return _seq_length; }
+    inline unsigned GetIntermediateSize() const { return _intermediate_size; }
+
+    void SetSeqLength(unsigned seq_len);
+    inline unsigned GetHiddenSize() const { return _hidden_size; }
     void SetTrainingMode(bool training);
+    inline bool IsTrainingMode() const { return _training; }
+    inline bool GeluCheckpoint() const { return _gelu_checkpoint; }
 
 private:
     void Initialize();
     size_t getWorkspaceSize(int maxBatchSize) const;
 
     // Params
-    int _layer_id;
-    int _batch_size;
-    int _hidden_size;
-    int _heads;
-    int _size_per_head;
-    int _intermediate_size;
-    int _seq_length;
+    unsigned _layer_id;
+    unsigned _batch_size;
+    unsigned _hidden_size;
+    unsigned _heads;
+    unsigned _size_per_head;
+    unsigned _intermediate_size;
+    unsigned _seq_length;
 
     bool _pre_or_postLayerNorm;
 
@@ -150,8 +160,8 @@ private:
     // layers
     FeedForward<T> _qkv_linear;
     FeedForward<T> _attn_out_linear;
-    Normalize_Layer<T> _norm_layer2;
-    Normalize_Layer<T> _norm_layer3;
+    Normalize_Layer<T> _attn_layer_norm;
+    Normalize_Layer<T> _layer_norm;
     Normalize_Layer<T>* _last_normalize;
     FeedForward<T> _ff1, _ff2;
     Softmax<T> _softmax;
@@ -169,6 +179,6 @@ private:
     bool _normalize_invertible;
     bool _gelu_checkpoint;
 
-    // High Performace flags
+    // High Performance flags
     bool _stochastic_mode;
 };

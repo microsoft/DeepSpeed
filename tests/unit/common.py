@@ -5,7 +5,11 @@ import torch
 import torch.distributed as dist
 from torch.multiprocessing import Process
 
+import deepspeed
+
 import pytest
+
+from pathlib import Path
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
@@ -32,16 +36,26 @@ def distributed_test(world_size=2, backend='nccl'):
         def dist_init(local_rank, num_procs, *func_args, **func_kwargs):
             """Initialize torch.distributed and execute the user function. """
             os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = '29500'
-            dist.init_process_group(backend=backend,
-                                    init_method='env://',
-                                    rank=local_rank,
-                                    world_size=num_procs)
+            os.environ['MASTER_PORT'] = '29503'
+            os.environ['LOCAL_RANK'] = str(local_rank)
+            # NOTE: unit tests don't support multi-node so local_rank == global rank
+            os.environ['RANK'] = str(local_rank)
+            os.environ['WORLD_SIZE'] = str(num_procs)
+
+            # turn off NCCL logging if set
+            os.environ.pop('NCCL_DEBUG', None)
+
+            deepspeed.init_distributed(dist_backend=backend)
 
             if torch.cuda.is_available():
                 torch.cuda.set_device(local_rank)
 
             run_func(*func_args, **func_kwargs)
+
+            # make sure all ranks finish at the same time
+            torch.distributed.barrier()
+            # tear down after test completes
+            torch.distributed.destroy_process_group()
 
         def dist_launcher(num_procs, *func_args, **func_kwargs):
             """Launch processes and gracefully handle failures. """
@@ -98,3 +112,8 @@ def distributed_test(world_size=2, backend='nccl'):
         return run_func_decorator
 
     return dist_wrap
+
+
+def get_test_path(src):
+    curr_path = Path(__file__).parent
+    return str(curr_path.joinpath(src))

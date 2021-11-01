@@ -1,0 +1,2 @@
+from .transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from .inference.transformer_inference import DeepSpeedTransformerInference, DeepSpeedInferenceConfig

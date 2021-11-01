@@ -14,15 +14,18 @@ __global__ void column_sum_reduce(const T* __restrict__ inp,
     cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
 
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    int offset = threadIdx.y * width + idx;
+
     int y_stride = width * TILE_DIM;
 
     float localSum = 0;
 
     // Loop across matrix height
-    for (int r = threadIdx.y; r < rows; r += TILE_DIM) {
-        localSum += (float)inp[offset];
-        offset += y_stride;
+    if (idx < width) {
+        int offset = threadIdx.y * width + idx;
+        for (int r = threadIdx.y; r < rows; r += TILE_DIM) {
+            localSum += (float)inp[offset];
+            offset += y_stride;
+        }
     }
 
     tile[threadIdx.x][threadIdx.y] = localSum;
@@ -40,7 +43,7 @@ __global__ void column_sum_reduce(const T* __restrict__ inp,
 
     if (threadIdx.x == 0) {
         int pos = blockIdx.x * TILE_DIM + threadIdx.y;
-        out[pos] = sum;
+        if (pos < width) out[pos] = sum;
     }
 }
 
@@ -58,10 +61,10 @@ void launch_fuse_transpose_bias_kernel<float>(const float* inp,
                                               int cols,
                                               cudaStream_t stream)
 {
-    assert(rows % TILE_DIM == 0);
-    assert(cols % TILE_DIM == 0);
+    // assert(rows % TILE_DIM == 0);
+    // assert(cols % TILE_DIM == 0);
 
-    dim3 grid_dim(cols / TILE_DIM);
+    dim3 grid_dim((cols - 1) / TILE_DIM + 1);
     dim3 block_dim(TILE_DIM, TILE_DIM);
 
     column_sum_reduce<float><<<grid_dim, block_dim, 0, stream>>>(inp, out, rows, cols);
@@ -74,49 +77,38 @@ void launch_fuse_transpose_bias_kernel<__half>(const __half* inp,
                                                int cols,
                                                cudaStream_t stream)
 {
-    assert(rows % TILE_DIM == 0);
-    assert(cols % TILE_DIM == 0);
+    // assert(rows % TILE_DIM == 0);
+    // assert(cols % TILE_DIM == 0);
 
-    dim3 grid_dim(cols / TILE_DIM);
+    dim3 grid_dim((cols - 1) / TILE_DIM + 1);
     dim3 block_dim(TILE_DIM, TILE_DIM);
 
     column_sum_reduce<__half><<<grid_dim, block_dim, 0, stream>>>(inp, out, rows, cols);
 }
 
-__global__ void fused_add2_kernel(float* out,
-                                  const float* inp1,
-                                  const float* inp2,
-                                  int size,
-                                  int row_stride)
+__global__ void fused_add2_kernel(const int N, float* out, const float* inp1, const float* inp2)
 {
-    int row = blockIdx.x;
-    int id = threadIdx.x;
-
     const float4* inp1_4 = reinterpret_cast<const float4*>(inp1);
     const float4* inp2_4 = reinterpret_cast<const float4*>(inp2);
     float4* out_4 = reinterpret_cast<float4*>(out);
 
-    float4 val;
-    float4 inp1_reg = inp1_4[row * row_stride + id];
-    float4 inp2_reg = inp2_4[row * row_stride + id];
+    CUDA_1D_KERNEL_LOOP(j, N)
+    {
+        float4 val;
+        float4 inp1_reg = inp1_4[j];
+        float4 inp2_reg = inp2_4[j];
 
-    val.x = inp1_reg.x + inp2_reg.x;
-    val.y = inp1_reg.y + inp2_reg.y;
-    val.z = inp1_reg.z + inp2_reg.z;
-    val.w = inp1_reg.w + inp2_reg.w;
+        val.x = inp1_reg.x + inp2_reg.x;
+        val.y = inp1_reg.y + inp2_reg.y;
+        val.z = inp1_reg.z + inp2_reg.z;
+        val.w = inp1_reg.w + inp2_reg.w;
 
-    out_4[row * row_stride + id] = val;
+        out_4[j] = val;
+    }
 }
 
-__global__ void fused_add2_kernel(__half* out,
-                                  const __half* inp1,
-                                  const __half* inp2,
-                                  int size,
-                                  int row_stride)
+__global__ void fused_add2_kernel(const int N, __half* out, const __half* inp1, const __half* inp2)
 {
-    int row = blockIdx.x;
-    int id = threadIdx.x;
-
     float2 inp1_4;
     float2 inp2_4;
 
@@ -126,28 +118,31 @@ __global__ void fused_add2_kernel(__half* out,
     const float2* inp1_arr = reinterpret_cast<const float2*>(inp1);
     const float2* inp2_arr = reinterpret_cast<const float2*>(inp2);
 
-    inp1_4 = inp1_arr[row * row_stride + id];
-    inp2_4 = inp2_arr[row * row_stride + id];
+    CUDA_1D_KERNEL_LOOP(j, N)
+    {
+        inp1_4 = inp1_arr[j];
+        inp2_4 = inp2_arr[j];
 
-    float2 inp1_h_f_0 = __half22float2(inp1_h[0]);
-    float2 inp1_h_f_1 = __half22float2(inp1_h[1]);
+        float2 inp1_h_f_0 = __half22float2(inp1_h[0]);
+        float2 inp1_h_f_1 = __half22float2(inp1_h[1]);
 
-    float2 inp2_h_f_0 = __half22float2(inp2_h[0]);
-    float2 inp2_h_f_1 = __half22float2(inp2_h[1]);
+        float2 inp2_h_f_0 = __half22float2(inp2_h[0]);
+        float2 inp2_h_f_1 = __half22float2(inp2_h[1]);
 
-    inp1_h_f_0.x += inp2_h_f_0.x;
-    inp1_h_f_0.y += inp2_h_f_0.y;
-    inp1_h_f_1.x += inp2_h_f_1.x;
-    inp1_h_f_1.y += inp2_h_f_1.y;
+        inp1_h_f_0.x += inp2_h_f_0.x;
+        inp1_h_f_0.y += inp2_h_f_0.y;
+        inp1_h_f_1.x += inp2_h_f_1.x;
+        inp1_h_f_1.y += inp2_h_f_1.y;
 
-    float2 val_f;
-    __half2* val_h = reinterpret_cast<__half2*>(&val_f);
+        float2 val_f;
+        __half2* val_h = reinterpret_cast<__half2*>(&val_f);
 
-    val_h[0] = __float22half2_rn(inp1_h_f_0);
-    val_h[1] = __float22half2_rn(inp1_h_f_1);
+        val_h[0] = __float22half2_rn(inp1_h_f_0);
+        val_h[1] = __float22half2_rn(inp1_h_f_1);
 
-    float2* out_4 = reinterpret_cast<float2*>(out);
-    out_4[row * row_stride + id] = val_f;
+        float2* out_4 = reinterpret_cast<float2*>(out);
+        out_4[j] = val_f;
+    }
 }
 
 template <>
@@ -159,12 +154,12 @@ void launch_fused_add2<float>(float* out,
                               int hidden_dim,
                               cudaStream_t& stream)
 {
-    dim3 grid_dim(batch_size * seq_length);
+    int total_count = batch_size * seq_length * hidden_dim / 4;
+    dim3 grid_dim = DS_GET_BLOCKS(total_count);  //(batch_size * seq_length);
 
-    dim3 block_dim(hidden_dim / 4);
+    dim3 block_dim = DS_CUDA_NUM_THREADS;  //(hidden_dim / 4);
 
-    fused_add2_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        out, inp1, inp2, (batch_size * seq_length * hidden_dim), hidden_dim / 4);
+    fused_add2_kernel<<<grid_dim, block_dim, 0, stream>>>(total_count, out, inp1, inp2);
 }
 
 template <>
@@ -176,12 +171,12 @@ void launch_fused_add2<__half>(__half* out,
                                int hidden_dim,
                                cudaStream_t& stream)
 {
-    dim3 grid_dim(batch_size * seq_length);
+    int total_count = batch_size * seq_length * hidden_dim / 4;
+    dim3 grid_dim = DS_GET_BLOCKS(total_count);  //(batch_size * seq_length);
 
-    dim3 block_dim(hidden_dim / 4);
+    dim3 block_dim = DS_CUDA_NUM_THREADS;  //(hidden_dim / 4);
 
-    fused_add2_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        out, inp1, inp2, (batch_size * seq_length * hidden_dim), hidden_dim / 4);
+    fused_add2_kernel<<<grid_dim, block_dim, 0, stream>>>(total_count, out, inp1, inp2);
 }
 
 __global__ void fused_add3_kernel(float* out,

@@ -12,16 +12,23 @@ from modelingpreln import BertEncoder as BertEncoderPreln
 from modeling import BertEncoder as BertEncoderPostln
 from modeling import BertConfig, BertLayerNorm
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+import deepspeed
 
 import sys
+
+#if not deepspeed.ops.__installed_ops__['transformer']:
+#pytest.skip(
+#    "transformer kernels are temporarily disabled because of unexplained failures",
+#    allow_module_level=True)
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
     diction_x = {}
     diction_y = {}
 
-    for i, (x, y) in enumerate(zip(first, second)):
-        print(x[1], y[1])
+    if verbose:
+        for i, (x, y) in enumerate(zip(first, second)):
+            print(x[1], y[1])
 
     for i, (x, y) in enumerate(zip(first, second)):
         k = 0
@@ -34,34 +41,46 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         diction_y[k, y[1]] = y[0]
     if verbose:
         print()
-    for i, (x, y) in enumerate(zip(diction_x, diction_y)):
-        print(x, y)
+        for i, (x, y) in enumerate(zip(diction_x, diction_y)):
+            print(x, y)
 
     for i, (x, y) in enumerate(zip(diction_x, diction_y)):
         if (x[0] == 1): continue
-        print("checking ", x[1], ":")
+        if verbose:
+            print("checking ", x[1], ":")
         y = diction_y[x[0], x[1]]
         x = diction_x[x[0], x[1]]
+
+        if verbose:
+            print(((x == float('inf')).nonzero(as_tuple=True)[0]))
+            print(((y == float('inf')).nonzero(as_tuple=True)[0]))
         x = x.cpu().detach().numpy()
         y = y.cpu().detach().numpy()
-        print(x)
-        print(y)
 
         avgx = np.sum(abs(x), dtype=float)
         countx = x.shape[0]
         for i in range(len(x.shape) - 1):
             countx *= x.shape[i + 1]
             avgx = np.sum(avgx)
-        tollerance = 1
+        tolerance = 1
         if avgx != float('inf') and avgx != -float('inf'):
             avgx = avgx / countx
-            tollerance = avgx * atol
-        print("tollerance is ", tollerance)
+            tolerance = avgx * atol
         if verbose:
-            print("x = {}".format(x.flatten()))
-            print("y = {}".format(y.flatten()))
+            print("tolerance is ", tolerance)
+            x = x.flatten()
+            y = y.flatten()
+            print("x = {}".format(x))
+            print("y = {}".format(y))
+            if any(x == float('inf')) or any(x == -float('inf')):
+                print("found infinity in x")
+            if any(y == float('inf')) or any(y == -float('inf')):
+                print("found infinity in y")
+            print(np.linalg.norm(x.astype('float64')))
+            print(np.linalg.norm(y.astype('float64')))
             print('-' * 80)
-        np.testing.assert_allclose(x, y, err_msg="Index: {}".format(i), atol=tollerance)
+        #toler = np.linalg.norm(x.astype('float64')) * 0.0005
+        np.testing.assert_allclose(x, y, err_msg="Index: {}".format(i), atol=tolerance)
 
 
 def zero_grad(variables):
@@ -79,11 +98,10 @@ class DSEncoder(nn.Module):
         super(DSEncoder, self).__init__()
         self.FinalLayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.layer = nn.ModuleList([
-            copy.deepcopy(DeepSpeedTransformerLayer(i,
-                                                    config,
+            copy.deepcopy(DeepSpeedTransformerLayer(config,
                                                     weights,
                                                     biases))
-            for i in range(config.num_hidden_layers)
+            for _ in range(config.num_hidden_layers)
         ])
         self.grads = []
         self.pre_or_post = config.pre_layer_norm
@@ -118,7 +136,9 @@ class DSEncoder(nn.Module):
             # decoder layers
         else:
             for i, layer_module in enumerate(self.layer):
-                hidden_states = layer_module(hidden_states, attention_mask, self.grads)
+                hidden_states = layer_module(hidden_states,
+                                             attention_mask,
+                                             grads=self.grads)
                 hidden_states.register_hook(
                     lambda x,
                     self=self: self.grads.append([x,
@@ -142,11 +162,11 @@ def create_models(ds_config):
                              hidden_size=ds_config.hidden_size,
                              num_hidden_layers=ds_config.num_hidden_layers,
                              num_attention_heads=ds_config.heads,
-                             intermediate_size=4 * ds_config.hidden_size,
+                             intermediate_size=ds_config.intermediate_size,
                              hidden_act="gelu",
                              hidden_dropout_prob=ds_config.hidden_dropout_ratio,
                              attention_probs_dropout_prob=ds_config.attn_dropout_ratio,
-                             max_position_embeddings=ds_config.max_seq_length,
+                             max_position_embeddings=512,
                              type_vocab_size=2,
                              initializer_range=ds_config.initializer_range)
 
@@ -162,12 +182,12 @@ def create_models(ds_config):
     weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
     weights[4].data.fill_(1.0)
     weights.append(
-        nn.Parameter(torch.Tensor(4 * ds_config.hidden_size,
+        nn.Parameter(torch.Tensor(ds_config.intermediate_size,
                                   ds_config.hidden_size)))
     weights[5].data.normal_(mean=0.0, std=ds_config.initializer_range)
     weights.append(
         nn.Parameter(torch.Tensor(ds_config.hidden_size,
-                                  4 * ds_config.hidden_size)))
+                                  ds_config.intermediate_size)))
     weights[6].data.normal_(mean=0.0, std=ds_config.initializer_range)
     weights.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
     weights[7].data.fill_(1.0)
@@ -177,7 +197,7 @@ def create_models(ds_config):
     for i in range(4):
         biases.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
         biases[i + 1].data.zero_()
-    biases.append(nn.Parameter(torch.Tensor(4 * ds_config.hidden_size)))
+    biases.append(nn.Parameter(torch.Tensor(ds_config.intermediate_size)))
     biases[5].data.zero_()
     biases.append(nn.Parameter(torch.Tensor(ds_config.hidden_size)))
     biases[6].data.zero_()
@@ -206,25 +226,18 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
-def run_backward(ds_config, atol=1e-2, verbose=False):
+def run_backward(ds_config, seq_len, atol=1e-2, verbose=False):
     set_seed(123)
     bert_encoder, ds_encoder = create_models(ds_config)
 
     # prepare test data
     kwargs = kwargs_fp16 if ds_config.fp16 else kwargs_fp32
     hidden_states = torch.randn(ds_config.batch_size,
-                                ds_config.max_seq_length,
+                                seq_len,
                                 ds_config.hidden_size,
                                 **kwargs)
-    input_mask = torch.randn(ds_config.batch_size,
-                             1,
-                             1,
-                             ds_config.max_seq_length,
-                             **kwargs)
-    Y = torch.randn(ds_config.batch_size,
-                    ds_config.max_seq_length,
-                    ds_config.hidden_size,
-                    **kwargs)
+    input_mask = torch.randn(ds_config.batch_size, 1, 1, seq_len, **kwargs)
+    Y = torch.randn(ds_config.batch_size, seq_len, ds_config.hidden_size, **kwargs)
 
     # run baseline
     base_results = bert_encoder(hidden_states,
@@ -232,7 +245,7 @@ def run_backward(ds_config, atol=1e-2, verbose=False):
                                 output_all_encoded_layers=False,
                                 checkpoint_activations=False)
 
-    loss = (Y - base_results[0]).pow(2).sum()
+    loss = (Y - base_results[0]).pow(2).sum() / 64
     loss.backward()
     base_grads = bert_encoder.get_grads()
 
@@ -242,7 +255,7 @@ def run_backward(ds_config, atol=1e-2, verbose=False):
                             output_all_encoded_layers=False,
                             checkpoint_activations=False)
 
-    loss = (Y - ds_results[0]).pow(2).sum()
+    loss = (Y - ds_results[0]).pow(2).sum() / 64
     loss.backward()
     ds_grads = ds_encoder.get_grads()
 
@@ -250,12 +263,21 @@ def run_backward(ds_config, atol=1e-2, verbose=False):
     check_equal(base_grads, ds_grads, atol=atol, verbose=verbose)
 
 
+#test_backward[3-1024-120-16-24-True-True-0.05]
+#test_backward[3-1024-52-16-24-False-True-0.2]
+# 3-128-54-2-24-False-True-0.2
 @pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
                          [
-                             (3,1024,128,16,24,True,False, 0.05),
-                             (3,1024,128,16,24,True,True, 0.05),
-                             (3,1024,128,16,24,False,False, 0.1),
-                             (3,1024,128,16,24,False,True, 0.2),
+                             (64,1600,128,2,4,False,True, 0.2),
+                             (8,1600,128,25,3,True,True, 0.05),
+                             (8,160,128,2,3,True,True, 0.1),
+                             (8,1600,128,2,3,True,True, 0.05),
+                             (3,1024,119,16,24,True,False, 0.05),
+                             (3,1024,115,16,24,True,True, 0.05),
+                             #(1024,128,10,2,2,False,False, 0.1),
+                             #(3,1024,52,16,24,False,True, 0.2),
+                             #(3,128,51,2,24,False,False, 0.1),
+                             #(3,128,54,2,24,False,True, 0.2),
                          ]) # yapf: disable
 def test_backward(batch_size,
                   hidden_size,
@@ -274,7 +296,7 @@ def test_backward(batch_size,
     ds_config.layer_id = None
     ds_config.batch_size = batch_size
     ds_config.hidden_size = hidden_size
-    ds_config.max_seq_length = seq_len
+    ds_config.intermediate_size = hidden_size
     ds_config.heads = heads
     ds_config.attn_dropout_ratio = 0.0
     ds_config.hidden_dropout_ratio = 0.0
@@ -283,7 +305,7 @@ def test_backward(batch_size,
     ds_config.initializer_range = 0.02
     ds_config.fp16 = use_fp16
 
-    run_backward(ds_config, atol=atol)
+    run_backward(ds_config, seq_len, atol=atol, verbose=False)
 
 
 #@pytest.mark.parametrize('batch_size, hidden_size, seq_len, heads, num_layers, is_preln, use_fp16, atol',
@@ -310,6 +332,7 @@ def test_backward(batch_size,
 #    ds_config.layer_id = None
 #    ds_config.batch_size = batch_size
 #    ds_config.hidden_size = hidden_size
+#    ds_config.intermediate_size = 4 * hidden_size
 #    ds_config.max_seq_length = seq_len
 #    ds_config.heads = heads
 #    ds_config.attn_dropout_ratio = 0.0

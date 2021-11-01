@@ -1,0 +1,20 @@
+{
+  "train_batch_size": 4,
+  "gradient_accumulation_steps": 1,
+  "steps_per_print": 1,
+  "zero_optimization": {
+    "stage": 2,
+    "reduce_bucket_size": 7000000,
+    "allgather_bucket_size": 7000000,
+    "reduce_scatter": true,
+    "cpu_offload": true
+  },
+  "gradient_clipping": 1.0,
+  "fp16": {
+    "enabled": true,
+    "loss_scale": 0,
+    "loss_scale_window": 1000,
+    "hysteresis": 2,
+    "min_loss_scale": 1
+  }
+}

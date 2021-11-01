@@ -284,10 +284,10 @@ transformer layers using DeepSpeed transformer kernel as below.
              gelu_checkpoint=args.gelu_checkpoint,
              stochastic_mode=True)
 
-         self.layer = nn.ModuleList([copy.deepcopy(DeepSpeedTransformerLayer(i, cuda_config)) for i in range(config.num_hidden_layers)])
+         layer = DeepSpeedTransformerLayer(cuda_config)
      else:
          layer = BertLayer(config)
-         self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
+     self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 ```
 All configuration settings come from the DeepSpeed configuration file and
 command arguments and thus we must pass the `args` variable to here in this model.
@@ -343,7 +343,12 @@ about 96 hours to reach parity on 64 TPU2 chips, we train in less than 9 hours o
 hours) from NVIDIA using their superpod on the same number of GPUs
 ([link](https://devblogs.nvidia.com/training-bert-with-gpus/)).
 
-![DeepSpeed BERT Training Time](/assets/images/end-to-end-bert-training.png){: .align-center}
+| Number of nodes | Number of V100 GPUs | Time         |
+| --------------- | ------------------- | ------------ |
+| 1 DGX-2         | 16                  | 33 hr 13 min |
+| 4 DGX-2         | 64                  | 8 hr 41 min  |
+| 16 DGX-2        | 256                 | 144 min      |
+| 64 DGX-2        | 1024                | 44 min       |
 
 Our configuration for the BERT training result above can be reproduced with
 the scripts/json configs in our DeepSpeedExamples repo. Below is a table containing a
@@ -377,7 +382,7 @@ for more details in
 
 ![DeepSpeed Single GPU Bert Training Throughput 128](/assets/images/transformer_kernel_perf_seq128.PNG){: .align-center}
 
-![DeepSpeed Single GPU Bert Training Throughput 512](/assets/images/transformer_kernel_perf_seq128.PNG){: .align-center}
+![DeepSpeed Single GPU Bert Training Throughput 512](/assets/images/transformer_kernel_perf_seq512.PNG){: .align-center}
 
 Compared to SOTA, DeepSpeed significantly improves single GPU performance for transformer-based model like BERT. Figure above shows the single GPU throughput of training BertBERT-Large optimized through DeepSpeed, compared with two well-known Pytorch implementations, NVIDIA BERT and HuggingFace BERT. DeepSpeed reaches as high as 64 and 53 teraflops throughputs (corresponding to 272 and 52 samples/second) for sequence lengths of 128 and 512, respectively, exhibiting up to 28% throughput improvements over NVIDIA BERT and up to 62% over HuggingFace BERT.  We also support up to 1.8x larger batch size without running out of memory.
 

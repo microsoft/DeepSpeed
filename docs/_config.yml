@@ -30,13 +30,28 @@ collections:
     output: true
     permalink: /:collection/:path/
     order:
+      - advanced-install.md
       - getting-started.md
       - azure.md
-      - cifar-10.md
+      - bert-finetuning.md
       - bert-pretraining.md
-      - megatron.md
-      - 1Cycle.md
+      - cifar-10.md
+      - curriculum-learning.md
+      - flops-profiler.md
+      - pytorch-profiler.md
+      - gan.md
       - lrrt.md
+      - megatron.md
+      - mixture-of-experts.md
+      - one-cycle.md
+      - onebit-adam.md
+      - onebit-lamb.md
+      - pipeline.md
+      - progressive_layer_dropping.md
+      - sparse-attention.md
+      - transformer_kernel.md
+      - zero-offload.md
+      - zero.md
 
 defaults:
   - scope:
@@ -64,5 +79,13 @@ defaults:
       layout: single
       share: true
 
+analytics:
+  provider: "google-gtag"
+  google:
+    tracking_id: "UA-169781858-1"
+
 timezone: America/Los_Angeles
 breadcrumbs: true
+
+press_release_v3: https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/
+press_release_v5: https://www.microsoft.com/en-us/research/blog/deepspeed-powers-8x-larger-moe-model-training-with-high-performance/

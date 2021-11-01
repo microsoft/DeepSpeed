@@ -17,14 +17,14 @@ public:
         size_t heads;
         size_t seq_length;
         size_t prob_depth;
-        float temprature;
+        float temperature;
         bool mem_alloc;
         Config(size_t batch, size_t h, size_t seq, int prob_size = 0, bool mem_alloc = false)
             : batchSize(batch),
               heads(h),
               seq_length(seq),
               prob_depth(prob_size),
-              temprature(1.0),
+              temperature(1.0),
               mem_alloc(mem_alloc)
         {
         }
@@ -45,13 +45,15 @@ public:
             out_grad, soft_out, bsz, config_.heads, config_.seq_length, stream);
     }
 
-    inline int GetProbDepth() const { return config_.prob_depth; }
+    inline size_t GetProbDepth() const { return config_.prob_depth; }
 
-    inline int GetBatchSize() const { return config_.batchSize; }
+    inline size_t GetBatchSize() const { return config_.batchSize; }
 
-    inline int GetNumHeads() const { return config_.heads; }
+    inline size_t GetNumHeads() const { return config_.heads; }
 
-    inline int GetSeqLength() const { return config_.seq_length; }
+    inline size_t GetSeqLength() const { return config_.seq_length; }
+
+    inline void SetSeqLength(size_t seq_len) { config_.seq_length = seq_len; }
 
 private:
     Config config_;

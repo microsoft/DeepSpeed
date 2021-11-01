@@ -3,13 +3,13 @@ import torch
 import pytest
 import json
 import argparse
-from common import distributed_test
+from common import distributed_test, get_test_path
 from simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
 
 # A test on its own
 import deepspeed
-from deepspeed.pt.deepspeed_config import DeepSpeedConfig
+from deepspeed.runtime.config import DeepSpeedConfig
 
 
 def test_cuda():
@@ -62,7 +62,7 @@ def test_batch_config(num_ranks, batch, micro_batch, gas, success):
         assert dist.get_world_size() == num_ranks, \
         'The test assumes a world size of f{num_ranks}'
 
-        ds_batch_config = 'tests/unit/ds_batch_config.json'
+        ds_batch_config = get_test_path('ds_batch_config.json')
         ds_config = DeepSpeedConfig(ds_batch_config)
 
         #test cases when all parameters are provided
@@ -195,3 +195,114 @@ def test_dist_init_true(tmpdir):
             model.step()
 
     _test_dist_init_true(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_init_no_optimizer(tmpdir):
+
+    config_dict = {"train_batch_size": 1, "fp16": {"enabled": True}}
+    config_path = create_config_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=1)
+    def _helper():
+        parser = argparse.ArgumentParser()
+        args = parser.parse_args(args='')
+        args.deepscale_config = config_path
+        args.local_rank = 0
+
+        hidden_dim = 10
+
+        model = SimpleModel(hidden_dim=hidden_dim)
+
+        model, _, _, _ = deepspeed.initialize(args=args, model=model)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=5,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            with pytest.raises(AssertionError):
+                model.backward(loss)
+            with pytest.raises(AssertionError):
+                model.step()
+
+    _helper()
+
+
+def test_none_args(tmpdir):
+    config = {
+        "train_batch_size": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+
+    @distributed_test(world_size=1)
+    def _helper():
+        model = SimpleModel(hidden_dim=10)
+        model, _, _, _ = deepspeed.initialize(args=None, model=model, config=config)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=5,
+                                        hidden_dim=10,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+
+    _helper()
+
+
+def test_no_args(tmpdir):
+    config = {
+        "train_batch_size": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+
+    @distributed_test(world_size=1)
+    def _helper():
+        model = SimpleModel(hidden_dim=10)
+        model, _, _, _ = deepspeed.initialize(model=model, config=config)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=5,
+                                        hidden_dim=10,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+
+    _helper()
+
+
+def test_no_model(tmpdir):
+    config = {
+        "train_batch_size": 1,
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+        "fp16": {
+            "enabled": True
+        }
+    }
+
+    @distributed_test(world_size=1)
+    def _helper():
+        model = SimpleModel(hidden_dim=10)
+        with pytest.raises(AssertionError):
+            model, _, _, _ = deepspeed.initialize(model=None, config=config)
+
+        with pytest.raises(AssertionError):
+            model, _, _, _ = deepspeed.initialize(model, config=config)

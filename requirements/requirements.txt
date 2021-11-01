@@ -1,0 +1,7 @@
+torch
+tqdm
+tensorboardX==1.8
+ninja
+numpy
+psutil
+packaging

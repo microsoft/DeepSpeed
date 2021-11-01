@@ -93,7 +93,7 @@ done
 
 # Validate path to BingBertSquad script
 if [ -z "${BingBertSquad_DIR+x}" ]; then
-  export BingBertSquad_DIR=../../../DeepSpeedExamples/BingBertSquad
+  export BingBertSquad_DIR=../../../../DeepSpeedExamples/BingBertSquad
   echo "BingBertSquad_DIR environment variable not set; trying default: ${BingBertSquad_DIR}"
 fi
 validate_folder ${BingBertSquad_DIR} "BingBertSquad_DIR"
@@ -121,7 +121,7 @@ echo "deepspeed: ${enable_deepspeed}"
 echo "other_args: ${other_args}"
 
 EFFECTIVE_BATCH_SIZE=${batch_size}
-MAX_GPU_BATCH_SIZE=6
+MAX_GPU_BATCH_SIZE=3
 PER_GPU_BATCH_SIZE=$((EFFECTIVE_BATCH_SIZE/num_gpus))
 if [[ $PER_GPU_BATCH_SIZE -lt $MAX_GPU_BATCH_SIZE ]]; then
        GRAD_ACCUM_STEPS=1
@@ -137,7 +137,6 @@ fi
 
 JOB_NAME="BingBertSquad_ds-${enable_deepspeed}_${num_gpus}-gpu"
 
-#            --do_predict \
 squad_args="--bert_model bert-large-uncased \
             --do_train \
             --do_lower_case \
@@ -148,6 +147,7 @@ squad_args="--bert_model bert-large-uncased \
             --num_train_epochs ${epochs} \
             --max_seq_length 384 \
             --doc_stride 128 \
+            --do_predict \
             --output_dir ${OUTPUT_DIR} \
             --gradient_accumulation_steps ${GRAD_ACCUM_STEPS} \
 		      	--job_name ${JOB_NAME} \

@@ -10,11 +10,13 @@ benefit all your large model training jobs.
 
 If you don't already have an Azure account please see more details here: [https://azure.microsoft.com/](https://azure.microsoft.com/).
 
+To use DeepSpeed on [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/), please take a look at easy-to-use examples for Transformers and CIFAR training from [AzureML Examples GitHub](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed).
+
 To help with launching Azure instances we suggest using the [Azure
 CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest). We have created
 several helper scripts to get you quickly started using DeepSpeed with Azure.
- * Install Azure CLI on your local box: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli
- * Alternatively you can use the Azure in-browser shell: https://shell.azure.com/
+ * Install Azure CLI on your local box: [https://docs.microsoft.com/en-us/cli/azure/install-azure-cli](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli).
+ * Alternatively, you can use the Azure in-browser shell: [https://shell.azure.com/](https://shell.azure.com/).
 
 ## Create an SSH key
 Generate an SSH key that will be used across this tutorial to SSH into your VMs and
