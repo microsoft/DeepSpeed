@@ -17,6 +17,8 @@ from ..pipe import PipelineModule
 
 
 class InferenceEngine(Module):
+    inference_mp_group = None
+
     def __init__(self,
                  model,
                  mp_size=1,
@@ -24,6 +26,7 @@ class InferenceEngine(Module):
                  checkpoint=None,
                  dtype=None,
                  injection_dict=None,
+                 return_tuple=True,
                  replace_method='auto',
                  quantization_setting=None):
 
@@ -57,7 +60,7 @@ class InferenceEngine(Module):
             self.mp_world_size = dist.get_world_size(
                 group=self.mpu.get_model_parallel_group())
             self.mp_group = self.mpu.get_model_parallel_group()
-        elif self.mp_world_size > 1 and not dist.is_initialized():
+        elif self.mp_world_size > 1:
             self._create_model_parallel_group()
 
         # apply injection policy
@@ -87,17 +90,20 @@ class InferenceEngine(Module):
 
     def _create_model_parallel_group(self):
         # Call the init process
+        if InferenceEngine.inference_mp_group is None:
+            init_distributed()
 
-        init_distributed()
+            local_rank = int(os.getenv('LOCAL_RANK', '0'))
+            torch.cuda.set_device(local_rank)
 
-        local_rank = int(os.getenv('LOCAL_RANK', '0'))
-        torch.cuda.set_device(local_rank)
-
-        ranks = [i for i in range(self.mp_world_size)]
-        self.mp_group = dist.new_group(ranks)
+            ranks = [i for i in range(self.mp_world_size)]
+            self.mp_group = dist.new_group(ranks)
+            InferenceEngine.inference_mp_group = self.mp_group
+        else:
+            self.mp_group = InferenceEngine.inference_mp_group
 
     def _check_quantize_setting(self, quantization_setting):
-        self.quatize_bits = 8
+        self.quantize_bits = 8
         self.mlp_extra_grouping = False
         self.quantize_groups = 1
         if quantization_setting is None:
@@ -136,6 +142,7 @@ class InferenceEngine(Module):
                                   config=self.config,
                                   fp16=(self.dtype == torch.half),
                                   training=False,
+                                  return_tuple=return_tuple,
                                   quantize=(self.dtype == torch.int8),
                                   quantize_settings=(self.quantization_scales,
                                                      self.quantize_merge_count,
@@ -172,7 +179,7 @@ class InferenceEngine(Module):
             quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
             model, self.quantization_scales = quantizer.model_quantize(self.module,
                                                                         self.injection_dict,
-                                                                        self.quatize_bits,
+                                                                        self.quantize_bits,
                                                                         self.quantize_groups)
         elif self.dtype == torch.half:
             self.module.half()

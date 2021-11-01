@@ -19,7 +19,7 @@ class ReplaceWithTensorSlicing:
         assert dim1 > dim2, \
             'Merging tensors is not allowed here! Please use deepspeed load_checkpoint\
             for merging your checkpoints before replacing the transformer layer with\
-            inference-kerenls'
+            inference-kernels'
 
     def qkv_copy(self, dst, src):
         if src is None:
@@ -99,10 +99,11 @@ def replace_transformer_layer(orig_layer_impl,
                               preln=True,
                               fp16=True,
                               local_rank=-1,
+                              stochastic_mode=True,
                               training=True,
                               quantize=False,
-                              encoder_decoder=False,
-                              quantize_settings=None):
+                              quantize_settings=None,
+                              return_tuple=False):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -114,16 +115,18 @@ def replace_transformer_layer(orig_layer_impl,
         seed (int): random seed value
         max_seq_length (int): max sequence length for training
         hidden_size (int): hidden dimension
-        num_attention_heads (int): numebr of attention heads
+        num_attention_heads (int): number of attention heads
         mp_size (int): model_parallelism degree
-        mp_group : model_parallel gropu initialized on the modeling side
+        mp_group : model_parallel group initialized on the modeling side
         preln (bool): does the original layer implementation do pre or post layer norm?
         fp16 (bool): fp16 or fp32
         local_rank (int): GPU rank (optional),
+        stochastic_mode (bool): whether to use stochastic mode
         training (bool): specifying whether kernel-injection is done for training/inference (set to false for inference-mode injection)
         quantize_settings (tuple): this setting shows how we can quantize a model for running it through the inference kernels.
                 It includes (quantization_scales, merge_count, mlp_extra_grouping, quantize_groups).
-        encoder_decoder (bool): this flag needs to be set for huggingface Bert models.
+        return_tuple (bool): if set, transformer layer returns a tuple as the output.
+            Note: this flag needs to be set for huggingface models.
 
     Returns:
         Updated nn.module with replaced transformer layers
@@ -172,11 +175,14 @@ def replace_transformer_layer(orig_layer_impl,
             transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                 hidden_size=hidden_size,
                 heads=num_attention_heads,
+                layer_norm_eps=config.layer_norm_eps if hasattr(
+                    config,
+                    'layer_norm_eps') else 1e-12,
                 fp16=fp16,
                 pre_layer_norm=preln,
                 mp_size=mp_size,
                 q_int8=quantize,
-                encoder_decoder=(True if policy_cls is HFBertLayerPolicy else False),
+                return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                 triangular_masking=(policy_cls is not HFBertLayerPolicy),
                 local_attention=((config.attention_layers[layer_id] == "local")
                                  if hasattr(config,
@@ -265,12 +271,15 @@ def replace_transformer_layer(orig_layer_impl,
                 hidden_dropout_ratio=config.hidden_dropout_prob,
                 num_hidden_layers=config.num_hidden_layers,
                 initializer_range=config.initializer_range,
+                layer_norm_eps=config.layer_norm_eps if hasattr(
+                    config,
+                    'layer_norm_eps') else 1e-12,
                 seed=seed,
                 fp16=fp16,
                 pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
-                huggingface=encoder_decoder,
+                return_tuple=return_tuple,
                 local_rank=local_rank,
-                stochastic_mode=True,
+                stochastic_mode=stochastic_mode,
                 normalize_invertible=True,
                 training=training)
             new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
@@ -401,7 +410,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
             if plcy._orig_layer_class is not None:
                 policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
     assert len(policy.items()) > 0,\
-        "No default policy found! Please specifiy your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
+        "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy)

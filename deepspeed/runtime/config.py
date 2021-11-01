@@ -30,12 +30,14 @@ from .swap_tensor.aio_config import get_aio_config
 
 TENSOR_CORE_ALIGN_SIZE = 8
 
+ADAGRAD_OPTIMIZER = 'adagrad'
 ADAM_OPTIMIZER = 'adam'
 ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
 ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
+    ADAGRAD_OPTIMIZER,
     ADAM_OPTIMIZER,
     ADAMW_OPTIMIZER,
     LAMB_OPTIMIZER,
@@ -46,7 +48,7 @@ DEEPSPEED_OPTIMIZERS = [
 # extra optimizer parameters for adam/adamw
 TORCH_ADAM_PARAM = "torch_adam"
 
-# default to adamw logic for adam/adamw optimizers unless user explictly opts out
+# default to adamw logic for adam/adamw optimizers unless user explicitly opts out
 ADAM_W_MODE = "adam_w_mode"
 ADAM_W_MODE_DEFAULT = True
 
@@ -665,7 +667,7 @@ def get_dataloader_drop_last(param_dict):
 
 
 '''Write deepspeed config files by modifying basic templates.
-Can be used for quicly changing parameters via command line parameters.'''
+Can be used for quickly changing parameters via command line parameters.'''
 
 
 class DeepSpeedConfigWriter:
@@ -738,7 +740,7 @@ class DeepSpeedConfig(object):
                         f"ds_config ({TRAIN_BATCH_SIZE}, {TRAIN_MICRO_BATCH_SIZE_PER_GPU}, and/or " \
                         f"{GRADIENT_ACCUMULATION_STEPS}). These parameters *will not be used* since " \
                         "elastic training is enabled, which takes control of these parameters. " \
-                        "If you want to supress this error (the parameters will be silently ignored) " \
+                        "If you want to suppress this error (the parameters will be silently ignored) " \
                         f"please set {IGNORE_NON_ELASTIC_BATCH_INFO}':true in your elasticity config.")
 
             # micro_bsz * world_size * gas = total_batch_size

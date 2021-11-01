@@ -326,7 +326,7 @@ class LRRangeTest(object):
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        >>> scheduler = torch.optim.LRRangeTest(optimizer)
+        >>> scheduler = LRRangeTest(optimizer)
         >>> data_loader = torch.utils.data.DataLoader(...)
         >>> for epoch in range(10):
         >>>     for batch in data_loader:
@@ -361,7 +361,7 @@ class LRRangeTest(object):
         self.step_rate = lr_range_test_step_rate
         self.last_batch_iteration = last_batch_iteration
         self.staircase = lr_range_test_staircase
-        self.interval_fn = self._staircase_interval if lr_range_test_staircase else self._continous_interval
+        self.interval_fn = self._staircase_interval if lr_range_test_staircase else self._continuous_interval
 
         if last_batch_iteration == -1:
             self._update_optimizer(self.min_lr)
@@ -369,7 +369,7 @@ class LRRangeTest(object):
     def _staircase_interval(self):
         return math.floor(float(self.last_batch_iteration + 1) / self.step_size)
 
-    def _continous_interval(self):
+    def _continuous_interval(self):
         return float(self.last_batch_iteration + 1) / self.step_size
 
     def _get_increase(self):
@@ -463,7 +463,7 @@ class OneCycle(object):
 
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        >>> scheduler = torch.optim.OneCycle(optimizer)
+        >>> scheduler = OneCycle(optimizer, 0.0001, 0.0010)
         >>> data_loader = torch.utils.data.DataLoader(...)
         >>> for epoch in range(10):
         >>>     for batch in data_loader:
@@ -514,7 +514,7 @@ class OneCycle(object):
                                       decay_mom_rate,
                                       last_batch_iteration)
 
-        # Initalize batch iteration tracker
+        # Initialize batch iteration tracker
         self.last_batch_iteration = last_batch_iteration
 
     # Configure cycle shape
@@ -536,6 +536,13 @@ class OneCycle(object):
         self.second_stair_count = cycle_first_stair_count if cycle_second_stair_count is None else cycle_second_stair_count
         self.decay_step_size = decay_step_size
 
+        if math.isclose(self.decay_step_size, 0):
+            self.skip_lr_decay = True
+            self.skip_mom_decay = True
+        else:
+            self.skip_lr_decay = False
+            self.skip_mom_decay = False
+
     # Configure lr schedule
     def _initialize_lr(self,
                        optimizer,
@@ -550,6 +557,9 @@ class OneCycle(object):
 
         self.max_lrs = [cycle_max_lr] * len(optimizer.param_groups)
         self.decay_lr_rate = decay_lr_rate
+
+        if math.isclose(self.decay_lr_rate, 0):
+            self.skip_lr_decay = True
 
     # Configure momentum schedule
     def _initialize_momentum(self,
@@ -573,6 +583,9 @@ class OneCycle(object):
         if last_batch_iteration == -1:
             for momentum, group in zip(self.min_moms, optimizer.param_groups):
                 group['betas'] = momentum
+
+        if math.isclose(self.decay_mom_rate, 0):
+            self.skip_mom_decay = True
 
     def _get_scale_factor(self):
         batch_iteration = (self.last_batch_iteration + 1)
@@ -607,9 +620,13 @@ class OneCycle(object):
         return lrs
 
     def _get_decay_mom(self, decay_batch_iteration):
+        if self.skip_mom_decay:
+            return self.max_moms
+
         decay_interval = decay_batch_iteration / self.decay_step_size
         mom_decay_factor = (1 + self.decay_mom_rate * decay_interval)
         momentums = [(beta0 * mom_decay_factor, beta1) for beta0, beta1 in self.max_moms]
+
         return momentums
 
     def _get_decay_lr(self, decay_batch_iteration):
@@ -617,6 +634,9 @@ class OneCycle(object):
         after the cycle completes and post cycle decaying of lr/mom is enabled.
         This function treats `self.last_batch_iteration` as the last batch index.
         """
+        if self.skip_lr_decay:
+            return self.min_lrs
+
         decay_interval = decay_batch_iteration / self.decay_step_size
         lr_decay_factor = (1 + self.decay_lr_rate * decay_interval)
         lrs = [cycle_min_lr / lr_decay_factor for cycle_min_lr in self.min_lrs]
@@ -686,7 +706,7 @@ class WarmupLR(object):
             last_batch_iteration (int): The index of the last batch. Default: -1.
         Example:
             >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-            >>> scheduler = torch.optim.WarmupLR(optimizer)
+            >>> scheduler = WarmupLR(optimizer)
             >>> data_loader = torch.utils.data.DataLoader(...)
             >>> for epoch in range(10):
             >>>     for batch in data_loader:
