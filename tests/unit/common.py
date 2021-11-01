@@ -46,7 +46,6 @@ def distributed_test(world_size=2, backend='nccl'):
             os.environ.pop('NCCL_DEBUG', None)
 
             dist.init_process_group(backend=backend)
-            print(f'dist initialized with cdb = {dist.cdb}')
             dist.barrier()
 
             if torch.cuda.is_available():

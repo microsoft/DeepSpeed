@@ -25,7 +25,7 @@ class TorchBackend(Backend):
     def __init__(self, name='torch', rank=0, size=1, dist_backend="nccl"):
         super(TorchBackend, self).__init__()
         self.init_process_group(name, rank, size, dist_backend)
-        self.torch_version_before_18 = self.older_torch()
+        self.torch_version_before_18 = older_torch()
 
     def init_process_group(self, name='torch', rank=0, size=1, dist_backend="nccl"):
         if size <= -1:  # TODO: Revert this to 1 afer investigating PP test failures
@@ -46,16 +46,13 @@ class TorchBackend(Backend):
                    op=torch.distributed.ReduceOp.SUM,
                    group=None,
                    async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         op = self._reduce_op(op)
-        print('op = {op}')
         return torch.distributed.all_reduce(tensor=tensor,
                                             op=op,
                                             group=group,
                                             async_op=async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.reduce(tensor=tensor,
                                         dst=dst,
                                         op=self._reduce_op(op),
@@ -68,7 +65,6 @@ class TorchBackend(Backend):
                        op=ReduceOp.SUM,
                        group=None,
                        async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.reduce_scatter(output=output,
                                                 input_list=input_list,
                                                 op=self._reduce_op(op),
@@ -76,14 +72,12 @@ class TorchBackend(Backend):
                                                 async_op=async_op)
 
     def broadcast(self, tensor, src, group=None, async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.broadcast(tensor=tensor,
                                            src=src,
                                            group=group,
                                            async_op=async_op)
 
     def all_gather(self, tensor_list, tensor, group=None, async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.all_gather(tensor_list=tensor_list,
                                             tensor=tensor,
                                             group=group,
@@ -96,7 +90,6 @@ class TorchBackend(Backend):
                           input_split_sizes=None,
                           group=None,
                           async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.all_to_all_single(output=output,
                                                    input=input,
                                                    output_split_sizes=output_split_sizes,
@@ -105,15 +98,12 @@ class TorchBackend(Backend):
                                                    async_op=async_op)
 
     def send(self, tensor, dst, group=None, tag=0):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.send(tensor=tensor, dst=dst, group=group, tag=tag)
 
     def recv(self, tensor, src=None, group=None, tag=0):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.recv(tensor=tensor, src=src, group=group, tag=tag)
 
     def gather(self, tensor, gather_list=None, dst=0, group=None, async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.gather(tensor=tensor,
                                         gather_list=gather_list,
                                         dst=dst,
@@ -121,7 +111,6 @@ class TorchBackend(Backend):
                                         async_op=async_op)
 
     def scatter(self, tensor, scatter_list=None, src=0, group=None, async_op=False):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.scatter(tensor=tensor,
                                          scatter_list=scatter_list,
                                          src=src,
@@ -132,18 +121,15 @@ class TorchBackend(Backend):
         return torch.distributed.barrier()
 
     def get_rank(self, group=None):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.get_rank(group=group)
 
     def get_world_size(self, group=None):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.get_world_size(group=group)
 
     def is_initialized(self):
         return torch.distributed.is_initialized()
 
     def get_backend(self, group=None):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.get_backend(group=group)
 
     def new_group(self, ranks):
@@ -151,21 +137,7 @@ class TorchBackend(Backend):
         return torch.distributed.new_group(ranks)
 
     def destroy_process_group(self, group=None):
-        group = torch.distributed.group.WORLD if self.torch_version_before_18 and group is None else None
         return torch.distributed.destroy_process_group(group=group)
-
-    def older_torch(self):
-        '''
-            Helper to lookup torch version. For versions less than 1.8, torch.dist
-            used torch.distributed.group.WORLD as the default group argument instead of None.
-            See more details at: https://github.com/pytorch/pytorch/pull/48767
-        '''
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
-        if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
-            return True
-        else:
-            return False
 
     def _reduce_op(self, op):
         '''

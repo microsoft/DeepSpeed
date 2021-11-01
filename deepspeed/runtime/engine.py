@@ -183,8 +183,13 @@ class DeepSpeedEngine(Module):
         #if self.use_ds_comm:
         #dist.init_process_group(backend=self.dist_backend, use_deepspeed=True)
         #else:
-        dist.init_process_group(backend=self.dist_backend,
-                                use_deepspeed=self.use_ds_comm)
+        from deepspeed.comm import supported_torch_version
+        if supported_torch_version:
+            dist.init_process_group(backend=self.dist_backend,
+                                    use_deepspeed=self.use_ds_comm)
+        else:
+            if not dist.is_initialized():
+                dist.init_process_group(backend=self.dist_backend)
 
         see_memory_usage(f"DeepSpeed Engine: Before args sanity test")
         self._do_args_sanity_check(args)

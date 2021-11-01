@@ -168,11 +168,10 @@ def init_torch_backend(backend):
     global cdb
     global ds_world_rank
     global ds_world_size
-    #import torch.distributed as dist
+
     if cdb is not None and cdb.is_initialized():
         if ds_world_rank == 0:
             logger.info('torch.distributed already initialized')
-
     else:
         if ds_world_rank == 0:
             logger.info('Initializing TorchBackend in DeepSpeed')
