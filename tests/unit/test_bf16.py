@@ -12,7 +12,9 @@ from util import bf16_required_version_check
 @pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 def test_adam_bf16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offload):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
@@ -80,7 +82,9 @@ def test_adam_bf16_zero_onecycle_compatibility(tmpdir, zero_stage, use_cpu_offlo
 @pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
@@ -119,7 +123,9 @@ def test_zero_allow_untested_optimizer(tmpdir, zero_stage, use_cpu_offload):
 @pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
@@ -183,7 +189,9 @@ def test_zero_empty_partition(tmpdir, zero_stage, use_cpu_offload):
                            FusedAdam)])
 def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_constructor):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     config_dict = {
         "train_batch_size": 2,
@@ -217,7 +225,9 @@ def test_zero_supported_client_optimizer(tmpdir, zero_stage, optimizer_construct
 
 def test_zero2_reduce_scatter_off(tmpdir):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     config_dict = {
         "train_batch_size": 2,
@@ -270,7 +280,9 @@ def test_zero2_reduce_scatter_off(tmpdir):
 @pytest.mark.parametrize('stage', [2])
 def test_zero_empty_grad(tmpdir, stage):
     if not bf16_required_version_check():
-        pytest.skip("DeepSpeed bfloat16 tests need torch 1.5 or higher to run correctly")
+        pytest.skip(
+            " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
+        )
 
     config_dict = {
         "train_batch_size": 1,
