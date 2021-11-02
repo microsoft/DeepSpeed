@@ -4,13 +4,49 @@ import torch
 from torch.optim import Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
-from simple_model import args_from_dict, SimpleModel
+from simple_model import args_from_dict, SimpleModel, random_dataloader
 from common import distributed_test
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WarmupLR
 from deepspeed.runtime.config import ADAM_OPTIMIZER
+from deepspeed.runtime.utils import see_memory_usage
+
+
+@pytest.mark.parametrize('zero_stage', [0, 3])
+def test_no_optim(zero_stage):
+    ds_config = {
+        'train_batch_size': 2,
+        'zero_optimization': {
+            "stage": zero_stage,
+            "offload_param": {
+                "device": 'cpu'
+            }
+        }
+    }
+    # 2B test
+    #hidden_dim = 6144
+    #model = SimpleModel(hidden_dim, nlayers=60)
+    hidden_dim = 4
+    model = SimpleModel(hidden_dim, nlayers=1)
+    print('total number of parameters:', sum([p.numel() for p in model.parameters()]))
+
+    @distributed_test(world_size=[1])
+    def _go(model, hidden_dim):
+        see_memory_usage('pre-init', force=True)
+        model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
+        see_memory_usage('post-init', force=True)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=50,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device,
+                                        dtype=torch.float)
+        print(f"optimizer={model.optimizer}")
+        for batch in data_loader:
+            model(batch[0], batch[1])
+
+    _go(model, hidden_dim)
 
 
 @pytest.mark.parametrize('optimizer_type', [None, Optimizer, Callable])

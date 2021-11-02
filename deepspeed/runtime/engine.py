@@ -21,7 +21,7 @@ from tensorboardX import SummaryWriter
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
-from deepspeed.runtime.utils import see_memory_usage
+from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -223,6 +223,9 @@ class DeepSpeedEngine(Module):
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
+        elif self.zero_optimization():
+            # no optim selected but zero is enabled
+            self.optimizer = self._configure_zero_optimizer(optimizer=None)
 
         # Bookkeeping for csr support
         self.csr_tensor_module_names = set()
@@ -1065,6 +1068,9 @@ class DeepSpeedEngine(Module):
         log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
         assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
         timers = self.timers if self.wall_clock_breakdown() else None
+
+        if optimizer is None:
+            optimizer = DummyOptim(list(self.module.parameters()))
 
         if self.zero_legacy_stage1(
         ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:

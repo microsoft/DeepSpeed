@@ -32,6 +32,12 @@ else:
     torch_max_memory_reserved = torch.cuda.memory_cached
 
 
+class DummyOptim():
+    def __init__(self, params):
+        self.param_groups = []
+        self.param_groups.append({'params': params})
+
+
 def noop_decorator(func):
     return func
 
