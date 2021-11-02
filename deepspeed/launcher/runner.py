@@ -9,7 +9,6 @@ per rank for training.
 import os
 import sys
 import json
-import shutil
 import base64
 import argparse
 import subprocess
