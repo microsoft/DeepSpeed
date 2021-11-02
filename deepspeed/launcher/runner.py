@@ -193,16 +193,16 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
             # sanity checks
             if hostname not in host_info:
                 raise ValueError(f"Hostname '{hostname}' not found in hostfile")
-            for s in slots:
-                if s not in host_info[hostname]:
-                    raise ValueError(f"No slot '{s}' specified on host '{hostname}'")
+            for slot in slots:
+                if slot not in host_info[hostname]:
+                    raise ValueError(f"No slot '{slot}' specified on host '{hostname}'")
 
             # If include string, build the list from here
             if include_str:
                 filtered_hosts[hostname] = slots
             elif exclude_str:
-                for s in slots:
-                    logger.info(f'removing {s} from {hostname}')
+                for slot in slots:
+                    logger.info(f'removing {slot} from {hostname}')
                     filtered_hosts[hostname].remove(s)
 
         # User just specified the whole node
@@ -353,7 +353,7 @@ def main(args=None):
 
         cmd = runner.get_cmd(env, active_resources)
 
-    logger.info(f"cmd = {''.join(cmd)}")
+    logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
     result.wait()
 
