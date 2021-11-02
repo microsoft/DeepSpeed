@@ -33,6 +33,10 @@ else:
 
 
 class DummyOptim():
+    """
+    Dummy optimizer presents model parameters as a param group, this is
+    primarily used to allow ZeRO-3 without an optimizer
+    """
     def __init__(self, params):
         self.param_groups = []
         self.param_groups.append({'params': params})
