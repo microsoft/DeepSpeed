@@ -202,7 +202,8 @@ def replace_transformer_layer(orig_layer_impl,
             qkvw = qkvw.half()
             dense_w = dense_w.half()
             _h4h_w = _h4h_w.half()
-            _h4h_w2 = _h4h_w2.half()
+            if policy_cls is HFT5LayerPolicy:
+                _h4h_w2 = _h4h_w2.half()
             _4hh_w = _4hh_w.half()
 
         if quantize or fp16:

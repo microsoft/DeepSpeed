@@ -15,7 +15,7 @@ inference_cuda_module = None
 specialized_mode = None
 import torch.nn as nn
 
-F =  nn.functional
+F = nn.functional
 
 
 class DeepSpeedSelfCrossAttentionFunction(Function):
@@ -262,7 +262,7 @@ class DeepSpeedSelfCrossAttention(nn.Module):
         self.norm_factor = math.sqrt(
             math.sqrt(self.config.hidden_size // self.config.heads))
         self.qkv_merging = qkv_merging
-        
+
         self.relative_attention_num_buckets = 32
         self.relative_attention_bias_weight = None
 
@@ -272,8 +272,10 @@ class DeepSpeedSelfCrossAttention(nn.Module):
         from transformers.models.t5.modeling_t5 import T5Attention
         """Compute binned relative position bias"""
         context_position = torch.arange(
-            query_length, dtype=torch.long, device=self.relative_attention_bias_weight.device
-        )[:, None]
+            query_length,
+            dtype=torch.long,
+            device=self.relative_attention_bias_weight.device)[:,
+                                                               None]
         memory_position = torch.arange(
             key_length, dtype=torch.long, device=self.relative_attention_bias_weight.device
         )[None, :]
@@ -283,10 +285,10 @@ class DeepSpeedSelfCrossAttention(nn.Module):
             bidirectional=False,
             num_buckets=self.relative_attention_num_buckets,
         )
-        values = F.embedding(relative_position_bucket, self.relative_attention_bias_weight)
-        values = values.permute([2, 0, 1]).unsqueeze(0)  
+        values = F.embedding(relative_position_bucket,
+                             self.relative_attention_bias_weight)
+        values = values.permute([2, 0, 1]).unsqueeze(0)
         return values
-            
 
     def forward(self,
                 input,
@@ -303,10 +305,12 @@ class DeepSpeedSelfCrossAttention(nn.Module):
 
         if position_bias is None:
             if self.relative_attention_bias_weight is not None:
-                position_bias = self.compute_position_baias(input.shape[1] if layer_past is None else (input.shape[1] + layer_past[0].shape[1]), 
-                                                  input.shape[1] if layer_past is None else layer_past[0].shape[1])
+                position_bias = self.compute_position_baias(
+                    input.shape[1] if layer_past is None else
+                    (input.shape[1] + layer_past[0].shape[1]),
+                    input.shape[1] if layer_past is None else layer_past[0].shape[1])
             if layer_past is not None and position_bias is not None:
-                position_bias = position_bias[:, :, -input.size(1) :, :]
+                position_bias = position_bias[:, :, -input.size(1):, :]
 
         output = DeepSpeedSelfCrossAttentionFunction.apply(
             input,
@@ -331,9 +335,10 @@ class DeepSpeedSelfCrossAttention(nn.Module):
             self.q_scales,
             self.q_groups,
             self.merge_count,
-            self.qkv_merging,)
+            self.qkv_merging,
+        )
 
-        return output + (position_bias,)
+        return output + (position_bias, )
 
 
 class DeepSpeedCrossMLPFunction(Function):
@@ -402,8 +407,8 @@ class DeepSpeedCrossMLPFunction(Function):
         bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
                                     inference_cuda_module.bias_residual_fp32
 
-        output = bias_residual_func(output, 
-                                    residual_add, 
+        output = bias_residual_func(output,
+                                    residual_add,
                                     output_b if output_b is not None else residual_add,
                                     output_b is not None)
 
@@ -451,20 +456,20 @@ class DeepSpeedCrossMLP(nn.Module):
 
     def forward(self, input, residual, bias):
         return DeepSpeedCrossMLPFunction.apply(input,
-                                          residual,
-                                          bias,
-                                          self.inter_w,
-                                          self.inter_b,
-                                          self.attn_nw,
-                                          self.attn_nb,
-                                          self.config,
-                                          self.mp_group,
-                                          self.output_b,
-                                          self.output_w,
-                                          self.q_scales,
-                                          self.q_groups,
-                                          self.merge_count,
-                                          self.inter_w1)
+                                               residual,
+                                               bias,
+                                               self.inter_w,
+                                               self.inter_b,
+                                               self.attn_nw,
+                                               self.attn_nb,
+                                               self.config,
+                                               self.mp_group,
+                                               self.output_b,
+                                               self.output_w,
+                                               self.q_scales,
+                                               self.q_groups,
+                                               self.merge_count,
+                                               self.inter_w1)
 
 
 class DeepSpeedEncoderDecoder(nn.Module):
@@ -502,23 +507,23 @@ class DeepSpeedEncoderDecoder(nn.Module):
         self.config.layer_id = DeepSpeedEncoderDecoder.layer_id
         DeepSpeedEncoderDecoder.layer_id += 1
         self.self_attention = DeepSpeedSelfCrossAttention(self.config,
-                                                mp_group,
-                                                quantize_scales,
-                                                quantize_groups,
-                                                merge_count,
-                                                qkv_merging)
+                                                          mp_group,
+                                                          quantize_scales,
+                                                          quantize_groups,
+                                                          merge_count,
+                                                          qkv_merging)
         self.cross_attention = DeepSpeedSelfCrossAttention(self.config,
-                                                mp_group,
-                                                quantize_scales,
-                                                quantize_groups,
-                                                merge_count,
-                                                qkv_merging)
+                                                           mp_group,
+                                                           quantize_scales,
+                                                           quantize_groups,
+                                                           merge_count,
+                                                           qkv_merging)
         self.mlp = DeepSpeedCrossMLP(self.config,
-                                mp_group,
-                                quantize_scales,
-                                quantize_groups,
-                                merge_count,
-                                mlp_extra_grouping)
+                                     mp_group,
+                                     quantize_scales,
+                                     quantize_groups,
+                                     merge_count,
+                                     mlp_extra_grouping)
 
         self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
@@ -579,42 +584,45 @@ class DeepSpeedEncoderDecoder(nn.Module):
             else:
                 self_attn_past_key_value, cross_attn_past_key_value = None, None
             attention_outputs = self.self_attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              self_attn_past_key_value,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b,
-                                              position_bias)
-            
-            attention_output, p_key, p_value = attention_outputs[0:3]   
+                                                    input_mask,
+                                                    head_mask,
+                                                    self_attn_past_key_value,
+                                                    get_present,
+                                                    encoder_hidden_states,
+                                                    encoder_attention_mask,
+                                                    output_attentions,
+                                                    self.norm_w,
+                                                    self.norm_b,
+                                                    position_bias)
+
+            attention_output, p_key, p_value = attention_outputs[0:3]
             self_position_attention = attention_outputs[3:]
             presents = (p_key, p_value)
 
             attention_output = attention_output + input
             if self.self_attention.attn_ob is not None:
                 attention_output = attention_output + self.self_attention.attn_ob
-                
-            crose_attention_outputs = self.cross_attention(attention_output,
-                                              encoder_attention_mask,
-                                              head_mask,
-                                              cross_attn_past_key_value,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b,
-                                              encoder_decoder_position_bias)
 
-            crose_attention_output, p_key, p_value = crose_attention_outputs[0:3]   
+            crose_attention_outputs = self.cross_attention(
+                attention_output,
+                encoder_attention_mask,
+                head_mask,
+                cross_attn_past_key_value,
+                get_present,
+                encoder_hidden_states,
+                encoder_attention_mask,
+                output_attentions,
+                self.norm_w,
+                self.norm_b,
+                encoder_decoder_position_bias)
+
+            crose_attention_output, p_key, p_value = crose_attention_outputs[0:3]
             cross_position_attention = crose_attention_outputs[3:]
             presents += (p_key, p_value)
-            
-            output = self.mlp(crose_attention_output, attention_output, self.cross_attention.attn_ob)
+
+            output = self.mlp(crose_attention_output,
+                              attention_output,
+                              self.cross_attention.attn_ob)
 
             if not self.config.pre_layer_norm:
                 ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
