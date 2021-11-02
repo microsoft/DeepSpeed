@@ -96,14 +96,50 @@ import torch.nn.functional as F
 
 import math
 
+# einsum rewrites are on par or more performant
+# switch can be bubbled up in future
+USE_EINSUM = True
+
+
+def einsum(rule, a, b):
+    if USE_EINSUM:
+        return torch.einsum(rule, a, b)
+    elif rule == 's,se->se':
+        return a.reshape(a.shape[0], -1) * b
+    elif rule == 'se,sc->sec':
+        return a.unsqueeze(2) * b.unsqueeze(1)
+    elif rule == 'se,se->s':
+        return torch.bmm(a.unsqueeze(1), b.unsqueeze(2)).reshape(-1)
+    elif rule == 'sec,sm->ecm':
+        s = a.shape[0]
+        e = a.shape[1]
+        c = a.shape[2]
+        m = b.shape[1]
+        return torch.matmul(a.reshape(s, -1).t(), b).reshape(e, c, m)
+    elif rule == 'sec,ecm->sm':
+        return torch.matmul(a.reshape(a.shape[0], -1), b.reshape(-1, b.shape[-1]))
+    elif rule == 'ks,ksm->sm':
+        k = b.shape[0]
+        s = b.shape[1]
+        m = b.shape[2]
+        # [k, s] -> [s, k] -> [s, 1, k]
+        a = a.t().unsqueeze(1)
+        # [k,s,m] -> [k, sm] -> [sm, k] -> [s, m, k]
+        b = b.reshape(k, -1).t().reshape(s, m, k)
+        # bmm([s, 1, k], [s, m, k]^t) -> [s, m, 1]
+        return torch.bmm(a, b.transpose(1, 2)).squeeze(2)
+    else:
+        return torch.einsum(rule, a, b)
+
 
 def top1gating(logits: torch.Tensor,
                capacity_factor: float,
                min_capacity: int,
                used_token: torch.Tensor = None,
-               noisy_gate_policy: Optional[str] = None) -> Tuple[Tensor,
-                                                                 Tensor,
-                                                                 Tensor]:
+               noisy_gate_policy: Optional[str] = None,
+               drop_tokens: bool = True) -> Tuple[Tensor,
+                                                  Tensor,
+                                                  Tensor]:
     """Implements Top1Gating on logits."""
     if noisy_gate_policy == 'RSample':
         logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
@@ -127,10 +163,16 @@ def top1gating(logits: torch.Tensor,
 
     # mask only used tokens
     if used_token is not None:
-        mask1 = torch.einsum("s,se->se", used_token, mask1)
+        mask1 = einsum("s,se->se", used_token, mask1)
 
     # gating decisions
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
+
+    # if we don't want to drop any tokens
+    if not drop_tokens:
+        new_capacity = torch.max(exp_counts).to(logits.device)
+        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.group.WORLD)
+        capacity = new_capacity
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
@@ -165,7 +207,8 @@ def top1gating(logits: torch.Tensor,
     gates = gates * mask1_float
 
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
-    combine_weights = torch.einsum("se,sc->sec", gates, locations1_sc)
+    combine_weights = einsum("se,sc->sec", gates, locations1_sc)
+
     dispatch_mask = combine_weights.bool()
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
@@ -224,8 +267,8 @@ def top2gating(logits: torch.Tensor,
     # Normalize gate probabilities
     mask1_float = mask1.float()
     mask2_float = mask2.float()
-    gates1_s = torch.einsum("se,se->s", gates, mask1_float)
-    gates2_s = torch.einsum("se,se->s", gates, mask2_float)
+    gates1_s = einsum("se,se->s", gates, mask1_float)
+    gates2_s = einsum("se,se->s", gates, mask2_float)
     denom_s = gates1_s + gates2_s
     # Avoid divide-by-zero
     denom_s = torch.clamp(denom_s, min=torch.finfo(denom_s.dtype).eps)
@@ -233,12 +276,12 @@ def top2gating(logits: torch.Tensor,
     gates2_s /= denom_s
 
     # Calculate combine_weights and dispatch_mask
-    gates1 = torch.einsum("s,se->se", gates1_s, mask1_float)
-    gates2 = torch.einsum("s,se->se", gates2_s, mask2_float)
+    gates1 = einsum("s,se->se", gates1_s, mask1_float)
+    gates2 = einsum("s,se->se", gates2_s, mask2_float)
     locations1_sc = F.one_hot(locations1_s, num_classes=capacity).float()
     locations2_sc = F.one_hot(locations2_s, num_classes=capacity).float()
-    combine1_sec = torch.einsum("se,sc->sec", gates1, locations1_sc)
-    combine2_sec = torch.einsum("se,sc->sec", gates2, locations2_sc)
+    combine1_sec = einsum("se,sc->sec", gates1, locations1_sc)
+    combine2_sec = einsum("se,sc->sec", gates2, locations2_sc)
     combine_weights = combine1_sec + combine2_sec
     dispatch_mask = combine_weights.bool()
 
@@ -270,7 +313,8 @@ class TopKGate(torch.nn.Module):
                  capacity_factor: float = 1.0,
                  eval_capacity_factor: float = 1.0,
                  min_capacity: int = 4,
-                 noisy_gate_policy: Optional[str] = None) -> None:
+                 noisy_gate_policy: Optional[str] = None,
+                 drop_tokens: bool = True) -> None:
         super().__init__()
 
         # Only top-1 and top-2 are supported at the moment.
@@ -285,6 +329,7 @@ class TopKGate(torch.nn.Module):
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
         self.gate_time = 0.0
+        self.drop_tokens = drop_tokens
 
     def forward(
         self,
@@ -311,7 +356,8 @@ class TopKGate(torch.nn.Module):
                 self.capacity_factor if self.training else self.eval_capacity_factor,
                 self.min_capacity,
                 used_token,
-                self.noisy_gate_policy if self.training else None)
+                self.noisy_gate_policy if self.training else None,
+                self.drop_tokens)
 
         else:
             gate_output = top2gating(
@@ -374,9 +420,9 @@ class MOELayer(Base):
 
         self.l_aux, combine_weights, dispatch_mask, self.exp_counts  = self.gate(reshaped_input, input[1])
 
-        dispatched_input = torch.einsum("sec,sm->ecm",
-                                        dispatch_mask.type_as(input[0]),
-                                        reshaped_input)
+        dispatched_input = einsum("sec,sm->ecm",
+                                  dispatch_mask.type_as(input[0]),
+                                  reshaped_input)
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
@@ -409,9 +455,9 @@ class MOELayer(Base):
                                               -1,
                                               d_model)
 
-        combined_output = torch.einsum("sec,ecm->sm",
-                                       combine_weights.type_as(input[0]),
-                                       expert_output)
+        combined_output = einsum("sec,ecm->sm",
+                                 combine_weights.type_as(input[0]),
+                                 expert_output)
 
         a = combined_output.reshape(input[0].shape)
 
