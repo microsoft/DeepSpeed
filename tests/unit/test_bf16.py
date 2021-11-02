@@ -3,10 +3,10 @@ import torch
 import deepspeed
 import pytest
 from deepspeed.ops.adam import FusedAdam
-from common import distributed_test
+from .common import distributed_test
 from deepspeed.ops.op_builder import CPUAdamBuilder
-from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
-from util import bf16_required_version_check
+from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
+from .util import bf16_required_version_check
 
 
 @pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
