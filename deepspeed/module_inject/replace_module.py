@@ -2,7 +2,7 @@ import copy
 import torch
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy, HFT5LayerPolicy
+from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy, HFGPT2LayerPolicy
 from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
@@ -339,34 +339,41 @@ def replace_transformer_layer(orig_layer_impl,
         return new_module
 
     def replace_wo_policy(module, attn_out_linear, out_linear):
-        def _replace(child, name):
+        def _replace(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
             if name is attn_out_linear or name is out_linear:
-                new_weight = torch.empty((child.weight.shape[1] // mp_size,
-                                          child.weight.shape[0]),
-                                         device=child.weight.device,
-                                         dtype=torch.half if fp16 else torch.float)
-                child.weight.data.view(-1).copy_(
-                    child.weight.data.transpose(-1,
-                                                -2).contiguous().view(-1))
-                child.weight.data = child.weight.data.reshape(
-                    child.weight.data.shape[-1],
-                    child.weight.data.shape[-2])
+                new_weight = torch.empty(
+                    (child.weight.shape[0]
+                     if conv_linear_layer else child.weight.shape[1] // mp_size,
+                     child.weight.shape[1]
+                     if conv_linear_layer else child.weight.shape[0]),
+                    device=child.weight.device,
+                    dtype=torch.half if fp16 else torch.float)
+                if not conv_linear_layer:
+                    child.weight.data.view(-1).copy_(
+                        child.weight.data.transpose(-1,
+                                                    -2).contiguous().view(-1))
+                    child.weight.data = child.weight.data.reshape(
+                        child.weight.data.shape[-1],
+                        child.weight.data.shape[-2])
                 data = mp_replace.copy(new_weight, child.weight.data)
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             child.bias.to(torch.cuda.current_device()), mp_group)
             else:
-                new_weight = torch.empty((child.weight.shape[1],
-                                          child.weight.shape[0] // mp_size),
-                                         device=child.weight.device,
-                                         dtype=torch.half if fp16 else torch.float)
-
-                child.weight.data.view(-1).copy_(
-                    child.weight.data.transpose(-1,
-                                                -2).contiguous().view(-1))
-                child.weight.data = child.weight.data.reshape(
-                    child.weight.data.shape[-1],
-                    child.weight.data.shape[-2])
+                new_weight = torch.empty(
+                    (child.weight.shape[0] //
+                     mp_size if conv_linear_layer else child.weight.shape[1],
+                     child.weight.shape[1]
+                     if conv_linear_layer else child.weight.shape[0] // mp_size),
+                    device=child.weight.device,
+                    dtype=torch.half if fp16 else torch.float)
+                if not conv_linear_layer:
+                    child.weight.data.view(-1).copy_(
+                        child.weight.data.transpose(-1,
+                                                    -2).contiguous().view(-1))
+                    child.weight.data = child.weight.data.reshape(
+                        child.weight.data.shape[-1],
+                        child.weight.data.shape[-2])
                 data = mp_replace.copy(new_weight, child.weight.data)
                 new_bias = torch.empty((child.weight.shape[0] // mp_size),
                                        device=child.weight.device,
@@ -400,17 +407,30 @@ def replace_transformer_layer(orig_layer_impl,
             if hasattr(child, 'all_head_size'):
                 child.inner_dim = child.inner_dim // mp_size
 
+        conv_linear_layer = False
         if linear_layer_setting is not None:
             linear_policies = {linear_layer_setting[0]: _replace}
             if len(linear_layer_setting) == 2:
                 linear_policies.update({linear_layer_setting[1]: _slice_embedding})
         else:
-            linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
+            if orig_layer_impl is HFGPT2LayerPolicy._orig_layer_class:
+                try:
+                    import transformers
+                    conv_linear_layer = True
+                    linear_policies = {transformers.model_utils.Conv1D: _replace}
+                except ImportError:
+                    linear_policies = {nn.Linear: _replace}
+            else:
+                linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
 
         def _replace_module(r_module):
             for name, child in r_module.named_children():
                 if child.__class__ in policies:
-                    setattr(r_module, name, policies[child.__class__](child, name))
+                    setattr(r_module,
+                            name,
+                            policies[child.__class__](child,
+                                                      name,
+                                                      conv_linear_layer))
                 else:
                     update_mp_params(child)
                     _replace_module(child)
