@@ -804,6 +804,9 @@ class DeepSpeedConfig(object):
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
+        self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
+        assert not (self.fp16_enabled and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
+        assert not (self.bfloat16_enabled and (self.zero_optimization_stage != 2)), 'bfloat16 mode is only enabled for Zero2 currently'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
             param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
