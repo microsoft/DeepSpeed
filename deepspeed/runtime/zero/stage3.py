@@ -57,20 +57,6 @@ def input(msg):
     return
 
 
-def split_half_float_double(tensors):
-    dtypes = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor"
-    ]
-    buckets = []
-    for i, dtype in enumerate(dtypes):
-        bucket = [t for t in tensors if t.type() == dtype]
-        if bucket:
-            buckets.append(bucket)
-    return buckets
-
-
 def isclose(a, b, rtol=1e-09, atol=0.0):
     return abs(a - b) <= max(rtol * max(abs(a), abs(b)), atol)
 
@@ -2239,20 +2225,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 small_bucket = []
         if len(small_bucket) > 0:
             self.allreduce_and_copy(small_bucket, rank=rank, log=log)
-
-    # allows using reduction of gradients instead of using all_reduce
-    def buffered_reduce_fallback(self,
-                                 rank,
-                                 grads,
-                                 elements_per_buffer=500000000,
-                                 log=None):
-        split_buckets = split_half_float_double(grads)
-
-        for i, bucket in enumerate(split_buckets):
-            self.allreduce_no_retain(bucket,
-                                     numel_per_bucket=elements_per_buffer,
-                                     rank=rank,
-                                     log=log)
 
     #############################################################################
     #############################################################################
