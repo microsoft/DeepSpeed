@@ -39,6 +39,14 @@ class DSPolicy(ABC):
         """
         raise NotImplementedError
 
+    def decoder(self):
+        """
+        Returns LayerNorms used in transformer layer
+        Post-Attention and pre/post layer norm
+        gamma and beta with shape: (hidden)
+        """
+        raise NotImplementedError
+
 
 class HFBertLayerPolicy(DSPolicy):
     _orig_layer_class = None
@@ -231,9 +239,75 @@ class HFGPT2LayerPolicy(DSPolicy):
                self.client_module.ln_1.bias.data
 
 
+class HFT5LayerPolicy(DSPolicy):
+    _orig_layer_class = None
+
+    def __init__(self, client_module, inference=True):
+        # HuggingFace GPT2 uses convolutional layer instead of linear layer
+        super().__init__(inference, scale_attention=False)
+        self.client_module = client_module
+        try:
+            import transformers
+            HFT5LayerPolicy._orig_layer_class = transformers.models.t5.modeling_t5.T5Block
+        except ImportError:
+            HFT5LayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.layer[0].SelfAttention.d_model, \
+                self.client_module.layer[0].SelfAttention.n_heads, \
+                self.client_module.layer[-1].DenseReluDense.wi_0.out_features
+
+    def attention(self):
+        qw = self.client_module.layer[0].SelfAttention.q.weight.data
+        kw = self.client_module.layer[0].SelfAttention.k.weight.data
+        vw = self.client_module.layer[0].SelfAttention.v.weight.data
+
+        qkvw = torch.cat((qw, kw, vw), dim=0)
+        return self.linear_layer, \
+                qkvw, \
+                None, \
+                self.client_module.layer[0].SelfAttention.o.weight.data, \
+                None, \
+                self.scale_attention, \
+                self.client_module.layer[0].SelfAttention.relative_attention_bias if \
+                    self.client_module.layer[0].SelfAttention.has_relative_attention_bias else None
+
+    def mlp(self):
+        return self.linear_layer, \
+            self.client_module.layer[-1].DenseReluDense.wi_0.weight.data, \
+            None, \
+            self.client_module.layer[-1].DenseReluDense.wi_1.weight.data, \
+            None, \
+            self.client_module.layer[-1].DenseReluDense.wo.weight.data, \
+            None
+
+    def layerNorm(self):
+        return self.client_module.layer[-1].layer_norm.weight.data, \
+               None, \
+               self.client_module.layer[0].layer_norm.weight.data, \
+               None
+
+    def decoder(self):
+        qw = self.client_module.layer[1].EncDecAttention.q.weight.data
+        kw = self.client_module.layer[1].EncDecAttention.k.weight.data
+        vw = self.client_module.layer[1].EncDecAttention.v.weight.data
+
+        qkvw = torch.cat((qw, kw, vw), dim=0)
+        return self.linear_layer, \
+                qkvw, \
+                None, \
+                self.client_module.layer[1].EncDecAttention.o.weight.data, \
+                None, \
+                self.scale_attention, \
+                self.client_module.layer[1].layer_norm.weight.data, \
+                self.client_module.layer[1].EncDecAttention.relative_attention_bias if \
+                    self.client_module.layer[1].EncDecAttention.has_relative_attention_bias else None
+
+
 replace_policies = [
     HFBertLayerPolicy,
     HFGPTNEOLayerPolicy,
     MegatronLayerPolicy,
     HFGPT2LayerPolicy,
+    HFT5LayerPolicy,
 ]

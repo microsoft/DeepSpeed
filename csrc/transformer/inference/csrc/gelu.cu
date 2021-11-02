@@ -19,11 +19,12 @@ __global__ void fused_bias_gelu(float* input,
     if (offset < total_count) {
         float4 data = input_cast[offset];
         float4 bias_data = bias_cast[offset % intermediate_size];
-
-        data.x += bias_data.x;
-        data.y += bias_data.y;
-        data.z += bias_data.z;
-        data.w += bias_data.w;
+        if (bias) {
+            data.x += bias_data.x;
+            data.y += bias_data.y;
+            data.z += bias_data.z;
+            data.w += bias_data.w;
+        }
 
         data.x = gelu(data.x);
         data.y = gelu(data.y);
@@ -48,21 +49,23 @@ __global__ void fused_bias_gelu(__half* input,
 
     if (offset < total_count) {
         float2 vals_vec = input_cast[offset];
-        float2 bias_vec = bias_cast[offset % intermediate_size];
 
         __half2* vals_half = reinterpret_cast<__half2*>(&vals_vec);
-        __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
 
         float2 low_data = __half22float2(vals_half[0]);
         float2 high_data = __half22float2(vals_half[1]);
+        if (bias) {
+            float2 bias_vec = bias_cast[offset % intermediate_size];
 
-        float2 low_bias = __half22float2(bias_half[0]);
-        float2 high_bias = __half22float2(bias_half[1]);
+            __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
+            float2 low_bias = __half22float2(bias_half[0]);
+            float2 high_bias = __half22float2(bias_half[1]);
 
-        low_data.x += low_bias.x;
-        low_data.y += low_bias.y;
-        high_data.x += high_bias.x;
-        high_data.y += high_bias.y;
+            low_data.x += low_bias.x;
+            low_data.y += low_bias.y;
+            high_data.x += high_bias.x;
+            high_data.y += high_bias.y;
+        }
 
         low_data.x = gelu(low_data.x);
         low_data.y = gelu(low_data.y);
@@ -178,12 +181,18 @@ __global__ void fused_bias_residual(float* input,
     if (offset < total_count) {
         float4 data = input_cast[offset];
         float4 res_vec = residual_cast[offset];
-        float4 bias_data = bias_cast[offset % intermediate_size];
 
-        data.x += (res_vec.x + bias_data.x);
-        data.y += (res_vec.y + bias_data.y);
-        data.z += (res_vec.z + bias_data.z);
-        data.w += (res_vec.w + bias_data.w);
+        data.x += (res_vec.x);
+        data.y += (res_vec.y);
+        data.z += (res_vec.z);
+        data.w += (res_vec.w);
+        if (bias) {
+            float4 bias_data = bias_cast[offset % intermediate_size];
+            data.x += bias_data.x;
+            data.y += bias_data.y;
+            data.z += bias_data.z;
+            data.w += bias_data.w;
+        }
 
         input_cast[offset] = data;
     }
@@ -208,11 +217,8 @@ __global__ void fused_bias_residual(__half* input,
         float2 vals_vec = input_cast[offset];
         float2 res_vec = residual_cast[offset];
 
-        float2 bias_vec = bias_cast[offset % intermediate_size];
-
         __half2* vals_half = reinterpret_cast<__half2*>(&vals_vec);
         __half2* res_half = reinterpret_cast<__half2*>(&res_vec);
-        __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
 
         float2 low_data = __half22float2(vals_half[0]);
         float2 high_data = __half22float2(vals_half[1]);
@@ -220,14 +226,22 @@ __global__ void fused_bias_residual(__half* input,
         float2 low_res = __half22float2(res_half[0]);
         float2 high_res = __half22float2(res_half[1]);
 
-        float2 low_bias = __half22float2(bias_half[0]);
-        float2 high_bias = __half22float2(bias_half[1]);
+        low_data.x += (low_res.x);
+        low_data.y += (low_res.y);
+        high_data.x += (high_res.x);
+        high_data.y += (high_res.y);
 
-        low_data.x += (low_res.x + low_bias.x);
-        low_data.y += (low_res.y + low_bias.y);
-        high_data.x += (high_res.x + high_bias.x);
-        high_data.y += (high_res.y + high_bias.y);
+        if (bias) {
+            float2 bias_vec = bias_cast[offset % intermediate_size];
 
+            __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
+            float2 low_bias = __half22float2(bias_half[0]);
+            float2 high_bias = __half22float2(bias_half[1]);
+            low_data.x += low_bias.x;
+            low_data.y += low_bias.y;
+            high_data.x += high_bias.x;
+            high_data.y += high_bias.y;
+        }
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);
 

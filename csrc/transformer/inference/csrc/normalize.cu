@@ -73,7 +73,7 @@ __global__ void fused_bias_residual_layer_norm(float* output,
     for (int f = 0; f < k; f++) {
         int out_id = f * iteration_stride + id;
         inp_reg[f] = inp_reg[f] * sum;
-        inp_reg[f] = inp_reg[f] * gamma[out_id] + beta[out_id];
+        inp_reg[f] = inp_reg[f] * gamma[out_id] + (beta ? beta[out_id] : 0);
         output[out_id + row * row_stride] = inp_reg[f];
     }
 }
@@ -147,7 +147,8 @@ __global__ void fused_bias_residual_layer_norm(__half* output,
     for (int f = 0; f < k; f++) {
         int out_id = f * iteration_stride + id;
         inp_reg[f] = inp_reg[f] * variance_h;
-        inp_reg[f] = inp_reg[f] * gamma_cast[out_id] + beta_cast[out_id];
+        inp_reg[f] = inp_reg[f] * gamma_cast[out_id];
+        if (beta) inp_reg[f] += beta_cast[out_id];
         out_cast[out_id + row * row_stride] = inp_reg[f];
     }
 #endif
@@ -232,7 +233,7 @@ __global__ void fused_residual_layer_norm(float* norm,
     while (input_id < row_stride) {
         inp_reg[k] = vals[input_id + row * row_stride];
         float res_f = (residual[input_id + row * row_stride]);
-        float bias_f = (bias[input_id]);
+        float bias_f = (bias ? bias[input_id] : 0);
         inp_reg[k] += res_f + bias_f;
         if (preLN) res_add[input_id + row * row_stride] = inp_reg[k];
         sum += inp_reg[k++];
@@ -271,7 +272,7 @@ __global__ void fused_residual_layer_norm(float* norm,
     for (int f = 0; f < k; f++) {
         int out_id = f * iteration_stride + id;
         inp_reg[f] = inp_reg[f] * sum;
-        inp_reg[f] = inp_reg[f] * gamma[out_id] + beta[out_id];
+        inp_reg[f] = inp_reg[f] * gamma[out_id] + (beta ? beta[out_id] : 0);
         norm[out_id + row * row_stride] = inp_reg[f];
     }
 }
@@ -314,9 +315,13 @@ __global__ void fused_residual_layer_norm(__half* norm,
         inp_reg[k] = vals_cast[input_id + row * row_stride];
         float2 inp_f = __half22float2(inp_reg[k]);
         float2 res_f = __half22float2(residual_cast[input_id + row * row_stride]);
-        float2 bias_f = __half22float2(bias_cast[input_id]);
-        inp_f.x += res_f.x + bias_f.x;
-        inp_f.y += res_f.y + bias_f.y;
+        inp_f.x += res_f.x;
+        inp_f.y += res_f.y;
+        if (bias) {
+            float2 bias_f = __half22float2(bias_cast[input_id]);
+            inp_f.x += bias_f.x;
+            inp_f.y += bias_f.y;
+        }
         inp_reg[k] = __float22half2_rn(inp_f);
 
         if (preLN) res_add_cast[input_id + row * row_stride] = inp_reg[k];
@@ -358,7 +363,8 @@ __global__ void fused_residual_layer_norm(__half* norm,
     for (int f = 0; f < k; f++) {
         int out_id = f * iteration_stride + id;
         inp_reg[f] = inp_reg[f] * variance_h;
-        inp_reg[f] = inp_reg[f] * gamma_cast[out_id] + beta_cast[out_id];
+        inp_reg[f] = inp_reg[f] * gamma_cast[out_id];
+        if (beta) inp_reg[f] += beta_cast[out_id];
         norm_cast[out_id + row * row_stride] = inp_reg[f];
     }
 #endif

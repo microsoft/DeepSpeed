@@ -15,6 +15,8 @@ inference_cuda_module = None
 specialized_mode = None
 import torch.nn as nn
 
+F = nn.functional
+
 
 class TransformerConfig():
     def __init__(self, hidden_size, intermediate_size, heads, num_hidden_layers):
@@ -75,7 +77,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  q_int8=False,
                  pre_layer_norm=True,
                  stochastic_mode=False,
-                 encoder_decoder=False,
+                 return_tuple=True,
                  scale_attention=True,
                  triangular_masking=True,
                  local_attention=False,
@@ -93,7 +95,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.epsilon = layer_norm_eps
         self.mp_size = mp_size
         self.q_int8 = q_int8
-        self.encoder_decoder = encoder_decoder
+        self.return_tuple = return_tuple
         self.scale_attention = scale_attention
         self.specialized_mode = None
         self.triangular_masking = triangular_masking
@@ -296,11 +298,12 @@ class DeepSpeedSelfAttentionFunction(Function):
                                     inference_cuda_module.qkv_gemm_fp32
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
-                                   (attn_qkvb if attn_qkvb is not None else norm_b),
+                                   (attn_qkvb if attn_qkvb is not None else attn_qkvw),
                                    norm_w,
-                                   norm_b,
+                                   (norm_b if norm_b is not None else norm_w),
                                    config.epsilon,
-                                   (attn_qkvb is not None))
+                                   (attn_qkvb is not None),
+                                   (norm_b is not None))
             context_layer, key_layer, value_layer = compute_attention(qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow)
 
@@ -387,6 +390,33 @@ class DeepSpeedSelfAttention(nn.Module):
             math.sqrt(self.config.hidden_size // self.config.heads))
         self.qkv_merging = qkv_merging
 
+        self.relative_attention_num_buckets = 32
+        self.relative_attention_bias_weight = None
+
+    def compute_position_bias(self, query_length, key_length):
+        # Adapted from https://github.com/huggingface/transformers/blob/513fa30a636642ccc1d93f3e6a48d612d08dbce8/src/transformers/models/t5/modeling_t5.py#L394
+        import transformers
+        from transformers.models.t5.modeling_t5 import T5Attention
+        """Compute binned relative position bias"""
+        context_position = torch.arange(
+            query_length,
+            dtype=torch.long,
+            device=self.relative_attention_bias_weight.device)[:,
+                                                               None]
+        memory_position = torch.arange(
+            key_length, dtype=torch.long, device=self.relative_attention_bias_weight.device
+        )[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
+        relative_position_bucket = T5Attention._relative_position_bucket(
+            relative_position,  # shape (query_length, key_length)
+            bidirectional=False,
+            num_buckets=self.relative_attention_num_buckets,
+        )
+        values = F.embedding(relative_position_bucket,
+                             self.relative_attention_bias_weight)
+        values = values.permute([2, 0, 1]).unsqueeze(0)
+        return values
+
     def forward(self,
                 input,
                 input_mask,
@@ -397,7 +427,17 @@ class DeepSpeedSelfAttention(nn.Module):
                 encoder_attention_mask=None,
                 output_attentions=False,
                 norm_w=None,
-                norm_b=None):
+                norm_b=None,
+                position_bias=None):
+        if position_bias is None:
+            if self.relative_attention_bias_weight is not None:
+                position_bias = self.compute_position_bias(
+                    input.shape[1] if layer_past is None else
+                    (input.shape[1] + layer_past[0].shape[1]),
+                    input.shape[1] if layer_past is None else layer_past[0].shape[1])
+            if layer_past is not None and position_bias is not None:
+                position_bias = position_bias[:, :, -input.size(1):, :]
+
         output = DeepSpeedSelfAttentionFunction.apply(
             input,
             input_mask,
@@ -423,7 +463,7 @@ class DeepSpeedSelfAttention(nn.Module):
             self.merge_count,
             self.qkv_merging)
 
-        return output
+        return output + (position_bias, )
 
 
 class DeepSpeedMLPFunction(Function):
@@ -442,7 +482,8 @@ class DeepSpeedMLPFunction(Function):
                 output_w,
                 q_scales,
                 q_groups,
-                merge_count):
+                merge_count,
+                inter_w1):
         if config.q_int8:
 
             (intermediate,
@@ -471,13 +512,18 @@ class DeepSpeedMLPFunction(Function):
             (intermediate,
              residual_add) = mlp_gemm_func(input,
                                            residual,
-                                           bias,
+                                           (bias if bias is not None else attn_nw),
                                            inter_w,
-                                           inter_b,
+                                           (inter_b if inter_b is not None else attn_nw),
                                            attn_nw,
-                                           attn_nb,
+                                           (attn_nb if attn_nb is not None else attn_nw),
                                            config.epsilon,
-                                           config.pre_layer_norm)
+                                           config.pre_layer_norm,
+                                           (bias is not None),
+                                           (inter_b is not None),
+                                           (attn_nb is not None))
+            if inter_w1 is not None:
+                intermediate = vector_matmul_func(input, inter_w1) * intermediate
             output = vector_matmul_func(intermediate, output_w)
 
         if mp_group is not None and torch.distributed.get_world_size(group=mp_group) > 1:
@@ -486,7 +532,10 @@ class DeepSpeedMLPFunction(Function):
         bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
                                     inference_cuda_module.bias_residual_fp32
 
-        output = bias_residual_func(output, residual_add, output_b)
+        bias_residual_func(output,
+                           residual_add,
+                           output_b if output_b is not None else residual_add,
+                           output_b is not None)
 
         return output
 
@@ -510,6 +559,9 @@ class DeepSpeedMLP(nn.Module):
         self.attn_nw = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.attn_nb = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.inter_w = nn.Parameter(
+            torch.Tensor(self.config.hidden_size,
+                         self.config.intermediate_size // self.config.mp_size))
+        self.inter_w1 = nn.Parameter(
             torch.Tensor(self.config.hidden_size,
                          self.config.intermediate_size // self.config.mp_size))
         self.inter_b = nn.Parameter(
@@ -540,7 +592,8 @@ class DeepSpeedMLP(nn.Module):
                                           self.output_w,
                                           self.q_scales,
                                           self.q_groups,
-                                          self.merge_count)
+                                          self.merge_count,
+                                          self.inter_w1)
 
 
 class DeepSpeedTransformerInference(nn.Module):
@@ -574,6 +627,7 @@ class DeepSpeedTransformerInference(nn.Module):
         super(DeepSpeedTransformerInference, self).__init__()
 
         self.config = config
+        self.is_decoder = False
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
         self.attention = DeepSpeedSelfAttention(self.config,
@@ -613,6 +667,7 @@ class DeepSpeedTransformerInference(nn.Module):
                 input_mask=None,
                 attention_mask=None,
                 head_mask=None,
+                position_bias=None,
                 layer_past=None,
                 get_key_value=False,
                 get_present=False,
@@ -620,8 +675,13 @@ class DeepSpeedTransformerInference(nn.Module):
                 enc_dec_attn_mask=None,
                 encoder_hidden_states=None,
                 encoder_attention_mask=None,
+                encoder_decoder_position_bias=None,
+                layer_head_mask=None,
+                cross_attn_layer_head_mask=None,
+                past_key_value=None,
                 use_cache=False,
-                output_attentions=False):
+                output_attentions=False,
+                encoder_layer_head_mask=None):
         #self.config.triangular_masking = False
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
@@ -633,24 +693,21 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.half()
 
         with torch.no_grad():
-            attention_output = self.attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              layer_past,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b)
+            attention_outputs = self.attention(
+                input,
+                input_mask,
+                head_mask,
+                (layer_past if past_key_value is None else past_key_value),
+                get_present,
+                encoder_hidden_states,
+                encoder_attention_mask,
+                output_attentions,
+                self.norm_w,
+                self.norm_b,
+                position_bias)
 
-            if get_present:
-                attention_output, p_key, p_value, _ = attention_output
-                presents = (p_key, p_value)
-            elif output_attentions:
-                attention_output, _, _, context_output = attention_output
-            else:
-                attention_output, _, _, _ = attention_output
+            attention_output, p_key, p_value = attention_outputs[0:3]
+            self_position_attention = attention_outputs[3:]
             output = self.mlp(attention_output, input, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
@@ -665,9 +722,12 @@ class DeepSpeedTransformerInference(nn.Module):
                 output = output.to(input_type)
 
         if get_present:
-            output = (output, presents)
-
-        if self.config.encoder_decoder:
-            return (output, )
+            output = (output, (p_key, p_value))
         else:
+            output = (output, None)
+
+        output = output + self_position_attention
+        if self.config.return_tuple:
             return output
+        else:
+            return output[0]

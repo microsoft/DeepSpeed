@@ -1,1 +1,2 @@
 from .transformer_inference import DeepSpeedTransformerInference, DeepSpeedInferenceConfig
+from .transformer_decoder import DeepSpeedEncoderDecoder

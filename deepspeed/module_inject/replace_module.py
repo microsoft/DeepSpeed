@@ -2,10 +2,40 @@ import copy
 import torch
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy
+from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy, HFT5LayerPolicy
 from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
+from torch import nn
+
+
+class LinearAllreduce(nn.Module):
+    def __init__(self, weight, bias=None, mp_group=None):
+        super(LinearAllreduce, self).__init__()
+        self.weight = weight
+        self.bias = bias
+        self.mp_group = mp_group
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight)
+        if self.bias is not None:
+            output += self.bias
+        if self.mp_group is not None:
+            torch.distributed.all_reduce(output, group=self.mp_group)
+        return output
+
+
+class LinearLayer(nn.Module):
+    def __init__(self, weight, bias=None):
+        super(LinearLayer, self).__init__()
+        self.weight = weight
+        self.bias = bias
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight)
+        if self.bias is not None:
+            output += self.bias
+        return output
 
 
 class ReplaceWithTensorSlicing:
@@ -102,8 +132,8 @@ def replace_transformer_layer(orig_layer_impl,
                               stochastic_mode=True,
                               training=True,
                               quantize=False,
-                              encoder_decoder=False,
-                              quantize_settings=None):
+                              quantize_settings=None,
+                              return_tuple=True):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -125,12 +155,19 @@ def replace_transformer_layer(orig_layer_impl,
         training (bool): specifying whether kernel-injection is done for training/inference (set to false for inference-mode injection)
         quantize_settings (tuple): this setting shows how we can quantize a model for running it through the inference kernels.
                 It includes (quantization_scales, merge_count, mlp_extra_grouping, quantize_groups).
-        encoder_decoder (bool): this flag needs to be set for huggingface Bert models.
-
+        return_tuple (bool): if set, transformer layer returns a tuple as the output.
+            Note: this flag needs to be set for huggingface models.
     Returns:
         Updated nn.module with replaced transformer layers
     """
-    def replace_with_policy(child, policy_cls, inference=False, preln=True, layer_id=0):
+    def replace_with_policy(child,
+                            policy_cls,
+                            inference=False,
+                            preln=True,
+                            layer_id=0,
+                            is_decoder=False):
+
+        is_decoder = child.is_decoder if hasattr(config, 'is_decoder') else False
         preln = False if policy_cls is HFBertLayerPolicy else preln
         if policy_cls is HFBertLayerPolicy:
             policy = policy_cls(child, inference=inference, preln=preln)
@@ -138,14 +175,22 @@ def replace_transformer_layer(orig_layer_impl,
             policy = policy_cls(child, inference=inference)
 
         if inference:
-            hidden_size, num_attention_heads = policy.get_hidden_heads()
+            hidden_size, num_attention_heads, intermediate_size = policy.get_hidden_heads()
             assert num_attention_heads % mp_size == 0,\
                 "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
 
-        attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
-        mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         attn_nw, attn_nb, input_nw, input_nb = policy.layerNorm()
+        if is_decoder:
+            cross_attn_linear_layer, cross_qkvw, cross_qkvb, cross_dense_w, \
+            cross_dense_b, cross_scale_attention, cross_layernorm_weight, cross_relative_bias = policy.decoder()
+
+        if policy_cls is HFT5LayerPolicy:
+            attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, relative_bias = policy.attention()
+            mlp_linear_layer, _h4h_w, _h4h_b, _h4h_w2, _h4h_b2, _4hh_w, _4hh_b = policy.mlp()
+        else:
+            mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
+            attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
 
         if quantize:
             if policy_cls is not HFBertLayerPolicy:
@@ -157,22 +202,24 @@ def replace_transformer_layer(orig_layer_impl,
             qkvw = qkvw.half()
             dense_w = dense_w.half()
             _h4h_w = _h4h_w.half()
+            _h4h_w2 = _h4h_w2.half()
             _4hh_w = _4hh_w.half()
 
         if quantize or fp16:
-            dense_b = dense_b.half()
-            _h4h_b = _h4h_b.half()
-            _4hh_b = _4hh_b.half()
+            dense_b = dense_b.half() if dense_b is not None else dense_b
+            _h4h_b = _h4h_b.half() if _h4h_b is not None else _h4h_b
+            _4hh_b = _4hh_b.half() if _4hh_b is not None else _4hh_b
             attn_nw = attn_nw.half()
-            attn_nb = attn_nb.half()
+            attn_nb = attn_nb.half() if attn_nb is not None else attn_nb
             input_nw = input_nw.half()
-            input_nb = input_nb.half()
+            input_nb = input_nb.half() if input_nb is not None else input_nb
 
         mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
 
         if inference:
             transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                 hidden_size=hidden_size,
+                intermediate_size=intermediate_size,
                 heads=num_attention_heads,
                 layer_norm_eps=config.layer_norm_eps if hasattr(
                     config,
@@ -181,7 +228,7 @@ def replace_transformer_layer(orig_layer_impl,
                 pre_layer_norm=preln,
                 mp_size=mp_size,
                 q_int8=quantize,
-                encoder_decoder=(True if policy_cls is HFBertLayerPolicy else False),
+                return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                 triangular_masking=(policy_cls is not HFBertLayerPolicy),
                 local_attention=((config.attention_layers[layer_id] == "local")
                                  if hasattr(config,
@@ -213,10 +260,16 @@ def replace_transformer_layer(orig_layer_impl,
                     qkvw.copy_(data_quantized)
                     qkvw = qkvw.to(torch.int8)
             else:
-                new_module = transformer_inference.DeepSpeedTransformerInference(
-                    transformer_config,
-                    mp_group=mp_group,
-                )
+                if is_decoder:
+                    new_module = transformer_inference.DeepSpeedEncoderDecoder(
+                        transformer_config,
+                        mp_group=mp_group,
+                    )
+                else:
+                    new_module = transformer_inference.DeepSpeedTransformerInference(
+                        transformer_config,
+                        mp_group=mp_group,
+                    )
             new_module.config.scale_attention = scale_attention
 
             # we want the weights in [input, output] shape
@@ -229,13 +282,17 @@ def replace_transformer_layer(orig_layer_impl,
 
             if attn_linear_layer:
                 qkvw = transpose(qkvw.data)
-                dense_w = transpose(dense_w)
+                dense_w = transpose(dense_w.data)
+
+            if is_decoder and cross_attn_linear_layer:
+                cross_qkvw = transpose(cross_qkvw.data)
+                cross_dense_w = transpose(cross_dense_w.data)
 
             if mlp_linear_layer:
-                _h4h_w = transpose(_h4h_w)
-                _4hh_w = transpose(_4hh_w)
+                _h4h_w = transpose(_h4h_w.data)
+                _4hh_w = transpose(_4hh_w.data)
 
-            attn_block = new_module.attention
+            attn_block = new_module.self_attention if is_decoder else new_module.attention
             attn_block.attn_qkvw.data = mp_replace.qkv_copy(attn_block.attn_qkvw.data,
                                                             qkvw)
 
@@ -249,18 +306,43 @@ def replace_transformer_layer(orig_layer_impl,
                 attn_block.attn_qkvb = qkvb
 
             attn_block.attn_ow.data = mp_replace.copy(attn_block.attn_ow.data, dense_w)
-            attn_block.attn_ob.data = mp_replace.copy(attn_block.attn_ob.data, dense_b)
+            attn_block.attn_ob = dense_b if dense_b is None else \
+                                mp_replace.copy(attn_block.attn_ob.data, dense_b)
 
-            mpl_block = new_module.mlp
-            mpl_block.inter_w.data = mp_replace.copy(mpl_block.inter_w.data, _h4h_w)
-            mpl_block.inter_b.data = mp_replace.copy(mpl_block.inter_b.data, _h4h_b)
-            mpl_block.output_w.data = mp_replace.copy(mpl_block.output_w.data, _4hh_w)
-            mpl_block.output_b.data = mp_replace.copy(mpl_block.output_b.data, _4hh_b)
+            mlp_block = new_module.mlp
+            mlp_block.inter_w.data = mp_replace.copy(mlp_block.inter_w.data, _h4h_w)
+            mlp_block.inter_b = _h4h_b if _h4h_b is None else \
+                                mp_replace.copy(mlp_block.inter_b.data, _h4h_b)
+            mlp_block.output_w.data = mp_replace.copy(mlp_block.output_w.data, _4hh_w)
+            mlp_block.output_b = _4hh_b if _4hh_b is None else \
+                                mp_replace.copy(mlp_block.output_b.data, _4hh_b)
 
             new_module.mlp.attn_nw.data = attn_nw.to(torch.cuda.current_device())
-            new_module.mlp.attn_nb.data = attn_nb.to(torch.cuda.current_device())
+            new_module.mlp.attn_nb = attn_nb if attn_nb is None else \
+                                attn_nb.to(torch.cuda.current_device())
             new_module.norm_w.data = input_nw.to(torch.cuda.current_device())
-            new_module.norm_b.data = input_nb.to(torch.cuda.current_device())
+            new_module.norm_b = input_nb if input_nb is None else \
+                                input_nb.to(torch.cuda.current_device())
+
+            if policy_cls is HFT5LayerPolicy:
+                _h4h_w2 = transpose(_h4h_w2.data)
+                attn_block.relative_attention_bias_weight = relative_bias if relative_bias is None else \
+                                    relative_bias.weight.to(torch.cuda.current_device())
+                mlp_block.inter_w1.data = mp_replace.copy(mlp_block.inter_w1.data,
+                                                          _h4h_w2)
+
+            if is_decoder:
+                cross_attn = new_module.cross_attention
+                cross_attn.attn_qkvw.data = mp_replace.qkv_copy(
+                    cross_attn.attn_qkvw.data,
+                    cross_qkvw)
+                cross_attn.attn_ow.data = mp_replace.copy(cross_attn.attn_ow.data,
+                                                          cross_dense_w)
+                new_module.cross_norm_w.data = cross_layernorm_weight.to(
+                    torch.cuda.current_device())
+                cross_attn.relative_attention_bias_weight = cross_relative_bias if cross_relative_bias is None else \
+                                    cross_relative_bias.weight.to(torch.cuda.current_device())
+
         else:
             transformer_config = deepspeed.DeepSpeedTransformerConfig(
                 batch_size=micro_batch_size,
@@ -276,7 +358,7 @@ def replace_transformer_layer(orig_layer_impl,
                 seed=seed,
                 fp16=fp16,
                 pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
-                huggingface=encoder_decoder,
+                return_tuple=return_tuple,
                 local_rank=local_rank,
                 stochastic_mode=stochastic_mode,
                 normalize_invertible=True,
@@ -298,6 +380,72 @@ def replace_transformer_layer(orig_layer_impl,
             new_module.output_b.data = _4hh_b
         return new_module
 
+    def replace_wo_policy(module, attn_out_linear, out_linear):
+        def _replace(child, name):
+            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+            if name is attn_out_linear or name is out_linear:
+                new_weight = torch.empty((child.weight.shape[1] // mp_size,
+                                          child.weight.shape[0]),
+                                         device=child.weight.device,
+                                         dtype=torch.half if fp16 else torch.float)
+                child.weight.data.view(-1).copy_(
+                    child.weight.data.transpose(-1,
+                                                -2).contiguous().view(-1))
+                child.weight.data = child.weight.data.reshape(
+                    child.weight.data.shape[-1],
+                    child.weight.data.shape[-2])
+                data = mp_replace.copy(new_weight, child.weight.data)
+                return LinearAllreduce(data, child.bias if child.bias is None else \
+                            child.bias.to(torch.cuda.current_device()), mp_group)
+            else:
+                new_weight = torch.empty((child.weight.shape[1],
+                                          child.weight.shape[0] // mp_size),
+                                         device=child.weight.device,
+                                         dtype=torch.half if fp16 else torch.float)
+
+                child.weight.data.view(-1).copy_(
+                    child.weight.data.transpose(-1,
+                                                -2).contiguous().view(-1))
+                child.weight.data = child.weight.data.reshape(
+                    child.weight.data.shape[-1],
+                    child.weight.data.shape[-2])
+                data = mp_replace.copy(new_weight, child.weight.data)
+                new_bias = torch.empty((child.weight.shape[0] // mp_size),
+                                       device=child.weight.device,
+                                       dtype=torch.half if fp16 else torch.float)
+                bias_data = None if child.bias is None else mp_replace.copy(
+                    new_bias,
+                    child.bias.data)
+                return LinearLayer(data, bias_data)
+
+        def _slice_embedding(child, name):
+            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+            new_weight = torch.empty((child.weight.shape[0],
+                                      child.weight.shape[1] // mp_size),
+                                     device=child.weight.device,
+                                     dtype=child.weight.dtype)
+            data = mp_replace.copy(new_weight, child.weight.data)
+            new_embedding = nn.Embedding(child.weight.shape[0],
+                                         child.weight.shape[1] // mp_size)
+            new_embedding.weight.data.copy_(data)
+            return new_embedding
+
+        policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
+
+        def _replace_module(r_module):
+            for name, child in r_module.named_children():
+                if child.__class__ in policies:
+                    setattr(r_module, name, policies[child.__class__](child, name))
+                else:
+                    if hasattr(child, 'n_heads'):
+                        child.n_heads = child.n_heads // mp_size
+                    if hasattr(child, 'inner_dim'):
+                        child.inner_dim = child.inner_dim // mp_size
+                    _replace_module(child)
+            return r_module
+
+        return _replace_module(module)
+
     def replace_fn(child, _policy, layer_id=0):
         if training:
             # copy relevant state from child -> new module
@@ -305,11 +453,15 @@ def replace_transformer_layer(orig_layer_impl,
 
         else:
             # copy relevant state from child -> new module
-            new_module = replace_with_policy(child,
-                                             _policy,
-                                             inference=True,
-                                             preln=(policy is not HFBertLayerPolicy),
-                                             layer_id=layer_id)
+            if False:  #replace_with_kernel_inject:
+                new_module = replace_with_policy(
+                    child,
+                    _policy,
+                    inference=True,
+                    preln=(_policy is not HFBertLayerPolicy),
+                    layer_id=layer_id)
+            else:
+                new_module = replace_wo_policy(child, _policy[0], _policy[1])
 
         return new_module
 
@@ -326,7 +478,6 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
             e.g., transformers.modeling_bert.BertLayer.
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
-
     Returns:
         Updated nn.module with original bert-style transformer layers
     """
@@ -395,7 +546,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
         orig_class (torch.nn.Module): the module to search for
         replace_fn (method): a method to convert instances of ``orig_class`` to the
                              desired type and return a new instance.
-
     Returns:
         A modified ``model``.
     """
@@ -421,20 +571,17 @@ def _replace_module(model, policies, layer_id=0):
     Arguments:
         model (torch.nn.Module): model to augment
         policies (dict): Mapping of source class to replacement function.
-
     Returns:
         Modified ``model``.
     """
     for name, child in model.named_children():
         if child.__class__ in policies:
-            orig = repr(child)
             setattr(
                 model,
                 name,
                 policies[child.__class__][0](child,
                                              policies[child.__class__][-1],
                                              layer_id))
-            new = getattr(model, name)
             layer_id += 1
         else:
             _, layer_id = _replace_module(child, policies, layer_id=layer_id)
