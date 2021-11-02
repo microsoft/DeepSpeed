@@ -32,7 +32,7 @@ def test_no_optim(zero_stage):
     model = SimpleModel(hidden_dim, nlayers=1)
     print('total number of parameters:', sum([p.numel() for p in model.parameters()]))
 
-    @distributed_test(world_size=[1])
+    @distributed_test(world_size=[2])
     def _go(model, hidden_dim):
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
@@ -45,6 +45,7 @@ def test_no_optim(zero_stage):
         print(f"optimizer={model.optimizer}")
         for batch in data_loader:
             model(batch[0], batch[1])
+        see_memory_usage('post-fwds', force=True)
 
     _go(model, hidden_dim)
 

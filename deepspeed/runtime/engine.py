@@ -1075,6 +1075,7 @@ class DeepSpeedEngine(Module):
         if self.zero_legacy_stage1(
         ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
             assert not self.has_moe_layers, "MoE not supported with Stage 1"
+            assert not isinstance(optimizer, DummyOptim), "zero stage 1 requires an optimizer"
 
             optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
                 optimizer,
@@ -1095,6 +1096,7 @@ class DeepSpeedEngine(Module):
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
             round_robin_gradients = self.zero_round_robin_gradients()
+            assert not isinstance(optimizer, DummyOptim), "zero stage 2 requires an optimizer"
 
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
@@ -1440,8 +1442,8 @@ class DeepSpeedEngine(Module):
             self.timers('backward_microstep').start()
             self.timers('backward').start()
 
-        assert self.optimizer is not None, "must provide optimizer during " \
-                                           "init in order to use backward"
+        assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
+            "must provide optimizer during init in order to use backward"
 
         if self.wall_clock_breakdown():
             self.timers('backward_inner_microstep').start()
@@ -1583,8 +1585,9 @@ class DeepSpeedEngine(Module):
             self.timers('step_microstep').start()
             self.timers('step').start()
 
-        assert self.optimizer is not None, "must provide optimizer during " \
-                                           "init in order to use step"
+        assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
+            "must provide optimizer during init in order to use step"
+
         report_progress = self.global_rank == 0 if self.global_rank else True
 
         self._step_applied = False  # assume False, will flip to True
