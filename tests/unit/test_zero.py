@@ -454,10 +454,6 @@ def _ds_initialize_for_param_partitioning_testing(model: Module,
     return ds_engine
 
 
-def _print_with_rank(msg: str) -> None:
-    print(f"RANK{dist.get_rank()}: {msg}")
-
-
 def _assert_partition_status(model: Module,
                              valid_statuses: Set[ZeroParamStatus]) -> None:
     for _, param in model.named_parameters():
@@ -676,11 +672,11 @@ def test_zero3_param_partitioning_base(
             activations = ds_engine(
                 x=torch.ones((m,
                               n),
-                             dtype=torch.float16,
+                             dtype=torch.float16 if fp16_enabled else torch.float32,
                              device=ds_engine.device),
                 y=torch.ones((m,
                               n),
-                             dtype=torch.float16,
+                             dtype=torch.float16 if fp16_enabled else torch.float32,
                              device=ds_engine.device),
                 prefetching=train_iter > 0,
             )
@@ -870,7 +866,6 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
             activations = []
 
             for module in self.modulelist:
-                print(f"{dist.get_rank()}: xval: {x.shape}")
                 x = module(x)
                 activations.append(x)
 

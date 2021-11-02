@@ -2073,8 +2073,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # operations and so it can be used asynchronously
                 grad_buffer = cuda_grad_buffer
 
-            self.__inf_or_nan_tracker.logical_or_(torch.isinf(grad_buffer).any())
-            self.__inf_or_nan_tracker.logical_or_(torch.isnan(grad_buffer).any())
+            if hasattr(self.__inf_or_nan_tracker, "logical_or_"):
+                self.__inf_or_nan_tracker.logical_or_(torch.isinf(grad_buffer).any())
+                self.__inf_or_nan_tracker.logical_or_(torch.isnan(grad_buffer).any())
+            else:
+                # logical_or_ not available in older versions of pytorch
+                self.__inf_or_nan_tracker += torch.isinf(grad_buffer).any()
+                self.__inf_or_nan_tracker += torch.isnan(grad_buffer).any()
+                self.__inf_or_nan_tracker = self.__inf_or_nan_tracker > 0
 
             # offload the gradient partition if applicable
             if self.offload_optimizer:

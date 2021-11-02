@@ -17,7 +17,7 @@ def test_reduce_scatter_coalesced_single_input():
                        dtype=torch.half,
                        device=torch.cuda.current_device())
 
-    (output, ) = reduce_scatter_coalesced([input])
+    (output, ) = reduce_scatter_coalesced([input], dist.group.WORLD)
 
     assert output.shape == (3, )
     assert torch.allclose(output, torch.full_like(output, 0.5))
@@ -35,7 +35,7 @@ def test_reduce_scatter_coalesced_two_inputs():
                                        **tensor_kwargs),
     ]
 
-    output1, output2 = reduce_scatter_coalesced(inputs)
+    output1, output2 = reduce_scatter_coalesced(inputs, dist.group.WORLD)
 
     if dist.get_rank() == 0:
         assert output1.shape == (3, )
@@ -53,7 +53,7 @@ def test_reduce_scatter_coalesced_two_inputs():
 def test_reduce_scatter_coalesced_tensor_smaller_than_world_sz():
     input = torch.zeros((1, ), dtype=torch.half, device=torch.cuda.current_device())
 
-    (output, ) = reduce_scatter_coalesced([input])
+    (output, ) = reduce_scatter_coalesced([input], dist.group.WORLD)
 
     if dist.get_rank() == 0:
         assert output.shape == (1, )
