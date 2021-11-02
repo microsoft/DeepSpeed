@@ -203,7 +203,7 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
             elif exclude_str:
                 for slot in slots:
                     logger.info(f'removing {slot} from {hostname}')
-                    filtered_hosts[hostname].remove(s)
+                    filtered_hosts[hostname].remove(slot)
 
         # User just specified the whole node
         else:
