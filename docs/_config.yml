@@ -52,6 +52,7 @@ collections:
       - transformer_kernel.md
       - zero-offload.md
       - zero.md
+      - autotuning.md
 
 defaults:
   - scope:

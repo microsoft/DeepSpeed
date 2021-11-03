@@ -1,0 +1,49 @@
+{
+  "train_batch_size": "auto",
+  "train_micro_batch_size_per_gpu": 1,
+  "gradient_accumulation_steps": "auto",
+  "gradient_clipping": "auto",
+  "optimizer": {
+    "type": "AdamW",
+    "params": {
+      "lr": "auto",
+      "betas": "auto",
+      "eps": "auto",
+      "weight_decay": "auto"
+    }
+  },
+  "scheduler": {
+    "type": "WarmupLR",
+    "params": {
+      "warmup_min_lr": "auto",
+      "warmup_max_lr": "auto",
+      "warmup_num_steps": "auto"
+    }
+  },
+  "zero_optimization": {
+    "stage": "1",
+    "overlap_comm": [false],
+    "reduce_scatter": true,
+    "reduce_bucket_size": [5e8],
+    "allgather_partitions": true,
+    "allgather_bucket_size": 5e8,
+    "contiguous_gradients": false,
+    "offload_optimizer": null
+  },
+  "autotuning": {
+    "enabled": true,
+    "start_step": 5,
+    "end_step": 10,
+    "results_dir": null,
+    "exps_dir": null,
+    "num_nodes": 1,
+    "num_gpus": 8,
+    "tuner_type": "model_based",
+    "metric": "throughput",
+    "arg_mappings": {
+      "train_micro_batch_size_per_gpu": "--per_device_train_batch_size"
+    },
+    "model_info": null,
+    "max_train_micro_batch_size_per_gpu": 900
+  }
+}
