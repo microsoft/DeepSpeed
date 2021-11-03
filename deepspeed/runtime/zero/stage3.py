@@ -1124,8 +1124,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             for param_group in self.optimizer.param_groups)
 
         # bookkeeping related to param groups
+        sub_group_idx = 0
         for param_group_idx, param_group in enumerate(param_groups):
-            for sub_group_idx, sub_group in enumerate(param_group):
+            for sub_group in param_group:
                 # record sub group and partitions
                 self.fp16_groups.append(sub_group)
                 self.fp16_partitioned_groups.append(
@@ -1145,6 +1146,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.groups_padding.append([
                     p.padding_size() if rank_requires_padding else 0 for p in sub_group
                 ])
+                sub_group_idx += 1
 
         # move parameters to flattened buffer
         if not self.offload_param:  # partitioned params remain in GPU during training
