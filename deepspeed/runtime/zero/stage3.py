@@ -821,17 +821,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.__param_reduce_events: Deque[Event] = collections.deque()
         self.__max_param_reduce_events: int = 2
 
-        # map each parameter to its group index and its offset within that group's
-        # flattened buffer
-        self.__param_id_to_param_group_and_offset_within_group_buffer = {}
-        for group_idx, group in enumerate(self.fp16_groups):
-            offset_within_group = 0
-            for param in group:
-                self.__param_id_to_param_group_and_offset_within_group_buffer[
-                    param.ds_id] = (group_idx,
-                                    offset_within_group)
-                offset_within_group += param.ds_tensor.ds_numel
-
         if dist.get_rank() == 0:
             logger.info(f"optimizer state initialized")
 
