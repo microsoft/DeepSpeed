@@ -1016,8 +1016,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     all_gather_list.append(param)
 
         if not async_op:
-            # ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
-            ret_value = self._allgather_params_coalesced(all_gather_list, hierarchy)
+            if len(param_list) == 1:
+                ret_value = self._allgather_params(all_gather_list, hierarchy=hierarchy)
+            else:
+                ret_value = self._allgather_params_coalesced(all_gather_list, hierarchy)
 
             for param in all_gather_list:
                 param.ds_status = ZeroParamStatus.AVAILABLE
