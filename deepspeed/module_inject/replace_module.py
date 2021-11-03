@@ -338,10 +338,10 @@ def replace_transformer_layer(orig_layer_impl,
             new_module.output_b.data = _4hh_b
         return new_module
 
-    def replace_wo_policy(module, attn_out_linear, out_linear):
+    def replace_wo_policy(module, all_reduce_linears):
         def _replace(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
-            if name is attn_out_linear or name is out_linear:
+            if name in all_reduce_linears:
                 new_weight = torch.empty(
                     (child.weight.shape[0]
                      if conv_linear_layer else child.weight.shape[1] // mp_size,
@@ -375,7 +375,7 @@ def replace_transformer_layer(orig_layer_impl,
                         child.weight.data.shape[-1],
                         child.weight.data.shape[-2])
                 data = mp_replace.copy(new_weight, child.weight.data)
-                new_bias = torch.empty((child.weight.shape[0] // mp_size),
+                new_bias = torch.empty((child.weight.shape[1] // mp_size),
                                        device=child.weight.device,
                                        dtype=torch.half if fp16 else torch.float)
                 bias_data = None if child.bias is None else mp_replace.copy(
@@ -383,7 +383,7 @@ def replace_transformer_layer(orig_layer_impl,
                     child.bias.data)
                 return LinearLayer(data, bias_data)
 
-        def _slice_embedding(child, name):
+        def _slice_embedding(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
             new_weight = torch.empty((child.weight.shape[0],
                                       child.weight.shape[1] // mp_size),
@@ -401,11 +401,11 @@ def replace_transformer_layer(orig_layer_impl,
             if hasattr(child, 'inner_dim'):
                 child.inner_dim = child.inner_dim // mp_size
             if hasattr(child, 'num_heads'):
-                child.inner_dim = child.inner_dim // mp_size
+                child.num_heads = child.num_heads // mp_size
             if hasattr(child, 'num_attention_heads'):
-                child.inner_dim = child.inner_dim // mp_size
+                child.num_attention_heads = child.num_attention_heads // mp_size
             if hasattr(child, 'all_head_size'):
-                child.inner_dim = child.inner_dim // mp_size
+                child.all_head_size = child.all_head_size // mp_size
 
         conv_linear_layer = False
         if linear_layer_setting is not None:
@@ -423,17 +423,18 @@ def replace_transformer_layer(orig_layer_impl,
             else:
                 linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
 
-        def _replace_module(r_module):
+        def _replace_module(r_module, prev_name=''):
             for name, child in r_module.named_children():
-                if child.__class__ in policies:
-                    setattr(r_module,
-                            name,
-                            policies[child.__class__](child,
-                                                      name,
-                                                      conv_linear_layer))
+                if child.__class__ in linear_policies:
+                    setattr(
+                        r_module,
+                        name,
+                        linear_policies[child.__class__](child,
+                                                         prev_name + '.' + name,
+                                                         conv_linear_layer))
                 else:
                     update_mp_params(child)
-                    _replace_module(child)
+                    _replace_module(child, name)
             return r_module
 
         return _replace_module(module)
@@ -453,7 +454,7 @@ def replace_transformer_layer(orig_layer_impl,
                     preln=(_policy is not HFBertLayerPolicy),
                     layer_id=layer_id)
             else:
-                new_module = replace_wo_policy(child, _policy[0], _policy[1])
+                new_module = replace_wo_policy(child, _policy)
 
         return new_module
 
