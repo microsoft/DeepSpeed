@@ -33,14 +33,14 @@ class Quantizer(object):
         self.q_groups = q_groups
         self.q_mixed_fp16 = q_mixed_fp16
         self.q_change_ratio = q_change_ratio
-        self.q_type = 1#q_type
+        self.q_type = q_type
         self.qsteps = 0
         self.q_init_period = q_period
         self.quantize_real_ratio = 1.000
         self.q_verbose = q_verbose
         self.q_eigenvalue = q_eigenvalue
         self.use_quantizer_kernel = use_quantizer_kernel
-        self.q_rounding = 1#q_rounding
+        self.q_rounding = q_rounding
         self.layer_num = layer_num
 
     def any_precision_switch(self):
