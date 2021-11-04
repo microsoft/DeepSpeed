@@ -76,7 +76,9 @@ class InferenceEngine(Module):
         # apply injection policy
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
-                self._apply_injection_policy(client_module, injection_policy, return_tuple)
+                self._apply_injection_policy(client_module,
+                                             injection_policy,
+                                             return_tuple)
         elif replace_method == 'auto':
             self._apply_injection_policy()
 
@@ -116,8 +118,7 @@ class InferenceEngine(Module):
             logger.info(
                 f"quantization_setting is None, quantize_bits = {self.quantize_bits} "
                 f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
-                f"quantize_groups = {self.quantize_groups}"
-            )
+                f"quantize_groups = {self.quantize_groups}")
             return
         elif type(quantization_setting) is tuple:
             self.mlp_extra_grouping, \
@@ -137,16 +138,22 @@ class InferenceEngine(Module):
                 if not hasattr(mpu, method):
                     raise ValueError(f"mpu is missing {method}")
         if self.checkpoint is not None and not isinstance(self.checkpoint, str):
-            raise ValueError(f"checkpoint must be None or a str, got {type(self.checkpoint)}")
+            raise ValueError(
+                f"checkpoint must be None or a str, got {type(self.checkpoint)}")
 
         supported_dtypes = [None, torch.half, torch.int8, torch.float]
         if self.dtype not in supported_dtypes:
-            raise ValueError(f"{self.dtype} not supported, valid dtype: {supported_dtypes}")
+            raise ValueError(
+                f"{self.dtype} not supported, valid dtype: {supported_dtypes}")
 
         if self.injection_dict is not None and not isinstance(self.injection_dict, dict):
-            raise ValueError(f"injection_dict must be None or a dict, got: {self.injection_dict}")
+            raise ValueError(
+                f"injection_dict must be None or a dict, got: {self.injection_dict}")
 
-    def _apply_injection_policy(self, client_module=None, injection_policy=None, return_tuple=True):
+    def _apply_injection_policy(self,
+                                client_module=None,
+                                injection_policy=None,
+                                return_tuple=True):
         replace_transformer_layer(client_module,
                                   self.module,
                                   policy=injection_policy,
@@ -167,7 +174,8 @@ class InferenceEngine(Module):
         is_pipe_parallel = isinstance(self.module, PipelineModule)
 
         if is_pipe_parallel:
-            raise RuntimeError('pipeline parallelism is currently not supported in inference.')
+            raise RuntimeError(
+                'pipeline parallelism is currently not supported in inference.')
 
         mp_rank = 0 if self.mp_group is None else dist.get_rank(group=self.mp_group)
 
