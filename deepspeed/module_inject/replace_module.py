@@ -18,10 +18,10 @@ class LinearAllreduce(nn.Module):
 
     def forward(self, input):
         output = torch.matmul(input, self.weight)
-        if self.bias is not None:
-            output += self.bias
         if self.mp_group is not None:
             torch.distributed.all_reduce(output, group=self.mp_group)
+        if self.bias is not None:
+            output += self.bias
         return output
 
 
@@ -356,7 +356,7 @@ def replace_transformer_layer(orig_layer_impl,
                     child.weight.data = child.weight.data.reshape(
                         child.weight.data.shape[-1],
                         child.weight.data.shape[-2])
-                data = mp_replace.copy(new_weight, child.weight.data)
+                data = mp_replace.copy(new_weight, child.weight.data).to(torch.cuda.current_device())
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             child.bias.to(torch.cuda.current_device()), mp_group)
             else:
@@ -380,8 +380,8 @@ def replace_transformer_layer(orig_layer_impl,
                                        dtype=torch.half if fp16 else torch.float)
                 bias_data = None if child.bias is None else mp_replace.copy(
                     new_bias,
-                    child.bias.data)
-                return LinearLayer(data, bias_data)
+                    child.bias.data).to(torch.cuda.current_device())
+                return LinearLayer(data.to(torch.cuda.current_device()), bias_data)
 
         def _slice_embedding(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
@@ -406,6 +406,8 @@ def replace_transformer_layer(orig_layer_impl,
                 child.num_attention_heads = child.num_attention_heads // mp_size
             if hasattr(child, 'all_head_size'):
                 child.all_head_size = child.all_head_size // mp_size
+            if hasattr(child, 'embed_dim'):
+                child.embed_dim = child.embed_dim // mp_size
 
         conv_linear_layer = False
         if linear_layer_setting is not None:
