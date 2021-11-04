@@ -114,17 +114,14 @@ class InferenceEngine(Module):
         self.quantize_bits = 8
         self.mlp_extra_grouping = False
         self.quantize_groups = 1
-        if quantization_setting is None:
-            logger.info(
-                f"quantization_setting is None, quantize_bits = {self.quantize_bits} "
-                f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
-                f"quantize_groups = {self.quantize_groups}")
-            return
-        elif type(quantization_setting) is tuple:
+        if type(quantization_setting) is tuple:
             self.mlp_extra_grouping, \
             self.quantize_groups = quantization_setting
-        else:
+        elif quantization_setting is not None:
             self.quantize_groups = quantization_setting
+        logger.info(f"quantize_bits = {self.quantize_bits} "
+                    f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
+                    f"quantize_groups = {self.quantize_groups}")
 
     def _validate_args(self, mpu):
         if not isinstance(self.module, Module):
