@@ -33,14 +33,14 @@ class Quantizer(object):
         self.q_groups = q_groups
         self.q_mixed_fp16 = q_mixed_fp16
         self.q_change_ratio = q_change_ratio
-        self.q_type = q_type
+        self.q_type = 1#q_type
         self.qsteps = 0
         self.q_init_period = q_period
         self.quantize_real_ratio = 1.000
         self.q_verbose = q_verbose
         self.q_eigenvalue = q_eigenvalue
         self.use_quantizer_kernel = use_quantizer_kernel
-        self.q_rounding = q_rounding
+        self.q_rounding = 1#q_rounding
         self.layer_num = layer_num
 
     def any_precision_switch(self):
@@ -82,41 +82,15 @@ class Quantizer(object):
     def step(self):
         self.qsteps += (TWO_D_PARAMS * (self.layer_num if self.layer_num != 0 else 1))
 
-    def sr_quantize(self, input_flat, input_g, scale):
+    def sr_quantize(self, input_g, scale, q_range, zero_point=0):
         # Random number generator (Uniform)
-        p = torch.cuda.FloatTensor(input_flat.size(),
-                                   device=input_flat.device).uniform_()
-        p = torch.split(p, p.size(0) // self.q_groups)
-        add_s = torch.zeros_like(input_flat)
-        add_s = torch.split(add_s, add_s.size(0) // self.q_groups)
-
-        scale = [q_range / (2 * max(g.max(), g.min().abs())) for g in input_g]
-        # Quantize with INT rounding
-        input_flat = [(g * s).int().float() / s for (g, s) in zip(input_g, scale)]
-        # Compute the error
-        error = [((g - q).abs() / s) for (g, s, q) in zip(input_g, scale, input_flat)]
-        # Stochastic Rounding
-        add_s = [
-            a_s.masked_fill_(pg < err_g,
-                             1 / s) for (a_s,
-                                         pg,
-                                         err_g,
-                                         s) in zip(add_s,
-                                                   p,
-                                                   error,
-                                                   scale)
-        ]
-        add_s = [
-            a_s * (g > 0).float() - a_s * (g < 0).float() for a_s,
-            g in zip(add_s,
-                     input_flat)
-        ]
-        input_flat = [((q + a_s) * s).clamp(-(q_range >> 1),
-                                            (q_range >> 1) - 1) / s for q,
-                      a_s,
-                      s in zip(input_flat,
-                               add_s,
-                               scale)]
+        p = input_g.new(input_g.shape).uniform_(-0.5, 0.5)
+        if self.q_type == 0:
+            input_flat = (input_g / scale + p).round().clamp(-(q_range >> 1),
+                                                        (q_range >> 1) - 1) * scale
+        else:
+           input_flat = ((input_g - zero_point) / scale + p).round().clamp(0,
+                                                            (q_range - 1)) * scale + zero_point
         return input_flat
 
     def mixed_fp16_quantize(self, input, input_q, index):
@@ -159,62 +133,66 @@ class Quantizer(object):
         # quantize the weights base on the selected bits and the value-range
         if not self.use_quantizer_kernel:
             q_range = 2**self.q_start_bits[index]
-            input_flat = input.view(-1)
-            input_g = torch.split(input_flat, input_flat.size(0) // self.q_groups)
+            # To aviod the overflow, we use the following formula to convert
+            # the input to float32
+            input_flat = input.float().view(-1)  
+            input_g =input_flat.view(self.q_groups, -1) # split as q_groups
         if self.q_type == 0:  #symmetric
             if self.use_quantizer_kernel:
-                input_q = ds_quantizer(input.clone(),
-                                       self.q_groups,
-                                       self.q_start_bits[index])
-            else:
-                scale = [q_range / (2 * max(g.max(), g.min().abs())) for g in input_g]
-                if self.q_rounding == 0:  # Nearest value rounding
-                    input_flat = [(g * s).round().clamp(-(q_range >> 1),
-                                                        (q_range >> 1) - 1) / s for g,
-                                  s in zip(input_g,
-                                           scale)]
-                else:  # Stochastic Rounding
-                    if self.use_quantizer_kernel:
-                        input_q = ds_quantizer(input.clone(),
+                if self.q_rounding == 0: # Nearest value rounding
+                    input_q = ds_quantizer(input.clone(),
+                                        self.q_groups,
+                                        self.q_start_bits[index])
+                else: # Stochastic Rounding
+                    input_q = ds_quantizer(input.clone(),
                                                self.q_groups,
                                                self.q_start_bits[index],
                                                sr=True)
-                    else:
-                        input_flat = self.sr_quantize(input_flat, input_g)
-        else:  #asymmetric
-            if self.q_rounding == 0:
-                if self.use_quantizer_kernel:
-                    input_q = ds_quantizer(input.clone(),
-                                           self.q_groups,
-                                           self.q_start_bits[index],
-                                           asym=True)
-                else:
-                    scale = [(g.max() - g.min()) / q_range for g in input_g]
-                    input_flat = [
-                        ((g - g.min()) / s).round().clamp(0,
-                                                          (q_range - 1)) * s + g.min()
-                        for g,
-                        s in zip(input_g,
-                                 scale)
-                    ]
             else:
-                input_q = ds_quantizer(input.clone(),
-                                       self.q_groups,
-                                       self.q_start_bits[index],
-                                       asym=True)
+                scale = ( 2 * torch.max( 
+                    input_g.amax(dim=-1, keepdim=True), input_g.amin(dim=-1, keepdim=True).abs() )
+                    ) / q_range
+                if self.q_rounding == 0:  # Nearest value rounding
+                    input_flat = (input_g / scale).round().clamp(-(q_range >> 1),
+                                                        (q_range >> 1) - 1) * scale
+                else:
+                    input_flat = self.sr_quantize(input_g, scale, q_range)
 
-        if self.use_quantizer_kernel or (self.q_type and self.q_rounding):
+        else:  #asymmetric
+            if self.use_quantizer_kernel:
+                if self.q_rounding == 0: # Nearest value rounding
+                    input_q = ds_quantizer(input.clone(),
+                                        self.q_groups,
+                                        self.q_start_bits[index],
+                                        asym=True)
+                else:
+                    input_q = ds_quantizer(input.clone(),
+                                    self.q_groups,
+                                    self.q_start_bits[index],
+                                    asym=True,
+                                    sr=True)
+            else:
+                g_min = input_g.amin(dim=-1, keepdim=True)
+                scale = (input_g.amax(dim=-1, keepdim=True) - g_min ) / q_range
+                # make sure the zero point is mapped to integer 
+                # aka zero --> some int num --> zero
+                zero_point = (g_min / scale).round() * scale 
+                if self.q_rounding == 0: # Nearest value rounding
+                    input_flat = ((input_g - zero_point) / scale).round().clamp(0,
+                                                        (q_range - 1)) * scale + zero_point
+                else:
+                    input_flat = self.sr_quantize(input_g, scale, q_range, zero_point)
+
+        if self.use_quantizer_kernel:
             return self.mixed_fp16_quantize(input, input_q, index)
         else:
             if self.q_mixed_fp16 and self.q_start_bits[index] >= (self.q_target_bits -
                                                                   1):
-                input_flat = [(self.quantize_real_ratio * g) +
-                              ((1 - self.quantize_real_ratio) * g_q) for g,
-                              g_q in zip(input_g,
-                                         input_flat)]
-            input_q = torch.cat(input_flat)
-            input_q = input_q.reshape(input.size())
-            return input_q
+                input_flat = self.quantize_real_ratio * input_g + \
+                              (1 - self.quantize_real_ratio) * input_flat
+            input_q = input_flat.reshape(input.size())
+            # alway change the type of input_q back to input type 
+            return input_q.type(input.type())
 
     def update_fp16_ratio(self):
         if self.q_mixed_fp16:
