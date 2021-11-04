@@ -356,7 +356,8 @@ def replace_transformer_layer(orig_layer_impl,
                     child.weight.data = child.weight.data.reshape(
                         child.weight.data.shape[-1],
                         child.weight.data.shape[-2])
-                data = mp_replace.copy(new_weight, child.weight.data).to(torch.cuda.current_device())
+                data = mp_replace.copy(new_weight,
+                                       child.weight.data).to(torch.cuda.current_device())
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             child.bias.to(torch.cuda.current_device()), mp_group)
             else:
