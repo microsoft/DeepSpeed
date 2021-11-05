@@ -2573,23 +2573,22 @@ class DeepSpeedEngine(Module):
 
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
+            _state = None
             # Fully load state for current rank
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
-                zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
-            elif self.zero_optimization_stage() <= ZERO_OPTIMIZATION_GRADIENTS:
                 _state = torch.load(ckpt_name, map_location='cpu')
-                # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
-                _state = {
-                    OPTIMIZER_STATE_DICT: {
-                        SINGLE_PARTITION_OF_FP32_GROUPS:
-                        _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
+            elif self.zero_optimization_stage() <= ZERO_OPTIMIZATION_GRADIENTS:
+                if self.zero_load_from_fp32_weights():
+                    # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
+                    _state = torch.load(ckpt_name, map_location='cpu')
+                    _state = {
+                        OPTIMIZER_STATE_DICT: {
+                            SINGLE_PARTITION_OF_FP32_GROUPS:
+                            _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
+                        }
                     }
-                }
-                zero_sd_list.append(_state)
-            else:
-                assert self.zero_optimization_stage() == ZERO_OPTIMIZATION_WEIGHTS
-                zero_sd_list.append(None)
+            zero_sd_list.append(_state)
 
         zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
         print(
