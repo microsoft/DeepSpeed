@@ -73,11 +73,11 @@ def main():
             logger.info(f"{args.node_rank} {k}={current_env[k]}")
 
     if args.world_info == "None":
-        raise ValueError("word_info can not be None")
+        raise ValueError("world_info can not be None")
     world_info = base64.urlsafe_b64decode(args.world_info)
     world_info = json.loads(world_info)
 
-    logger.info(f"WORLD INFO DICT: {word_info}")
+    logger.info(f"WORLD INFO DICT: {world_info}")
     node_list = list(world_info.keys())
     args.nnodes = len(node_list)
     local_node = node_list[args.node_rank]
