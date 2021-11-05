@@ -42,9 +42,10 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA
+    PLD_THETA, PLD_GAMMA, OPTIMIZER_STATE_DICT
 from deepspeed.runtime.zero.constants import \
-    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
+    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS, \
+    SINGLE_PARTITION_OF_FP32_GROUPS
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
 import deepspeed.runtime.lr_schedules as lr_schedules
@@ -1377,7 +1378,8 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
-                ))
+                ),
+                elastic_checkpoint=self.zero_elastic_checkpoint())
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -2572,22 +2574,24 @@ class DeepSpeedEngine(Module):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             # Fully load state for current rank
-            # TODO: remove assumption on zero_sd_list[0] in zero load_state_dict and use rank instead
-            if self.zero_elastic_checkpoint() or i == 0 or dist.get_rank(
+            if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
-            else:
+            elif self.zero_optimization_stage() <= ZERO_OPTIMIZATION_GRADIENTS:
                 _state = torch.load(ckpt_name, map_location='cpu')
                 # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
                 _state = {
-                    'optimizer_state_dict': {
-                        'single_partition_of_fp32_groups':
-                        _state['optimizer_state_dict']['single_partition_of_fp32_groups']
+                    OPTIMIZER_STATE_DICT: {
+                        SINGLE_PARTITION_OF_FP32_GROUPS:
+                        _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
                     }
                 }
                 zero_sd_list.append(_state)
+            else:
+                assert self.zero_optimization_stage() == ZERO_OPTIMIZATION_WEIGHTS
+                zero_sd_list.append(None)
 
-        zero_optimizer_sd = [sd["optimizer_state_dict"] for sd in zero_sd_list]
+        zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
         print(
             f"successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
