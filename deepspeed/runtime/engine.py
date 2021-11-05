@@ -2573,7 +2573,8 @@ class DeepSpeedEngine(Module):
         for i, ckpt_name in enumerate(zero_ckpt_names):
             # Fully load state for current rank
             # TODO: remove assumption on zero_sd_list[0] in zero load_state_dict and use rank instead
-            if self.zero_elastic_checkpoint() or i == 0 or dist.get_rank() == i:
+            if self.zero_elastic_checkpoint() or i == 0 or dist.get_rank(
+                    group=self.optimizer.dp_process_group) == i:
                 zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
             else:
                 _state = torch.load(ckpt_name, map_location='cpu')
