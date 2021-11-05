@@ -72,7 +72,7 @@ def main():
         if "NCCL" in k:
             logger.info(f"{args.node_rank} {k}={current_env[k]}")
 
-    if args.world_info is None:
+    if args.world_info == "None":
         raise ValueError("word_info can not be None")
     world_info = base64.urlsafe_b64decode(args.world_info)
     world_info = json.loads(world_info)
