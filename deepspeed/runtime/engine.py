@@ -1925,8 +1925,21 @@ class DeepSpeedEngine(Module):
             return None
 
         zero_sd_list = []
-        for ckpt_name in zero_ckpt_names:
-            zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
+        for i, ckpt_name in enumerate(zero_ckpt_names):
+            # Fully load state for current rank
+            # TODO: remove assumption on zero_sd_list[0] in zero load_state_dict and use rank instead
+            if self.zero_elastic_checkpoint() or i == 0 or dist.get_rank() == i:
+                zero_sd_list.append(torch.load(ckpt_name, map_location='cpu'))
+            else:
+                _state = torch.load(ckpt_name, map_location='cpu')
+                # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
+                _state = {
+                    'optimizer_state_dict': {
+                        'single_partition_of_fp32_groups':
+                        _state['optimizer_state_dict']['single_partition_of_fp32_groups']
+                    }
+                }
+                zero_sd_list.append(_state)
 
         zero_optimizer_sd = [sd['optimizer_state_dict'] for sd in zero_sd_list]
         print(
