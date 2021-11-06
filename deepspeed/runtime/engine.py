@@ -689,6 +689,8 @@ class DeepSpeedEngine(Module):
                 assert args.deepspeed_config is None, "Not sure how to proceed, we were given both a deepscale_config and deepspeed_config"
             args.deepspeed_config = args.deepscale_config
 
+        assert self.client_optimizer is not None or self.client_model_parameters is not None, "At least one of the optimizer and model parameters must be input to train the model."
+
         assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
             "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch.distributed launcher. If using a " \
             "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."

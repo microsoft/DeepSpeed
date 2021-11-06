@@ -65,7 +65,7 @@ class PipelineEngine(DeepSpeedEngine):
     ]
     DTYPE_TO_ID = {dtype: id_ for id_, dtype in enumerate(ID_TO_DTYPE)}
 
-    def __init__(self, has_bool_tensors=False, *super_args, **super_kwargs):
+    def __init__(self, *super_args, **super_kwargs):
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
@@ -73,7 +73,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
-        self.has_bool_tensors = has_bool_tensors
+        self.has_bool_tensors = super_kwargs.get("has_bool_tensors", False)
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -1207,16 +1207,16 @@ class PipelineEngine(DeepSpeedEngine):
         return buffers
 
     def forward(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``."""
+        raise PipelineError("Only train_batch() or eval_batch() is accessible in pipeline mode.")
 
     def backward(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``."""
+        raise PipelineError("Only train_batch() or eval_batch() is accessible in pipeline mode.")
 
     def step(self, *args, **kwargs):
-        """Disabled for pipeline parallel training. See ``train_batch()``. """
-        raise PipelineError("Only train_batch() is accessible in pipeline mode.")
+        """Disabled for pipeline parallel training. See ``train_batch()`` and ``eval_batch()``."""
+        raise PipelineError("Only train_batch() or eval_batch() is accessible in pipeline mode.")
 
     def mem_status(self, msg, print_rank=-1, reset_max=False):
         return
