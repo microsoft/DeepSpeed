@@ -990,7 +990,9 @@ class DeepSpeedEngine(Module):
                     f'Currently the convergence of 1-bit Lamb is only verified under FP16'
                 )
         else:
-            assert self.optimizer_name() is not None, "You must set `optimizer` in your configuration if you input `model_parameters`."
+            assert self.optimizer_name() is not None, \
+                "You must set `optimizer` in your configuration if you input `model_parameters`."
+
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         return optimizer
