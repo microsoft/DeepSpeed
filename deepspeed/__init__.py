@@ -72,7 +72,7 @@ def initialize(args=None,
                collate_fn=None,
                config=None,
                config_params=None,
-    send_bool_tensors=None):
+               send_bool_tensors=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
