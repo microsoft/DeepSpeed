@@ -66,6 +66,8 @@ class PipelineEngine(DeepSpeedEngine):
     DTYPE_TO_ID = {dtype: id_ for id_, dtype in enumerate(ID_TO_DTYPE)}
 
     def __init__(self, *super_args, **super_kwargs):
+        self.has_bool_tensors = super_kwargs.pop("send_bool_tensors", False)
+
         super().__init__(*super_args, **super_kwargs)
         assert isinstance(self.module, PipelineModule), "model must base PipelineModule"
 
@@ -73,7 +75,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
-        self.has_bool_tensors = super_kwargs.get("send_bool_tensors", False)
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
