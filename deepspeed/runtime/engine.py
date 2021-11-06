@@ -720,9 +720,8 @@ class DeepSpeedEngine(Module):
             if self.optimizer_name() is not None:
                 assert self._is_supported_optimizer(self.optimizer_name()), \
                     '{} is not a supported DeepSpeed Optimizer'.format(self.optimizer_name())
-
-        assert self.client_optimizer is not None or self.client_model_parameters is not None, \
-            "At least one of the `optimizer` and `model_parameters` must be input to train the model."
+                assert self.client_model_parameters is not None, \
+                    "At least one of the `optimizer` and `model_parameters` must be input to train the model."
 
         if self.optimizer_name() == LAMB_OPTIMIZER or self.optimizer_name(
         ) == ONEBIT_LAMB_OPTIMIZER:

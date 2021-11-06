@@ -304,6 +304,7 @@ class PipelineEngine(DeepSpeedEngine):
             raise RuntimeError(
                 f'train_batch() requires gradients enabled. Use eval_batch() instead.')
 
+        print(1)
         # Curriculum learning could change activation shape
         if self.curriculum_enabled():
             new_difficulty = self.curriculum_scheduler.update_difficulty( \
@@ -315,23 +316,30 @@ class PipelineEngine(DeepSpeedEngine):
                 self.global_steps):
                 self.reset_activation_shape()
 
+        print(2)
         if data_iter:
             self.set_dataiterator(data_iter)
 
+        print(3)
         self.module.train()
         self.total_loss = None
         self._compute_loss = True
 
+        print(4)
         # Do the work
         self.timers('train_batch').start()
         sched = schedule.TrainSchedule(micro_batches=self.micro_batches,
                                        stages=self.num_stages,
                                        stage_id=self.stage_id)
-        self._exec_schedule(sched)
-        self.agg_train_loss = self._aggregate_total_loss()
 
+        print(5)
+        self._exec_schedule(sched)
+        print(6)
+        self.agg_train_loss = self._aggregate_total_loss()
+        print(7)
         self.timers('train_batch').stop()
 
+        print(8)
         if self.global_steps % self.steps_per_print() == 0:
             if self.global_rank == 0:
                 elapsed = self.timers('train_batch').elapsed(reset=True)
@@ -342,6 +350,7 @@ class PipelineEngine(DeepSpeedEngine):
                       f'iter time (s): {iter_time:0.3f} '
                       f'samples/sec: {tput:0.3f}')
 
+        print(9)
         # Tensorboard
         if self.tensorboard_enabled():
             if self.global_rank == 0:
@@ -353,6 +362,7 @@ class PipelineEngine(DeepSpeedEngine):
                 if self.global_steps % self.steps_per_print() == 0:
                     self.summary_writer.flush()
 
+        print(10)
         if self.wall_clock_breakdown(
         ) and self.global_steps % self.steps_per_print() == 0:
             self.timers.log([
@@ -636,6 +646,7 @@ class PipelineEngine(DeepSpeedEngine):
             if isinstance(outputs, tuple):
                 first_output = outputs[0]
                 # TODO: Improve pipe partitioning to pass multiple tensors that require grads
+                print([_.requires_grad for _ in outputs])
                 assert all([
                     torch.is_tensor(elt) and elt.requires_grad is False
                     for elt in outputs[1:]
@@ -1322,10 +1333,13 @@ class PipelineEngine(DeepSpeedEngine):
 
     def _exec_schedule(self, pipe_schedule):
         # Reserve and reset buffers.
+        print(100)
         self._reserve_pipe_buffers(pipe_schedule.num_pipe_buffers())
+        print(101)
         self.fwd_outputs = []
 
         # For each step in the schedule
+        print(102)
         for step_cmds in pipe_schedule:
             # For each instruction in the step
             for cmd in step_cmds:
@@ -1336,7 +1350,9 @@ class PipelineEngine(DeepSpeedEngine):
 
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
+                print(103)
                 self._exec_instr(**cmd.kwargs)
+                print(104)
 
     def set_batch_fn(self, fn):
         """Execute a post-processing function on input data.
