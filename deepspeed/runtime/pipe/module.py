@@ -512,7 +512,6 @@ class PipelineModule(nn.Module):
         """ ProcessTopology object to query process mappings. """
         return self._topo
 
-    @property
     def mpu(self):
         return self._grid
 
