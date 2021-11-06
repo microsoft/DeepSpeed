@@ -454,3 +454,6 @@ class PipelineParallelGrid:
 
     def get_slice_parallel_group(self):
         return self.slice_proc_group
+
+    def __call__(self):
+        return self
