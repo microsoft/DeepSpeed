@@ -72,7 +72,7 @@ def initialize(args=None,
                collate_fn=None,
                config=None,
                config_params=None,
-               has_bool_tensors=None):
+    send_bool_tensors=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
@@ -107,7 +107,7 @@ def initialize(args=None,
 
         config_params: Optional: Same as `config`, kept for backwards compatibility.
 
-        has_bool_tensors: Optional: Whether to send boolean tensors when using the pipeline module.
+        send_bool_tensors: Optional: Whether to send boolean tensors when using the pipeline module.
 
     Returns:
         A tuple of ``engine``, ``optimizer``, ``training_dataloader``, ``lr_scheduler``
@@ -155,7 +155,7 @@ def initialize(args=None,
                                 collate_fn=collate_fn,
                                 config=config,
                                 config_params=config_params,
-                                has_bool_tensors=has_bool_tensors)
+                                send_bool_tensors=send_bool_tensors)
 
     return_items = [
         engine,
