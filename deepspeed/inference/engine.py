@@ -29,13 +29,15 @@ class InferenceEngine(Module):
         """
         Args:
             model: torch.nn.Module
-            mp_size: model parallel size
-            mpu: ?
-            checkpoint:
-            dtype:
-            injection_dict:
-            return_tuple:
-            replace_method:
+            mp_size: model-parallel size
+            mpu: model-parallel unit (used for Megatron-type models)
+            checkpoint: the json-path, showing the address of model-checkpoints
+                Example: {type: 'Megatron', 'checkpoints': [ckpt_mp0.pt, ckpt_mp1.pt], 'version': 1.0}
+            dtype: data-type by which inference is executed
+            injection_dict: the dictionary that shows the injection policy:
+                Example: {BertLayer: HFBertLayerPolicy}
+            return_tuple: if true, inference-API returns a tuple, otherwise a tensor
+            replace_method: the injection method, this can be passed as auto if no injection-policy is defined, in which case the injection is automatic based on the available policies
             quantization_setting:
                 one of None, Tuple(mlp_extra_grouping, quantize_groups), quantize_groups
         """
@@ -125,9 +127,9 @@ class InferenceEngine(Module):
 
     def _validate_args(self, mpu):
         if not isinstance(self.module, Module):
-            raise ValueError(f"model must a torch.nn.Module, got {type(self.module)}")
+            raise ValueError(f"model must be a torch.nn.Module, got {type(self.module)}")
         if not isinstance(self.mp_world_size, int) or self.mp_world_size < 1:
-            raise ValueError(f"mp_size must an int >= 1, got {self.mp_world_size}")
+            raise ValueError(f"mp_size must be an int >= 1, got {self.mp_world_size}")
 
         if mpu:
             methods = ["get_model_parallel_group", "get_data_parallel_group"]
