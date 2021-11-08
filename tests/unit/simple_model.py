@@ -19,10 +19,11 @@ class SimpleModel(torch.nn.Module):
         self.empty_grad = empty_grad
 
     def forward(self, x, y):
-        #hidden_dim = x
-        #hidden_dim = self.linear(hidden_dim)
-        for i, l in enumerate(self.linears):
-            x = self.linears[i // 2](x) + l(x)
+        if len(self.linears) == 1:
+            x = self.linears[0](x)
+        else:
+            for i, l in enumerate(self.linears):
+                x = self.linears[i // 2](x) + l(x)
         return self.cross_entropy_loss(x, y)
 
 
