@@ -127,7 +127,6 @@ class PipelineEngine(DeepSpeedEngine):
         self.is_model_parallel = self.grid.model_parallel_size > 1
 
         # Partition input/output buffers
-        # XXX temporarily disable while I revert some partition hacks.
         self.is_pipe_partitioned = self.is_model_parallel
         self.is_grad_partitioned = self.is_model_parallel
 
@@ -181,6 +180,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         #stores the loss for the entire batch
         self.total_loss = None
+        self._compute_loss = True # False to skip loss calc on last stage
         self.agg_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
         self.dp_group_loss = torch.tensor(0.0, requires_grad=False).to(self.device)
 
@@ -387,6 +387,9 @@ class PipelineEngine(DeepSpeedEngine):
 
         Args:
             data_iter (Iterator): Iterator of data to evaluate.
+            compute_loss (bool): If True, the last pipe stage will compute the
+                loss using the `loss_fn` used to during module initialization.
+                Set to False if the raw output should be used (e.g., text generation)
 
         Returns:
             The arithmetic mean of the losses computed this batch.
@@ -763,15 +766,15 @@ class PipelineEngine(DeepSpeedEngine):
                 # Assume list or tuple
                 loaded = []
                 for x in batch[0]:
-                    assert torch.is_tensor(x)
-                    mine = x.clone().detach().to(self.device)
-                    mine.requires_grad = mine.is_floating_point()
-                    loaded.append(mine)
+                    if torch.is_tensor(x):
+                        x = x.clone().detach().to(self.device)
+                        x.requires_grad = x.is_floating_point()
+                        loaded.append(x)
                 loaded = tuple(loaded)
 
             self.pipe_buffers['inputs'][buffer_id] = loaded
 
-        if self.is_last_stage():
+        if self.is_last_stage() and self._compute_loss:
             loaded = batch[1]
             if torch.is_tensor(batch[1]):
                 loaded = batch[1].to(self.device)
