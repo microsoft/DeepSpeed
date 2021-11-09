@@ -10,10 +10,9 @@ at::Tensor ds_quantize(at::Tensor& vals, int groups, int bits)
     int size = 1;
     for (auto dim : t_size) size *= dim;
 
-    if ((((size / groups) - 1) / 4096 + 1) <= MAX_REG) {
-        launch_quantize_kernel(
-            (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
-    }
+    launch_quantize_kernel(
+        (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
+
     return vals;
 }
 

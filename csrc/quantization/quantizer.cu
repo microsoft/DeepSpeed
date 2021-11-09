@@ -27,17 +27,17 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
         int offset = group_id * group_size;
         float max = -10000.0;
 
-        while (group_index < group_size && reg_count < MAX_REG) {
-            data[reg_count] = vals_cast[offset + group_index];
-            __half* data_h = reinterpret_cast<__half*>(&data[reg_count]);
+        while (group_index < group_size) {
+            float2 val = vals_cast[offset + group_index];
+            if (reg_count < MAX_REG) data[reg_count++] = val;
+            __half* data_h = reinterpret_cast<__half*>(&val);
 
-            if (abs((float)data_h[0]) > max) max = abs((float)data_h[0]);
-            if (abs((float)data_h[1]) > max) max = abs((float)data_h[1]);
-            if (abs((float)data_h[2]) > max) max = abs((float)data_h[2]);
-            if (abs((float)data_h[3]) > max) max = abs((float)data_h[3]);
+            max = abs((float)data_h[0]) > max ? abs((float)data_h[0]) : max;
+            max = abs((float)data_h[1]) > max ? abs((float)data_h[1]) : max;
+            max = abs((float)data_h[2]) > max ? abs((float)data_h[2]) : max;
+            max = abs((float)data_h[3]) > max ? abs((float)data_h[3]) : max;
 
             group_index += blockDim.x;
-            reg_count++;
         }
 
 #pragma unroll
@@ -63,31 +63,34 @@ __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
 
         float q_scale = (1 << num_bits) / (2 * max + 1e-5);
         float q_scale_inv = 1 / q_scale;
-        for (int i = 0; i < reg_count; i++) {
-            group_index = i * blockDim.x + id;
-            if (group_index < group_size) {
-                __half2* data_h = reinterpret_cast<__half2*>(&data[i]);
-                float2 q_data[2];
-                q_data[0] = __half22float2(data_h[0]);
-                q_data[1] = __half22float2(data_h[1]);
 
-                float2 q_data_int[2];
+        group_index = id;
+        int reg_index = 0;
+        while (group_index < group_size) {
+            float2 val_data = reg_index < reg_count ? data[reg_index++]
+                                                    : vals_cast[offset + group_index];
+            __half2* data_h = reinterpret_cast<__half2*>(&val_data);
+            float2 q_data[2];
+            q_data[0] = __half22float2(data_h[0]);
+            q_data[1] = __half22float2(data_h[1]);
 
-                q_data_int[0].x = roundf(q_data[0].x * q_scale);
-                q_data_int[0].y = roundf(q_data[0].y * q_scale);
-                q_data_int[1].x = roundf(q_data[1].x * q_scale);
-                q_data_int[1].y = roundf(q_data[1].y * q_scale);
+            float2 q_data_int[2];
 
-                q_data_int[0].x *= q_scale_inv;
-                q_data_int[0].y *= q_scale_inv;
-                q_data_int[1].x *= q_scale_inv;
-                q_data_int[1].y *= q_scale_inv;
+            q_data_int[0].x = roundf(q_data[0].x * q_scale);
+            q_data_int[0].y = roundf(q_data[0].y * q_scale);
+            q_data_int[1].x = roundf(q_data[1].x * q_scale);
+            q_data_int[1].y = roundf(q_data[1].y * q_scale);
 
-                data_h[0] = __float22half2_rn(q_data_int[0]);
-                data_h[1] = __float22half2_rn(q_data_int[1]);
+            q_data_int[0].x *= q_scale_inv;
+            q_data_int[0].y *= q_scale_inv;
+            q_data_int[1].x *= q_scale_inv;
+            q_data_int[1].y *= q_scale_inv;
 
-                vals_cast[offset + group_index] = data[i];
-            }
+            data_h[0] = __float22half2_rn(q_data_int[0]);
+            data_h[1] = __float22half2_rn(q_data_int[1]);
+
+            vals_cast[offset + group_index] = val_data;
+            group_index += blockDim.x;
         }
     }
 #endif
@@ -114,18 +117,17 @@ __global__ void quantize_kernel(float* vals, int group_size, int num_bits)
 
     float max = -10000.0;
 
-    while (id < group_size && reg_count < MAX_REG) {
+    while (id < group_size) {
         float4 data_reg = vals_cast[group_index];
-        data[reg_count] = data_reg;
+        if (reg_count < MAX_REG) data[reg_count++] = data_reg;
 
-        if (abs(data_reg.x) > max) max = abs(data_reg.x);
-        if (abs(data_reg.y) > max) max = abs(data_reg.y);
-        if (abs(data_reg.z) > max) max = abs(data_reg.z);
-        if (abs(data_reg.w) > max) max = abs(data_reg.w);
+        max = abs(data_reg.x) > max ? abs(data_reg.x) : max;
+        max = abs(data_reg.y) > max ? abs(data_reg.y) : max;
+        max = abs(data_reg.z) > max ? abs(data_reg.z) : max;
+        max = abs(data_reg.w) > max ? abs(data_reg.w) : max;
 
         group_index += blockDim.x;
         id += blockDim.x;
-        reg_count++;
     }
     id = threadIdx.x;
 #pragma unroll
@@ -153,25 +155,27 @@ __global__ void quantize_kernel(float* vals, int group_size, int num_bits)
 
     float q_scale = (1 << num_bits) / (2 * max + 1e-5);
     float q_scale_inv = 1 / q_scale;
-    for (int i = 0; i < reg_count; i++) {
-        group_index = i * blockDim.x + id;
-        if (group_index < group_size) {
-            float4 q_data;
-            q_data = data[i];
+    group_index = id;
+    vals_cast += bid * group_size;
+    int reg_index = 0;
+    while (id < group_size) {
+        float4 q_data;
+        q_data = reg_index < reg_count ? data[reg_index++] : vals_cast[id];
+        float4 q_data_int;
 
-            float4 q_data_int;
-            q_data_int.x = roundf(q_data.x * q_scale);
-            q_data_int.y = roundf(q_data.y * q_scale);
-            q_data_int.w = roundf(q_data.w * q_scale);
-            q_data_int.z = roundf(q_data.z * q_scale);
+        q_data_int.x = roundf(q_data.x * q_scale);
+        q_data_int.y = roundf(q_data.y * q_scale);
+        q_data_int.w = roundf(q_data.w * q_scale);
+        q_data_int.z = roundf(q_data.z * q_scale);
 
-            q_data.x = q_data_int.x * q_scale_inv;
-            q_data.y = q_data_int.y * q_scale_inv;
-            q_data.w = q_data_int.w * q_scale_inv;
-            q_data.z = q_data_int.z * q_scale_inv;
+        q_data.x = q_data_int.x * q_scale_inv;
+        q_data.y = q_data_int.y * q_scale_inv;
+        q_data.w = q_data_int.w * q_scale_inv;
+        q_data.z = q_data_int.z * q_scale_inv;
 
-            vals_cast[group_index + bid * group_size] = q_data;
-        }
+        vals_cast[id] = q_data;
+        id += blockDim.x;
+        vals_cast += blockDim.x;
     }
 }
 
