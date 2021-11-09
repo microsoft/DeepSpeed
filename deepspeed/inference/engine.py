@@ -81,7 +81,7 @@ class InferenceEngine(Module):
                 self._apply_injection_policy(client_module,
                                              injection_policy,
                                              return_tuple)
-        elif replace_method == 'auto':
+        elif replace_method == "auto":
             self._apply_injection_policy()
 
         device = torch.cuda.current_device()
