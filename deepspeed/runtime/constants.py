@@ -199,28 +199,17 @@ GRADIENT_CLIPPING = 'gradient_clipping'
 GRADIENT_CLIPPING_DEFAULT = 0.
 
 #########################################
-# FP32 AllReduce
+# Communication data type
 #########################################
-# FP32 All reduce. By default, this feature is not enabled.
+# Supported types: ['none', 'fp16', 'fp32']
+# By default, this feature is not enabled ('none' value)
 # Users can configure in ds_config.json as below example:
-FP32_ALLREDUCE_FORMAT = '''
-FP32 Allreduce should be enabled as:
-"fp32_allreduce": true
+COMMUNICATION_DATA_TYPE_FORMAT = '''
+Communication data type should be set as:
+"communication_data_type": "fp32"
 '''
-FP32_ALLREDUCE = "fp32_allreduce"
-FP32_ALLREDUCE_DEFAULT = False
-
-#########################################
-# FP16 AllReduce
-#########################################
-# FP16 All reduce. By default, this feature is not enabled. For sparse gradients indices will be converted to int32.
-# Users can configure in ds_config.json as below example:
-FP16_ALLREDUCE_FORMAT = '''
-FP16 Allreduce should be enabled as:
-"fp16_allreduce": true
-'''
-FP16_ALLREDUCE = "fp16_allreduce"
-FP16_ALLREDUCE_DEFAULT = False
+COMMUNICATION_DATA_TYPE = "communication_data_type"
+COMMUNICATION_DATA_TYPE_DEFAULT = "none"
 
 #########################################
 # Scale/predivide gradients before allreduce

@@ -548,11 +548,9 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
-    def allreduce_always_fp32(self):
-        return self._config.allreduce_always_fp32
-
-    def allreduce_always_fp16(self):
-        return self._config.allreduce_always_fp16
+    @property
+    def communication_data_type(self):
+        return self._config.communication_data_type
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -1079,7 +1077,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
-        assert not self.allreduce_always_fp32(), "ZeRO does not support 'fp32_allreduce': true"
+        assert self.communication_data_type() is not None, "ZeRO supports only 'communication_data_type': 'none'"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if self.zero_legacy_stage1(
@@ -1752,10 +1750,8 @@ class DeepSpeedEngine(Module):
 
         tensor_to_allreduce = tensor
 
-        if self.allreduce_always_fp32():
-            tensor_to_allreduce = tensor.float()
-        elif self.allreduce_always_fp16():
-            tensor_to_allreduce = tensor.half()
+        if self.communication_data_type is not None:
+            tensor_to_allreduce = tensor.to(self.communication_data_type)
 
         if self.postscale_gradients():
             if self.gradient_predivide_factor() != 1.0:
@@ -1771,11 +1767,7 @@ class DeepSpeedEngine(Module):
             tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
-        if (self.allreduce_always_fp32()
-                or self.allreduce_always_fp16()) and tensor is not tensor_to_allreduce:
-            tensor.data = tensor_to_allreduce.data
-
-        if self.allreduce_always_fp32() and tensor is not tensor_to_allreduce:
+        if self.communication_data_type is not None and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor

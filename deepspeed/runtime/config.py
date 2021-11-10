@@ -211,12 +211,21 @@ def get_zero_reduce_scatter(param_dict):
                             ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT)
 
 
-def get_allreduce_always_fp32(param_dict):
-    return get_scalar_param(param_dict, FP32_ALLREDUCE, FP32_ALLREDUCE_DEFAULT)
+def get_communication_data_type(param_dict):
+    val = get_scalar_param(param_dict,
+                           COMMUNICATION_DATA_TYPE,
+                           COMMUNICATION_DATA_TYPE_DEFAULT)
+    val = val.lower()
+    if val == "none":
+        return None
+    elif val == "fp32":
+        return torch.float32
+    elif val == "fp16":
+        return torch.float16
 
-
-def get_allreduce_always_fp16(param_dict):
-    return get_scalar_param(param_dict, FP16_ALLREDUCE, FP16_ALLREDUCE_DEFAULT)
+    raise ValueError(
+        f"Invalid communication_data_type. Supported data types: ['none', 'fp16', 'fp32']. Got: {val}"
+    )
 
 
 def get_prescale_gradients(param_dict):
@@ -794,12 +803,7 @@ class DeepSpeedConfig(object):
         self.dump_state = get_dump_state(param_dict)
 
         self.disable_allgather = get_disable_allgather(param_dict)
-        self.allreduce_always_fp32 = get_allreduce_always_fp32(param_dict)
-        self.allreduce_always_fp16 = get_allreduce_always_fp16(param_dict)
-        if self.allreduce_always_fp32 and self.allreduce_always_fp16:
-            raise ValueError(
-                "allreduce_always_fp32 and allreduce_always_fp16 can not be both set to True"
-            )
+        self.communication_data_type = get_communication_data_type(param_dict)
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
