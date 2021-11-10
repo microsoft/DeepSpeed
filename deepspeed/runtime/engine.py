@@ -1873,11 +1873,22 @@ class DeepSpeedEngine(Module):
         # Pre-divide for fp16 stability
         sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
-        indices_device_list = self.sparse_all_gather(sparse.indices, dp_group)
-        values_device_list = self.sparse_all_gather(sparse.values, dp_group)
+        original_data_type = sparse.values.dtype
+        if self.communication_data_type is not None:
+            if self.communication_data_type == torch.float16:
+                indices = sparse.indices.to(torch.int32)
+            else:
+                indices = sparse.indices
+            values = sparse.values.to(self.communication_data_type)
+        else:
+            indices = sparse.indices
+            values = sparse.values
 
-        sparse.indices = torch.cat(indices_device_list)
-        sparse.values = torch.cat(values_device_list)
+        indices_device_list = self.sparse_all_gather(indices, dp_group)
+        values_device_list = self.sparse_all_gather(values, dp_group)
+
+        sparse.indices = torch.cat(indices_device_list).to(torch.long)
+        sparse.values = torch.cat(values_device_list).to(original_data_type)
         return sparse
 
     def sparse_all_gather(self, value, dp_group):
