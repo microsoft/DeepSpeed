@@ -97,4 +97,9 @@ jobs:
           pip install .[testing]
           # find reqs used in ds integration tests
           find examples/pytorch  -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec pip install -r {} \;
-          DS_TEST_PORT=29500 TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose tests/deepspeed
+          # Seeing address in use error when running in one batch, current workaround is to run each test explictly.
+          #DS_TEST_PORT=29500 TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose tests/deepspeed
+          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose -x tests/deepspeed/test_deepspeed.py::CoreIntegrationDeepSpeed
+          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose -x tests/deepspeed/test_deepspeed.py::TrainerIntegrationDeepSpeed
+          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose -x tests/deepspeed/test_deepspeed.py::TestDeepSpeedWithLauncher
+          TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --durations=0 --verbose -x tests/deepspeed/test_model_zoo.py
