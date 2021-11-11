@@ -2238,9 +2238,8 @@ def estimate_zero2_model_states_mem_needs_all_cold(total_params,
     """
     def format_options(cpu_offload):
         enabled = []
-        device = OFFLOAD_CPU_DEVICE if cpu_offload else "none"
-        option_dict = {OFFLOAD_OPTIMIZER: {OFFLOAD_OPTIMIZER_DEVICE: device}}
-        enabled.append(f"{option_dict}")
+        device = f'{OFFLOAD_CPU_DEVICE:4}' if cpu_offload else "none"
+        enabled.append(f"{OFFLOAD_OPTIMIZER}={device}")
         return ", ".join(enabled)
 
     nodes_str = "nodes" if num_nodes > 1 else "node"
