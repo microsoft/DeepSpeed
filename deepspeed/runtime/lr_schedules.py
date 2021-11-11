@@ -48,6 +48,8 @@ WARMUP_MIN_LR = 'warmup_min_lr'
 WARMUP_MAX_LR = 'warmup_max_lr'
 WARMUP_NUM_STEPS = 'warmup_num_steps'
 WARMUP_TYPE = 'warmup_type'
+WARMUP_LOG_RATE = 'log'
+WARMUP_LINEAR_RATE = 'linear'
 
 TOTAL_NUM_STEPS = 'total_num_steps'
 
@@ -151,7 +153,7 @@ def add_tuning_arguments(parser):
                        help='WarmupLR step count for LR warmup.')
     group.add_argument('--warmup_type',
                        type=str,
-                       default='log',
+                       default=WARMUP_LOG_RATE,
                        help='WarmupLR increasing function during warmup')
     return parser
 
@@ -727,7 +729,7 @@ class WarmupLR(object):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
-                 warmup_type: str = 'log',
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.optimizer = get_torch_optimizer(optimizer)
@@ -737,11 +739,11 @@ class WarmupLR(object):
         self.delta_lrs = [big - small for big, small in zip(self.max_lrs, self.min_lrs)]
         self.warmup_num_steps = max(2, warmup_num_steps)
         # Currently only support linear and log function
-        if warmup_type not in {'log', 'linear'}:
+        if warmup_type not in {WARMUP_LOG_RATE, WARMUP_LINEAR_RATE}:
             logger.warning(
                 f"Using unknown warmup_type: {warmup_type}. The increasing function "
                 f"is set to default (log)")
-            warmup_type = 'log'
+            warmup_type = WARMUP_LOG_RATE
         self.warmup_type = warmup_type
         self.inverse_log_warm_up = 1.0 / math.log(self.warmup_num_steps)
         self.last_batch_iteration = last_batch_iteration
@@ -780,9 +782,9 @@ class WarmupLR(object):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            if self.warmup_type == 'log':
+            if self.warmup_type == WARMUP_LOG_RATE:
                 return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
-            elif self.warmup_type == 'linear':
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
                 return self.last_batch_iteration / self.warmup_num_steps
         return 1.0
 
@@ -825,7 +827,7 @@ class WarmupDecayLR(WarmupLR):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
-                 warmup_type: str = 'log',
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.total_num_steps = total_num_steps
@@ -843,9 +845,9 @@ class WarmupDecayLR(WarmupLR):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            if self.warmup_type == 'log':
+            if self.warmup_type == WARMUP_LOG_RATE:
                 return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
-            elif self.warmup_type == 'linear':
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
                 return self.last_batch_iteration / self.warmup_num_steps
         return max(
             0.0,

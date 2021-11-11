@@ -7,7 +7,7 @@ import os
 from common import distributed_test
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 from deepspeed.runtime.lr_schedules import LR_RANGE_TEST, LR_RANGE_TEST_MIN_LR, LR_RANGE_TEST_STEP_RATE, LR_RANGE_TEST_STEP_SIZE, LR_RANGE_TEST_STAIRCASE
-from deepspeed.runtime.lr_schedules import WARMUP_LR, WARMUP_MIN_LR, WARMUP_MAX_LR, WARMUP_NUM_STEPS, WARMUP_TYPE
+from deepspeed.runtime.lr_schedules import WARMUP_LR, WARMUP_MIN_LR, WARMUP_MAX_LR, WARMUP_NUM_STEPS, WARMUP_TYPE, WARMUP_LOG_RATE, WARMUP_LINEAR_RATE
 from deepspeed.runtime.lr_schedules import ONE_CYCLE, CYCLE_MIN_LR, CYCLE_MAX_LR, CYCLE_FIRST_STEP_SIZE, DECAY_LR_RATE, DECAY_STEP_SIZE
 from deepspeed.runtime.lr_schedules import CYCLE_MIN_MOM, CYCLE_MAX_MOM, DECAY_MOM_RATE
 from deepspeed.runtime.lr_schedules import WARMUP_DECAY_LR, TOTAL_NUM_STEPS
@@ -89,21 +89,21 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
 @pytest.mark.parametrize("warmup_num_steps, warmup_type",
                          [
                              (10,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (15,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (19,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (33,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (10,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (15,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (19,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (33,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                          ])
 def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
     config_dict = {
@@ -173,21 +173,21 @@ def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
 @pytest.mark.parametrize("warmup_num_steps, warmup_type",
                          [
                              (10,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (15,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (19,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (33,
-                              'log'),
+                              WARMUP_LOG_RATE),
                              (10,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (15,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (19,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                              (33,
-                              'linear'),
+                              WARMUP_LINEAR_RATE),
                          ])
 def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
     config_dict = {
