@@ -3411,9 +3411,17 @@ def estimate_zero3_model_states_mem_needs_all_cold(total_params,
 
     """
     def format_options(cpu_offload, cpu_offload_params, zero_init):
+        offload_dict = {
+            OFFLOAD_PARAM: {
+                OFFLOAD_PARAM_DEVICE:
+                OFFLOAD_CPU_DEVICE if cpu_offload_params else "none"
+            },
+            OFFLOAD_OPTIMIZER: {
+                OFFLOAD_OPTIMIZER_DEVICE: OFFLOAD_CPU_DEVICE if cpu_offload else "none"
+            }
+        }
         enabled = []
-        enabled.append(f"cpu_offload={1 if cpu_offload else 0}")
-        enabled.append(f"cpu_offload_params={1 if cpu_offload_params else 0}")
+        enabled.append(f"{offload_dict}")
         enabled.append(f"zero_init={1 if zero_init else 0}")
         return ", ".join(enabled)
 
