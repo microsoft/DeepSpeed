@@ -1077,7 +1077,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
-        assert self.communication_data_type() is not None, "ZeRO supports only 'communication_data_type': 'none'"
+        assert self.communication_data_type is None, "ZeRO supports only 'communication_data_type': 'none'"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if self.zero_legacy_stage1(
