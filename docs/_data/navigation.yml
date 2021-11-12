@@ -66,6 +66,8 @@ lnav:
         url: /getting-started/
       - title: "Getting started on Azure"
         url: /tutorials/azure/
+      - title: "Autotuning"
+        url: /tutorials/autotuning/
       - title: "BingBertSQuAD Fine-tuning"
         url: /tutorials/bert-finetuning/
       - title: "BERT Pre-training"
@@ -78,8 +80,6 @@ lnav:
         url: /tutorials/flops-profiler/
       - title: "PyTorch Profiler"
         url: /tutorials/pytorch-profiler/
-      - title: "Autotuning"
-        url: /tutorials/autotuning/
       - title: "GAN"
         url: /tutorials/gan/
       - title: "Inference"

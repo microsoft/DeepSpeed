@@ -262,7 +262,7 @@ While `"autotuning": {"enabled": true}` is the minimal requirement to enable aut
     "fast": true,
     "max_train_batch_size": null,
     "mp_size": 1,
-    "num_tuning_micro_batch_sizs": 3,
+    "num_tuning_micro_batch_sizes": 3,
     "tuner_type": "model_based",
     "tuner_early_stopping": 5,
     "tuner_num_trials": 50,
