@@ -321,9 +321,8 @@ class DeepSpeedSelfAttentionFunction(Function):
         else:
             output, key_layer, value_layer, context_layer = selfAttention_fp()
 
-        if mp_group is not None and torch.distributed.get_world_size(group=mp_group) > 1:
-            torch.distributed.all_reduce(output, group=mp_group)
-
+        if mp_group is not None:
+            mp_group.all_reduce(output)
         return (output, key_layer, value_layer, context_layer)
 
     @staticmethod
@@ -463,8 +462,8 @@ class DeepSpeedMLPFunction(Function):
                                            config.pre_layer_norm)
             output = vector_matmul_func(intermediate, output_w)
 
-        if mp_group is not None and torch.distributed.get_world_size(group=mp_group) > 1:
-            torch.distributed.all_reduce(output, group=mp_group)
+        if mp_group is not None:
+            mp_group.all_reduce(output)
 
         bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
                                     inference_cuda_module.bias_residual_fp32

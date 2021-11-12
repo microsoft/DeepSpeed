@@ -11,6 +11,7 @@ from ..module_inject.replace_module import replace_transformer_layer
 from ..utils import logger, init_distributed
 
 from ..pipe import PipelineModule
+from ..ops.transformer.inference.inferece_nccl import InferenceComm
 
 
 class InferenceEngine(Module):
@@ -74,6 +75,9 @@ class InferenceEngine(Module):
             self.mp_group = self.mpu.get_model_parallel_group()
         elif self.mp_world_size > 1:
             self._create_model_parallel_group()
+
+        InferenceComm.create_comm(ranks=[p for p in range(self.mp_world_size)],
+                                  set_device=False)
 
         # apply injection policy
         if self.injection_dict:

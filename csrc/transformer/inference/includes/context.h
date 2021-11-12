@@ -9,6 +9,17 @@
 #include "cuda.h"
 #include "curand.h"
 
+#include </usr/local/mpi/include/mpi.h>
+#include <THC/THC.h>
+#include <cuda.h>
+#include <nccl.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <map>
+#include <memory>
+#include <stack>
+#include <string>
+
 #define WARP_SIZE 32
 
 #define CUDA_CHECK(callstr)                                                                    \
@@ -40,7 +51,13 @@ inline int DS_GET_BLOCKS(const int N)
 
 class Context {
 public:
-    Context() : _workspace(nullptr), _seed(42), _curr_offset(0)
+    Context()
+        : _workspace(nullptr),
+          _seed(42),
+          _curr_offset(0),
+          _comm_stream(0),
+          _comp_stream(0),
+          _comm_created(false)
     {
         curandCreateGenerator(&_gen, CURAND_RNG_PSEUDO_DEFAULT);
         curandSetPseudoRandomGeneratorSeed(_gen, 123);
@@ -50,12 +67,19 @@ public:
             throw std::runtime_error(message);
         }
         cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
+        cudaEventCreate(&_comp_event, (cudaEventDisableTiming | cudaEventBlockingSync));
+        cudaEventCreate(&_comm_event, (cudaEventDisableTiming | cudaEventBlockingSync));
     }
 
     virtual ~Context()
     {
         cublasDestroy(_cublasHandle);
         cudaFree(_workspace);
+        ncclCommDestroy(_nccl_comm);
+        MPI_Group_free(&_group);
+        // MPI_Comm_free(&_comm);
+        cudaEventDestroy(_comp_event);
+        cudaEventDestroy(_comm_event);
     }
 
     static Context& Instance()
@@ -64,6 +88,52 @@ public:
         return _ctx;
     }
 
+    void create_comm_group(std::vector<int> comm_ranks, int rank)
+    {
+        if (_comm_created) return;
+        int world_rank, world_size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+        _comm = MPI_COMM_WORLD;
+        MPI_Comm_group(_comm, &_group);
+
+        unsigned num_ranks = comm_ranks.size();
+
+        if (num_ranks < world_size) {
+            auto total_group = _group;
+            MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
+            MPI_Group_free(&total_group);
+        } else if (num_ranks > world_size) {
+            auto message = std::string(
+                "Fail to create comm group (number of ranks is higher than world_size).");
+            std::cerr << message << std::endl;
+            throw std::runtime_error(message);
+        }
+
+        ncclUniqueId _nccl_uid;
+        ncclGetUniqueId(&_nccl_uid);
+
+        MPI_Bcast((void*)&_nccl_uid, sizeof(ncclUniqueId), MPI_BYTE, 0, _comm);
+
+        ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank);
+
+        _comm_created = true;
+    }
+    inline ncclComm_t GetNCCLComm() { return _nccl_comm; }
+
+    inline void barrier() { MPI_Barrier(_comm); }
+
+    inline void SynchComp()
+    {
+        cudaEventRecord(_comp_event, _comp_stream);
+        cudaStreamWaitEvent(_comm_stream, _comp_event, 0);
+    }
+    inline void SynchComm()
+    {
+        cudaEventRecord(_comm_event, _comm_stream);
+        cudaStreamWaitEvent(_comp_stream, _comm_event, 0);
+    }
     void GenWorkSpace(size_t size)
     {
         if (!_workspace) {
@@ -88,6 +158,14 @@ public:
         return stream;
     }
 
+    cudaStream_t GetCommStream(bool async_op = false)
+    {
+        if (!_comm_stream)
+            _comm_stream = async_op ? at::cuda::getStreamFromPool(true)
+                                    : at::cuda::getCurrentCUDAStream();
+        return _comm_stream;
+    }
+
     cublasHandle_t GetCublasHandle() { return _cublasHandle; }
 
     std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc)
@@ -104,9 +182,19 @@ public:
 private:
     curandGenerator_t _gen;
     cublasHandle_t _cublasHandle;
+    cudaEvent_t _comp_event;
+    cudaEvent_t _comm_event;
+
     void* _workspace;
     uint64_t _seed;
     uint64_t _curr_offset;
     size_t _workSpaceSize;
     std::vector<std::array<int, 3>> _gemm_algos;
+    cudaStream_t _comp_stream;
+    cudaStream_t _comm_stream;
+
+    MPI_Group _group;
+    MPI_Comm _comm;
+    ncclComm_t _nccl_comm;
+    bool _comm_created;
 };

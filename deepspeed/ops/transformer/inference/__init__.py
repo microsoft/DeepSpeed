@@ -1,1 +1,2 @@
 from .transformer_inference import DeepSpeedTransformerInference, DeepSpeedInferenceConfig
+from .inference_nccl import create_comm, get_default_comm

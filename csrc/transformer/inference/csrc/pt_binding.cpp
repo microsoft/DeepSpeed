@@ -7,6 +7,49 @@
 #include "cublas_wrappers.h"
 #include "custom_cuda_layers.h"
 
+void ds_create_comm(std::vector<int>& comm_ranks, int rank)
+{
+    Context::Instance().create_comm_group(comm_ranks, rank);
+}
+
+void ds_allreduce(torch::Tensor& send_buf, torch::Tensor& rcv_buf, int size, bool async_op)
+{
+    if (async_op) Context::Instance().SynchComp();
+    ncclAllReduce(send_buf.data_ptr(),
+                  rcv_buf.data_ptr(),
+                  size,
+                  (send_buf.scalar_type() == at::kFloat ? ncclFloat : ncclHalf),
+                  ncclSum,
+                  Context::Instance().GetNCCLComm(),
+                  Context::Instance().GetCommStream());
+}
+
+void ds_allgather(torch::Tensor& send_buf, torch::Tensor& rcv_buf, int size, bool async_op)
+{
+    if (async_op) Context::Instance().SynchComp();
+    ncclAllGather(send_buf.data_ptr(),
+                  rcv_buf.data_ptr(),
+                  size,
+                  (send_buf.scalar_type() == at::kFloat ? ncclFloat : ncclHalf),
+                  Context::Instance().GetNCCLComm(),
+                  Context::Instance().GetCommStream());
+}
+
+void wait_comm() { Context::Instance().SynchComm(); }
+
+void ds_broadcast(torch::Tensor& send_buf, torch::Tensor& rcv_buf, int size, bool async_op)
+{
+    ncclBroadcast(send_buf.data_ptr(),
+                  rcv_buf.data_ptr(),
+                  size,
+                  (send_buf.scalar_type() == at::kFloat ? ncclFloat : ncclHalf),
+                  0,
+                  Context::Instance().GetNCCLComm(),
+                  Context::Instance().GetCommStream());
+}
+
+void ds_barrier() { Context::Instance().barrier(); }
+
 std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 
 template <typename T>
@@ -627,4 +670,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("linear_layer_int8",
           &ds_linear_layer_int8<__half>,
           "DeepSpeed linear_layer with int8 (CUDA)");
+    m.def("init_comm_group", &ds_create_comm, "create comm group");
+    m.def("barrier", &ds_barrier, "barrier");
+    m.def("broadcast", &ds_broadcast, "broadcast");
+    m.def("wait_comm", &wait_comm, "wait on communication event");
+    m.def("allReduce", &ds_allreduce, "AllReduce");
+    m.def("allGather", &ds_allgather, "AllGather");
 }
