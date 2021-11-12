@@ -1076,3 +1076,48 @@ def test_checkpoint_load_module_only(tmpdir, zero_stage):
                                             load_module_only=True)
 
     _go(args, zero_stage, hidden_dim)
+
+
+def test_non_strict_load_sparse(tmpdir):
+    config_dict = {"train_batch_size": 2}
+
+    class ModelNoEmbedding(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.linear = torch.nn.Linear(3, 1)
+
+        def forward(self, x):
+            return self.linear(x)
+
+    class ModelEmbedding(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.emb = torch.nn.Embedding(10, 3, sparse=True)
+            self.linear = torch.nn.Linear(3, 1)
+
+        def forward(self, x, offsets):
+            return self.linear(self.emb(x, offsets))
+
+    model_no_embed = ModelNoEmbedding()
+    model_embed = ModelEmbedding()
+
+    @distributed_test(world_size=[2])
+    def _test(model_no_embeding, model_embeding):
+        engine_no_embed, _, _, _ = deepspeed.initialize(model=model_no_embeding, config=config_dict)
+        engine_embed, _, _, _ = deepspeed.initialize(model=model_embeding, config=config_dict)
+
+        save_folder = os.path.join(tmpdir, 'saved_checkpoint')
+        save_tag = '1'
+
+        engine_no_embed.save_checkpoint(save_folder, tag=save_tag)
+
+        assert "emb.weight" in engine_embed.sparse_tensor_module_names
+        engine_embed.load_checkpoint(save_folder,
+                                     tag=save_tag,
+                                     load_module_strict=False,
+                                     load_optimizer_states=False,
+                                     load_lr_scheduler_states=False,
+                                     load_module_only=False)
+        assert "emb.weight" in engine_embed.sparse_tensor_module_names
+
+    _test(model_no_embed, model_embed)
