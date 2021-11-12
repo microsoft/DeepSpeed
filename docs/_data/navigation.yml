@@ -78,6 +78,8 @@ lnav:
         url: /tutorials/flops-profiler/
       - title: "PyTorch Profiler"
         url: /tutorials/pytorch-profiler/
+      - title: "Autotuning"
+        url: /tutorials/autotuning/
       - title: "GAN"
         url: /tutorials/gan/
       - title: "Inference"

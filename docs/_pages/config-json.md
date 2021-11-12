@@ -592,8 +592,6 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "exps_dir": null,
     "overwrite": false,
     "metric": "throughput",
-    "num_nodes": null,
-    "num_gpus": null,
     "start_profile_step": 3,
     "end_profile_step": 5,
     "fast": false,
@@ -638,20 +636,6 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | Description                                                                                                                                                                                                                                                            | Default      |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | The performance metric to use for ranking autotuning experiments. `latency`, `throughput`, and `FLOPS` are currently supported, refering to training step latency, training samples per second, and loating point operations per second achieved per GPU respectively. | `throughput` |
-
-
-<i>**num_nodes**</i>: [integer]
-
-| Description                                                                                                                         | Default |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| The number of nodes to use for autotuning. If None, all the available nodes the system would be used to run autotuning experiments. | `null`  |
-
-<i>**num_gpus**</i>: [integer]
-
-| Description                                                                                                                              | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| The number of GPUs per node to use for autotuning. If None, all the available GPUs per node would be used to run autotuning experiments. | `null`  |
-
 
 <i>**start_profile_step**</i>: [integer]
 

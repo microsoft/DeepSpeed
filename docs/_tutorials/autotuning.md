@@ -1,4 +1,7 @@
-# DeepSpeed Autotuning
+---
+title: "Autotuning"
+excerpt: " Automatically dicover the optimal DeepSpeed configuration that delievers good training speed"
+---
 
 Make sure you've read the DeepSpeed tutorials on Getting Started and Zero Redundancy Optimizer before stepping through this tutorial.
 
