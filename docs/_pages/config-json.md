@@ -171,8 +171,8 @@ Example of <i>**scheduler**</i>
 
 <i>**sparse_gradients**</i>: [boolean]
 
-| Description                                                                                                              | Default |
-| ------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Description                                                                                                                                                                                                                                                                                                                                                 | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. This feature is essentially deprecated as we don't see use cases for it as much anymore. It should be noted that this feature is not compatible with [torch.sparse](https://pytorch.org/docs/stable/sparse.html) related features. | `false` |
 
 ### FP16 training options
@@ -597,6 +597,8 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "start_profile_step": 3,
     "end_profile_step": 5,
     "fast": false,
+    "max_train_batch_size": null,
+    "mp_size": 1,
     "num_tuning_micro_batch_sizs": 3,
     "tuner_type": "model_based",
     "tuner_early_stopping": 5,
@@ -669,6 +671,19 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | Description                                                                                  | Default |
 | -------------------------------------------------------------------------------------------- | ------- |
 | Enables fast-model auotuning where only Zero stages and micro batch sizes per GPU are tuned. | `false` |
+
+<i>**max_train_batch_size**</i>: [int]
+
+| Description                                                                       | Default |
+| --------------------------------------------------------------------------------- | ------- |
+| The maximum train batch size (global effective batch size) for the model training | `null`  |
+
+<i>**mp_size**</i>: [int]
+
+| Description              | Default |
+| ------------------------ | ------- |
+| Model parallelism degree | `1`     |
+
 
 <i>**num_tuning_micro_batch_sizs**</i>: [integer]
 
