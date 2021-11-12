@@ -3,11 +3,11 @@ title: "Autotuning"
 excerpt: " Automatically discover the optimal DeepSpeed configuration that delivers good training speed"
 ---
 
-Make sure you've read the DeepSpeed tutorials on Getting Started and Zero Redundancy Optimizer before stepping through this tutorial.
+Make sure you've read the DeepSpeed tutorials on [Getting Started](https://www.deepspeed.ai/getting-started/) and [Zero Redundancy Optimizer](https://www.deepspeed.ai/tutorials/zero/) before stepping through this tutorial.
 
-One pain point in model training is to figure out a good performance-relevant configurations such as: micro batch size to fully utilize the hardware and achieve a high throughput number. This configuration exploring process is commonly done manually, but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consuming, but it's outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuration again. With DeepSpeed, there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The had-tuning processes is not needed with Deepspeed's Autotuning framework.
+One pain point in model training is to figure out good performance-relevant configurations such as micro-batch size to fully utilize the hardware and achieve a high throughput number. This configuration exploring process is commonly done manually but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consuming, but the outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuration again. With DeepSpeed, there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The hand-tuning process is not needed with Deepspeed's Autotuning framework.
 
-The DeepSpeed Autotuner aims to mitigate this pain point and automatically discover the optimal DeepSpeed configuration that delivers good training speed. It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods. In this tutorial, we showcase the usage and benefits of the autotuning feature in DeepSpeed. For more details, please see the [README.md](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning).
+The DeepSpeed Autotuner aims to mitigate this pain point and automatically discover the optimal DeepSpeed configuration that delivers good training speed. It not only reduces the time and resources users spend on tuning, but also can discover configurations better than hand-tuned methods. In this tutorial, we showcase the usage and benefits of the autotuning feature in DeepSpeed. For more details, please see the [README.md](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning).
 
 ## Tuning scope and strategy
 
@@ -19,7 +19,7 @@ Note that ZeRO stages, micro-batch sizes, and other ZeRO configurations to tune 
 ## Ease of use
 
 DeepSpeed Autotuning is easy to use, requiring no code change from DeepSpeed users.
-Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting a `autotuning` flag after the DeepSpeed launcher (see [Usage](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning#usage) for details), and adding `" autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration json file (See [Autotuning Configuration](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning#autotuning-configuration) for details).
+Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting an `autotuning` flag after the DeepSpeed launcher (see [Usage](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning#usage) for details), and adding `" autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration JSON file (See [Autotuning Configuration](https://github.com/microsoft/DeepSpeed/tree/master/deepspeed/autotuning#autotuning-configuration) for details).
 
 ## Example
 
@@ -34,14 +34,24 @@ The model has:
 
 ### Environment
 
-The training use fp16 and runs on 1 node with 16 Nvidia V100 GPUs. The autotuning uses the same hardware resource as the training. `max_train_batch_size` is not defined.
+The training use fp16 and runs on 1 node with 16 Nvidia V100 GPUs. The autotuning uses the same hardware resource as the training. `max_train_batch_size` is not defined. The HF packages below are used.
+
+HF examples require installing the `transformers` package from source:
+```bash
+    git clone https://github.com/huggingface/transformers.git
+    cd transformers
+    pip install .
+```
+The `datasets` package can be installed by `pip install datasets`
+
+Below are the versions used in this test.
 
 - transformers (4.12.0.dev0)
 - datasets (1.11.0)
 
 ### Enabling Autotuning
 
-To enable the autotuning, add `--autotuning run` is added to the train script and add `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. If the user training script uses DeepSpeed configuration parameters as train script arguments, the name mappings between the parameters in DeepSpeed configuration and the train script arguments must be provided in the `arg_mappings` dictionary in the `autotuning` section of the DeepSpeed configuration file.
+To enable the autotuning, add `--autotuning run` is added to the training script and add `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. If the user training script uses DeepSpeed configuration parameters as training script arguments, the name mappings between the parameters in DeepSpeed configuration and the training script arguments must be provided in the `arg_mappings` dictionary in the `autotuning` section of the DeepSpeed configuration file.
 
 Train script:
 ```bash
@@ -79,12 +89,12 @@ DeepSpeed configuration file:
 
 ### Throughput Comparison
 
-The table below shows the throughput (samples per second) comparison. The corresponding train micro batch size per GPU (mbs or tmbspg) and ZeRO stage used to achieve the throughput value is also shown in the parentheses. Assume the strategy users would use in the hand tuning process is to start from `mbs = 1` and increase mbs by 2 each time until running out of GPU memory.
+The table below shows the throughput (samples per second) comparison. The corresponding micro-batch size per GPU (mbs or tmbspg) and ZeRO stage used to achieve the throughput value is also shown in the parentheses. Assume the strategy users would use in the hand-tuning process is to start from `mbs = 1` and increase mbs by 2 each time until running out of GPU memory.
  - `baseline` is the vanilla Hugging Face (HF) without DeepSpeed (DS) and mbs is hand-tuned.
  - `HF + DS hand-tuned` is HF with DS, and mbs is hand-tuned while other DS configuration uses default values.
  - `HF + DS autotuning` is HF with DS, and the DS configuration selected from autotuning.
 
-Notation: Hugging Face (HF), DeepSpeed (DS), ZeRO stage (z), gradient accumulation steps (gas), train micro batch size per GPU (mbs or tmbspg).
+Notation: Hugging Face (HF), DeepSpeed (DS), ZeRO stage (z), gradient accumulation steps (gas), micro-batch size per GPU (mbs or tmbspg).
 
 | Model name | baseline (vanilla HF) | HF + DS hand-tuned       | HF + DS autotuning (fast-mode) |
 | ---------- | -------------------- | ------------------------ | ------------------------------ |
@@ -108,4 +118,4 @@ Note that the performance metric used in autotuning is calculated using the timi
 
 Tuning completed in 0:27:33.988447. Total number of experiments: 13.
 
-As we can see the DeepSpeed autotuner is able to select a better than hand-tuned configuration with a reasonable number of experiments. Examples in [Autotuning Hugging Face Examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning/hf#autotuning-hugging-face-examples) would demonstrate the effectiveness of autotuning across different models.
+As we can see the DeepSpeed Autotuner can select a better than hand-tuned configuration with a reasonable number of experiments. Examples in [Autotuning Hugging Face Examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning/hf#autotuning-hugging-face-examples) would demonstrate the effectiveness of autotuning across different models.

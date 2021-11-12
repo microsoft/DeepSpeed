@@ -594,7 +594,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "metric": "throughput",
     "start_profile_step": 3,
     "end_profile_step": 5,
-    "fast": false,
+    "fast": true,
     "max_train_batch_size": null,
     "mp_size": 1,
     "num_tuning_micro_batch_sizes": 3,
@@ -616,7 +616,7 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                                                      | Default |
 | -------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Path to the auotuning experiment results directory. If None, "autotuning_results" under the train script launching path is used. | `null`  |
+| Path to the autotuning experiment results directory. If None, "autotuning_results" under the training script launching path is used. | `null`  |
 
 <i>**exps_dir**</i>: [string]
 
@@ -628,14 +628,14 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                               | Default |
 | ----------------------------------------------------------------------------------------- | ------- |
-| Whether to run autotuing experiments whose results alreay exsit and overwrite the result. | `false` |
+| Whether to run autotuing experiments whose results alreay exsit. Setting it to true would overwrite the existing result. | `false` |
 
 
 <i>**metric**</i>: [string]
 
 | Description                                                                                                                                                                                                                                                            | Default      |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| The performance metric to use for ranking autotuning experiments. `latency`, `throughput`, and `FLOPS` are currently supported, refering to training step latency, training samples per second, and loating point operations per second achieved per GPU respectively. | `throughput` |
+| The performance metric to use for ranking autotuning experiments. `latency`, `throughput`, and `FLOPS` are currently supported, referring to training step latency, training samples per second, and floating-point operations per second achieved per GPU respectively. | `throughput` |
 
 <i>**start_profile_step**</i>: [integer]
 
@@ -654,45 +654,45 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 | Description                                                                                  | Default |
 | -------------------------------------------------------------------------------------------- | ------- |
-| Enables fast-model auotuning where only Zero stages and micro batch sizes per GPU are tuned. | `false` |
+| Enables fast-model autotuning where only Zero stages and micro-batch sizes per GPU are tuned. | `true` |
 
 <i>**max_train_batch_size**</i>: [int]
 
 | Description                                                                       | Default |
 | --------------------------------------------------------------------------------- | ------- |
-| The maximum train batch size (global effective batch size) for the model training | `null`  |
+| The maximum train batch size (global effective batch size) for the model training. | `null`  |
 
 <i>**mp_size**</i>: [int]
 
 | Description              | Default |
 | ------------------------ | ------- |
-| Model parallelism degree | `1`     |
+| Model parallelism degree. | `1`     |
 
 
 <i>**num_tuning_micro_batch_sizes**</i>: [integer]
 
 | Description                                     | Default |
 | ----------------------------------------------- | ------- |
-| The the number of micto batch sizes to explore. | `3`     |
+| The number of micro-batch sizes to explore. | `3`     |
 
 <i>**tuner_type**</i>: [string]
 
 | Description                                                                              | Default       |
 | ---------------------------------------------------------------------------------------- | ------------- |
-| The algorithm that defines the order of autotuing space exploration within a Zero stage. | `model_based` |
+| The algorithm defines the order of autotuning space exploration within a ZeRO stage. | `model_based` |
 
 
 <i>**tuner_early_stopping**</i>: [integer]
 
 | Description                                                                                                                                                | Default |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| The number of experiments to run beyond the current best experiment. If no better experiment is found within that number, stops the autotuing exploration. | `5`     |
+| The number of experiments to run beyond the current best experiment. If no better experiment is found within that number, the Autotuner stops the exploration. | `5`     |
 
 <i>**tuner_num_trials**</i>: [integer]
 
 | Description                                                                           | Default |
 | ------------------------------------------------------------------------------------- | ------- |
-| The maximum number of experiments to explore in the tuning space within a Zero stage. | `50`    |
+| The maximum number of experiments to explore in the tuning space within a ZeRO stage. | `50`    |
 
 
 ### Flops Profiler
