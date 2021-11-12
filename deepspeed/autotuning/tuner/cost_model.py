@@ -1,11 +1,17 @@
 import numpy as np
-import xgboost as xgb
 
 from .utils import *
+
+try:
+    import xgboost as xgb
+except ImportError:
+    xgb = None
 
 
 class XGBoostCostModel():
     def __init__(self, loss_type, num_threads=None, log_interval=25, upper_model=None):
+
+        assert xgb is not None, "missing requirements, please install deepspeed w. 'autotuning_ml' extra."
 
         self.loss_type = loss_type
 

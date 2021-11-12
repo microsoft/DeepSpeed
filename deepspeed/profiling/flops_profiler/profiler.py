@@ -1,4 +1,3 @@
-from os import O_DSYNC
 import time
 import torch
 import torch.nn as nn
@@ -478,88 +477,7 @@ def _conv_flops_compute(input,
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    input_dims = input.shape[2:]
-    kernel_dims = weight.shape[2:]
-
-    ndims = len(input.shape) - 2
-
-    # paddings = padding if type(padding) is tuple else (padding, padding)
-    # strides = stride if type(stride) is tuple else (stride, stride)
-    # dilations = dilation if type(dilation) is tuple else (dilation, dilation)
-
-    output_dims = []
-
-    for i in range(ndims):
-        p = padding[i] if type(padding) is tuple else padding
-        s = stride[i] if type(stride) is tuple else stride
-        d = dilation[i] if type(dilation) is tuple else dilation
-
-        od = (input_dims[i] + 2 * p - (d * (kernel_dims[i] - 1) + 1)) // s + 1
-        output_dims.append(od)
-
-    filters_per_channel = out_channels // groups
-    conv_per_position_flops = int(_prod(kernel_dims)) * in_channels * filters_per_channel
-    active_elements_count = batch_size * int(_prod(output_dims))
-    overall_conv_flops = conv_per_position_flops * active_elements_count
-
-    bias_flops = 0
-    if bias is not None:
-        bias_flops = out_channels * active_elements_count
-
-    overall_flops = overall_conv_flops + bias_flops
-
-    return int(overall_flops)
-
-
-def _conv_flops_compute_1d(input,
-                           weight,
-                           bias=None,
-                           stride=1,
-                           padding=0,
-                           dilation=1,
-                           groups=1):
-    assert weight.shape[1] * groups == input.shape[1]
-
-    batch_size = input.shape[0]
-    in_channels = input.shape[1]
-    out_channels = weight.shape[0]
-    kernel_dim = weight.shape[2]
-    input_dim = input.shape[2]
-
-    paddings = padding if type(padding) is tuple else (padding)
-    strides = stride if type(stride) is tuple else (stride)
-    dilations = dilation if type(dilation) is tuple else (dilation)
-
-    output_dims = (input_dim + 2 * paddings[0] -
-                   (dilations[0] * (kernel_dim - 1) + 1)) // strides[0] + 1
-
-    filters_per_channel = out_channels // groups
-    conv_per_position_flops = kernel_dim * in_channels * filters_per_channel
-    active_elements_count = batch_size * output_dims
-    overall_conv_flops = conv_per_position_flops * active_elements_count
-
-    bias_flops = 0
-    if bias is not None:
-        bias_flops = out_channels * active_elements_count
-
-    overall_flops = overall_conv_flops + bias_flops
-
-    return int(overall_flops)
-
-
-def _conv_flops_compute_2d(input,
-                           weight,
-                           bias=None,
-                           stride=1,
-                           padding=0,
-                           dilation=1,
-                           groups=1):
-    assert weight.shape[1] * groups == input.shape[1]
-
-    batch_size = input.shape[0]
-    in_channels = input.shape[1]
-    out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[2:])
+    kernel_dims = list(weight.shape[-2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -573,9 +491,6 @@ def _conv_flops_compute_2d(input,
         output_dim = (input_dim + 2 * paddings[idx] -
                       (dilations[idx] * (kernel_dims[idx] - 1) + 1)) // strides[idx] + 1
         output_dims.append(output_dim)
-
-    output_dims[2] = (input_dims[2] + 2 * paddings[2] -
-                      (dilations[2] * (kernel_dims[2] - 1) + 1)) // strides[2] + 1
 
     filters_per_channel = out_channels // groups
     conv_per_position_flops = int(_prod(kernel_dims)) * in_channels * filters_per_channel

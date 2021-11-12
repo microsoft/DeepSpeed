@@ -55,6 +55,7 @@ extras_require = {
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
+    'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
 }
 
 # Add specific cupy version to both onebit extension variants
