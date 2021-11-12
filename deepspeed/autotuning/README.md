@@ -5,7 +5,7 @@ One pain point in model training is to figure out a good performance-relevant co
 
 The DeepSpeed Autotuner aims to mitigate this painpoint and automatically dicover the optimal DeepSpeed configuration that delievers good training speed.
 The Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations.
-It not only saves users' time but also can discover configurations better than hand-tuned method.
+It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods.
 
 DeepSpeed Autotuning is easy to use, requiring no code change from DeepSpeed users.
 Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting a `autotuning` flag after the DeepSpeed launcher (see [Usage](#usage) for details), and adding `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration json file (See [Autotuning Configuration](#autotuning-configuration) for details).
