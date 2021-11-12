@@ -1154,6 +1154,7 @@ class DeepSpeedEngine(Module):
                 self.module,
                 optimizer,
                 timers=timers,
+                ds_config=self.config,
                 static_loss_scale=self.loss_scale(),
                 dynamic_loss_scale=self.dynamic_loss_scale(),
                 dynamic_loss_args=self.dynamic_loss_scale_args(),
