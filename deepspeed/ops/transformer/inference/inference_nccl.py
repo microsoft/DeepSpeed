@@ -3,6 +3,7 @@ import os
 
 ds_inference = None
 
+
 class InferenceComm:
     current_comm = None
 
@@ -11,7 +12,7 @@ class InferenceComm:
             self.ranks = range(int(os.getenv('WORLD_SIZE', '0')))
         else:
             self.ranks = sorted(ranks)
-            
+
         self.mp_size = len(self.ranks)
         local_rank = int(os.getenv('LOCAL_RANK', '0'))
 
