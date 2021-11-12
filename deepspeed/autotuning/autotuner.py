@@ -23,6 +23,9 @@ from .utils import *
 
 
 class Autotuner:
+    """The DeepSpeed Autotuner automatically discovers the optimal DeepSpeed configuration that delivers good training speed. The Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations. It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods.
+    Autotuning with DeepSpeed requires no code change from DeepSpeed users. Please refer to the README for usage details.
+    """
     def __init__(self, args, active_resources):
         self.args = args
         self.selected_exp_dir = None

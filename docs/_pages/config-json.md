@@ -171,8 +171,8 @@ Example of <i>**scheduler**</i>
 
 <i>**sparse_gradients**</i>: [boolean]
 
-| Description                                                                                                              | Default |
-| ------------------------------------------------------------------------------------------------------------------------ | ------- |
+| Description                                                                                                                                                                                                                                                                                                                                                 | Default |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Enable sparse compression of [torch.nn.Embedding](https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding) gradients. This feature is essentially deprecated as we don't see use cases for it as much anymore. It should be noted that this feature is not compatible with [torch.sparse](https://pytorch.org/docs/stable/sparse.html) related features. | `false` |
 
 ### FP16 training options
@@ -592,12 +592,12 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
     "exps_dir": null,
     "overwrite": false,
     "metric": "throughput",
-    "num_nodes": null,
-    "num_gpus": null,
     "start_profile_step": 3,
     "end_profile_step": 5,
     "fast": false,
-    "num_tuning_micro_batch_sizs": 3,
+    "max_train_batch_size": null,
+    "mp_size": 1,
+    "num_tuning_micro_batch_sizes": 3,
     "tuner_type": "model_based",
     "tuner_early_stopping": 5,
     "tuner_num_trials": 50,
@@ -637,20 +637,6 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | The performance metric to use for ranking autotuning experiments. `latency`, `throughput`, and `FLOPS` are currently supported, refering to training step latency, training samples per second, and loating point operations per second achieved per GPU respectively. | `throughput` |
 
-
-<i>**num_nodes**</i>: [integer]
-
-| Description                                                                                                                         | Default |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| The number of nodes to use for autotuning. If None, all the available nodes the system would be used to run autotuning experiments. | `null`  |
-
-<i>**num_gpus**</i>: [integer]
-
-| Description                                                                                                                              | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| The number of GPUs per node to use for autotuning. If None, all the available GPUs per node would be used to run autotuning experiments. | `null`  |
-
-
 <i>**start_profile_step**</i>: [integer]
 
 | Description                                                                                                                                         | Default |
@@ -670,7 +656,20 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 | -------------------------------------------------------------------------------------------- | ------- |
 | Enables fast-model auotuning where only Zero stages and micro batch sizes per GPU are tuned. | `false` |
 
-<i>**num_tuning_micro_batch_sizs**</i>: [integer]
+<i>**max_train_batch_size**</i>: [int]
+
+| Description                                                                       | Default |
+| --------------------------------------------------------------------------------- | ------- |
+| The maximum train batch size (global effective batch size) for the model training | `null`  |
+
+<i>**mp_size**</i>: [int]
+
+| Description              | Default |
+| ------------------------ | ------- |
+| Model parallelism degree | `1`     |
+
+
+<i>**num_tuning_micro_batch_sizes**</i>: [integer]
 
 | Description                                     | Default |
 | ----------------------------------------------- | ------- |

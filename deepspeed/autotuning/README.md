@@ -1,11 +1,11 @@
 # DeepSpeed Autotuning
 ## Overview
 
-One pain point in model training is to figure out a good performance-relevant configurations such as: micro batch size to fully ustilize the hardware and achieve a high throughput number. This configuraiton exploring process is commonly done manully, but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consumming, but it's outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuratoin again. With DeepSpeed (DS), there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The had-tuning processes is not needed with Deepspeed's Autotuning framework.
+One pain point in model training is to figure out a good performance-relevant configurations such as: micro batch size to fully utilize the hardware and achieve a high throughput number. This configuration exploring process is commonly done manually, but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consuming, but it's outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuration again. With DeepSpeed, there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The had-tuning processes is not needed with Deepspeed's Autotuning framework.
 
-The DeepSpeed Autotuner aims to mitigate this painpoint and automatically dicover the optimal DeepSpeed configuration that delievers good training speed.
-The DeepSpeed Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations.
-It not only saves users' time but also can discover configurations better than hand-tuned method.
+The DeepSpeed Autotuner aims to mitigate this pain point and automatically discover the optimal DeepSpeed configuration that delivers good training speed.
+The Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations.
+It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods.
 
 DeepSpeed Autotuning is easy to use, requiring no code change from DeepSpeed users.
 Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting a `autotuning` flag after the DeepSpeed launcher (see [Usage](#usage) for details), and adding `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration json file (See [Autotuning Configuration](#autotuning-configuration) for details).
@@ -108,7 +108,7 @@ By default, the DeepSpeed Autotuner tunes ZeRO stages. If `"zero_optimization"` 
 
 The DeepSpeed Autotuner tunes the micro-batch size per GPU (`train_micro_batch_size_per_gpu` in DeepSpeed configuration) along with gradient accumulation steps (`gradient_accumulation_steps` in DeepSpeed configuration). The `train_micro_batch_size_per_gpu` value specified by the user in the DeepSpeed configuration file is used as the minimal micro-batch size per GPU to tune if it's runnable.
 
-When using Hugging Face and `train_micro_batch_size_per_gpu` is set to ["auto"](#using-autotuning-with-hugging-face), if `train_micro_batch_size_per_gpu` has a correpsonding train script mappging provided in `args_mapping`, the command-line value is used as the minimal micro-batch size per GPU to tune; else, `1` would be used as the as the minimal micro-batch size per GPU in tuning.
+When using Hugging Face and `train_micro_batch_size_per_gpu` is set to ["auto"](#using-autotuning-with-hugging-face), if `train_micro_batch_size_per_gpu` has a corresponding train script mapping provided in `args_mapping`, the command-line value is used as the minimal micro-batch size per GPU to tune; else, `1` would be used as the as the minimal micro-batch size per GPU in tuning.
 
 `train_batch_size` in DeepSpeed configuration must be equal to `train_micro_batch_size_per_gpu * gradient_accumulation_steps * total_num_gpus // model_parallelism_size `. Currently, the DeepSpeed Autotuner ignores the `train_batch_size` parameter specified in the DeepSpeed configuration file, please use `train_micro_batch_size_per_gpu` and `gradient_accumulation_steps` in autotuning.
 
@@ -205,7 +205,7 @@ by
 }
 ```
 , where only `2*1` cases `{"reduce_bucket_size": 5e7, "allgather_bucket_size": 5e8}` and `{"reduce_bucket_size": 5e8, "allgather_bucket_size": 5e8}` would be explored in the tuning.
-If `"stage"` is not defined or set as `"all"`, then the overwritting applies to all ZeRO stages.
+If `"stage"` is not defined or set as `"all"`, then the overwriting applies to all ZeRO stages.
 #### Offloading and NVME
 
 Currently, the DeepSpeed Autotuner does not tune offloading behaviors but instead uses the defaults defined in the offload section of the DeepSpeed configuration file. See [Parameter offloading](https://www.deepspeed.ai/docs/config-json/#parameter-offloading) and [Optimizer offloading](https://www.deepspeed.ai/docs/config-json/#optimizer-offloading) for details.
@@ -230,7 +230,7 @@ z1_tmbspg3_gas1/ # z1_tmbspg4_gas1 experiment result folder
 `-- stdout.log # stdout of running the experiment
 ```
 
-After the auotutning is done, a table of tuning experiments summary and autotuning duration would be printed to the terminal, for example:
+After the autotuning is done, a table of tuning experiments summary and autotuning duration would be printed to the terminal, for example:
 
 ```
 | tuning_space | num_exps | best_metric_val | best_exp_name   |
@@ -244,7 +244,7 @@ Tuning completed in 0:00:03.602291
 ```
 
 A file named `summary.txt` with the same content is saved under the `"results_dir"` for reference as well.
-Other than the tuning summary, `ds_config_optimal.json`, the optimal DeepSpeed configuration found by auotuning,  and the corresponding command to lanuch the experiment `cmd_optimal.txt` are also saved under the `"results_dir"` after autotuning finishes.
+Other than the tuning summary, `ds_config_optimal.json`, the optimal DeepSpeed configuration found by autotuning,  and the corresponding command to launch the experiment `cmd_optimal.txt` are also saved under the `"results_dir"` after autotuning finishes.
 
 ## Autotuning Configuration
 
@@ -262,7 +262,7 @@ While `"autotuning": {"enabled": true}` is the minimal requirement to enable aut
     "fast": true,
     "max_train_batch_size": null,
     "mp_size": 1,
-    "num_tuning_micro_batch_sizs": 3,
+    "num_tuning_micro_batch_sizes": 3,
     "tuner_type": "model_based",
     "tuner_early_stopping": 5,
     "tuner_num_trials": 50,
@@ -287,7 +287,7 @@ The Autotuner ranks tuning experiments by a metric. Currently, three metric type
 
 By default, `"throughput"` is used for ranking. Users can set it to other metrics, e.g., setting `{"metric": "latency"}` would use latency as the ranking metric.
 
-Note that the performance metric used in autotuning is calculated using the timings captured within DeepSpeed foward, backward and step functions. The sum of these timings is less than the actual training step latency, thus the throughput metric values used by autotuning would be higher than the end-to-end throughput in training.
+Note that the performance metric used in autotuning is calculated using the timings captured within DeepSpeed forward, backward and step functions. The sum of these timings is less than the actual training step latency, thus the throughput metric values used by autotuning would be higher than the end-to-end throughput in training.
 
 ### Autotuning Resources
 
@@ -325,7 +325,7 @@ Users can set the maximum train batch size (global effective batch size) for the
 
 # Model Parallelism Size
 
-If model parallelism is used, set the `mp_size` in the autotuning configuration to be the model parallelism degree. `mp_size` defaults to 1 which means no model paralleism is used.
+If model parallelism is used, set the `mp_size` in the autotuning configuration to be the model parallelism degree. `mp_size` defaults to 1 which means no model parallelism is used.
 ### Tuning algorithms
 
 Within a ZeRO stage, combinations of micro-batch sizes and other ZeRO configurations form a tuning space if experiments where the DeepSpeed Autotuner explores in an order (tuner algorithm).
@@ -409,3 +409,16 @@ Example output (in `summary.txt`):
 
 Tuning completed in 0:27:33.988447. Total number of experiments: 13.
 ```
+
+The table below shows the throughput (samples per second) comparison. The corresponding train micro batch size per GPU (mbs or tmbspg) and ZeRO stage used to achieve the throughput value is also shown in the parentheses. Assume the strategy users would use in the hand tuning process is to start from `mbs = 1` and increase mbs by 2 each time until running out of GPU memory.
+ - `baseline` is the vanilla Hugging Face (HF) without DeepSpeed (DS) and mbs is hand-tuned.
+ - `HF + DS hand-tuned` is HF with DS, and mbs is hand-tuned while other DS configuration uses default values.
+ - `HF + DS autotuning` is HF with DS, and the DS configuration selected from autotuning.
+
+Notation: Hugging Face (HF), DeepSpeed (DS), ZeRO stage (z), gradient accumulation steps (gas), train micro batch size per GPU (mbs or tmbspg).
+
+| Model name | baseline (vanilla HF) | HF + DS hand-tuned       | HF + DS autotuning (fast-mode) |
+| ---------- | -------------------- | ------------------------ | ------------------------------ |
+| GPT2-large | 27.874 (mbs = 1)     | 56.797 (z = 1, mbs = 2), | 69.061 (z = 1, mbs = 3)        |
+
+As we can see the DeepSpeed autotuner is able to select a better than hand-tuned configuration with a reasonable number of experiments. Examples in [Autotuning Hugging Face Examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning/hf#autotuning-hugging-face-examples) would demonstrate the effectiveness of autotuning across different models.
