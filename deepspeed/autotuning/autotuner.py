@@ -925,6 +925,8 @@ class Autotuner:
                 max_micro_batch_size,
                 int(0.95 * max_micro_batch_size)
         ]:
+            if mbs > self.max_train_micro_batch_size_per_gpu():
+                continue
             if mbs in used_micro_batch_sizes:
                 return min_micro_batch_size, mbs
             ds_config[TRAIN_MICRO_BATCH_SIZE_PER_GPU] = mbs
