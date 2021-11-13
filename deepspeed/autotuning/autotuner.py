@@ -1036,14 +1036,12 @@ class Autotuner:
         # NUM_GPUS=$(( ${NUM_WORKERS} * ${NUM_GPUS_PER_WORKER} ))
         # DP_SIZE=$(( ${NUM_GPUS} / (${PP_SIZE} * ${MP_SIZE}) ))
         # GRAD_ACC_STEPS=$(( ${TARGET_GLOBAL_BATCH_SIZE} / (${BATCH_SIZE} * ${DP_SIZE}) ))
-        if self.max_train_batch_size(
-        ) == -1:  # the user does not specify a max train batch size
+        if self.max_train_batch_size() and self.max_train_batch_size(
+        ) > 0:  # if the user specifies a max_train_batch_size
+            max_train_batch_size_per_gpu = self.max_train_batch_size() // self.mp_size
+        else:
             gas = self.get_gas_from_user_config()
             max_train_batch_size_per_gpu = max_micro_batch_size * gas // self.mp_size()
-        else:
-            max_train_batch_size_per_gpu = self.max_train_batch_size() * self.mp_size(
-            ) // (self.exp_num_gpus * self.exp_num_nodes)
-
         logger.info(f"max_train_batch_size_per_gpu = {max_train_batch_size_per_gpu}")
         if min_micro_batch_size < max_micro_batch_size // 2:
             min_micro_batch_size = max_micro_batch_size // 2
