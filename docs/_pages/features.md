@@ -309,7 +309,7 @@ The DeepSpeed Autotuner  uses model information, system information, and heurist
     "num_gpus": null,
     "start_profile_step": 3,
     "end_profile_step": 5,
-    "fast": false,
+    "fast": true,
     "num_tuning_micro_batch_sizes": 3,
     "tuner_type": "model_based",
     "tuner_early_stopping": 5,

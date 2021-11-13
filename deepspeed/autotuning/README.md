@@ -1,21 +1,21 @@
 # DeepSpeed Autotuning
 ## Overview
 
-One pain point in model training is to figure out a good performance-relevant configurations such as: micro batch size to fully utilize the hardware and achieve a high throughput number. This configuration exploring process is commonly done manually, but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consuming, but it's outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuration again. With DeepSpeed, there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The had-tuning processes is not needed with Deepspeed's Autotuning framework.
+One pain point in model training is to figure out good performance-relevant configurations such as micro-batch size to fully utilize the hardware and achieve a high throughput number. This configuration exploring process is commonly done manually but is important since model training is repeated many times and benefits of using a good configuration. Not only is the hand-tuning process time-consuming, but the outcome is hardware-dependent. This means that a good configuration on one hardware might not be the best on another different hardware. The user thus has to hand tune the configuration again. With DeepSpeed, there are more configuration parameters that could potentially affect the training speed, thus making it more tedious to manually tune the configuration. The hand-tuning process is not needed with Deepspeed's Autotuning framework.
 
 The DeepSpeed Autotuner aims to mitigate this pain point and automatically discover the optimal DeepSpeed configuration that delivers good training speed.
 The Autotuner uses model information, system information, and heuristics to efficiently tune system knobs that affect compute and memory efficiencies, such as ZeRO optimization stages, micro-batch sizes, and many other ZeRO optimization configurations.
-It not only reduces the time and resources user spend on tuning, but also can discover configurations better than hand-tuned methods.
+It not only reduces the time and resources users spend on tuning, but also can discover configurations better than hand-tuned methods.
 
 DeepSpeed Autotuning is easy to use, requiring no code change from DeepSpeed users.
-Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting a `autotuning` flag after the DeepSpeed launcher (see [Usage](#usage) for details), and adding `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration json file (See [Autotuning Configuration](#autotuning-configuration) for details).
+Compared to the original training script (`deepspeed your_program.py <normal cl args> --deepspeed ds_config.json`), invoking the autotuning feature in DeepSpeed only requires setting an `autotuning` flag after the DeepSpeed launcher (see [Usage](#usage) for details), and adding `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. Users can further tailor the autotuning process by changing the autotuning configuration in the DeepSpeed configuration JSON file (See [Autotuning Configuration](#autotuning-configuration) for details).
 
 ## Usage
 
 To use DeepSpeed Autotuner, you need to do two things:
 
-1. Add `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. If the user training script uses DeepSpeed configuration parameters as command-line arguments, the name mappings between the parameters in DeepSpeed configuration and the train script arguments must be provided in the `arg_mappings` dictionary in the `autotuning` section of the DeepSpeed configuration file.
-Common train scripts have micro batch size per GPU as an argument, this mapping between the flag name and `train_micro_batch_size_per_gpu` must be provided. Below is the an example where the train script takes `--per_device_train_batch_size` as micro batch size. Note that `--` is needed.
+1. Add `"autotuning": {"enabled": true}` to the DeepSpeed configuration file. If the user training script uses DeepSpeed configuration parameters as command-line arguments, the name mappings between the parameters in DeepSpeed configuration and the training script arguments must be provided in the `arg_mappings` dictionary in the `autotuning` section of the DeepSpeed configuration file.
+Common train scripts have micro-batch size per GPU as an argument, this mapping between the flag name and `train_micro_batch_size_per_gpu` must be provided. Below is the an example where the training script takes `--per_device_train_batch_size` as micro-batch size. Note that `--` is needed.
 
 ```json
 {
@@ -32,7 +32,7 @@ Common train scripts have micro batch size per GPU as an argument, this mapping 
 deepspeed --autotuning=[run|tune] <user script> --deepspeed ds_config.json <other user args>
 ```
 
-`--autotuning=run` finds the optimal DeepSpeed configuration and then launches the training with that configuration. If you want to just find the optimal configuration without running the train script, then set `--autotuning` to `tune`.
+`--autotuning=run` finds the optimal DeepSpeed configuration and then launches the training with that configuration. If you want to just find the optimal configuration without running the training script, then set `--autotuning` to `tune`.
 
 
 If users specify the [resource configuration](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node) using the flags `--num_gpus` and `--num_nodes`, then the command becomes:
@@ -91,7 +91,7 @@ Note that ZeRO stages, micro-batch sizes, and other ZeRO configurations to tune 
 
 ## Configuring Tuning Scope
 
-The DeepSpeed Autotuner tunes ZeRO stages, micro-batch size per GPU and ZeRO configurations. Other DeepSpeed configurations are used as defined by the user in the DeepSpeed configuration file. Users can overwrite any of the tuning parameters.
+The DeepSpeed Autotuner tunes ZeRO stages, micro-batch size per GPU, and ZeRO configurations. Other DeepSpeed configurations are used as defined by the user in the DeepSpeed configuration file. Users can overwrite any of the tuning parameters.
 ### Configuring ZeRO Stage
 
 By default, the DeepSpeed Autotuner tunes ZeRO stages. If `"zero_optimization"` is not defined or set to `"all"`, the Autotuner explores ZeRO stages in the order of `[0, 1, 2, 3]`. Users can overwrite this behavior if they already know what ZeRO stage(s) to use. For example, the below section in the DeepSpeed configuration file limits the Autotuner to only exploring ZeRO stage 2 and 3.
@@ -104,15 +104,15 @@ By default, the DeepSpeed Autotuner tunes ZeRO stages. If `"zero_optimization"` 
 }
 ```
 
-### Configuring Train Micro Batch Size
+### Configuring Train Micro-Batch Size
 
 The DeepSpeed Autotuner tunes the micro-batch size per GPU (`train_micro_batch_size_per_gpu` in DeepSpeed configuration) along with gradient accumulation steps (`gradient_accumulation_steps` in DeepSpeed configuration). The `train_micro_batch_size_per_gpu` value specified by the user in the DeepSpeed configuration file is used as the minimal micro-batch size per GPU to tune if it's runnable.
 
-When using Hugging Face and `train_micro_batch_size_per_gpu` is set to ["auto"](#using-autotuning-with-hugging-face), if `train_micro_batch_size_per_gpu` has a corresponding train script mapping provided in `args_mapping`, the command-line value is used as the minimal micro-batch size per GPU to tune; else, `1` would be used as the as the minimal micro-batch size per GPU in tuning.
+When using Hugging Face and `train_micro_batch_size_per_gpu` is set to ["auto"](#using-autotuning-with-hugging-face), if `train_micro_batch_size_per_gpu` has a corresponding training script mapping provided in `args_mapping`, the command-line value is used as the minimal micro-batch size per GPU to tune; else, `1` would be used as the minimal micro-batch size per GPU in tuning.
 
 `train_batch_size` in DeepSpeed configuration must be equal to `train_micro_batch_size_per_gpu * gradient_accumulation_steps * total_num_gpus // model_parallelism_size `. Currently, the DeepSpeed Autotuner ignores the `train_batch_size` parameter specified in the DeepSpeed configuration file, please use `train_micro_batch_size_per_gpu` and `gradient_accumulation_steps` in autotuning.
 
-The configuration bellow asks the Autotuner to use `4` as the minimal micro-batch size per GPU in tuning. Note that the value passed to the train script through `--per_device_train_batch_size` is ignored (which is supposed to be equal to the `train_micro_batch_size_per_gpu` value set in the DeepSpeed configuration).
+The configuration below asks the Autotuner to use `4` as the minimal micro-batch size per GPU in tuning. Note that the value passed to the training script through `--per_device_train_batch_size` is ignored (which is supposed to be equal to the `train_micro_batch_size_per_gpu` value set in the DeepSpeed configuration).
 
 ```json
 {
@@ -126,7 +126,7 @@ The configuration bellow asks the Autotuner to use `4` as the minimal micro-batc
 }
 ```
 
-The configuration below asks the Autotuner to use the value of `"--per_device_train_batch_size"` in the train script as the minimal micro-batch size per GPU in tuning. Also the train script takes `gradient_accumulation_steps` as a argument in training code.
+The configuration below asks the Autotuner to use the value of `"--per_device_train_batch_size"` in the training script as the minimal micro-batch size per GPU in tuning. Also, the training script takes `gradient_accumulation_steps` as an argument in training code.
 ```json
 {
     "train_micro_batch_size_per_gpu": "auto",
@@ -141,7 +141,7 @@ The configuration below asks the Autotuner to use the value of `"--per_device_tr
 }
 ```
 
-Users can set the maximum train batch size (global effective batch size) for the autotuning process by specifying `max_train_batch_size` in the autotuning configuration section of the DeepSpeed configuration file, as shown below. If `max_train_batch_size` is not defined, the Autotuner would use `maximum_train_micro_batch_size_per_gpu_runnable * gradient_accumulation_steps * total_num_gpus // model_parallelism_size` as `max_train_batch_size` (`gradient_accumulation_steps` defined in the DeepSpeed configuration file or train script or `1` is used here).
+Users can set the maximum train batch size (global effective batch size) for the autotuning process by specifying `max_train_batch_size` in the autotuning configuration section of the DeepSpeed configuration file, as shown below. If `max_train_batch_size` is not defined, the Autotuner would use `maximum_train_micro_batch_size_per_gpu_runnable * gradient_accumulation_steps * total_num_gpus // model_parallelism_size` as `max_train_batch_size` (`gradient_accumulation_steps` defined in the DeepSpeed configuration file or training script or `1` is used here).
 
 ```json
 {
@@ -155,7 +155,7 @@ Users can set the maximum train batch size (global effective batch size) for the
 }
 ```
 
-By default, the DeepSpeed Autotuning would select at maximum `num_tuning_micro_batch_sizes` (micro batch size per GPU, gradient accumulation steps) pairs to tune ZeRO configurations. `num_tuning_micro_batch_sizes` defaults to 3 and can be set in the [autotuning configuration](#autotuning-configuration).
+By default, the DeepSpeed Autotuning would select at maximum `num_tuning_micro_batch_sizes` (micro-batch size per GPU, gradient accumulation steps) pairs to tune ZeRO configurations. `num_tuning_micro_batch_sizes` defaults to `3` and can be set in the [autotuning configuration](#autotuning-configuration).
 
 Users can specify the list of micro-batch sizes to tune in the DeepSpeed configuration file.
 For example, the following section in the DeepSpeed configuration file limits the autotuning to explore `train_micro_batch_size_per_gpu` in `[1, 4, 16]`, and `gradient_accumulation_steps = 2` is used. Combinations of the two parameters are considered in the tuning (constrained by `max_train_batch_size` if defined). Note that specifying a list of `gradient_accumulation_steps` to tune is not supported.
@@ -167,7 +167,7 @@ For example, the following section in the DeepSpeed configuration file limits th
 }
 ```
 
-The entry bellow asks the Autotuner to use `4` as the micro-batch size per GPU in tuning (micro-batch size per GPU is fixed as 4). Note that it's different from using ` "train_micro_batch_size_per_gpu": [4]` which asks the Autotuner to tune  micro-batch size per GPU starting from `4`.
+The entry bellow asks the Autotuner to use `4` as the micro-batch size per GPU in tuning (micro-batch size per GPU is fixed as 4). Note that it's different from using ` "train_micro_batch_size_per_gpu": [4]` which asks the Autotuner to tune micro-batch size per GPU starting from `4`.
 ```json
 {
     "train_micro_batch_size_per_gpu": [4],
@@ -194,7 +194,6 @@ DEFAULT_TUNING_SPACE_ZERO_1 = {
 ```
 , where `3*3 = 9` combinations of different `reduce_bucket_size` and `allgather_bucket_size` values are explored in the tuning. Users can overwrite it in the DeepSpeed configuration file
 by
-
 ```json
 {
   "zero_optimization": {
@@ -208,17 +207,17 @@ by
 If `"stage"` is not defined or set as `"all"`, then the overwriting applies to all ZeRO stages.
 #### Offloading and NVME
 
-Currently, the DeepSpeed Autotuner does not tune offloading behaviors but instead uses the defaults defined in the offload section of the DeepSpeed configuration file. See [Parameter offloading](https://www.deepspeed.ai/docs/config-json/#parameter-offloading) and [Optimizer offloading](https://www.deepspeed.ai/docs/config-json/#optimizer-offloading) for details.
+Currently, the DeepSpeed Autotuner does not tune offloading behaviors but instead uses the values defined in the offload section of the DeepSpeed configuration file. See [Parameter offloading](https://www.deepspeed.ai/docs/config-json/#parameter-offloading) and [Optimizer offloading](https://www.deepspeed.ai/docs/config-json/#optimizer-offloading) for details.
 
 If using NVME for offloading, users can run a benchmark offline to select the optimal `aio` setup in DeepSpeed. Refer to [profiling NVMe and configuring aio param section](https://github.com/microsoft/DeepSpeed/issues/998).
 
 ## Autotuning Output
 
-By default, the DeepSpeed Autotuner generates a folder named `"autotuning_exps"` to store the descriptions of the autotuning experiments, and a folder named `"autotuning_results"` to store the results of the autotuning experiments under the train script launching path. Users can specify other path to use by setting `"results_dir"` or `"exps_dir"` in the autotuning configuration ([Results and Experiments Path](#results-and-experiments-path)).
+By default, the DeepSpeed Autotuner generates a folder named `"autotuning_exps"` to store the descriptions of the autotuning experiments, and a folder named `"autotuning_results"` to store the results of the autotuning experiments under the training script launching path. Users can specify other path to use by setting `"results_dir"` or `"exps_dir"` in the autotuning configuration ([Results and Experiments Path](#results-and-experiments-path)).
 
-Each autotuning experiment has a unique name based on the tuning parameters and. For example, z1_tmbspg3_gas1 means the experiment uses ZeRO stage 1, train micro batch size per GPU (tmbspg) of 3, and gradient accumulation steps (gas) of 1. Then the experiment description is store as file z1_tmbspg3_gas1.json in the `"exps_dir"` folder, and the experiment result is stored in a folder named z1_tmbspg3_gas1 under the `"results_dir"`.
+Each autotuning experiment has a unique name based on the tuning parameters and. For example, z1_tmbspg3_gas1 means the experiment uses ZeRO stage 1, train micro-batch size per GPU (tmbspg) of 3, and gradient accumulation steps (gas) of 1. Then the experiment description is store as file z1_tmbspg3_gas1.json in the `"exps_dir"` folder, and the experiment result is stored in a folder named z1_tmbspg3_gas1 under the `"results_dir"`.
 
-Each experiment result folder could contain following files:
+Each experiment result folder could contain the following files:
 
 ```bash
 z1_tmbspg3_gas1/ # z1_tmbspg4_gas1 experiment result folder
@@ -274,7 +273,7 @@ While `"autotuning": {"enabled": true}` is the minimal requirement to enable aut
 ### Results and Experiments Path
 
 `"results_dir"` points to a folder where the results of all the autotuning experiments are stored. `"exps_dir"` points to a folder where the descriptions of the autotuning experiments are stored.
-By default, `"exps_dir"` is set to a folder named `"autotuning_exps"` and `"results_dir"` is set to a folder named `"autotuning_results"` under the train script launching path. Users can specify other paths to use by setting these two parameters in the autotuning configuration.
+By default, `"exps_dir"` is set to a folder named `"autotuning_exps"` and `"results_dir"` is set to a folder named `"autotuning_results"` under the training script launching path. Users can specify other paths to use by setting these two parameters in the autotuning configuration.
 
 By default, the Autotuner does not run experiments whose results already exist. To change this behavior and rerun experiments all the time, set `"overwrite"` to true.
 
@@ -283,37 +282,24 @@ By default, the Autotuner does not run experiments whose results already exist. 
 The Autotuner ranks tuning experiments by a metric. Currently, three metric types are supported, `"latency"`, `"throughput"`, and `"FLOPS"`:
 * "throughput": training samples per second (calculated as  `train_batch_size * 1000 / "latency"`)
 * "latency": training step latency in ms (`training iteration latency * gradient accumulation steps`)
-* "FLOPS": floating point operations per second achieved per GPU (calculated as `the number of flops / training iteration latency`). Refer to [DeepSpeed flops profiler](https://www.deepspeed.ai/tutorials/flops-profiler/) for details on how the number of flops is measured.
+* "FLOPS": floating-point operations per second achieved per GPU (calculated as `the number of flops / training iteration latency`). Refer to [DeepSpeed flops profiler](https://www.deepspeed.ai/tutorials/flops-profiler/) for details on how the number of flops is measured.
 
-By default, `"throughput"` is used for ranking. Users can set it to other metrics, e.g., setting `{"metric": "latency"}` would use latency as the ranking metric.
+By default, `"throughput"` is used for ranking. Users can select other metrics, e.g., setting `{"metric": "latency"}` would use latency as the ranking metric.
 
 Note that the performance metric used in autotuning is calculated using the timings captured within DeepSpeed forward, backward and step functions. The sum of these timings is less than the actual training step latency, thus the throughput metric values used by autotuning would be higher than the end-to-end throughput in training.
 
 ### Autotuning Resources
 
-The DeepSpeed Autotuner uses all the hardware resources in the environment to run the tuning experiments. Experiments can be scheduled and run in parallel if resources are available.
-For example, in an environment with 2 nodes and 16 GPUs per node, if the user specifies `--num_gpus=16` and `--num_nodes=1` in the training script, then two autotuning experiments can be run in parallel at a time.
+The DeepSpeed Autotuner uses all the hardware resources in the environment to run the tuning experiments. Experiments can be scheduled and run in parallel if resources are available and parallelization applies to the tuning logic (some steps in the tuning workflow is sequential).
+For example, in an environment with 2 nodes and 16 GPUs per node, if the user specifies `--num_gpus=16` and `--num_nodes=1` in the training script, then at most two autotuning experiments can be run in parallel at a time.
 
-<!-- Users can change the total hardware resource to be used for autotuning by setting `" num_nodes" ` and `"num_gpus_per_node"` in the autotuning configuration. Note that the total autotuning resources must be larger than the per-experiment resources, namely `" num_nodes" ` and `"num_gpus"` in the autotuning configuration must not be less than the `--num_gpus` and `--num_nodes` values in the training script if any. -->
-
-<!-- For example, on a system with 2 nodes and 16 GPUs per node, if the user defines
-"`json
-// "autotuning" section in DeepSpeed configuration file
-{
-  "autotuning": {
-    "enabled": true,
-    "num_nodes": 1,
-    "num_gpus": 8,
-  }
-}
-``` -->
 ### Profile Steps
 
 In each of the tuning experiments, profiling is performed over a continuous portion of training steps to collect performance metrics, which are then used to rank the tuning experiments. Users can specify when to start and end the profiling.
 * start_step (int, defaults to 3): the training step to start recording performance metrics
 * end_step (int, >= start_step, defaults to 5): the training step to end recording performance metrics
 
-Note that setting `start_step` to large values would result in a longer run time for each tuning experiment.
+Note that setting `start_step` to large values could result in a noticeable longer run time for each tuning experiment.
 
 ### Fast Mode
 
@@ -321,7 +307,7 @@ Besides ZeRO stages and micro-batch sizes per GPU (`fast` mode), users can tune 
 
 ### Max Train Batch Size
 
-Users can set the maximum train batch size (global effective batch size) for the autotuning process by specifying `max_train_batch_size` in the autotuning configuration section of the DeepSpeed configuration file. If `max_train_batch_size` is not defined, the Autotuner would use `maximum_train_micro_batch_size_per_gpu_runnable * gradient_accumulation_steps * total_num_gpus // model_parallelism_size` as `max_train_batch_size` (`gradient_accumulation_steps` defined in the DeepSpeed configuration file or train script or `1` is used here). See [Configuring Train Micro Batch Size](#configuring-train-micro-batch-size) for its usage with micro train batch and gradient accumulation steps.
+Users can set the maximum train batch size (global effective batch size) for the autotuning process by specifying `max_train_batch_size` in the autotuning configuration section of the DeepSpeed configuration file. If `max_train_batch_size` is not defined, the Autotuner would use `maximum_train_micro_batch_size_per_gpu_runnable * gradient_accumulation_steps * total_num_gpus // model_parallelism_size` as `max_train_batch_size` (`gradient_accumulation_steps` defined in the DeepSpeed configuration file or training script or `1` is used here). See [Configuring Train Micro-Batch Size](#configuring-train-micro-batch-size) for its usage with micro-batch size and gradient accumulation steps.
 
 # Model Parallelism Size
 
@@ -339,7 +325,7 @@ By default, `"model_based"` algorithm is used.
 
 The Autotuner stops exploring the space when any of the following conditions meet:
 
-* When there is no more promising configurations are likely to be found. `"tuner_early_stopping"` defines the number of experiments to explore beyond the current best experiment. If no better experiment is found within that number, stops the autotuning exploration. `"tuner_early_stopping"` defaults to `5`.
+* When there is no more promising configurations are likely to be found. `"tuner_early_stopping"` defines the number of experiments to explore beyond the current best experiment. If no better experiment is found within that number, the Autotuner stops the exploration. `"tuner_early_stopping"` defaults to `5`.
 * When the total number of experiments explored exceeds the `"tuner_num_trials"`, which defaults to `50`.
 * When all the experiments in the tuning space are explored.
 
@@ -351,9 +337,9 @@ In DeepSpeed Autotuning, if the user-provided DeepSpeed configuration file has "
 
 ##  GPT2-large Example
 
-This section shows a example of using DeepSpeed autotuning. For more examples, refer to [autotuning](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning) in the DeepSpeedExamples repo.
+This section shows an example of using DeepSpeed autotuning. For more examples, refer to [autotuning](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning) in the DeepSpeedExamples repo.
 
-Example train script:
+Example training script:
 
 ```bash
 MODEL_NAME=gpt2-large
@@ -410,15 +396,15 @@ Example output (in `summary.txt`):
 Tuning completed in 0:27:33.988447. Total number of experiments: 13.
 ```
 
-The table below shows the throughput (samples per second) comparison. The corresponding train micro batch size per GPU (mbs or tmbspg) and ZeRO stage used to achieve the throughput value is also shown in the parentheses. Assume the strategy users would use in the hand tuning process is to start from `mbs = 1` and increase mbs by 2 each time until running out of GPU memory.
+The table below shows the throughput (samples per second) comparison. The corresponding train micro-batch size per GPU (mbs or tmbspg) and ZeRO stage used to achieve the throughput value is also shown in the parentheses. Assume the strategy users would use in the hand-tuning process is to start from `mbs = 1` and increase mbs by 2 each time until running out of GPU memory.
  - `baseline` is the vanilla Hugging Face (HF) without DeepSpeed (DS) and mbs is hand-tuned.
  - `HF + DS hand-tuned` is HF with DS, and mbs is hand-tuned while other DS configuration uses default values.
  - `HF + DS autotuning` is HF with DS, and the DS configuration selected from autotuning.
 
-Notation: Hugging Face (HF), DeepSpeed (DS), ZeRO stage (z), gradient accumulation steps (gas), train micro batch size per GPU (mbs or tmbspg).
+Notation: Hugging Face (HF), DeepSpeed (DS), ZeRO stage (z), gradient accumulation steps (gas), train micro-batch size per GPU (mbs or tmbspg).
 
 | Model name | baseline (vanilla HF) | HF + DS hand-tuned       | HF + DS autotuning (fast-mode) |
 | ---------- | -------------------- | ------------------------ | ------------------------------ |
 | GPT2-large | 27.874 (mbs = 1)     | 56.797 (z = 1, mbs = 2), | 69.061 (z = 1, mbs = 3)        |
 
-As we can see the DeepSpeed autotuner is able to select a better than hand-tuned configuration with a reasonable number of experiments. Examples in [Autotuning Hugging Face Examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning/hf#autotuning-hugging-face-examples) would demonstrate the effectiveness of autotuning across different models.
+As we can see the DeepSpeed Autotuner can select a better than hand-tuned configuration with a reasonable number of experiments. Examples in [Autotuning Hugging Face Examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/autotuning/hf#autotuning-hugging-face-examples) would demonstrate the effectiveness of autotuning across different models.
