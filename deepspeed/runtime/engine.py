@@ -228,13 +228,12 @@ class DeepSpeedEngine(Module):
         self.sparse_tensor_module_names = set()
         # if self.sparse_gradients_enabled():
         for name, module in self.module.named_modules():
-            if isinstance(module, (torch.nn.Embedding, torch.nn.EmbeddingBag)):
-                if self.sparse_gradients_enabled() or module.sparse:
-                    self.sparse_tensor_module_names.add(name + ".weight")
-                    if self.sparse_gradients_enabled():
-                        logger.info(
-                            "Will convert {} to sparse tensor during training".format(
-                                name))
+            if isinstance(module,
+                          (torch.nn.Embedding,
+                           torch.nn.EmbeddingBag)) and self.sparse_gradients_enabled():
+                self.sparse_tensor_module_names.add(name + ".weight")
+                logger.info(
+                    "Will convert {} to sparse tensor during training".format(name))
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
@@ -1811,7 +1810,7 @@ class DeepSpeedEngine(Module):
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
-                if param_name in self.sparse_tensor_module_names:
+                if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
                     if is_moe_param:
                         expert_grads.append(SparseTensor(grad_data))
                     else:
