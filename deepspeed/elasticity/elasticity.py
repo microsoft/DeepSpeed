@@ -64,9 +64,12 @@ def get_candidate_batch_sizes(base_list, max_acceptable_batch_size):
     candidate_batch_size = []
     # each element in base_list is no larger than max_acceptable_batch_size
     for base in base_list:
-        value = max_acceptable_batch_size // base
-        index = np.argmax(np.asarray(HCN_LIST) > value)
-        candidate_batch_size.append(HCN_LIST[index - 1] * base)
+        if base >= max_acceptable_batch_size:
+            candidate_batch_size.append(base)
+        else:
+            value = max_acceptable_batch_size // base
+            index = np.argmax(np.asarray(HCN_LIST) > value)
+            candidate_batch_size.append(HCN_LIST[index - 1] * base)
     candidate_batch_size = list(set(candidate_batch_size))
     logger.info(f"Candidate batch size: {candidate_batch_size}")
     return candidate_batch_size
@@ -156,9 +159,7 @@ def _get_compatible_gpus_v01(micro_batches,
 
     base_list = []
     base_list.extend(micro_batches)
-
-    if lcm <= max_acceptable_batch_size:
-        base_list.append(lcm)
+    base_list.append(lcm)
 
     candidate_batch_sizes = get_candidate_batch_sizes(base_list,
                                                       max_acceptable_batch_size)
