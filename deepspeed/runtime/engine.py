@@ -2459,7 +2459,6 @@ class DeepSpeedEngine(Module):
                         sparse_tensor_module_names,
                         dict(self.module.named_parameters()),
                         checkpoint["module"])
-                self.sparse_tensor_module_names = checkpoint['csr_tensor_module_names']
 
             self.global_steps = checkpoint['global_steps']
             self.global_samples = checkpoint.get(
