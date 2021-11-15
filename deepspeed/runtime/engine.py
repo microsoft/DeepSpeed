@@ -2128,12 +2128,40 @@ class DeepSpeedEngine(Module):
 
             if load_lr_scheduler_states and self.lr_scheduler is not None:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+
+            def get_sparse_tensor_module_names(original_set,
+                                               loaded_set,
+                                               original_parameters,
+                                               loaded_parameters):
+                result = set()
+
+                for name in original_set:
+                    if name in loaded_parameters and name not in loaded_set:
+                        continue  # parameter existed in previous model and was not sparse
+                    result.add(name)
+
+                for name in loaded_set:
+                    if name in original_parameters:
+                        result.add(
+                            name)  # parameter exists in both configs and it was sparse
+
+                return result
+
             if 'sparse_tensor_module_names' in checkpoint:
-                self.sparse_tensor_module_names.update(
-                    checkpoint['sparse_tensor_module_names'])
+                sparse_tensor_module_names = checkpoint['sparse_tensor_module_names']
             elif 'csr_tensor_module_names' in checkpoint:
-                self.sparse_tensor_module_names.update(
-                    checkpoint['csr_tensor_module_names'])
+                sparse_tensor_module_names = checkpoint['csr_tensor_module_names']
+            else:
+                sparse_tensor_module_names = None
+            if sparse_tensor_module_names is not None:
+                if load_module_strict:
+                    self.sparse_tensor_module_names = sparse_tensor_module_names
+                else:
+                    self.sparse_tensor_module_names = get_sparse_tensor_module_names(
+                        self.sparse_tensor_module_names,
+                        sparse_tensor_module_names,
+                        dict(self.module.named_parameters()),
+                        checkpoint["module"])
             self.global_steps = checkpoint['global_steps']
             self.global_samples = checkpoint.get(
                 'global_samples',
