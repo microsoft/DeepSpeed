@@ -1728,7 +1728,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             shard_size = partitioned_params[partition_id].numel() // num_shards
 
             # Enforce nccl/rccl alignment of start location of each shard
-            shard_size = shard_size - ( shard_size % self.nccl_start_alignment_factor )
+            shard_size = shard_size - (shard_size % self.nccl_start_alignment_factor)
 
             num_elements = shard_size
 
