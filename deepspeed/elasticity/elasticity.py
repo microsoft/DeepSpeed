@@ -62,7 +62,6 @@ HCN_LIST = [
 
 def get_candidate_batch_sizes(base_list, max_acceptable_batch_size):
     candidate_batch_size = []
-    # each element in base_list is no larger than max_acceptable_batch_size
     for base in base_list:
         if base >= max_acceptable_batch_size:
             candidate_batch_size.append(base)
