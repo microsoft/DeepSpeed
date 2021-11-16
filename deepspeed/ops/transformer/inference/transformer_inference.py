@@ -176,7 +176,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             if no_masking:
                 input_mask = torch.empty(1)
             head_size = (mixed_query.shape[-1] // num_attention_heads_per_partition)
-            
+
             unfused_mode = not config.specialized_mode or \
                                 mixed_query.shape[1] >= 32 or head_size > 128
 
