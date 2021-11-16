@@ -479,7 +479,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # It is the device where parameters are fully instantiated using allgather
         self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
 
-        if _ds_config.zero_config.offload_param is not None:
+        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
             remote_device = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_DEVICE]
             pin_memory = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_PIN_MEMORY]
 
