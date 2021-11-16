@@ -1,8 +1,8 @@
 
-#include <torch/extension.h>
-#include <vector>
 #include <ATen/cuda/CUDAContext.h>
 #include <cuda_runtime_api.h>
+#include <torch/extension.h>
+#include <vector>
 #include "deepspeed_apis.h"
 
 void bias_gelu(torch::Tensor& x, torch::Tensor& bias)
@@ -17,7 +17,7 @@ void bias_gelu(torch::Tensor& x, torch::Tensor& bias)
                             x.size(sizes.size() - 1),
                             is_float,
                             at::cuda::getStreamFromPool());
-                            //at::cuda::getCurrentCUDAStream());
+    // at::cuda::getCurrentCUDAStream());
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
