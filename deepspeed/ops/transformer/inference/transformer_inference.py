@@ -248,7 +248,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-                print(input.shape)
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
@@ -618,7 +617,6 @@ class DeepSpeedTransformerInference(nn.Module):
 
         if get_present:
             output = (output, presents)
-
         if self.config.return_tuple:
             return (output, )
         else:

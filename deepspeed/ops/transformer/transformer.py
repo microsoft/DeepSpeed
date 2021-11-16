@@ -109,7 +109,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
                  stochastic_mode=False,
-                 return_tuple=False,
+                 return_tuple=True,
                  training=True):
         super(DeepSpeedTransformerConfig,
               self).__init__(

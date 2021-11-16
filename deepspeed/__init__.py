@@ -236,6 +236,7 @@ def init_inference(model,
                    module_key='module',
                    dtype=None,
                    injection_policy=None,
+                   return_tuple=True,
                    replace_method='auto',
                    quantization_setting=None):
     """Initialize the DeepSpeed InferenceEngine.
@@ -286,6 +287,7 @@ def init_inference(model,
                                  checkpoint,
                                  dtype,
                                  injection_policy,
+                                 return_tuple,
                                  replace_method,
                                  quantization_setting)
 
