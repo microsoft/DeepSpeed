@@ -14,26 +14,30 @@ from deepspeed.runtime.config import ADAM_OPTIMIZER
 from deepspeed.runtime.utils import see_memory_usage
 
 
-@pytest.mark.parametrize('zero_stage', [0, 3])
-def test_no_optim(zero_stage):
+@pytest.mark.parametrize('zero_stage,world_size', [(0, 1), (3, 1)])
+def test_no_optim(zero_stage, world_size):
     ds_config = {
-        'train_batch_size': 2,
+        'train_batch_size': world_size,
+        'fp16': {
+            'enabled': True
+        },
         'zero_optimization': {
             "stage": zero_stage,
             "offload_param": {
-                "device": 'cpu'
+                "device": "cpu"
             }
         }
     }
-    # 2B test
-    #hidden_dim = 6144
-    #model = SimpleModel(hidden_dim, nlayers=60)
+    # 20B test
+    #hidden_dim = 16 * 1024
     hidden_dim = 4
-    model = SimpleModel(hidden_dim, nlayers=1)
-    print('total number of parameters:', sum([p.numel() for p in model.parameters()]))
 
-    @distributed_test(world_size=[2])
-    def _go(model, hidden_dim):
+    @distributed_test(world_size=[world_size])
+    def _go(hidden_dim):
+        with deepspeed.zero.Init(enabled=zero_stage == 3, config_dict_or_path=ds_config):
+            model = SimpleModel(hidden_dim, nlayers=78)
+        print('total number of parameters:',
+              sum([p.numel() for p in model.parameters()]))
         see_memory_usage('pre-init', force=True)
         model, _, _, _ = deepspeed.initialize(model=model, config=ds_config)
         see_memory_usage('post-init', force=True)
@@ -41,13 +45,13 @@ def test_no_optim(zero_stage):
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=torch.float)
+                                        dtype=torch.half)
         print(f"optimizer={model.optimizer}")
         for batch in data_loader:
             model(batch[0], batch[1])
         see_memory_usage('post-fwds', force=True)
 
-    _go(model, hidden_dim)
+    _go(hidden_dim)
 
 
 @pytest.mark.parametrize('optimizer_type', [None, Optimizer, Callable])
