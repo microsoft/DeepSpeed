@@ -18,7 +18,7 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.distributed.distributed_c10d import _get_global_rank
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
