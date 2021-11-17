@@ -22,9 +22,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     int seq_len = attn_scores_c.size(2);
     int soft_len = attn_scores_c.size(3);
     int heads = attn_scores_c.size(1);
-
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
-                           (T*)attn_mask.data_ptr(),
+                           (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            triangular,
                            recompute,
                            local_attention,
@@ -114,7 +113,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query,
                                            bool merging,
                                            bool triangular,
                                            bool local_attention,
-                                           int window_size)
+                                           int window_size,
+                                           bool no_masking)
 {
     auto query_cont = query.contiguous();
     auto prev_key_cont = prev_key.contiguous();
@@ -138,7 +138,7 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query,
         at::empty({prev_value.size(0), heads, seq_len, prev_value.size(2) / heads}, options);
     attention_unfused<T>(prev_key_cont,
                          query_cont,
-                         attn_mask,
+                         attn_mask,  //(no_masking ? nullptr : (T*)attn_mask.data_ptr()),
                          prev_value_cont,
                          output,
                          bsz,

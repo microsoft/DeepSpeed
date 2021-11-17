@@ -1,7 +1,8 @@
-torch>=1.2
+torch
 tqdm
 tensorboardX==1.8
 ninja
 numpy
 psutil
 packaging
+hjson

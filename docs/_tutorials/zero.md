@@ -17,7 +17,7 @@ ZeRO leverages the aggregate computation and memory resources of data parallelis
 In addition, ZeRO-3 includes the *infinity offload engine* to form ZeRO-Infinity ([paper](https://arxiv.org/abs/2104.07857)), which can offload to both CPU and NVMe memory for huge memory savings.
 
 ## Training environment
-We use the DeepSpeed [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM) GPT-2 code for this exercise. You can step through the Megatron-LM [tutorial](/tutorials/megatron/) to familiarize yourself with the code. We will train the models in this tutorial on [NVIDIA Tesla V100-SXM3 Tensor Core GPUs](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM.
+We use the DeepSpeed [Megatron-LM](https://github.com/microsoft/DeepSpeedExamples/tree/master/Megatron-LM-v1.1.5-ZeRO3) GPT-2 code for this exercise. You can step through the Megatron-LM [tutorial](/tutorials/megatron/) to familiarize yourself with the code. We will train the models in this tutorial on [NVIDIA Tesla V100-SXM3 Tensor Core GPUs](https://www.nvidia.com/en-us/data-center/v100/) with 32GB RAM.
 
 ## Enabling ZeRO Optimization
 To enable ZeRO optimizations for a DeepSpeed model, we simply add the **_zero_optimization_** key to the DeepSpeed JSON configuration. A full description of configuration knobs of the **zero_optimization** key is available [here](/docs/config-json/#zero-optimizations-for-fp16-training).
@@ -270,8 +270,8 @@ You can use this method to save ZeRO-2 weights as well.
 If you'd like to get the fp32 weights, we supply a special script that can do offline consolidation. It requires no configuration files or GPUs. Here is an example of its usage:
 
 ``` bash
-$ cd /path/to/checkpoints_dir
-$ ./zero_to_fp32.py global_step1 pytorch_model.bin
+$ cd /path/to/checkpoint_dir
+$ ./zero_to_fp32.py . pytorch_model.bin
 Processing zero checkpoint at global_step1
 Detected checkpoint of type zero stage 3, world_size: 2
 Saving fp32 state dict to pytorch_model.bin (total_numel=60506624)
@@ -280,6 +280,22 @@ Saving fp32 state dict to pytorch_model.bin (total_numel=60506624)
 The `zero_to_fp32.py` gets created automatically when you save a checkpoint.
 
 Note: currently this script uses 2x memory (general RAM) of the size of the final checkpoint.
+
+Alternatively, if you have plenty of spare CPU memory and instead of getting the file you want your model to be updated to its fp32 weights, you can do the following at the end of the training:
+
+``` python
+    from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+    fp32_model = load_state_dict_from_zero_checkpoint(deepspeed.module, checkpoint_dir)
+```
+
+Beware, that the model will be good for saving, but no longer good for continuing the training and will require a `deepspeed.initialize()` anew.
+
+If you just want the `state_dict`, you can do:
+
+``` python
+    from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir)
+```
 
 
 Congratulations! You have completed the ZeRO tutorial.

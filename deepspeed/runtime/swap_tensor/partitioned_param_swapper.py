@@ -125,7 +125,7 @@ class AsyncPartitionedParameterSwapper(object):
 
         self.swap_out_params = []
 
-    #Check if partiitoned param or numel in a tensor is swappable or not
+    #Check if partitioned param or numel in a tensor is swappable or not
     def swappable_tensor(self, param=None, numel=None):
         if param is not None:
             assert numel is None, "Both parma and numel cannot be provided"
@@ -414,3 +414,6 @@ class AsyncPartitionedParameterSwapper(object):
             dst_fp16_params[i].ds_tensor.status = PartitionedParamStatus.AVAILABLE
 
         self.partitioned_swap_pool.swap_out(self.aio_write_handle)
+
+        for param in dst_fp16_params:
+            param.ds_tensor.status = PartitionedParamStatus.NOT_AVAILABLE

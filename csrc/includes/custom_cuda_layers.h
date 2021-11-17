@@ -11,6 +11,15 @@
 #include "context.h"
 #include "cublas_wrappers.h"
 
+#define CUDA_CHECK(callstr)                                                                    \
+    {                                                                                          \
+        cudaError_t error_code = callstr;                                                      \
+        if (error_code != cudaSuccess) {                                                       \
+            std::cerr << "CUDA error " << error_code << " at " << __FILE__ << ":" << __LINE__; \
+            assert(0);                                                                         \
+        }                                                                                      \
+    }
+
 #define MAX_THREADS 1024
 #define THREADS 256
 
@@ -27,25 +36,25 @@
 #define MAX_REG 256
 
 template <typename T>
-void launch_qunatize_kernel(T* vals,
+void launch_quantize_kernel(T* vals,
                             int total_count,
                             int group_num,
                             int num_bits,
                             cudaStream_t stream);
 template <typename T>
-void launch_sr_qunatize_kernel(T* vals,
+void launch_sr_quantize_kernel(T* vals,
                                int total_count,
                                int group_num,
                                int num_bits,
                                cudaStream_t stream);
 template <typename T>
-void launch_qunatize_kernel_asym(T* vals,
+void launch_quantize_kernel_asym(T* vals,
                                  int total_count,
                                  int group_num,
                                  int num_bits,
                                  cudaStream_t stream);
 template <typename T>
-void launch_sr_qunatize_kernel_asym(T* vals,
+void launch_sr_quantize_kernel_asym(T* vals,
                                     int total_count,
                                     int group_num,
                                     int num_bits,
@@ -281,3 +290,4 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
                                        cudaStream_t stream);
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
+void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);

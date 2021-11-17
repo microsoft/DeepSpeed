@@ -2,14 +2,13 @@
 """
 DeepSpeed runner is the main front-end to launching multi-worker
 training jobs with DeepSpeed. By default this uses pdsh to parallel
-ssh into multiple worker nodes and launch all the neccisary processes
+ssh into multiple worker nodes and launch all the necessary processes
 per rank for training.
 """
 
 import os
 import sys
 import json
-import shutil
 import base64
 import argparse
 import subprocess
@@ -22,6 +21,8 @@ from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
+
+from ..autotuning import Autotuner
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
@@ -109,6 +110,15 @@ def parse_args(args=None):
                         help="Force multi-node launcher mode, helps in cases where user "
                         "wants to launch on single remote node.")
 
+    parser.add_argument(
+        "--autotuning",
+        default="",
+        choices=["tune",
+                 "run"],
+        type=str,
+        help="Run DeepSpeed autotuner to discover optimal configuration parameters "
+        "before running job.")
+
     parser.add_argument("user_script",
                         type=str,
                         help="User script to launch, followed by any required "
@@ -142,7 +152,7 @@ def fetch_hostfile(hostfile_path):
             if hostname in resource_pool:
                 logger.error("Hostfile contains duplicate hosts, unable to "
                              "proceed with training.")
-                raise ValueError("host {} is already defined".format(hostname))
+                raise ValueError(f"host {hostname} is already defined")
             resource_pool[hostname] = slot_count
 
     return resource_pool
@@ -192,27 +202,25 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
 
             # sanity checks
             if hostname not in host_info:
-                raise ValueError("Hostname '{}' not found in hostfile".format(hostname))
-            for s in slots:
-                if s not in host_info[hostname]:
-                    raise ValueError("No slot '{}' specified on host '{}'".format(
-                        s,
-                        hostname))
+                raise ValueError(f"Hostname '{hostname}' not found in hostfile")
+            for slot in slots:
+                if slot not in host_info[hostname]:
+                    raise ValueError(f"No slot '{slot}' specified on host '{hostname}'")
 
             # If include string, build the list from here
             if include_str:
                 filtered_hosts[hostname] = slots
             elif exclude_str:
-                for s in slots:
-                    logger.info('removing {} from {}'.format(s, hostname))
-                    filtered_hosts[hostname].remove(s)
+                for slot in slots:
+                    logger.info(f'removing {slot} from {hostname}')
+                    filtered_hosts[hostname].remove(slot)
 
         # User just specified the whole node
         else:
             hostname = node_config
             # sanity check hostname
             if hostname not in host_info:
-                raise ValueError("Hostname '{}' not found in hostfile".format(hostname))
+                raise ValueError(f"Hostname '{hostname}' not found in hostfile")
 
             if include_str:
                 filtered_hosts[hostname] = host_info[hostname]
@@ -254,6 +262,19 @@ def encode_world_info(world_info):
     world_info_json = json.dumps(world_info).encode('utf-8')
     world_info_base64 = base64.urlsafe_b64encode(world_info_json).decode('utf-8')
     return world_info_base64
+
+
+def run_autotuning(args, active_resources):
+    tuner = Autotuner(args, active_resources)
+    logger.info("[Start] Running autotuning")
+
+    tuner.tune()
+    tuner.print_tuning_results()
+
+    logger.info("[End] Running autotuning")
+
+    if args.autotuning == "run":
+        tuner.run_after_tuning()
 
 
 def main(args=None):
@@ -300,12 +321,14 @@ def main(args=None):
 
     if not args.master_addr:
         first_host = list(active_resources.keys())[0]
-        hostname_cmd = ["ssh {} hostname -I".format(first_host)]
+        hostname_cmd = [f"ssh {first_host} hostname -I"]
         result = subprocess.check_output(hostname_cmd, shell=True)
         args.master_addr = result.decode('utf-8').split()[0]
-        logger.info("Using IP address of {} for node {}".format(
-            args.master_addr,
-            first_host))
+        logger.info(f"Using IP address of {args.master_addr} for node {first_host}")
+
+    if args.autotuning != "":
+        run_autotuning(args, active_resources)
+        return
 
     if args.num_nodes > 0:
         updated_active_resources = collections.OrderedDict()
@@ -332,9 +355,9 @@ def main(args=None):
             "-u",
             "-m",
             "deepspeed.launcher.launch",
-            "--world_info={}".format(world_info_base64),
-            "--master_addr={}".format(args.master_addr),
-            "--master_port={}".format(args.master_port)
+            f"--world_info={world_info_base64}",
+            f"--master_addr={args.master_addr}",
+            f"--master_port={args.master_port}"
         ]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
@@ -372,7 +395,7 @@ def main(args=None):
 
         cmd = runner.get_cmd(env, active_resources)
 
-    logger.info("cmd = {}".format(' '.join(cmd)))
+    logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
     result.wait()
 

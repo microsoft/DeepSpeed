@@ -42,7 +42,12 @@ ZeRO API
 
    zero3
 
+Mixture of Experts (MoE)
+------------------------
+.. toctree::
+   :maxdepth: 2
 
+   moe
 
 Transformer Kernel API
 ----------------------
@@ -79,6 +84,12 @@ Flops Profiler
 
    flops-profiler
 
+Autotuning
+--------------------
+.. toctree::
+   :maxdepth: 2
+
+   autotuning
 
 Memory Usage
 ------------------
