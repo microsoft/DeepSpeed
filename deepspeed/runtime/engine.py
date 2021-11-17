@@ -732,7 +732,15 @@ class DeepSpeedEngine(Module):
 
     @property
     def communication_data_type(self):
-        return self._config.communication_data_type
+        res = self._config.communication_data_type
+        if res is not None:
+            return res
+        elif self.fp16_enabled() or self.zero_optimization_stage():
+            return torch.float16
+        elif self.bfloat16_enabled():
+            return torch.bfloat16
+
+        return torch.float32
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -1300,7 +1308,7 @@ class DeepSpeedEngine(Module):
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
         log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
-        assert self.communication_data_type is None, "ZeRO supports only 'communication_data_type': 'none'"
+        assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if self.zero_legacy_stage1(
@@ -1368,7 +1376,8 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
-                ))
+                ),
+                communication_data_type=self.communication_data_type)
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -1401,7 +1410,7 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 aio_config=self.aio_config(),
-            )
+                communication_data_type=self.communication_data_type)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -2036,7 +2045,7 @@ class DeepSpeedEngine(Module):
 
         tensor_to_allreduce = tensor
 
-        if self.communication_data_type is not None:
+        if self.communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(self.communication_data_type)
 
         if self.postscale_gradients():
@@ -2053,7 +2062,7 @@ class DeepSpeedEngine(Module):
             tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
-        if self.communication_data_type is not None and tensor is not tensor_to_allreduce:
+        if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor
@@ -2160,8 +2169,8 @@ class DeepSpeedEngine(Module):
         sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
         original_data_type = sparse.values.dtype
-        if self.communication_data_type is not None:
-            if self.communication_data_type == torch.float16:
+        if self.communication_data_type != sparse.values.dtype:
+            if self.communication_data_type in (torch.float16, torch.bfloat16):
                 indices = sparse.indices.to(torch.int32)
             else:
                 indices = sparse.indices

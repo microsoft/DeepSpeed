@@ -153,9 +153,9 @@ Example of <i>**scheduler**</i>
 
 <i>**communication_data_type**</i>: [boolean]
 
-| Description                                                             | Default |
-| ----------------------------------------------------------------------- | ------- |
-| During gradient averaging perform communication with selected data type |  `none` |
+| Description                                                                                                                   | Default |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------- |
+| During gradient averaging perform communication with selected data type. Buy default it will be determined by selected regime |  None   |
 
 <i>**prescale_gradients**</i>: [boolean]
 

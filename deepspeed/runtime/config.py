@@ -234,16 +234,18 @@ def get_communication_data_type(param_dict):
     val = get_scalar_param(param_dict,
                            COMMUNICATION_DATA_TYPE,
                            COMMUNICATION_DATA_TYPE_DEFAULT)
-    val = val.lower()
-    if val == "none":
-        return None
+    val = val.lower() if val is not None else val
+    if val is None:
+        return val  # we must determine it by other parameters
     elif val == "fp32":
         return torch.float32
     elif val == "fp16":
         return torch.float16
+    elif val == "bfp16":
+        return torch.bfloat16
 
     raise ValueError(
-        f"Invalid communication_data_type. Supported data types: ['none', 'fp16', 'fp32']. Got: {val}"
+        f"Invalid communication_data_type. Supported data types: ['fp16', 'bfp16', 'fp32']. Got: {val}"
     )
 
 

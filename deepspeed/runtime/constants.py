@@ -209,7 +209,7 @@ Communication data type should be set as:
 "communication_data_type": "fp32"
 '''
 COMMUNICATION_DATA_TYPE = "communication_data_type"
-COMMUNICATION_DATA_TYPE_DEFAULT = "none"
+COMMUNICATION_DATA_TYPE_DEFAULT = None
 
 #########################################
 # Scale/predivide gradients before allreduce
