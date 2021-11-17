@@ -18,7 +18,6 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.distributed.distributed_c10d import _get_global_rank
-from torch.utils.tensorboard import SummaryWriter
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
@@ -533,6 +532,14 @@ class DeepSpeedEngine(Module):
             log_dir = os.path.join(base, summary_writer_dir_name, name)
 
         os.makedirs(log_dir, exist_ok=True)
+        try:
+            import tensorboard
+            from torch.utils.tensorboard import SummaryWriter
+        except ImportError as err:
+            print(
+                'If you want to use tensorboard logging please `pip install tensorboard`'
+            )
+            raise err
 
         return SummaryWriter(log_dir=log_dir)
 
