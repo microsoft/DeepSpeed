@@ -533,13 +533,15 @@ class DeepSpeedEngine(Module):
 
         os.makedirs(log_dir, exist_ok=True)
         try:
+            # torch.utils.tensorboard will fail if `tensorboard` is not available,
+            # see their docs for more details: https://pytorch.org/docs/1.8.0/tensorboard.html
             import tensorboard
-            from torch.utils.tensorboard import SummaryWriter
-        except ImportError as err:
+        except ImportError:
             print(
                 'If you want to use tensorboard logging please `pip install tensorboard`'
             )
-            raise err
+            raise
+        from torch.utils.tensorboard import SummaryWriter
 
         return SummaryWriter(log_dir=log_dir)
 
