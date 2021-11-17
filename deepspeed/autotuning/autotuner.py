@@ -34,7 +34,7 @@ class Autotuner:
         self.args = args
         self.selected_exp_dir = None
 
-        assert tabulate is not None, "Missing required package(s), please install DeepSpeed w. the 'autotuning' extra."
+        assert tabulate is not None, "Missing required package `tabulate`, please install with `pip install deepspeed[autotuning]`."
 
         logger.debug(f"autotunning args={args}")
 
