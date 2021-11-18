@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from simple_model import args_from_dict, SimpleModel, random_dataloader
 from common import distributed_test
-from utils import required_torch_version
+from util import required_torch_version
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam
