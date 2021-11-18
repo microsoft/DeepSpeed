@@ -22,6 +22,8 @@ from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
+from ..autotuning import Autotuner
+
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", 'UCX']
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
@@ -107,6 +109,15 @@ def parse_args(args=None):
                         action="store_true",
                         help="Force multi-node launcher mode, helps in cases where user "
                         "wants to launch on single remote node.")
+
+    parser.add_argument(
+        "--autotuning",
+        default="",
+        choices=["tune",
+                 "run"],
+        type=str,
+        help="Run DeepSpeed autotuner to discover optimal configuration parameters "
+        "before running job.")
 
     parser.add_argument("user_script",
                         type=str,
@@ -253,15 +264,43 @@ def encode_world_info(world_info):
     return world_info_base64
 
 
+def run_autotuning(args, active_resources):
+    tuner = Autotuner(args, active_resources)
+    logger.info("[Start] Running autotuning")
+
+    tuner.tune()
+    tuner.print_tuning_results()
+
+    logger.info("[End] Running autotuning")
+
+    if args.autotuning == "run":
+        tuner.run_after_tuning()
+
+
 def main(args=None):
     args = parse_args(args)
+
+    resource_pool = fetch_hostfile(args.hostfile)
+
+    # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if not resource_pool and len(cuda_visible_devices):
+        detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
+        if len(args.include) or len(
+                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
+            print(
+                f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
+            )
+        else:
+            args.include = f"localhost:{cuda_visible_devices}"
+            print(f"{detected_str}: setting --include={args.include}")
+        del os.environ["CUDA_VISIBLE_DEVICES"]
 
     if args.num_nodes >= 0 or args.num_gpus >= 0:
         if args.include != "" or args.exclude != "":
             raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
 
     multi_node_exec = True
-    resource_pool = fetch_hostfile(args.hostfile)
     if not resource_pool:
         resource_pool = {}
         device_count = torch.cuda.device_count()
@@ -286,6 +325,10 @@ def main(args=None):
         result = subprocess.check_output(hostname_cmd, shell=True)
         args.master_addr = result.decode('utf-8').split()[0]
         logger.info(f"Using IP address of {args.master_addr} for node {first_host}")
+
+    if args.autotuning != "":
+        run_autotuning(args, active_resources)
+        return
 
     if args.num_nodes > 0:
         updated_active_resources = collections.OrderedDict()
