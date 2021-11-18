@@ -31,7 +31,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,autotuning]
           ds_report
 
       - name: Unit tests
@@ -58,7 +58,7 @@ jobs:
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit]
+          pip install .[dev,1bit,autotuning]
           ds_report
       - name: Unit tests
         run: |
@@ -85,14 +85,16 @@ jobs:
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,autotuning]
           ds_report
       - name: HF transformers tests
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/transformers
-          git rev-parse --short HEAD
           cd transformers
+          # use known good HF hash until fix is merged for PR-14408
+          git checkout 1cc453d33
+          git rev-parse --short HEAD
           # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
           pip install .[testing]
           # find reqs used in ds integration tests
