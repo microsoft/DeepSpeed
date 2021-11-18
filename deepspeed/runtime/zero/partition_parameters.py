@@ -743,7 +743,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 see_memory_usage(
                     f'Before partitioning param {param.ds_id} {param.shape}',
                     force=False)
-
                 # param.data does not store anything meaningful in partitioned state
                 param.data = torch.empty(1, dtype=self.dtype, device=param.device)
 
@@ -889,7 +888,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         if self.use_all_gather_base:
             # try the _all_gather_base on PyTorch master branch
             handle = dist._all_gather_base(flat_tensor,
-                                           param.ds_tensor,
+                                           param.ds_tensor.cuda(),
                                            group=self.ds_process_group,
                                            async_op=async_op)
         else:
