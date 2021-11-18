@@ -92,7 +92,7 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/transformers
           cd transformers
-          # if needed switch to last known good SHA until transformers@master is fixed
+          # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
