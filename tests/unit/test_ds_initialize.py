@@ -6,6 +6,7 @@ from torch.optim.lr_scheduler import _LRScheduler, LambdaLR
 
 from simple_model import args_from_dict, SimpleModel, random_dataloader
 from common import distributed_test
+from utils import required_torch_version
 
 import deepspeed
 from deepspeed.ops.adam import FusedAdam
@@ -16,6 +17,9 @@ from deepspeed.runtime.utils import see_memory_usage
 
 @pytest.mark.parametrize('zero_stage,world_size', [(0, 1), (3, 1)])
 def test_no_optim(zero_stage, world_size):
+    if zero_stage == 3 and not required_torch_version():
+        pytest.skip("zero-3 param offload requires at least torch 1.8")
+
     ds_config = {
         'train_batch_size': world_size,
         'fp16': {
