@@ -2588,6 +2588,8 @@ class DeepSpeedEngine(Module):
                             _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
                         }
                     }
+                else:
+                    _state = {OPTIMIZER_STATE_DICT: None}
             zero_sd_list.append(_state)
 
         zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
