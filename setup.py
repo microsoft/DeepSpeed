@@ -31,7 +31,7 @@ except ImportError:
     print('[WARNING] Unable to import torch, pre-compiling ops will be disabled. ' \
         'Please visit https://pytorch.org/ to see how to properly install torch on your system.')
 
-from op_builder import ALL_OPS, get_default_compute_capatabilities
+from op_builder import ALL_OPS, get_default_compute_capabilities
 
 RED_START = '\033[31m'
 RED_END = '\033[0m'
@@ -50,16 +50,19 @@ def fetch_requirements(path):
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 extras_require = {
-    '1bit_adam': fetch_requirements('requirements/requirements-1bit-adam.txt'),
+    '1bit_mpi' : fetch_requirements('requirements/requirements-1bit-mpi.txt'),
+    '1bit': [], # Will add proper cupy version below
     'readthedocs': fetch_requirements('requirements/requirements-readthedocs.txt'),
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
+    'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
+    'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
 }
 
-# If MPI is available add 1bit-adam requirements
+# Add specific cupy version to both onebit extension variants
 if torch_available and torch.cuda.is_available():
-    if shutil.which('ompi_info') or shutil.which('mpiname'):
-        cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
-        extras_require['1bit_adam'].append(cupy)
+    cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
+    extras_require['1bit_mpi'].append(cupy)
+    extras_require['1bit'].append(cupy)
 
 # Make an [all] extra that installs all needed dependencies
 all_extras = set()
@@ -88,7 +91,7 @@ if torch_available and not torch.cuda.is_available():
         "you can ignore this message. Adding compute capability for Pascal, Volta, and Turing "
         "(compute capabilities 6.0, 6.1, 6.2)")
     if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capatabilities()
+        os.environ["TORCH_CUDA_ARCH_LIST"] = get_default_compute_capabilities()
 
 ext_modules = []
 
@@ -249,7 +252,8 @@ setup(name='deepspeed',
       classifiers=[
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8'
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9'
       ],
       license='MIT',
       ext_modules=ext_modules,

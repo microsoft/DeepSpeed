@@ -108,6 +108,22 @@ SPARSE_GRADIENTS = "sparse_gradients"
 SPARSE_GRADIENTS_DEFAULT = False
 
 #########################################
+# BFLOAT16 support
+#########################################
+# BFLOAT16 feature. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+BFLOAT16_FORMAT = '''
+BFLOAT16 parameters should be of the format:
+"bfloat16": {
+  "enabled": true
+}
+'''
+BFLOAT16 = "bfloat16"
+
+BFLOAT16_ENABLED = "enabled"
+BFLOAT16_ENABLED_DEFAULT = False
+
+#########################################
 # FP16 support
 #########################################
 # FP16 feature. By default, this feature is not enabled.
@@ -416,3 +432,15 @@ QUANTIZE_ROUNDING_DEFAULT = 0  #nearest
 FP16_MIXED_QUANTIZE_ENABLED_DEFAULT = False
 QUANTIZE_CHANGE_RATIO_DEFAULT = 0.001
 QUANTIZE_VERBOSE_DEFAULT = False
+
+#########################################
+# Drop the last incomplete Batch
+# #########################################
+# dataloader_drop_last. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+DATALOADER_DROP_LAST_FORMAT = '''
+The last incomplete batch can be dropped by setting:
+"dataloader_drop_last": True
+'''
+DATALOADER_DROP_LAST = "dataloader_drop_last"
+DATALOADER_DROP_LAST_DEFAULT = False

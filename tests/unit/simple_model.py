@@ -33,14 +33,13 @@ class Curriculum_SimpleModel(SimpleModel):
 
 
 class SimpleMoEModel(torch.nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim, num_experts=4):
         super(SimpleMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear2 = MoE(hidden_size=hidden_dim,
-                           output_dropout_prob=0.0,
                            expert=linear2,
-                           num_experts=4,
+                           num_experts=num_experts,
                            k=1)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
 
@@ -178,13 +177,18 @@ class PLD_SimpleModel(SimpleModel):
         return hidden_dim
 
 
-def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half):
-    batch_size = model.train_micro_batch_size_per_gpu()
+def random_dataset(total_samples, hidden_dim, device, dtype=torch.half):
     train_data = torch.randn(total_samples, hidden_dim, device=device, dtype=dtype)
     train_label = torch.empty(total_samples,
                               dtype=torch.long,
                               device=device).random_(hidden_dim)
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
+    return train_dataset
+
+
+def random_dataloader(model, total_samples, hidden_dim, device, dtype=torch.half):
+    batch_size = model.train_micro_batch_size_per_gpu()
+    train_dataset = random_dataset(total_samples, hidden_dim, device, dtype=dtype)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
     return train_loader
 

@@ -241,13 +241,13 @@ class FlopsProfiler(object):
         )
         print(f'Profile Summary at step {profile_step}:')
         print(
-            "Notations:\ndata parallel size (dp_size), model paralel size(mp_size),\nnumber of parameters (params), number of multiply-accumulate operations(MACs),\number of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency),\nstep (weights update latency), iter latency (sum of fwd, bwd and step latency)\n"
+            "Notations:\ndata parallel size (dp_size), model parallel size(mp_size),\nnumber of parameters (params), number of multiply-accumulate operations(MACs),\nnumber of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency),\nstep (weights update latency), iter latency (sum of fwd, bwd and step latency)\n"
         )
         if self.ds_engine:
             print('{:<60}  {:<8}'.format('world size: ', self.ds_engine.world_size))
             print('{:<60}  {:<8}'.format('data parallel size: ',
                                          self.ds_engine.dp_world_size))
-            print('{:<60}  {:<8}'.format('model paralel size: ',
+            print('{:<60}  {:<8}'.format('model parallel size: ',
                                          self.ds_engine.mp_world_size))
             print('{:<60}  {:<8}'.format(
                 'batch size per GPU: ',
@@ -351,7 +351,7 @@ class FlopsProfiler(object):
                 "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS"
             )
             print(
-                "\nNote: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs(or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.\n"
+                "\nNote: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs (or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.\n"
             )
             print(self.model)
 
@@ -480,15 +480,17 @@ def _conv_flops_compute(input,
     kernel_dims = list(weight.shape[-2:])
     input_dims = list(input.shape[2:])
 
-    paddings = padding if type(padding) is tuple else (padding, padding)
-    strides = stride if type(stride) is tuple else (stride, stride)
-    dilations = dilation if type(dilation) is tuple else (dilation, dilation)
+    length = len(input_dims)
 
-    output_dims = [0, 0]
-    output_dims[0] = (input_dims[0] + 2 * paddings[0] -
-                      (dilations[0] * (kernel_dims[0] - 1) + 1)) // strides[0] + 1
-    output_dims[1] = (input_dims[1] + 2 * paddings[1] -
-                      (dilations[1] * (kernel_dims[1] - 1) + 1)) // strides[1] + 1
+    paddings = padding if type(padding) is tuple else (padding, ) * length
+    strides = stride if type(stride) is tuple else (stride, ) * length
+    dilations = dilation if type(dilation) is tuple else (dilation, ) * length
+
+    output_dims = []
+    for idx, input_dim in enumerate(input_dims):
+        output_dim = (input_dim + 2 * paddings[idx] -
+                      (dilations[idx] * (kernel_dims[idx] - 1) + 1)) // strides[idx] + 1
+        output_dims.append(output_dim)
 
     filters_per_channel = out_channels // groups
     conv_per_position_flops = int(_prod(kernel_dims)) * in_channels * filters_per_channel
@@ -520,15 +522,22 @@ def _conv_trans_flops_compute(
     kernel_dims = list(weight.shape[-2:])
     input_dims = list(input.shape[2:])
 
+    length = len(input_dims)
+
+    paddings = padding if type(padding) is tuple else (padding, ) * length
+    strides = stride if type(stride) is tuple else (stride, ) * length
+    dilations = dilation if type(dilation) is tuple else (dilation, ) * length
+
+    output_dims = []
+    for idx, input_dim in enumerate(input_dims):
+
+        output_dim = (input_dim + 2 * paddings[idx] -
+                      (dilations[idx] * (kernel_dims[idx] - 1) + 1)) // strides[idx] + 1
+        output_dims.append(output_dim)
+
     paddings = padding if type(padding) is tuple else (padding, padding)
     strides = stride if type(stride) is tuple else (stride, stride)
     dilations = dilation if type(dilation) is tuple else (dilation, dilation)
-
-    output_dims = [0, 0]
-    output_dims[0] = (input_dims[0] + 2 * paddings[0] -
-                      (dilations[0] * (kernel_dims[0] - 1) + 1)) // strides[0] + 1
-    output_dims[1] = (input_dims[1] + 2 * paddings[1] -
-                      (dilations[1] * (kernel_dims[1] - 1) + 1)) // strides[1] + 1
 
     filters_per_channel = out_channels // groups
     conv_per_position_flops = int(_prod(kernel_dims)) * in_channels * filters_per_channel

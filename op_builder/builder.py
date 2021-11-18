@@ -48,7 +48,7 @@ def installed_cuda_version():
     return int(cuda_major), int(cuda_minor)
 
 
-def get_default_compute_capatabilities():
+def get_default_compute_capabilities():
     compute_caps = DEFAULT_COMPUTE_CAPABILITIES
     import torch.utils.cpp_extension
     if torch.utils.cpp_extension.CUDA_HOME is not None and installed_cuda_version(
@@ -64,13 +64,19 @@ def get_default_compute_capatabilities():
 # list compatible minor CUDA versions - so that for example pytorch built with cuda-11.0 can be used
 # to build deepspeed and system-wide installed cuda 11.2
 cuda_minor_mismatch_ok = {
-    10: ["10.0",
-         "10.1",
-         "10.2"],
-    11: ["11.0",
-         "11.1",
-         "11.2",
-         "11.3"],
+    10: [
+        "10.0",
+        "10.1",
+        "10.2",
+    ],
+    11: [
+        "11.0",
+        "11.1",
+        "11.2",
+        "11.3",
+        "11.4",
+        "11.5",
+    ],
 }
 
 
@@ -171,7 +177,7 @@ class OpBuilder(ABC):
         '''
         Test for existence of a function within a tuple of libraries.
 
-        This is used as a smoke test to check whether a certain library is avaiable.
+        This is used as a smoke test to check whether a certain library is available.
         As a test, this creates a simple C program that calls the specified function,
         and then distutils is used to compile that program and link it with the specified libraries.
         Returns True if both the compile and link are successful, False otherwise.
@@ -209,9 +215,16 @@ class OpBuilder(ABC):
                 oldstderr = os.dup(sys.stderr.fileno())
                 os.dup2(filestderr.fileno(), sys.stderr.fileno())
 
+            # Workaround for behavior in distutils.ccompiler.CCompiler.object_filenames()
+            # Otherwise, a local directory will be used instead of tempdir
+            drive, driveless_filename = os.path.splitdrive(filename)
+            root_dir = driveless_filename[0] if os.path.isabs(driveless_filename) else ''
+            output_dir = os.path.join(drive, root_dir)
+
             # Attempt to compile the C program into an object file.
             cflags = shlex.split(os.environ.get('CFLAGS', ""))
             objs = compiler.compile([filename],
+                                    output_dir=output_dir,
                                     extra_preargs=self.strip_empty_entries(cflags))
 
             # Attempt to link the object file into an executable.
@@ -439,7 +452,7 @@ class CUDAOpBuilder(OpBuilder):
                 cross_compile_archs = cross_compile_archs_env.replace(' ', ';')
             else:
                 if cross_compile_archs is None:
-                    cross_compile_archs = get_default_compute_capatabilities()
+                    cross_compile_archs = get_default_compute_capabilities()
             ccs = cross_compile_archs.split(';')
 
         args = []

@@ -21,11 +21,13 @@ class MoE(torch.nn.Module):
                  expert,
                  num_experts=1,
                  k=1,
-                 output_dropout_prob=0.0,
                  capacity_factor=1.,
                  eval_capacity_factor=1.,
                  min_capacity=4,
-                 noisy_gate_policy: typing.Optional[str] = None):
+                 noisy_gate_policy: typing.Optional[str] = None,
+                 drop_tokens: bool = True,
+                 use_rts=True,
+                 use_tutel: bool = False):
         """Initialize an MoE layer.
 
         Arguments:
@@ -37,8 +39,6 @@ class MoE(torch.nn.Module):
 
             k (int, optional): default=1, top-k gating value, only supports k=1 or k=2.
 
-            output_dropout_prob (float, optional): default=0.0, output dropout probability.
-
             capacity_factor (float, optional): default=1.0, the capacity of the expert at training time.
 
             eval_capacity_factor (float, optional): default=1.0, the capacity of the expert at eval time.
@@ -46,6 +46,12 @@ class MoE(torch.nn.Module):
             min_capacity (int, optional): default=4, the minimum capacity per expert regardless of the capacity_factor.
 
             noisy_gate_policy (str, optional): default=None, noisy gate policy, valid options are 'Jitter', 'RSample' or 'None'.
+
+            drop_tokens (bool, optional): default=True, whether to drop tokens - (setting to False is equivalent to infinite capacity).
+
+            use_rts (bool, optional): default=True, whether to use Random Token Selection.
+
+            use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
         """
 
         super(MoE, self).__init__()
@@ -69,12 +75,13 @@ class MoE(torch.nn.Module):
                                                capacity_factor,
                                                eval_capacity_factor,
                                                min_capacity,
-                                               noisy_gate_policy),
+                                               noisy_gate_policy,
+                                               drop_tokens,
+                                               use_rts),
                                       experts,
                                       num_local_experts,
-                                      group=groups.get_expert_parallel_group())
-
-        self.dropout = torch.nn.Dropout(output_dropout_prob)
+                                      group=groups.get_expert_parallel_group(),
+                                      use_tutel=use_tutel)
 
     def forward(self, hidden_states, used_token=None):
         """ MoE forward
@@ -93,5 +100,4 @@ class MoE(torch.nn.Module):
             * exp_counts (int): expert count
         """
         output = self.deepspeed_moe(hidden_states, used_token)
-        output = self.dropout(output)
         return output, self.deepspeed_moe.l_aux, self.deepspeed_moe.exp_counts

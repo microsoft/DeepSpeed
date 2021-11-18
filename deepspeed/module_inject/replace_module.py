@@ -2,10 +2,40 @@ import copy
 import torch
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy
+from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy, HFGPT2LayerPolicy
 from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
+from torch import nn
+
+
+class LinearAllreduce(nn.Module):
+    def __init__(self, weight, bias=None, mp_group=None):
+        super(LinearAllreduce, self).__init__()
+        self.weight = weight
+        self.bias = bias
+        self.mp_group = mp_group
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight)
+        if self.mp_group is not None:
+            torch.distributed.all_reduce(output, group=self.mp_group)
+        if self.bias is not None:
+            output += self.bias
+        return output
+
+
+class LinearLayer(nn.Module):
+    def __init__(self, weight, bias=None):
+        super(LinearLayer, self).__init__()
+        self.weight = weight
+        self.bias = bias
+
+    def forward(self, input):
+        output = torch.matmul(input, self.weight)
+        if self.bias is not None:
+            output += self.bias
+        return output
 
 
 class ReplaceWithTensorSlicing:
@@ -19,7 +49,7 @@ class ReplaceWithTensorSlicing:
         assert dim1 > dim2, \
             'Merging tensors is not allowed here! Please use deepspeed load_checkpoint\
             for merging your checkpoints before replacing the transformer layer with\
-            inference-kerenls'
+            inference-kernels'
 
     def qkv_copy(self, dst, src):
         if src is None:
@@ -99,32 +129,44 @@ def replace_transformer_layer(orig_layer_impl,
                               preln=True,
                               fp16=True,
                               local_rank=-1,
+                              stochastic_mode=True,
                               training=True,
                               quantize=False,
-                              encoder_decoder=False,
-                              quantize_settings=None):
+                              quantize_settings=None,
+                              return_tuple=True,
+                              replace_with_kernel_inject=False,
+                              linear_layer_setting=None):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
             e.g., transformers.modeling_bert.BertLayer.
         model (torch.nn.Module): user's nn.module representing their model
-        policy: shows the policy for mapping from the orig_layer_impl to transformer parameters
+        policy: shows the policy for mapping from the orig_layer_impl to transformer parameters when
+            replace_with_kernel_inject is set, otherwise, it provides the names of two linear layers as
+            a tuple: (attention_output projection, transformer output projection)
         micro_batch_size (int): micro batch size per gpu used during training/eval
         config (dict): model config containing hidden size, attention heads, etc.
         seed (int): random seed value
         max_seq_length (int): max sequence length for training
         hidden_size (int): hidden dimension
-        num_attention_heads (int): numebr of attention heads
+        num_attention_heads (int): number of attention heads
         mp_size (int): model_parallelism degree
-        mp_group : model_parallel gropu initialized on the modeling side
+        mp_group : model_parallel group initialized on the modeling side
         preln (bool): does the original layer implementation do pre or post layer norm?
         fp16 (bool): fp16 or fp32
         local_rank (int): GPU rank (optional),
+        stochastic_mode (bool): whether to use stochastic mode
         training (bool): specifying whether kernel-injection is done for training/inference (set to false for inference-mode injection)
         quantize_settings (tuple): this setting shows how we can quantize a model for running it through the inference kernels.
                 It includes (quantization_scales, merge_count, mlp_extra_grouping, quantize_groups).
-        encoder_decoder (bool): this flag needs to be set for huggingface Bert models.
-
+        return_tuple (bool): if set, transformer layer returns a tuple as the output.
+            Note: this flag needs to be set for huggingface models.
+        replace_with_kernel_inject (bool): injection_mode, if true, kernels will be add along with configuring
+            Tensor-Parallelism
+        linear_layer_setting (tuple of modules) [Optional]: shows which two classes are used for linear layers
+            and embedding layers
+        attention_params: (list of strings) [Optional]: shows the parameters in the attention part that needs to
+            be adjusted based on the model-parallelism
     Returns:
         Updated nn.module with replaced transformer layers
     """
@@ -172,11 +214,14 @@ def replace_transformer_layer(orig_layer_impl,
             transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                 hidden_size=hidden_size,
                 heads=num_attention_heads,
+                layer_norm_eps=config.layer_norm_eps if hasattr(
+                    config,
+                    'layer_norm_eps') else 1e-12,
                 fp16=fp16,
                 pre_layer_norm=preln,
                 mp_size=mp_size,
                 q_int8=quantize,
-                encoder_decoder=(True if policy_cls is HFBertLayerPolicy else False),
+                return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                 triangular_masking=(policy_cls is not HFBertLayerPolicy),
                 local_attention=((config.attention_layers[layer_id] == "local")
                                  if hasattr(config,
@@ -265,12 +310,15 @@ def replace_transformer_layer(orig_layer_impl,
                 hidden_dropout_ratio=config.hidden_dropout_prob,
                 num_hidden_layers=config.num_hidden_layers,
                 initializer_range=config.initializer_range,
+                layer_norm_eps=config.layer_norm_eps if hasattr(
+                    config,
+                    'layer_norm_eps') else 1e-12,
                 seed=seed,
                 fp16=fp16,
                 pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
-                huggingface=encoder_decoder,
+                return_tuple=return_tuple,
                 local_rank=local_rank,
-                stochastic_mode=True,
+                stochastic_mode=stochastic_mode,
                 normalize_invertible=True,
                 training=training)
             new_module = deepspeed.DeepSpeedTransformerLayer(transformer_config)
@@ -290,6 +338,110 @@ def replace_transformer_layer(orig_layer_impl,
             new_module.output_b.data = _4hh_b
         return new_module
 
+    def replace_wo_policy(module, all_reduce_linears):
+        def _replace(child, name, conv_linear_layer):
+            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+            if name in all_reduce_linears:
+                new_weight = torch.empty(
+                    (child.weight.shape[0]
+                     if conv_linear_layer else child.weight.shape[1] // mp_size,
+                     child.weight.shape[1]
+                     if conv_linear_layer else child.weight.shape[0]),
+                    device=child.weight.device,
+                    dtype=torch.half if fp16 else torch.float)
+                if not conv_linear_layer:
+                    child.weight.data.view(-1).copy_(
+                        child.weight.data.transpose(-1,
+                                                    -2).contiguous().view(-1))
+                    child.weight.data = child.weight.data.reshape(
+                        child.weight.data.shape[-1],
+                        child.weight.data.shape[-2])
+                data = mp_replace.copy(new_weight,
+                                       child.weight.data).to(torch.cuda.current_device())
+                return LinearAllreduce(data, child.bias if child.bias is None else \
+                            child.bias.to(torch.cuda.current_device()), mp_group)
+            else:
+                new_weight = torch.empty(
+                    (child.weight.shape[0] //
+                     mp_size if conv_linear_layer else child.weight.shape[1],
+                     child.weight.shape[1]
+                     if conv_linear_layer else child.weight.shape[0] // mp_size),
+                    device=child.weight.device,
+                    dtype=torch.half if fp16 else torch.float)
+                if not conv_linear_layer:
+                    child.weight.data.view(-1).copy_(
+                        child.weight.data.transpose(-1,
+                                                    -2).contiguous().view(-1))
+                    child.weight.data = child.weight.data.reshape(
+                        child.weight.data.shape[-1],
+                        child.weight.data.shape[-2])
+                data = mp_replace.copy(new_weight, child.weight.data)
+                new_bias = torch.empty((child.weight.shape[1] // mp_size),
+                                       device=child.weight.device,
+                                       dtype=torch.half if fp16 else torch.float)
+                bias_data = None if child.bias is None else mp_replace.copy(
+                    new_bias,
+                    child.bias.data).to(torch.cuda.current_device())
+                return LinearLayer(data.to(torch.cuda.current_device()), bias_data)
+
+        def _slice_embedding(child, name, conv_linear_layer):
+            mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
+            new_weight = torch.empty((child.weight.shape[0],
+                                      child.weight.shape[1] // mp_size),
+                                     device=child.weight.device,
+                                     dtype=child.weight.dtype)
+            data = mp_replace.copy(new_weight, child.weight.data)
+            new_embedding = nn.Embedding(child.weight.shape[0],
+                                         child.weight.shape[1] // mp_size)
+            new_embedding.weight.data.copy_(data)
+            return new_embedding
+
+        def update_mp_params(child):
+            if hasattr(child, 'n_heads'):
+                child.n_heads = child.n_heads // mp_size
+            if hasattr(child, 'inner_dim'):
+                child.inner_dim = child.inner_dim // mp_size
+            if hasattr(child, 'num_heads'):
+                child.num_heads = child.num_heads // mp_size
+            if hasattr(child, 'num_attention_heads'):
+                child.num_attention_heads = child.num_attention_heads // mp_size
+            if hasattr(child, 'all_head_size'):
+                child.all_head_size = child.all_head_size // mp_size
+            if hasattr(child, 'embed_dim'):
+                child.embed_dim = child.embed_dim // mp_size
+
+        conv_linear_layer = False
+        if linear_layer_setting is not None:
+            linear_policies = {linear_layer_setting[0]: _replace}
+            if len(linear_layer_setting) == 2:
+                linear_policies.update({linear_layer_setting[1]: _slice_embedding})
+        else:
+            if orig_layer_impl is HFGPT2LayerPolicy._orig_layer_class:
+                try:
+                    import transformers
+                    conv_linear_layer = True
+                    linear_policies = {transformers.model_utils.Conv1D: _replace}
+                except ImportError:
+                    linear_policies = {nn.Linear: _replace}
+            else:
+                linear_policies = {nn.Linear: _replace, nn.Embedding: _slice_embedding}
+
+        def _replace_module(r_module, prev_name=''):
+            for name, child in r_module.named_children():
+                if child.__class__ in linear_policies:
+                    setattr(
+                        r_module,
+                        name,
+                        linear_policies[child.__class__](child,
+                                                         prev_name + '.' + name,
+                                                         conv_linear_layer))
+                else:
+                    update_mp_params(child)
+                    _replace_module(child, name)
+            return r_module
+
+        return _replace_module(module)
+
     def replace_fn(child, _policy, layer_id=0):
         if training:
             # copy relevant state from child -> new module
@@ -297,11 +449,15 @@ def replace_transformer_layer(orig_layer_impl,
 
         else:
             # copy relevant state from child -> new module
-            new_module = replace_with_policy(child,
-                                             _policy,
-                                             inference=True,
-                                             preln=(policy is not HFBertLayerPolicy),
-                                             layer_id=layer_id)
+            if replace_with_kernel_inject:
+                new_module = replace_with_policy(
+                    child,
+                    _policy,
+                    inference=True,
+                    preln=(_policy is not HFBertLayerPolicy),
+                    layer_id=layer_id)
+            else:
+                new_module = replace_wo_policy(child, _policy)
 
         return new_module
 
@@ -318,7 +474,6 @@ def revert_transformer_layer(orig_layer_impl, model, config, preln=False):
             e.g., transformers.modeling_bert.BertLayer.
         model (torch.nn.Module): user's nn.module representing their model
         config (dict): model config containing hidden size, attention heads, etc.
-
     Returns:
         Updated nn.module with original bert-style transformer layers
     """
@@ -387,7 +542,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
         orig_class (torch.nn.Module): the module to search for
         replace_fn (method): a method to convert instances of ``orig_class`` to the
                              desired type and return a new instance.
-
     Returns:
         A modified ``model``.
     """
@@ -401,7 +555,7 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
             if plcy._orig_layer_class is not None:
                 policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
     assert len(policy.items()) > 0,\
-        "No default policy found! Please specifiy your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
+        "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\
         "You can find some samples here: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py"
 
     replaced_module, _ = _replace_module(model, policy)
@@ -413,20 +567,17 @@ def _replace_module(model, policies, layer_id=0):
     Arguments:
         model (torch.nn.Module): model to augment
         policies (dict): Mapping of source class to replacement function.
-
     Returns:
         Modified ``model``.
     """
     for name, child in model.named_children():
         if child.__class__ in policies:
-            orig = repr(child)
             setattr(
                 model,
                 name,
                 policies[child.__class__][0](child,
                                              policies[child.__class__][-1],
                                              layer_id))
-            new = getattr(model, name)
             layer_id += 1
         else:
             _, layer_id = _replace_module(child, policies, layer_id=layer_id)

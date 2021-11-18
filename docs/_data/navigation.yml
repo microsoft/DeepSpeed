@@ -27,6 +27,8 @@ lnav:
   - title: "Configuration"
     url: /docs/config-json/
     children:
+      - title: "Autotuning"
+        url: /docs/config-json/#autotuning
       - title: "Batch size"
         url: /docs/config-json/#batch-size-related-parameters
       - title: "Optimizer"
@@ -51,6 +53,8 @@ lnav:
         url: /docs/config-json/#logging
       - title: "Flops Profiler"
         url: /docs/config-json/#flops-profiler
+      - title: "PyTorch Profiler"
+        url: /docs/config-json/#pytorch-profiler
       - title: "Activation checkpointing"
         url: /docs/config-json/#activation-checkpointing
       - title: "Sparse Attention"
@@ -62,6 +66,8 @@ lnav:
         url: /getting-started/
       - title: "Getting started on Azure"
         url: /tutorials/azure/
+      - title: "Autotuning"
+        url: /tutorials/autotuning/
       - title: "BingBertSQuAD Fine-tuning"
         url: /tutorials/bert-finetuning/
       - title: "BERT Pre-training"
@@ -72,6 +78,8 @@ lnav:
         url: /tutorials/curriculum-learning/
       - title: "Flops Profiler"
         url: /tutorials/flops-profiler/
+      - title: "PyTorch Profiler"
+        url: /tutorials/pytorch-profiler/
       - title: "GAN"
         url: /tutorials/gan/
       - title: "Inference"
