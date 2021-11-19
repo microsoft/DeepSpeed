@@ -80,8 +80,6 @@ def gumbel_rsample(shape: Tuple, device: torch.device) -> Tensor:
     return gumbel(shape)
 
 
-
-
 # Based on https://github.com/pytorch/pytorch/pull/40762
 class _AllToAll(torch.autograd.Function):
     @staticmethod
@@ -186,7 +184,9 @@ def top1gating(logits: Tensor,
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
 
-    capacity = _capacity(gates, torch.tensor(capacity_factor), torch.tensor(min_capacity))
+    capacity = _capacity(gates,
+                         torch.tensor(capacity_factor),
+                         torch.tensor(min_capacity))
 
     # Create a mask for 1st's expert per token
     # noisy gating
@@ -275,7 +275,9 @@ def top2gating(logits: Tensor,
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
 
-    capacity = _capacity(gates, torch.tensor(capacity_factor * 2), torch.tensor(min_capacity))
+    capacity = _capacity(gates,
+                         torch.tensor(capacity_factor * 2),
+                         torch.tensor(min_capacity))
 
     # Create a mask for 1st's expert per token
     indices1_s = torch.argmax(gates, dim=1)
