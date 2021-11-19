@@ -16,7 +16,6 @@ from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils import logger, log_dist
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
 
-import math
 import time
 from time import perf_counter
 import torch
