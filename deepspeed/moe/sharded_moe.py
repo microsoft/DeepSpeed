@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 else:
     Base = Module
 
-
 uniform_map: Dict[torch.device, Callable] = {}
 gumbel_map: Dict[torch.device, Callable] = {}
 exp_selection_uniform_map: Dict[torch.device, Callable] = {}
