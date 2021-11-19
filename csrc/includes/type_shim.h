@@ -1,7 +1,7 @@
 /* Taken from NVIDIA/apex commit 855808f3fc268e9715d613f3c2e56469d8c986d8 */
 #include <ATen/ATen.h>
 
-// Forward/backward compatiblity hack around
+// Forward/backward compatibility hack around
 // https://github.com/pytorch/pytorch/commit/3aeb78079bcd68282fe9117088e138b77318e288
 // pending more future-proof guidance from upstream.
 // struct TypeShim
@@ -26,6 +26,11 @@
             __VA_ARGS__;                                                         \
             break;                                                               \
         }                                                                        \
+        case at::ScalarType::BFloat16: {                                         \
+            using scalar_t_##LEVEL = at::BFloat16;                               \
+            __VA_ARGS__;                                                         \
+            break;                                                               \
+        }                                                                        \
         default: AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'"); \
     }
 
@@ -43,6 +48,11 @@
         }                                                                        \
         case at::ScalarType::Half: {                                             \
             using scalar_t_##LEVEL = at::Half;                                   \
+            __VA_ARGS__;                                                         \
+            break;                                                               \
+        }                                                                        \
+        case at::ScalarType::BFloat16: {                                         \
+            using scalar_t_##LEVEL = at::BFloat16;                               \
             __VA_ARGS__;                                                         \
             break;                                                               \
         }                                                                        \

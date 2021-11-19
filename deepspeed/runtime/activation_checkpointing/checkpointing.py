@@ -24,7 +24,7 @@ from torch.cuda import _lazy_call, device as device_ctx_manager
 
 from deepspeed.runtime.config import DeepSpeedConfig
 from deepspeed.utils import logger
-from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_usage
+from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_usage, bwc_tensor_model_parallel_rank
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers
 
 # DeepSpeed Checkpointing Enabled or Disabled
@@ -205,7 +205,7 @@ def model_parallel_cuda_manual_seed(seed):
     Two set of RNG states are tracked:
         default state: This is for data parallelism and is the same among a
                        set of model parallel GPUs but different across
-                       different model paralle groups. This is used for
+                       different model parallel groups. This is used for
                        example for dropout in the non-model-parallel regions.
         model-parallel state: This state is different among a set of model
                               parallel GPUs, but the same across data parallel
@@ -213,10 +213,13 @@ def model_parallel_cuda_manual_seed(seed):
                               model parallel regions.
     """
     global mpu
+
+    tp_rank = bwc_tensor_model_parallel_rank(mpu)
+
     # 2718 is just for fun and any POSITIVE value will work.
     offset = seed + 2718
-    model_parallel_seed = offset + mpu.get_model_parallel_rank()
-    # Data parallel gets the original sedd.
+    model_parallel_seed = offset + tp_rank
+    # Data parallel gets the original seed.
     data_parallel_seed = seed
 
     if torch.distributed.get_rank() == 0:
@@ -225,7 +228,7 @@ def model_parallel_cuda_manual_seed(seed):
             'model parallel rank {}, and data parallel rank {} with '
             'model parallel seed: {} and data parallel seed: {}'.format(
                 torch.distributed.get_rank(),
-                mpu.get_model_parallel_rank(),
+                tp_rank,
                 mpu.get_data_parallel_rank(),
                 model_parallel_seed,
                 data_parallel_seed),
@@ -365,11 +368,15 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
     global contiguous_data_buffers, data_offsets
 
     inputs = []
-    for i, item in enumerate(args):
+    num_non_fp_tensors = 0
+
+    for arg_index, item in enumerate(args):
         if not is_activation_to_checkpoint(item):
             inputs.append(item)
+            num_non_fp_tensors += 1
             continue
 
+        i = arg_index - num_non_fp_tensors
         partition_size = get_partition_size(item)
         partition = item.detach().contiguous().view(-1).narrow(
             0,
@@ -384,7 +391,7 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
                     torch.tensor(()).new_empty([partition_size],
                                                dtype=partition.dtype,
                                                device=buffer_device)
-                    for i in range(num_layers)
+                    for _ in range(num_layers)
                 ]
                 contiguous_data_buffers.append(tensor_list)
                 data_offsets.append(0)
@@ -393,7 +400,7 @@ def partition_activations(args, cpu_checkpoint, contiguous_checkpoint):
                     torch.tensor(()).new_empty([partition_size],
                                                dtype=partition.dtype,
                                                device=buffer_device)
-                    for i in range(num_layers)
+                    for _ in range(num_layers)
                 ]
                 contiguous_data_buffers[i] = tensor_list
                 data_offsets[i] = 0
@@ -427,15 +434,19 @@ def get_partitioned_activations_for_backward(args, inputs, contiguous_checkpoint
     global contiguous_size_buffers, size_offsets
 
     new_args = []
-    for i, (arg, inp) in enumerate(zip(args, inputs)):
+    num_non_fp_tensors = 0
+
+    for arg_index, (arg, inp) in enumerate(zip(args, inputs)):
         size = torch.tensor(arg.size()) if torch.is_tensor(arg) else None
         if not is_activation_to_checkpoint(arg):
             new_args.append(arg)
             new_args.append(size)
+            num_non_fp_tensors += 1
             continue
 
         arg.data = inp.data
         new_args.append(arg)
+        i = arg_index - num_non_fp_tensors
 
         if contiguous_checkpoint:
             numel = size.numel()
@@ -515,9 +526,14 @@ class CheckpointFunction(torch.autograd.Function):
         global data_offsets, size_offsets
         if mp_rank is None:
             if mpu is not None:
-                mp_rank = mpu.get_model_parallel_rank()
-                mp_size = mpu.get_model_parallel_world_size()
-                mp_group = mpu.get_model_parallel_group()
+                if hasattr(mpu, 'get_tensor_model_parallel_rank'):
+                    mp_rank = mpu.get_tensor_model_parallel_rank()
+                    mp_size = mpu.get_tensor_model_parallel_world_size()
+                    mp_group = mpu.get_tensor_model_parallel_group()
+                else:
+                    mp_rank = mpu.get_model_parallel_rank()
+                    mp_size = mpu.get_model_parallel_world_size()
+                    mp_group = mpu.get_model_parallel_group()
             else:
                 mp_rank = 0
                 mp_size = 1
@@ -526,7 +542,7 @@ class CheckpointFunction(torch.autograd.Function):
         global cuda_device, transport_stream, PARTITION_ACTIVATIONS, buffer_0, buffer_1, buffer_0_offset, buffer_1_offset
 
         if cuda_device is None:
-            see_memory_usage("First Forward Begining", force=False)
+            see_memory_usage("First Forward Beginning", force=False)
             if dist.get_rank() == 0:
                 logger.info(f"Activation Checkpointing Information")
                 logger.info(
@@ -878,7 +894,7 @@ def configure(
         PROFILE_TIME = profile
 
     if CONTIGUOUS_CHECKPOINTING:
-        assert PARTITION_ACTIVATIONS, "Contiguous Checkpointing is only availble with partitioned activations. Set partitioned activations to true in deepspeed config"
+        assert PARTITION_ACTIVATIONS, "Contiguous Checkpointing is only available with partitioned activations. Set partitioned activations to true in deepspeed config"
     if CONTIGUOUS_CHECKPOINTING:
         assert num_layers is not None, "Must specify the number of layers with contiguous memory checkpointing"
 

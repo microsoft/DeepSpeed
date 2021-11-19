@@ -1,6 +1,7 @@
 '''
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
+
 import sys
 import types
 from typing import Optional, Union
@@ -124,7 +125,6 @@ def initialize(args=None,
         __git_hash__,
         __git_branch__),
              ranks=[0])
-
     assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
@@ -237,7 +237,9 @@ def init_inference(model,
                    dtype=None,
                    injection_policy=None,
                    replace_method='auto',
-                   quantization_setting=None):
+                   quantization_setting=None,
+                   replace_with_kernel_inject=False,
+                   return_tuple=True):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -267,6 +269,7 @@ def init_inference(model,
             of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
             for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
             all the network except the MLP part that we use 8 extra grouping).
+        replace_with_kernel_inject: If set we inject kernel as we initialize the inference-engine
 
     Returns:
         A deepspeed.InferenceEngine wrapped model.
@@ -286,7 +289,9 @@ def init_inference(model,
                                  checkpoint,
                                  dtype,
                                  injection_policy,
+                                 return_tuple,
                                  replace_method,
-                                 quantization_setting)
+                                 quantization_setting,
+                                 replace_with_kernel_inject)
 
     return engine
