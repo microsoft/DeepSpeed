@@ -2142,7 +2142,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 "stage 1 will be removed in v0.4.0."
             assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
-        if ckpt_version < pkg_version.parse("0.5.7"):
+        if ckpt_version < pkg_version.parse("0.5.8"):
             # zero checkpoints before 0.5.8 defaulted to elastic enabled, must
             # load checkpoint state using elastic logic
             self.elastic_checkpoint = True
