@@ -2129,17 +2129,23 @@ class FP16_DeepSpeedZeroOptimizer(object):
         self.dynamic_loss_scale = state_dict_list[dp_rank]['dynamic_loss_scale']
         self.overflow = state_dict_list[dp_rank]['overflow']
 
+        ckpt_version = state_dict_list[dp_rank].get("ds_version", False)
+        assert ckpt_version, f"Empty ds_version! {error_str}"
+        ckpt_version = pkg_version.parse(ckpt_version)
+
         # zero stage 1 mode
         if not self.partition_gradients:
             required_version = pkg_version.parse("0.3.17")
-            ckpt_version = state_dict_list[dp_rank].get("ds_version", False)
             error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
                 "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
                 "please set 'legacy_stage1': true in your zero config json. This old version of " \
                 "stage 1 will be removed in v0.4.0."
+            assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
-            assert ckpt_version, f"Empty ds_version! {error_str}"
-            assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
+        if ckpt_version < pkg_version.parse("0.5.7"):
+            # zero checkpoints before 0.5.8 defaulted to elastic enabled, must
+            # load checkpoint state using elastic logic
+            self.elastic_checkpoint = True
 
         if load_optimizer_states:
             if self.elastic_checkpoint:
@@ -2164,8 +2170,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # are guaranteed to exist, so we can just copy_() from the saved master params.
 
         if load_from_fp32_weights:
+            # option 2 from above
             self._restore_from_fp32_weights(state_dict_list)
         else:
+            # option 1 from above
             self._restore_from_bit16_weights()
 
 
