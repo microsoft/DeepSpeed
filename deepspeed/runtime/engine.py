@@ -1760,7 +1760,8 @@ class DeepSpeedEngine(Module):
         """Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
         feature and should be used with care. The state should be set before to the intended
         value before each forward/backward. The final fordward/backward should have the
-        boundary state set to True. See example below:
+        boundary state set to True. This style allows client code to only call engine.step() once after all
+        the gradient accumulation passes are complete. See example below:
 
         .. code-block:: python
 
@@ -1773,6 +1774,7 @@ class DeepSpeedEngine(Module):
         micro_batch = next(data_loader)
         loss = engine(micro_batch)
         engine.backward(loss)
+        engine.step()
 
         Arguments:
             is_boundary (bool): are we at a gradient accumulation boundary or not?
