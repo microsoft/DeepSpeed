@@ -607,7 +607,7 @@ def _batch_norm_flops_compute(
     has_affine = weight is not None
     if training:
         # estimation
-        return torch.numel(input) * (5 if has_affine else 4)
+        return torch.numel(input) * (5 if has_affine else 4), 0
     flops = torch.numel(input) * (2 if has_affine else 1)
     return flops, 0
 
@@ -651,10 +651,13 @@ def _upsample_flops_compute(input,
                             mode="nearest",
                             align_corners=None):
     if size is not None:
-        return int(_prod(size))
-    assert scale_factor is not None
+        if isinstance(size, tuple):
+            return int(_prod(size)), 0
+        else:
+            return int(size), 0
+    assert scale_factor is not None, "either size or scale_factor should be defined"
     flops = torch.numel(input)
-    if len(scale_factor) == len(input):
+    if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
         flops * int(_prod(scale_factor))
     else:
         flops * scale_factor**len(input)
@@ -731,26 +734,36 @@ def _einsum_flops_compute(equation, *operands):
                 return flop, 0
         raise NotImplementedError("Unsupported einsum operation.")
 
-
-def _tensor_matmul_flops_compute(self, other):
-    assert type(self) == torch.Tensor
-    assert type(other) == torch.Tensor
-    macs = _prod(self.shape) * other.shape[-1]
-    return 2 * macs, macs
+def _tensor_addmm_flops_compute(self, mat1, mat2, *, beta=1, alpha=1, out=None):
+    """
+    Count flops for the tensor addmm operation.
+    """
+    macs = _prod(mat1.shape) * mat2.shape[-1]
+    return 2 * macs + _prod(self.shape), macs
 
 def _elementwise_flops_compute(input, other, *, out=None):
-    dim_input = len(input.shape)
-    dim_other = len(other.shape)
-    max_dim = max(dim_input, dim_other)
-
-    final_shape = []
-    for i in range(max_dim):
-        if input.shape[i] > other.shape[i]:
-            final_shape.append(input.shape[i])
+    if not torch.is_tensor(input):
+        if torch.is_tensor(other):
+            return _prod(other.shape), 0
         else:
-            final_shape.append(other.shape[i])
-    flops = _prod(final_shape)
-    return flops, 0
+            return 1, 0
+    elif not torch.is_tensor(other):
+        return _prod(input.shape), 0
+    else:
+        dim_input = len(input.shape)
+        dim_other = len(other.shape)
+        max_dim = max(dim_input, dim_other)
+
+        final_shape = []
+        for i in range(max_dim):
+            in_i = input.shape[i] if i < dim_input else 1
+            ot_i = other.shape[i] if i < dim_other else 1
+            if in_i > ot_i:
+                final_shape.append(in_i)
+            else:
+                final_shape.append(ot_i)
+        flops = _prod(final_shape)
+        return flops, 0
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
@@ -758,7 +771,10 @@ def wrapFunc(func, funcFlopCompute):
     old_functions[name] = oldFunc
 
     def newFunc(*args, **kwds):
+        print("Calling {}".format(name))
         flops, macs = funcFlopCompute(*args, **kwds)
+        print("flops = {}, macs = {}".format(flops, macs))
+
         if module_flop_count:
             module_flop_count[-1].append((name, flops))
         if module_mac_count and macs:
@@ -825,19 +841,20 @@ def _patch_functionals():
 
 def _patch_tensor_methods():
     torch.matmul = wrapFunc(torch.matmul, _matmul_flops_compute)
-    # torch.Tensor.__matmul__ = wrapFunc(torch.Tensor.__matmul__, _tensor_matmul_flops_compute)
+    torch.Tensor.matmul = wrapFunc(torch.Tensor.matmul, _matmul_flops_compute)
     torch.mm = wrapFunc(torch.mm, _matmul_flops_compute)
-    # torch.Tensor.__mm__ = wrapFunc(torch.Tensor.__mm__, _matmul_flops_compute)
+    torch.Tensor.mm = wrapFunc(torch.Tensor.mm, _matmul_flops_compute)
     torch.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
+    torch.Tensor.bmm = wrapFunc(torch.bmm, _matmul_flops_compute)
+
     torch.addmm = wrapFunc(torch.addmm, _addmm_flops_compute)
+    torch.Tensor.addmm = wrapFunc(torch.Tensor.addmm, _tensor_addmm_flops_compute)
 
     torch.mul = wrapFunc(torch.mul, _elementwise_flops_compute)
-    # torch.Tensor.__mul__ = wrapFunc(torch.Tensor.__mul__, _elementwise_flops_compute)
-    # torch.Tensor.__imul__ = wrapFunc(torch.Tensor.__imul__, _elementwise_flops_compute)
+    torch.Tensor.mul = wrapFunc(torch.Tensor.mul, _elementwise_flops_compute)
 
     torch.add = wrapFunc(torch.add, _elementwise_flops_compute)
-    # torch.Tensor.__add__ = wrapFunc(torch.Tensor.__add__, _elementwise_flops_compute)
-    # torch.Tensor.__iadd__ = wrapFunc(torch.Tensor.__iadd__, _elementwise_flops_compute)
+    torch.Tensor.add = wrapFunc(torch.Tensor.add, _elementwise_flops_compute)
 
     torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute)
 
