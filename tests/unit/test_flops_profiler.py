@@ -49,7 +49,7 @@ def test_flops_profiler_in_ds_training(tmpdir):
             model.backward(loss)
             model.step()
             if n == 3: break
-        assert model.flops_profiler.flops == 100
+        assert model.flops_profiler.flops == 200
         assert model.flops_profiler.params == 110
 
     _test_flops_profiler_in_ds_training(args, model, hidden_dim)
@@ -99,7 +99,7 @@ def test_flops_profiler_in_inference():
     mod = LeNet5(10)
     batch_size = 1024
     input = torch.randn(batch_size, 1, 32, 32)
-    macs, params = get_model_profile(
+    flops, macs, params = get_model_profile(
         mod,
         tuple(input.shape),
         print_profile=True,
@@ -110,6 +110,7 @@ def test_flops_profiler_in_inference():
         as_string=True,
         ignore_modules=None,
     )
-    print(macs, params)
-    assert macs == "439.56 MMACs"
+    print(flops, macs, params)
+    assert flops == "866.08 M"
+    assert macs == "426.52 MMACs"
     assert params == "61.71 k"

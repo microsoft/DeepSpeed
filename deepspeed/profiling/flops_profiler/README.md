@@ -313,7 +313,7 @@ from deepspeed.profiling.flops_profiler import get_model_profile
 with torch.cuda.device(0):
     model = models.alexnet()
     batch_size = 256
-    macs, params = get_model_profile(model=model, # model
+    flops, macs, params = get_model_profile(model=model, # model
                                      input_res=(batch_size, 3, 224, 224), # input shape or input to the input_constructor
                                      input_constructor=None, # if specified, a constructor taking input_res is used as input to the model
                                      print_profile=True, # prints the model graph with the measured profile attached to each module
@@ -356,7 +356,7 @@ with torch.cuda.device(0):
     seq_len = 128
     enable_profile = True
     if enable_profile:
-      macs, params = get_model_profile(
+      flops, macs, params = get_model_profile(
           model,
           (batch_size, seq_len),
           input_constructor=partial(bert_input_constructor,
