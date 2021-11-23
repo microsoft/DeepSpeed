@@ -1757,6 +1757,26 @@ class DeepSpeedEngine(Module):
             return self._is_gradient_accumulation_boundary
 
     def set_gradient_accumulation_boundary(self, is_boundary):
+        """Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
+        feature and should be used with care. The state should be set before to the intended
+        value before each forward/backward. The final fordward/backward should have the
+        boundary state set to True. See example below:
+
+        .. code-block:: python
+
+        engine.set_gradient_accumulation_boundary(False)
+        for _ in range(gradient_accumulation_steps - 1):
+            micro_batch = next(data_loader)
+            loss = engine(micro_batch)
+            engine.backward(loss)
+        engine.set_gradient_accumulation_boundary(True)
+        micro_batch = next(data_loader)
+        loss = engine(micro_batch)
+        engine.backward(loss)
+
+        Arguments:
+            is_boundary (bool): are we at a gradient accumulation boundary or not?
+        """
         self._is_gradient_accumulation_boundary = is_boundary
         self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
