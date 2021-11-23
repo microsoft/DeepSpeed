@@ -32,6 +32,16 @@ else:
     torch_max_memory_reserved = torch.cuda.memory_cached
 
 
+class DummyOptim():
+    """
+    Dummy optimizer presents model parameters as a param group, this is
+    primarily used to allow ZeRO-3 without an optimizer
+    """
+    def __init__(self, params):
+        self.param_groups = []
+        self.param_groups.append({'params': params})
+
+
 def noop_decorator(func):
     return func
 
@@ -791,6 +801,12 @@ def memory_status(msg, print_rank=-1, reset_max=False):
         f'current alloc={new_alloced:0.4f}GB (delta={delta_alloced:0.4f}GB max={max_alloced:0.4f}GB) '
         f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)'
     )
+
+
+def get_ma_status():
+    if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
+        return 0
+    return torch.cuda.memory_allocated()
 
 
 def see_memory_usage(message, force=False):

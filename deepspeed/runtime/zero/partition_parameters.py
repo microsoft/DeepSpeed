@@ -571,10 +571,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             remote_device (string, optional): The initial device to store model
                 weights e.g., ``cpu``, ``nvme``. Passing ``"cpu"`` will create the model in CPU
                 memory. The model may still be moved to GPU based on the
-                offload settings for training. Defaults to the local GPU.
+                offload settings for training. Defaults to param offload device if a config is
+                defined, otherwise GPU.
             pin_memory (bool, optional): Potentially increase performance by
                 using pinned memory for model weights. ``remote_device`` must be
-                ``"cpu"``. Defaults to ``False``.
+                ``"cpu"``. Defaults to pin_memory value in config, otherwise ``False``.
             config_dict_or_path (dict or ``json file``, optional): If provided, provides configuration
                 for swapping fp16 params to NVMe.
             config (dict or ``json file``, optional): Deprecated, use config_dict_or_path instead.
@@ -679,6 +680,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Local device is the device where the parameters are consumed
         # It is the device where parameters are fully instantiated using allgather
         self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
+
+        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
+            remote_device = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_DEVICE]
+            pin_memory = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_PIN_MEMORY]
 
         self._validate_remote_device(remote_device, _ds_config)
 
@@ -1067,7 +1072,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 see_memory_usage(
                     f'Before partitioning param {param.ds_id} {param.shape}',
                     force=False)
-
                 # param.data does not store anything meaningful in partitioned state
                 free_param(param)
                 see_memory_usage(f'After partitioning param {param.ds_id} {param.shape}',

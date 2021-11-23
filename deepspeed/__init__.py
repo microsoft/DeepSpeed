@@ -46,18 +46,6 @@ __version_major__, __version_minor__, __version_patch__ = _parse_version(__versi
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
-# Provide backwards compatability with old deepspeed.pt module structure, should hopefully not be used
-pt = types.ModuleType('pt', 'dummy pt module for backwards compatability')
-deepspeed = sys.modules[__name__]
-setattr(deepspeed, 'pt', pt)
-setattr(deepspeed.pt, 'deepspeed_utils', deepspeed.runtime.utils)
-sys.modules['deepspeed.pt'] = deepspeed.pt
-sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
-setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
-sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
-setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
-sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
-
 
 def initialize(args=None,
                model: torch.nn.Module = None,
@@ -237,7 +225,9 @@ def init_inference(model,
                    dtype=None,
                    injection_policy=None,
                    replace_method='auto',
-                   quantization_setting=None):
+                   quantization_setting=None,
+                   replace_with_kernel_inject=False,
+                   return_tuple=True):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -267,6 +257,7 @@ def init_inference(model,
             of groups used in quantization. A tuple is passed in if we want to mention that there is extra-grouping
             for the MLP part of a Transformer layer (e.g. (True, 8) shows we quantize the model using 8 groups for
             all the network except the MLP part that we use 8 extra grouping).
+        replace_with_kernel_inject: If set we inject kernel as we initialize the inference-engine
 
     Returns:
         A deepspeed.InferenceEngine wrapped model.
@@ -286,7 +277,9 @@ def init_inference(model,
                                  checkpoint,
                                  dtype,
                                  injection_policy,
+                                 return_tuple,
                                  replace_method,
-                                 quantization_setting)
+                                 quantization_setting,
+                                 replace_with_kernel_inject)
 
     return engine

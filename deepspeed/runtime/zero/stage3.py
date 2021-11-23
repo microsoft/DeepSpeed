@@ -23,8 +23,7 @@ from torch.nn.parameter import Parameter
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
-from deepspeed.runtime.utils import see_memory_usage, is_model_parallel_parameter
-from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter, DummyOptim
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
@@ -561,6 +560,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                  module,
                  init_optimizer,
                  timers,
+                 ds_config,
                  static_loss_scale=1.0,
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
@@ -612,7 +612,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
 
-        self._convert_to_zero_parameters(module, mpu)
+        self.optimizer_swapper = None
+        self.swap_optimizer = False
+
+        self.offload_optimizer = False
+        self.offload_optimizer_pin_memory = False
+        self.offload_optimizer_fast_init = False
+        self.offload_param = False
+        self.offload_param_pin_memory = False
+        self.params_in_nvme_and_cpu = False
+        self.max_params_in_cpu = 0
+
+        self._configure_offloading(offload_optimizer_config, offload_param_config)
+
+        self._convert_to_zero_parameters(ds_config, module, mpu)
 
         for m in module.modules():
             _init_external_params(m)
@@ -629,42 +642,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             dtype=torch.bool,
             device=torch.cuda.current_device(),
             requires_grad=False)
-
-        ###################### offload optimizer setup ##################################
-        self.optimizer_swapper = None
-        self.swap_optimizer = False
-
-        self.offload_optimizer = False
-        self.offload_optimizer_pin_memory = False
-        self.offload_optimizer_fast_init = False
-        if offload_optimizer_config is not None:
-            if not contiguous_gradients:
-                raise ValueError(
-                    "optimizer offload only available with contiguous gradients enabled")
-            self.offload_optimizer = True
-            self.offload_optimizer_pin_memory = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_PIN_MEMORY]
-            self.swap_optimizer = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.offload_optimizer_fast_init = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_FAST_INIT]
-
-        ###################### offload param setup ##################################
-        self.offload_param = False
-        self.offload_param_pin_memory = False
-        self.params_in_nvme_and_cpu = False
-        self.max_params_in_cpu = 0
-        if offload_param_config is not None:
-            assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
-            self.offload_param = True
-            self.offload_param_pin_memory = offload_param_config[
-                OFFLOAD_PARAM_PIN_MEMORY]
-            self.params_in_nvme_and_cpu = offload_param_config[
-                OFFLOAD_PARAM_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
-            print_rank_0(
-                f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
-                force=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer
                                        and type(init_optimizer) == DeepSpeedCPUAdam)
@@ -772,15 +749,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
         see_memory_usage("Before creating fp32 partitions", force=False)
-        self._create_fp32_partitions()
+        if not isinstance(self.optimizer, DummyOptim):
+            self._create_fp32_partitions()
         see_memory_usage("After creating fp32 partitions", force=False)
         dist.barrier()
 
         # To support pipelined optimizer swapping
-        self._create_next_swappable_fp32_groups()
+        if not isinstance(init_optimizer, DummyOptim):
+            self._create_next_swappable_fp32_groups()
 
         see_memory_usage("Before initializing optimizer states", force=False)
-        self.initialize_optimizer_states()
+        if not isinstance(init_optimizer, DummyOptim):
+            self.initialize_optimizer_states()
         see_memory_usage("After initializing optimizer states", force=False)
         dist.barrier()
 
@@ -944,7 +924,32 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         return device_buffer
 
-    def _convert_to_zero_parameters(self, module, mpu):
+    def _configure_offloading(self, offload_optimizer_config, offload_param_config):
+        ###################### offload optimizer setup ##################################
+        if offload_optimizer_config is not None:
+            self.offload_optimizer = True
+            self.offload_optimizer_pin_memory = offload_optimizer_config[
+                OFFLOAD_OPTIMIZER_PIN_MEMORY]
+            self.swap_optimizer = offload_optimizer_config[
+                OFFLOAD_OPTIMIZER_DEVICE] == OFFLOAD_NVME_DEVICE
+            self.offload_optimizer_fast_init = offload_optimizer_config[
+                OFFLOAD_OPTIMIZER_FAST_INIT]
+
+        ###################### offload param setup ##################################
+        if offload_param_config is not None:
+            if not isinstance(self.optimizer, DummyOptim):
+                assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
+            self.offload_param = True
+            self.offload_param_pin_memory = offload_param_config[
+                OFFLOAD_PARAM_PIN_MEMORY]
+            self.params_in_nvme_and_cpu = offload_param_config[
+                OFFLOAD_PARAM_DEVICE] == OFFLOAD_NVME_DEVICE
+            self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
+            print_rank_0(
+                f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
+                force=False)
+
+    def _convert_to_zero_parameters(self, ds_config, module, mpu):
         non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
         if non_zero_params:
             zero_params = [p for p in module.parameters() if is_zero_param(p)]
@@ -954,7 +959,21 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 group = None
                 if mpu:
                     group = mpu.get_data_parallel_group()
-                Init(module=module, data_parallel_group=group, dtype=self.dtype)
+
+                if self.params_in_nvme_and_cpu:
+                    remote_device = OFFLOAD_NVME_DEVICE
+                elif self.offload_param:
+                    remote_device = OFFLOAD_CPU_DEVICE
+                else:
+                    remote_device = None
+
+                Init(module=module,
+                     data_parallel_group=group,
+                     dtype=self.dtype,
+                     config_dict_or_path=ds_config,
+                     remote_device=remote_device,
+                     pin_memory=self.offload_param_pin_memory,
+                     mpu=mpu)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
@@ -3293,8 +3312,11 @@ def estimate_zero3_model_states_mem_needs_all_cold(total_params,
     """
     def format_options(cpu_offload, cpu_offload_params, zero_init):
         enabled = []
-        enabled.append(f"cpu_offload={1 if cpu_offload else 0}")
-        enabled.append(f"cpu_offload_params={1 if cpu_offload_params else 0}")
+        padded_cpu_str = f'{OFFLOAD_CPU_DEVICE:4}'
+        param_device = padded_cpu_str if cpu_offload_params else "none"
+        enabled.append(f"{OFFLOAD_PARAM}={param_device}")
+        optimizer_device = padded_cpu_str if cpu_offload else "none"
+        enabled.append(f"{OFFLOAD_OPTIMIZER}={optimizer_device}")
         enabled.append(f"zero_init={1 if zero_init else 0}")
         return ", ".join(enabled)
 
