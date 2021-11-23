@@ -1746,11 +1746,18 @@ class DeepSpeedEngine(Module):
         """Query whether the current micro-batch is at the boundary of
         gradient accumulation, and thus will trigger gradient reductions and
         an optimizer step.
-
         Returns:
             bool: if the current step is a gradient accumulation boundary.
         """
-        return (self.micro_steps + 1) % self.gradient_accumulation_steps() == 0
+        if self._is_gradient_accumulation_boundary is None:
+            return (self.micro_steps + 1) % \
+                self.gradient_accumulation_steps() == 0
+        else:
+            return self._is_gradient_accumulation_boundary
+
+    def set_gradient_accumulation_boundary(self, is_boundary):
+        self._is_gradient_accumulation_boundary = is_boundary
+        self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
     def zero_grad(self):
         """
