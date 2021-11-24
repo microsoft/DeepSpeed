@@ -702,8 +702,6 @@ def _einsum_flops_compute(equation, *operands):
     """
     Count flops for the einsum operation.
     """
-    equation = equation.toIValue()
-    # Get rid of white space in the equation string.
     equation = equation.replace(" ", "")
     input_shapes = [o.shape for o in operands]
 
@@ -713,26 +711,14 @@ def _einsum_flops_compute(equation, *operands):
     mapping = {ord(x): 97 + i for i, x in enumerate(letter_order)}
     equation = equation.translate(mapping)
 
-    if equation == "abc,abd->acd":
-        n, c, t = input_shapes[0]
-        p = input_shapes[-1][-1]
-        flop = n * c * t * p
-        return flop, 0
-
-    elif equation == "abc,adc->adb":
-        n, t, g = input_shapes[0]
-        c = input_shapes[-1][1]
-        flop = n * t * g * c
-        return flop, 0
-    else:
-        np_arrs = [np.zeros(s) for s in input_shapes]
-        optim = np.einsum_path(equation, *np_arrs, optimize="optimal")[1]
-        for line in optim.split("\n"):
-            if "optimized flop" in line.lower():
-                # divided by 2 because we count MAC (multiply-add counted as one flop)
-                flop = float(np.floor(float(line.split(":")[-1]) / 2))
-                return flop, 0
-        raise NotImplementedError("Unsupported einsum operation.")
+    np_arrs = [np.zeros(s) for s in input_shapes]
+    optim = np.einsum_path(equation, *np_arrs, optimize="optimal")[1]
+    for line in optim.split("\n"):
+        print(line.lower())
+        if "optimized flop" in line.lower():
+            flop = int(float(line.split(":")[-1]))
+            return flop, 0
+    raise NotImplementedError("Unsupported einsum operation.")
 
 def _tensor_addmm_flops_compute(self, mat1, mat2, *, beta=1, alpha=1, out=None):
     """
