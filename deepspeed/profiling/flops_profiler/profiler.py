@@ -15,7 +15,7 @@ old_functions = {}
 
 
 class FlopsProfiler(object):
-    """Measures the latency, number of estimated floating point operations and parameters of each module in a PyTorch model.
+    """Measures the latency, number of estimated floating-point operations and parameters of each module in a PyTorch model.
 
     The flops-profiler profiles the forward pass of a PyTorch model and prints the model graph with the measured profile attached to each module. It shows how latency, flops and parameters are spent in the model and which modules or layers could be the bottleneck. It also outputs the names of the top k modules in terms of aggregated latency, flops, and parameters at depth l with k and l specified by the user. The output profile is computed for each batch of input.
     The DeepSpeed flops profiler can be used with the DeepSpeed runtime or as a standalone package.
@@ -177,7 +177,7 @@ class FlopsProfiler(object):
 
         self.model.apply(remove_profile_attrs)
 
-    def get_total_flops(self):
+    def get_total_flops(self, as_string=False):
         """Returns the total flops of the model.
 
         Args:
@@ -187,7 +187,7 @@ class FlopsProfiler(object):
             The number of multiply-accumulate operations of the model forward pass.
         """
         total_flops = get_module_flops(self.model)
-        return total_flops
+        return num_to_string(total_flops) if as_string else total_flops
 
     def get_total_macs(self, as_string=False):
         """Returns the total MACs of the model.
@@ -268,7 +268,7 @@ class FlopsProfiler(object):
         )
         print(f'Profile Summary at step {profile_step}:')
         print(
-            "Notations:\ndata parallel size (dp_size), model parallel size(mp_size),\nnumber of parameters (params), number of multiply-accumulate operations(MACs),\nnumber of floating point operations (flops), floating point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency),\nstep (weights update latency), iter latency (sum of fwd, bwd and step latency)\n"
+            "Notations:\ndata parallel size (dp_size), model parallel size(mp_size),\nnumber of parameters (params), number of multiply-accumulate operations(MACs),\nnumber of floating-point operations (flops), floating-point operations per second (FLOPS),\nfwd latency (forward propagation latency), bwd latency (backward propagation latency),\nstep (weights update latency), iter latency (sum of fwd, bwd and step latency)\n"
         )
         if self.ds_engine:
             print('{:<60}  {:<8}'.format('world size: ', self.ds_engine.world_size))
@@ -379,7 +379,7 @@ class FlopsProfiler(object):
                 "Each module profile is listed after its name in the following order: \nparams, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS"
             )
             print(
-                "\nNote: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs (or latency) and the sum of its submodules'.\n2. Number of floating point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.\n"
+                "\nNote: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs (or latency) and the sum of its submodules'.\n2. Number of floating-point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.\n3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.\n"
             )
             print(self.model)
 
@@ -757,10 +757,7 @@ def wrapFunc(func, funcFlopCompute):
     old_functions[name] = oldFunc
 
     def newFunc(*args, **kwds):
-        print("Calling {}".format(name))
         flops, macs = funcFlopCompute(*args, **kwds)
-        print("flops = {}, macs = {}".format(flops, macs))
-
         if module_flop_count:
             module_flop_count[-1].append((name, flops))
         if module_mac_count and macs:
