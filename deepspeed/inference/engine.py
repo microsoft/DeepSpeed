@@ -227,8 +227,6 @@ class InferenceEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
-        import pdb
-        pdb.set_trace()
         if self.mp_world_size > 1:
             if self.mpu is None:
                 for input in inputs:
