@@ -1714,6 +1714,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.reset_cpu_buffers()
 
         all_gather_times = []
+        all_gather_numel = []
         import time 
         self.start_timers([OPTIMIZER_ALLGATHER])
         # gather the updated weights from everyone
@@ -1728,6 +1729,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 self.allgather_bucket_size)
 
             shard_size = partitioned_params[partition_id].numel() // num_shards
+            
+            # Enforce nccl/rccl alignment of start location of each shard
+            shard_size = shard_size - (shard_size % self.nccl_start_alignment_factor)            
+            
             num_elements = shard_size
 
             assert shard_size * num_shards <= partitioned_params[partition_id].numel()
@@ -1754,6 +1759,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
                 torch.cuda.synchronize()
                 duration = time.perf_counter() - pre
                 all_gather_times.append(duration)
+                all_gather_numel.append(num_elements * dp_world_size)
 
         self.stop_timers([OPTIMIZER_ALLGATHER])
 
@@ -1762,6 +1768,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
             all_gather_times.sort()
             print(f'all_gather_times[{len(all_gather_times)}] = {all_gather_times}')
             print(f'sum all_gather_times = {sum_times}')
+            sum_numel = sum(all_gather_numel)
+            all_gather_numel.sort()
+            print(f'all_gather_numel[{len(all_gather_numel)}] = {all_gather_numel}')
+            print(f'sum all_gather_numel = {sum_numel}')
 
         # TODO: we probably don't need this? just to be safe
         for i in range(len(norm_groups)):

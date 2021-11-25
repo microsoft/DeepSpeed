@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from ..op_builder import CPUAdamBuilder
 from deepspeed.utils.logging import should_log_le
+from deepspeed.runtime.utils import see_memory_usage
 
 
 class DeepSpeedCPUAdam(torch.optim.Optimizer):
@@ -136,6 +137,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 # State initialization
                 if len(state) == 0:
                     #print(f'group {group_id} param {param_id} = {p.numel()}')
+                    see_memory_usage(f'cpu_adam before initializing state {group_id}', force=True)
                     state['step'] = 0
 
                     #use full precision by default unless self.fp32_optimizer_states is off
@@ -151,10 +153,12 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                                                            dtype=state_dtype,
                                                            device='cpu')
                     #memory_format=torch.preserve_format)
+                    see_memory_usage(f'cpu_adam after initializing state {group_id}', force=True)
 
                 state['step'] += 1
                 beta1, beta2 = group['betas']
 
+                see_memory_usage(f'cpu_adam before step state {group_id}', force=True)
                 if fp16_param_groups is not None:
                     self.ds_opt_adam.adam_update_copy(
                         self.opt_id,
@@ -183,4 +187,5 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                                                  p.grad.data,
                                                  state['exp_avg'],
                                                  state['exp_avg_sq'])
+                see_memory_usage(f'cpu_adam after step state {group_id}', force=True)
         return loss

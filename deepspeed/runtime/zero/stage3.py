@@ -803,27 +803,27 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.sub_group_size = sub_group_size
 
         self.sub_group_to_group_id = {}
-        see_memory_usage("Before creating fp16 partitions", force=False)
+        see_memory_usage("Before creating fp16 partitions", force=True)
         self._create_fp16_partitions_with_defragmentation()
         num_fp16_subgroups = len(self.fp16_partitioned_groups_flat)
         see_memory_usage(f"After creating fp16 partitions: {num_fp16_subgroups}",
-                         force=False)
+                         force=True)
 
         # Optimizer ensor swapping
         if self.swap_optimizer:
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
-        see_memory_usage("Before creating fp32 partitions", force=False)
+        see_memory_usage("Before creating fp32 partitions", force=True)
         self._create_fp32_partitions()
-        see_memory_usage("After creating fp32 partitions", force=False)
+        see_memory_usage("After creating fp32 partitions", force=True)
         dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
 
-        see_memory_usage("Before initializing optimizer states", force=False)
+        see_memory_usage("Before initializing optimizer states", force=True)
         self.initialize_optimizer_states()
-        see_memory_usage("After initializing optimizer states", force=False)
+        see_memory_usage("After initializing optimizer states", force=True)
         dist.barrier()
 
         if dist.get_rank() == 0:
@@ -872,13 +872,13 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         ])
         print_rank_0(
             f'Largest partitioned param numel = {largest_partitioned_param_numel}',
-            force=False)
+            force=True)
 
-        see_memory_usage(f"Before Set Grad positions", force=False)
+        see_memory_usage(f"Before Set Grad positions", force=True)
 
         self.grad_position = {}
         self.set_grad_positions()
-        see_memory_usage(f"Before CPU Offload initialization", force=False)
+        see_memory_usage(f"Before CPU Offload initialization", force=True)
 
         self.grads_in_partition = None
 
@@ -893,7 +893,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.temp_grad_gpu_buffer = torch.zeros(largest_partitioned_param_numel,
                                                     device=torch.cuda.current_device(),
                                                     dtype=self.dtype)
-        see_memory_usage(f"After CPU Offload initialization", force=False)
+        see_memory_usage(f"After CPU Offload initialization", force=True)
 
         # stores if a partition has been reduced in this step
         self.is_partition_reduced = {}
@@ -927,7 +927,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.debug_fp16_grads = [{} for _ in self.fp16_groups]
 
         if dist.get_rank(group=self.dp_process_group) == 0:
-            see_memory_usage(f"After initializing ZeRO optimizer", force=False)
+            see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
@@ -1341,19 +1341,19 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         nvme_gigabytes = nvme_memory_usage / GIGA_BYTES
         print_rank_0(
             f'Swappable FP32 Partitions: count={num_swappable_partitions} size={nvme_gigabytes:5.2f} GB',
-            force=False)
+            force=True)
         if self.params_in_nvme_and_cpu:
             print_rank_0(
                 f'Swap from NVMe Partitions: count = {num_swap_from_nvme_partitions}, size = {swap_from_nvme_memory_usage/GIGA_BYTES:5.2f}GB',
-                force=False)
+                force=True)
             print_rank_0(
                 f'Swap from CPU Partitions: count = {num_swap_from_cpu_partitions}, size = {swap_from_cpu_memory_usage/GIGA_BYTES:5.2f}GB',
-                force=False)
+                force=True)
 
         cpu_memory_gigabytes = cpu_memory_usage / GIGA_BYTES
         print_rank_0(
             f'In-Memory FP32 Partitions: count={cpu_memory_sub_groups} size={cpu_memory_gigabytes:5.2f} GB',
-            force=False)
+            force=True)
 
         # Clear for on-the-fly population before the optimizer step
         for param_group in self.optimizer.param_groups:
@@ -1611,7 +1611,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         fp16_param = self.fp16_partitioned_groups_flat[sub_group_id]
         self.optimizer.param_groups[param_group_id]['params'] = [fp32_param]
 
+        see_memory_usage(f'before optimizer sub step {sub_group_id} numel = {fp32_param.numel()}', force=True)
         self.optimizer.step()
+        see_memory_usage(f'after optimizer sub step {sub_group_id} numel = {fp32_param.numel()}', force=True)
+
         self.optimizer.param_groups[param_group_id]['params'] = []
 
     def _swappable_optimizer_subgroup(self, sub_group_id):
@@ -1672,7 +1675,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             see_memory_usage(
                 f'[Begin] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}',
-                force=False)
+                force=True)
 
             if swappable_optimizer_subgroup:
                 self._optimizer_states_and_gradient_swap_in(i, timer_names)
@@ -1701,7 +1704,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
             see_memory_usage(
                 f'[End] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}',
-                force=False)
+                force=True)
 
         self.stop_timers([INIT_OPTIMIZER_TIMER])
         self.log_timers(timer_names)
@@ -2105,7 +2108,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
                 see_memory_usage(
                     f"group {i} before creating {total_size} reduced gradients into partition",
-                    force=False)
+                    force=True)
                 if self.offload_param_pin_memory:
                     self.grads_in_partition.append(
                         torch.zeros(int(total_size),
@@ -2118,12 +2121,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                                     device=self.device))
                 see_memory_usage(
                     f"group {i} after creating {total_size} reduced gradients into partition",
-                    force=False)
+                    force=True)
 
         if self.offload_optimizer:
             offload_fp32_gradients = {}
             offload_fp32_offsets = {}
 
+        num_reduced_grads = len(self.previous_reduced_grads)
+        see_memory_usage(f'before backward partition reduced grads {num_reduced_grads}', force=True)
         with torch.cuda.stream(self.copy_grad_stream):
             self.reduction_stream.synchronize()
             for param in self.previous_reduced_grads:
@@ -2188,6 +2193,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                         gradient_offsets=offload_fp32_offsets[i],
                         gradient_tensors=offload_fp32_gradients[i])
 
+        see_memory_usage(f'after backward partition reduced grads {num_reduced_grads}', force=True)
         self.previous_reduced_grads = []
 
     def reduce_ipg_grads(self, extra_param=None):
