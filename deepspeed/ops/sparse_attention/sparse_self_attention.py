@@ -94,12 +94,10 @@ class SparseSelfAttention(nn.Module):
 
     def transpose_mask_for_sparse(self, qtype, x, is_key_padding_mask=False):
         x = x.type(qtype)
-        if is_key_padding_mask:
-            xdim = x.dim()
-            for d in range(xdim - 1, 0, -1):
-                x = x.squeeze(dim=d)
-            return x
-        return x.squeeze()
+        xdim = x.dim()
+        for d in range(xdim - 1, 0, -1):
+            x = x.squeeze(dim=d)
+        return x
 
     # forward pass
     def forward(self,
@@ -117,7 +115,7 @@ class SparseSelfAttention(nn.Module):
             value: required: value tensor
             rpe: optional: a tensor same dimension as x that is used as relative position embedding
             key_padding_mask: optional: a mask tensor of size (BatchSize X SequenceLength)
-            attn_mask: optional: a mask tensor of size (SequenceLength X SequenceLength); currently only 2D is supported
+            attn_mask: optional: a mask tensor of size (BatchSize X SequenceLength X SequenceLength); currently only 2D is supported
             key_padding_mask_mode: optional: a boolean determining if key_padding_mask needs to be added or multiplied
             attn_mask_mode: optional: a boolean determining if attn_mask needs to be added or multiplied
 

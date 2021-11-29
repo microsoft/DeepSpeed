@@ -52,6 +52,7 @@ def _forward(X,
              stride_srpe,
              stride_zkpm,
              stride_zattnm,
+             stride_wattnm,
              **meta):
     TN = meta['TN']
     BLOCK = meta['BLOCK']
@@ -94,7 +95,7 @@ def _forward(X,
         x = x + kp_m
     # apply attention mask
     if meta['APPLY_ATTN_MASK']:
-        pattn_m = ATTN_M + columnid * BLOCK + rowid * BLOCK * stride_zattnm + rxm * stride_zattnm + rxn
+        pattn_m = ATTN_M + pidz * stride_wattnm + columnid * BLOCK + rowid * BLOCK * stride_zattnm + rxm * stride_zattnm + rxn
         attn_m = tl.load(pattn_m, mask=check, other=-float('inf'))
         if meta['ATTN_MASK_MUL']:
             attn_m = tl.where(attn_m == 0, -float('inf'), 0.)
@@ -210,10 +211,12 @@ class _sparse_softmax(torch.autograd.Function):
         if attn_mask is None:
             apply_attn_mask = False
             stride_zattnm = 0
+            stride_wattnm = 0
             attn_mask = torch.empty(0, dtype=x.dtype, device=x.device)
         else:
             apply_attn_mask = True
-            stride_zattnm = attn_mask.stride(0)
+            stride_zattnm = attn_mask.stride(1)
+            stride_wattnm = attn_mask.stride(0)
 
         # run kernel
         M = x.shape[0]
@@ -228,7 +231,7 @@ class _sparse_softmax(torch.autograd.Function):
         }
         grid = lambda opt: [spdims[0] * spdims[1] * block, M]
         _forward[grid](x, scale, lut, rpe, key_padding_mask, attn_mask, maxlut, x.stride(0),\
-                       stride_zrpe, stride_hrpe, stride_srpe, stride_zkpm, stride_zattnm, **meta)
+                       stride_zrpe, stride_hrpe, stride_srpe, stride_zkpm, stride_zattnm, stride_wattnm, **meta)
 
         # save to context
         ctx.mark_dirty(x)
