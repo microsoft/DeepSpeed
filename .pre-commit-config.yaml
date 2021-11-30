@@ -28,7 +28,7 @@ repos:
         exclude: "examples/"
 
 -   repo: https://gitlab.com/daverona/pre-commit-cpp
-    rev: 0.6.0
+    rev: 0.8.0
     hooks:
     -   id: clang-format  # formatter of C/C++ code based on a style guide: LLVM, Google, Chromium, Mozilla, and WebKit available
         args: []
