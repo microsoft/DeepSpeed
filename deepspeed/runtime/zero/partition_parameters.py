@@ -481,6 +481,9 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
 class AllGatherHandle:
     def __init__(self, handle, param: Parameter) -> None:
+        if param.ds_status != ZeroParamStatus.INFLIGHT:
+            raise RuntimeError(f"expected param {param.ds_summary()} to be available")
+
         self.__handle = handle
         self.__param = param
 
