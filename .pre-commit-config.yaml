@@ -10,6 +10,8 @@ repos:
         exclude: "DeepSpeedExamples/"
     -   id: end-of-file-fixer
         exclude: "(DeepSpeedExamples/|docs/CNAME)"
+    -   id: fix-encoding-pragma
+        args: [--remove]
     -   id: mixed-line-ending
         exclude: "DeepSpeedExamples/"
         args: [--fix=lf]
