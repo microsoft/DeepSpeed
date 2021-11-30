@@ -1,5 +1,9 @@
-
 repos:
+-   repo: meta
+    hooks:
+    -   id: check-hooks-apply
+    -   id: check-useless-excludes
+
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.0.1
     hooks:
@@ -7,25 +11,21 @@ repos:
     -   id: check-json
     -   id: check-symlinks
     -   id: check-yaml
-        exclude: "DeepSpeedExamples/"
     -   id: destroyed-symlinks
     -   id: end-of-file-fixer
-        exclude: "(DeepSpeedExamples/|docs/CNAME)"
+        exclude: docs/CNAME
     -   id: fix-byte-order-marker
     -   id: fix-encoding-pragma
         args: [--remove]
     -   id: mixed-line-ending
-        exclude: "DeepSpeedExamples/"
         args: [--fix=lf]
     -   id: requirements-txt-fixer
     -   id: trailing-whitespace
-        exclude: "DeepSpeedExamples/"
 
 -   repo: https://github.com/pre-commit/mirrors-yapf
     rev: v0.29.0
     hooks:
     -   id: yapf
-        exclude: "examples/"
 
 -   repo: https://gitlab.com/daverona/pre-commit-cpp
     rev: 0.8.0
