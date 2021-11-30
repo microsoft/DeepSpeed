@@ -14,7 +14,6 @@ repos:
         exclude: "DeepSpeedExamples/"
         args: [--fix=lf]
 
-
 -   repo: https://github.com/pre-commit/mirrors-yapf
     rev: v0.29.0
     hooks:
