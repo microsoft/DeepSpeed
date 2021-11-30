@@ -43,7 +43,10 @@ class CPUAdagradBuilder(CUDAOpBuilder):
 
     def cxx_args(self):
         import torch
-        CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        if not self.is_rocm_pytorch():
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        else:
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
 
