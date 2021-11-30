@@ -5,11 +5,15 @@ repos:
     hooks:
     -   id: trailing-whitespace
         exclude: "DeepSpeedExamples/"
+    -   id: check-case-conflict
     -   id: check-json
+    -   id: check-symlinks
     -   id: check-yaml
         exclude: "DeepSpeedExamples/"
+    -   id: destroyed-symlinks
     -   id: end-of-file-fixer
         exclude: "(DeepSpeedExamples/|docs/CNAME)"
+    -   id: fix-byte-order-marker
     -   id: fix-encoding-pragma
         args: [--remove]
     -   id: mixed-line-ending
