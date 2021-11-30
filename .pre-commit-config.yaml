@@ -10,6 +10,9 @@ repos:
     -   id: end-of-file-fixer
         exclude: "examples/"
         exclude: "docs/CNAME"
+    -   id: mixed-line-ending
+        exclude: "DeepSpeedExamples/"
+        args: [--fix=lf]
 
 
 -   repo: https://github.com/pre-commit/mirrors-yapf
