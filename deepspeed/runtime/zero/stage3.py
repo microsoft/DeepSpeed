@@ -70,14 +70,6 @@ def debug_rank0(message: str) -> None:
         logger.debug(message)
 
 
-def get_cuda_mem_allocated_str() -> str:
-    # this is really slow. when enabled the python process becomes slow
-    # to the point where it can't keep the GPU fed with work, so only enable
-    # for memory debugging.
-    # return f"{torch.cuda.memory_allocated() / 1024 ** 3:.2f}GB"
-    return "xGB"
-
-
 def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
@@ -308,7 +300,6 @@ class PartitionedParameterCoordinator:
                 "avail": f"{self.__n_available_params:.1e}",
                 "queue_sz": f"{len(self.__param_queue or [])}",
                 "inflight": [p.ds_id for p in self.__inflight_param_registry],
-                "allocated": get_cuda_mem_allocated_str()
             }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
