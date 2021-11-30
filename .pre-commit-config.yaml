@@ -1,15 +1,14 @@
 
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v1.2.3
+    rev: v4.0.1
     hooks:
     -   id: trailing-whitespace
         exclude: "DeepSpeedExamples/"
     -   id: check-yaml
         exclude: "DeepSpeedExamples/"
     -   id: end-of-file-fixer
-        exclude: "DeepSpeedExamples/"
-        exclude: "docs/CNAME"
+        exclude: "(DeepSpeedExamples/|docs/CNAME)"
     -   id: mixed-line-ending
         exclude: "DeepSpeedExamples/"
         args: [--fix=lf]
