@@ -729,9 +729,6 @@ class DeepSpeedEngine(Module):
     def fp16_master_weights_and_gradients(self):
         return self._config.fp16_master_weights_and_gradients
 
-    def bfloat16_enabled(self):
-        return self._config.bfloat16_enabled
-
     def amp_enabled(self):
         return self._config.amp_enabled
 
