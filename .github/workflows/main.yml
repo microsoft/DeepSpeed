@@ -127,9 +127,9 @@ jobs:
       - name: Install deepspeed
         run: |
           # workaround patch for rocm 4.3.1
-          cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups.h /opt/rocm/include/hip/hcc_detail/hip_cooperative_groups.h
-          cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups.h /opt/rocm/include/hip/hcc_detail/amd_hip_cooperative_groups.h
-          cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups_helper.h /opt/rocm/include/hip/hcc_detail/hip_cooperative_groups_helper.h
+          sudo cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups.h /opt/rocm/include/hip/hcc_detail/hip_cooperative_groups.h
+          sudo cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups.h /opt/rocm/include/hip/hcc_detail/amd_hip_cooperative_groups.h
+          sudo cp -a csrc/includes/patch/hip/hcc_detail/hip_cooperative_groups_helper.h /opt/rocm/include/hip/hcc_detail/hip_cooperative_groups_helper.h
           PIP_PATH=$(which pip)
           sudo DS_BUILD_CPU_ADAGRAD=1 DS_BUILD_AIO=1 DS_BUILD_FUSED_ADAM=1 DS_BUILD_FUSED_LAMB=1 DS_BUILD_CPU_ADAM=1 DS_BUILD_TRANSFORMER=1 DS_BUILD_STOCHASTIC_TRANSFORMER=1 DS_BUILD_UTILS=1 $PIP_PATH install .[dev,1bit,autotuning]
           #sudo pip install .[dev,1bit]
