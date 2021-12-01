@@ -2777,7 +2777,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         if torch.distributed.get_rank() == 0:
             logger.info(
-                "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
                                         prev_scale,
                                         self.loss_scale))
@@ -2803,6 +2803,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #Gathering persisting parameters
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].all_gather(self.persistent_parameters)
+
+        if PrefetchCoordinator.reset_trace:
+            PrefetchCoordinator.reset_trace = False
+            self.param_coordinator.prefetch_coordinator.reset_data_structures()
 
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
@@ -2863,10 +2867,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.stop_timers(['optimizer_step'])
 
         self._post_step(timer_names)
-
-        if PrefetchCoordinator.reset_trace:
-            PrefetchCoordinator.reset_trace = False
-            self.param_coordinator.prefetch_coordinator.reset_data_structures()
 
         return
 
