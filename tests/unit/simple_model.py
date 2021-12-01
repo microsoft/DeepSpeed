@@ -27,6 +27,28 @@ class SimpleModel(torch.nn.Module):
         return self.cross_entropy_loss(x, y)
 
 
+class CreateParamModel(torch.nn.Module):
+    def __init__(self, hidden_dim, nlayers=1):
+        super().__init__()
+        self.nlayers = nlayers
+        self.linears = torch.nn.ModuleList(
+            [torch.nn.Linear(hidden_dim,
+                             hidden_dim) for i in range(nlayers)])
+        self.created = False
+        self.new_linear = None
+        self.hidden_dim = hidden_dim
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, x, y):
+        if len(self.linears) == 1:
+            x = self.linears[0](x)
+        if not self.created:
+            self.w = torch.nn.Parameter(torch.rand(5, dtype=torch.half))
+            self.w.requires_grad = False
+            self.created = True
+        return self.cross_entropy_loss(x, y)
+
+
 class Curriculum_SimpleModel(SimpleModel):
     def __init__(self, hidden_dim, empty_grad=False):
         super(Curriculum_SimpleModel, self).__init__(hidden_dim, empty_grad)

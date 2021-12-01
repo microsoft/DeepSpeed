@@ -6,7 +6,7 @@ import os
 import torch.distributed as dist
 
 from common import distributed_test
-from simple_model import SimpleModel, random_dataloader, args_from_dict
+from simple_model import SimpleModel, random_dataloader, args_from_dict, CreateParamModel
 
 import deepspeed
 from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
@@ -435,3 +435,43 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
                         (2 * nccl_start_alignment_factor) == 0)
 
     _test_partition_nccl_alignment(args=args, model=model, hidden_dim=hidden_dim)
+
+
+def test_zero_new_param():
+    ds_config = {
+        "train_micro_batch_size_per_gpu": 2,
+        "gradient_accumulation_steps": 1,
+        "zero_optimization": {
+            "stage": 3
+        },
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 1e-3
+            }
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        }
+    }
+    hidden_dim = 4
+    model = CreateParamModel(hidden_dim=hidden_dim)
+
+    @distributed_test(world_size=2)
+    def _go(model, hidden_dim, ds_config):
+        model, _, _, _ = deepspeed.initialize(
+                                              model=model,
+                                              model_parameters=model.parameters(),
+                                              config=ds_config)
+
+        data_loader = random_dataloader(model=model,
+                                        total_samples=16,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for i, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _go(model, hidden_dim, ds_config)

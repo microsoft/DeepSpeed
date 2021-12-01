@@ -143,6 +143,14 @@ class ZeROOrderedDict(OrderedDict):
         if param is None:
             return param
 
+        if not hasattr(param, 'ds_status'):
+            zero_params = [
+                p for p in self._parent_module.parameters() if is_zero_param(p)
+            ]
+            assert len(zero_params) > 0
+            zero_params[0].convert_to_zero_parameters(param_list=[param])
+            PrefetchCoordinator.reset_trace = True
+
         if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
                 print_rank_0(f'Registering external parameter from getter {key}',
@@ -165,9 +173,13 @@ def _inject_parameters(module, cls):
         module._parameters = new_param
 
 
-# TODO Needs to be implemented
 class PrefetchCoordinator(object):
+    reset_trace = False
+
     def __init__(self):
+        self.reset_data_structures()
+
+    def reset_data_structures(self):
         # step_id keeps track of the number of sub-modules invoked so far
         # the step_id is tracking forward and backward sequence of sub-modules
         self.step_id = 0
@@ -2851,6 +2863,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.stop_timers(['optimizer_step'])
 
         self._post_step(timer_names)
+
+        if PrefetchCoordinator.reset_trace:
+            PrefetchCoordinator.reset_trace = False
+            self.param_coordinator.prefetch_coordinator.reset_data_structures()
+
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
