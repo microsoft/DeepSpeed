@@ -125,7 +125,7 @@ def _apply_forward_and_backward_to_tensors_only(module,
 
 
 class ZeROOrderedDict(OrderedDict):
-    def __init__(self, parent_module, *args, **kwargs):
+    def __init__(self, parent_module, grandparent_module, *args, **kwargs):
         """A replacement for ``collections.OrderedDict`` to detect external ZeRO params.
 
         Args:
@@ -134,6 +134,7 @@ class ZeROOrderedDict(OrderedDict):
 
         super().__init__(*args, **kwargs)
         self._parent_module = parent_module
+        self._grandparent_module = grandparent_module
         self._in_forward = False
 
     def __getitem__(self, key):
@@ -144,10 +145,19 @@ class ZeROOrderedDict(OrderedDict):
             return param
 
         if not hasattr(param, 'ds_status'):
+            # Current param is not z3 managed, we need to find a param that is z3 managed
+            # either in the parent or grandparent modules in order to re-use its context
+            # to register the new param. High probability that we can find one in these two
+            # options but still possible this will fail if the user is replacing multiple
+            # modules at a time (which feels unlikely)
             zero_params = [
                 p for p in self._parent_module.parameters() if is_zero_param(p)
             ]
-            assert len(zero_params) > 0
+            if len(zero_params) == 0 and self._grandparent_module is not None:
+                zero_params = [
+                    p for p in self._grandparent_module.parameters() if is_zero_param(p)
+                ]
+            assert len(zero_params) > 0, "unable to find a z3 managed param in parent or grandparent modules"
             zero_params[0].convert_to_zero_parameters(param_list=[param])
             PrefetchCoordinator.reset_trace = True
 
@@ -162,15 +172,17 @@ class ZeROOrderedDict(OrderedDict):
 
 
 def _inject_parameters(module, cls):
+    grandparent = None
     for module in module.modules():
         if cls == ZeROOrderedDict:
-            new_param = cls(parent_module=module)
+            new_param = cls(parent_module=module, grandparent_module=grandparent)
         else:
             new_param = cls()
 
         for key, param in module._parameters.items():
             new_param[key] = param
         module._parameters = new_param
+        grandparent = module
 
 
 class PrefetchCoordinator(object):
