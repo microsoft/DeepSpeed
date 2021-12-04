@@ -239,7 +239,7 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
                                    dtype=torch.bool,
                                    requires_grad=False,
                                    device='cuda')
-    fp_attn_mask = bool_attn_mask.type(dtype)
+    fp_attn_mask = torch.cat([bool_attn_mask.type(dtype)[None,:,:]]*Z)
     kp_mask = torch.randint(low=0,
                             high=2,
                             size=(Z,
