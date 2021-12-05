@@ -1992,10 +1992,10 @@ class FP16_DeepSpeedZeroOptimizer(object):
         # constructed in the same way as the one whose state_dict we are loading, the same master params
         # are guaranteed to exist, so we can just copy_() from the saved master params.
 
-        if load_from_fp32_weights:
-            self._restore_from_fp32_weights(state_dict_list)
-        else:
-            self._restore_from_fp16_weights()
+            if load_from_fp32_weights:
+                self._restore_from_fp32_weights(state_dict_list)
+            else:
+                self._restore_from_fp16_weights()
 
 
 def _handle_overflow(cpu_sum, x, i):
