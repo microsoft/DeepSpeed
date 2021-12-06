@@ -345,7 +345,8 @@ class TopKGate(torch.nn.Module):
                  min_capacity: int = 4,
                  noisy_gate_policy: Optional[str] = None,
                  drop_tokens: bool = True,
-                 use_rts: bool = True) -> None:
+                 use_rts: bool = True,
+                 jitter_epsilon: float = 0.01) -> None:
         super().__init__()
 
         # Only top-1 and top-2 are supported at the moment.
@@ -362,6 +363,7 @@ class TopKGate(torch.nn.Module):
         self.gate_time = 0.0
         self.drop_tokens = drop_tokens
         self.use_rts = use_rts
+        self.jitter_epsilon = jitter_epsilon
 
     def forward(
             self,
@@ -379,7 +381,7 @@ class TopKGate(torch.nn.Module):
         input_fp32 = input.float()
         # input jittering
         if self.noisy_gate_policy == 'Jitter' and self.training:
-            input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
+            input_fp32 = multiplicative_jitter(input_fp32, device=input.device, epsilon=self.jitter_epsilon)
         logits = self.wg(input_fp32)
 
         if self.k == 1:

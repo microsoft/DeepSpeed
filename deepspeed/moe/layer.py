@@ -27,7 +27,8 @@ class MoE(torch.nn.Module):
                  noisy_gate_policy: typing.Optional[str] = None,
                  drop_tokens: bool = True,
                  use_rts=True,
-                 use_tutel: bool = False):
+                 use_tutel: bool = False,
+                 jitter_epsilon: float = 0.01):
         """Initialize an MoE layer.
 
         Arguments:
@@ -52,6 +53,8 @@ class MoE(torch.nn.Module):
             use_rts (bool, optional): default=True, whether to use Random Token Selection.
 
             use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
+
+            jitter_epsilon (float, optional): default=0.01, how much jittering noise to apply (in case jittering noise is used).
         """
 
         super(MoE, self).__init__()
@@ -77,7 +80,8 @@ class MoE(torch.nn.Module):
                                                min_capacity,
                                                noisy_gate_policy,
                                                drop_tokens,
-                                               use_rts),
+                                               use_rts,
+                                               jitter_epsilon),
                                       experts,
                                       num_local_experts,
                                       group=groups.get_expert_parallel_group(),
