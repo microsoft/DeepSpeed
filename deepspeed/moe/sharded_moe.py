@@ -280,6 +280,7 @@ def top2gating(logits: torch.Tensor,
 
     # gating decisions
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
+    exp_counts.add_(torch.sum(mask2, dim=0).detach().to('cpu'))
 
     # Compute l_aux
     me = torch.mean(gates, dim=0)
