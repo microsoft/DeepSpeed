@@ -288,8 +288,7 @@ class FlopsProfiler(object):
 
         print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', macs_to_string(total_macs)))
 
-        print('{:<60}  {:<8}'.format('fwd flops per GPU: ',
-                                     num_to_string(total_flops)))
+        print('{:<60}  {:<8}'.format('fwd flops per GPU: ', num_to_string(total_flops)))
 
         print('{:<60}  {:<8}'.format(
             'fwd flops of model = fwd flops per GPU * mp_size: ',
@@ -464,37 +463,49 @@ class FlopsProfiler(object):
             print(f"    MACs        - {sort_macs}")
             print(f"    fwd latency - {sort_time}")
 
+
 def _prod(dims):
     p = 1
     for v in dims:
         p *= v
     return p
 
+
 def _linear_flops_compute(input, weight, bias=None):
     out_features = weight.shape[0]
     macs = torch.numel(input) * out_features
     return 2 * macs, macs
 
+
 def _relu_flops_compute(input, inplace=False):
     return torch.numel(input), 0
+
 
 def _prelu_flops_compute(input: Tensor, weight: Tensor):
     return torch.numel(input), 0
 
+
 def _elu_flops_compute(input: Tensor, alpha: float = 1.0, inplace: bool = False):
     return torch.numel(input), 0
 
-def _leaky_relu_flops_compute(input: Tensor, negative_slope: float = 0.01, inplace: bool = False):
+
+def _leaky_relu_flops_compute(input: Tensor,
+                              negative_slope: float = 0.01,
+                              inplace: bool = False):
     return torch.numel(input), 0
+
 
 def _relu6_flops_compute(input: Tensor, inplace: bool = False):
     return torch.numel(input), 0
 
+
 def _silu_flops_compute(input: Tensor, inplace: bool = False):
     return torch.numel(input), 0
 
+
 def _gelu_flops_compute(input):
     return torch.numel(input), 0
+
 
 def _pool_flops_compute(
     input,
@@ -611,6 +622,7 @@ def _batch_norm_flops_compute(
     flops = torch.numel(input) * (2 if has_affine else 1)
     return flops, 0
 
+
 def _layer_norm_flops_compute(
     input: Tensor,
     normalized_shape: List[int],
@@ -622,13 +634,16 @@ def _layer_norm_flops_compute(
     # estimation
     return torch.numel(input) * (5 if has_affine else 4), 0
 
-def _group_norm_flops_compute(
-    input: Tensor, num_groups: int, weight: Optional[Tensor] = None, bias: Optional[Tensor] = None, eps: float = 1e-5
 
-):
+def _group_norm_flops_compute(input: Tensor,
+                              num_groups: int,
+                              weight: Optional[Tensor] = None,
+                              bias: Optional[Tensor] = None,
+                              eps: float = 1e-5):
     has_affine = weight is not None
     # estimation
     return torch.numel(input) * (5 if has_affine else 4), 0
+
 
 def _instance_norm_flops_compute(
     input: Tensor,
@@ -689,7 +704,8 @@ def _matmul_flops_compute(input, other, *, out=None):
     Count flops for the matmul operation.
     """
     macs = _prod(input.shape) * other.shape[-1]
-    return 2 * macs , macs
+    return 2 * macs, macs
+
 
 def _addmm_flops_compute(input, mat1, mat2, *, beta=1, alpha=1, out=None):
     """
@@ -697,6 +713,7 @@ def _addmm_flops_compute(input, mat1, mat2, *, beta=1, alpha=1, out=None):
     """
     macs = _prod(mat1.shape) * mat2.shape[-1]
     return 2 * macs + _prod(input.shape), macs
+
 
 def _einsum_flops_compute(equation, *operands):
     """
@@ -720,12 +737,14 @@ def _einsum_flops_compute(equation, *operands):
             return flop, 0
     raise NotImplementedError("Unsupported einsum operation.")
 
+
 def _tensor_addmm_flops_compute(self, mat1, mat2, *, beta=1, alpha=1, out=None):
     """
     Count flops for the tensor addmm operation.
     """
     macs = _prod(mat1.shape) * mat2.shape[-1]
     return 2 * macs + _prod(self.shape), macs
+
 
 def _elementwise_flops_compute(input, other, *, out=None):
     if not torch.is_tensor(input):
@@ -750,6 +769,7 @@ def _elementwise_flops_compute(input, other, *, out=None):
                 final_shape.append(ot_i)
         flops = _prod(final_shape)
         return flops, 0
+
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
@@ -822,6 +842,7 @@ def _patch_functionals():
     # embedding
     F.embedding = wrapFunc(F.embedding, _embedding_flops_compute)
 
+
 def _patch_tensor_methods():
     torch.matmul = wrapFunc(torch.matmul, _matmul_flops_compute)
     torch.Tensor.matmul = wrapFunc(torch.Tensor.matmul, _matmul_flops_compute)
@@ -840,6 +861,7 @@ def _patch_tensor_methods():
     torch.Tensor.add = wrapFunc(torch.Tensor.add, _elementwise_flops_compute)
 
     torch.einsum = wrapFunc(torch.einsum, _einsum_flops_compute)
+
 
 def _reload_functionals():
     # torch.nn.functional does not support importlib.reload()
@@ -873,8 +895,10 @@ def _reload_functionals():
     F.softmax = old_functions[F.softmax.__name__]
     F.embedding = old_functions[F.embedding.__name__]
 
+
 def _reload_tensor_methods():
     torch.matmul = old_functions[torch.matmul.__name__]
+
 
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
     # matrix matrix mult ih state and internal state
@@ -988,6 +1012,7 @@ def macs_to_string(macs, units=None, precision=2):
         else:
             return str(macs) + " MACs"
 
+
 def number_to_string(num, units=None, precision=2):
     if units is None:
         if num // 10**9 > 0:
@@ -1079,12 +1104,14 @@ def get_module_flops(module):
         sum += get_module_flops(child)
     return sum
 
+
 def get_module_macs(module):
     sum = module.__macs__
     # iterate over immediate children modules
     for child in module.children():
         sum += get_module_macs(child)
     return sum
+
 
 def get_module_duration(module):
     duration = module.__duration__
