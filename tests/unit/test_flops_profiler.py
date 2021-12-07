@@ -6,6 +6,13 @@ from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_f
 from common import distributed_test
 
 
+def within_range(val, target, tolerance):
+    return (val - target) < tolerance
+
+
+TOLERANCE = 0.05
+
+
 def test_flops_profiler_in_ds_training(tmpdir):
     config_dict = {
         "train_batch_size": 1,
@@ -49,7 +56,7 @@ def test_flops_profiler_in_ds_training(tmpdir):
             model.backward(loss)
             model.step()
             if n == 3: break
-        assert model.flops_profiler.flops == 200
+        assert within_range(model.flops_profiler.flops, 200, tolerance=TOLERANCE)
         assert model.flops_profiler.params == 110
 
     _test_flops_profiler_in_ds_training(args, model, hidden_dim)
@@ -107,10 +114,10 @@ def test_flops_profiler_in_inference():
         module_depth=-1,
         top_modules=3,
         warm_up=1,
-        as_string=True,
+        as_string=False,
         ignore_modules=None,
     )
     print(flops, macs, params)
-    assert flops == "866.08 M"
-    assert macs == "426.52 MMACs"
-    assert params == "61.71 k"
+    assert within_range(flops, 866076672, TOLERANCE)
+    assert within_range(macs, 426516480, TOLERANCE)
+    assert params == 61706
