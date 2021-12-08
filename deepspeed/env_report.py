@@ -106,21 +106,17 @@ def parse_arguments():
     parser.add_argument(
         '--hide_operator_status',
         action='store_true',
-        help='Suppress display of installation and compatiblity statuses of DeepSpeed operators. '
+        help=
+        'Suppress display of installation and compatiblity statuses of DeepSpeed operators. '
     )
-    parser.add_argument(
-        '--hide_errors_and_warnings',
-        action='store_true',
-        help='Suppress warning and error messages.'
-    )
+    parser.add_argument('--hide_errors_and_warnings',
+                        action='store_true',
+                        help='Suppress warning and error messages.')
     args = parser.parse_args()
     return args
 
 
-def main(
-    hide_operator_status=False,
-    hide_errors_and_warnings=False
-    ):
+def main(hide_operator_status=False, hide_errors_and_warnings=False):
     if not hide_operator_status:
         op_report(verbose=not hide_errors_and_warnings)
     debug_report()
@@ -128,10 +124,9 @@ def main(
 
 def cli_main():
     args = parse_arguments()
-    main(
-        hide_operator_status=args.hide_operator_status,
-        hide_errors_and_warnings=args.hide_errors_and_warnings
-    )
+    main(hide_operator_status=args.hide_operator_status,
+         hide_errors_and_warnings=args.hide_errors_and_warnings)
+
 
 if __name__ == "__main__":
     main()
