@@ -480,10 +480,10 @@ class EltwiseMultiplicationModule(Module):
 class EltwiseMultiplicationTestNetwork(Module):
     """used for testing purposes"""
     def __init__(
-            self,
-            weight1: Parameter,
-            weight2: Parameter,
-            weight3: Parameter,
+        self,
+        weight1: Parameter,
+        weight2: Parameter,
+        weight3: Parameter,
     ) -> None:
         super().__init__()
         self.__layer1 = EltwiseMultiplicationModule(weight1)
@@ -547,12 +547,12 @@ class EltwiseMultiplicationTestNetwork(Module):
 @pytest.mark.parametrize("zero_grad", [True, False])
 @pytest.mark.parametrize("iteration", list(range(1)))
 def test_zero3_param_partitioning_base(
-        param_persistence_threshold: int,
-        fp16_enabled: bool,
-        contiguous_gradients: bool,
-        offload_optimizer: bool,
-        zero_grad: bool,
-        iteration: int,
+    param_persistence_threshold: int,
+    fp16_enabled: bool,
+    contiguous_gradients: bool,
+    offload_optimizer: bool,
+    zero_grad: bool,
+    iteration: int,
 ) -> None:
     @distributed_test(world_size=[2])
     def _test_zero3_param_partitioning():
@@ -991,11 +991,11 @@ def test_zero3_init_for_parent_weight_initialization(world_sz):
 @pytest.mark.parametrize("zero_grad", [True])
 @pytest.mark.parametrize("iteration", list(range(1)))
 def test_zero3_param_partitioning_base_bf16(
-        param_persistence_threshold: int,
-        contiguous_gradients: bool,
-        offload_optimizer: bool,
-        zero_grad: bool,
-        iteration: int,
+    param_persistence_threshold: int,
+    contiguous_gradients: bool,
+    offload_optimizer: bool,
+    zero_grad: bool,
+    iteration: int,
 ) -> None:
     @distributed_test(world_size=[2])
     def _test_zero3_param_partitioning():

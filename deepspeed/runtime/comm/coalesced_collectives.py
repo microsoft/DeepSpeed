@@ -41,8 +41,8 @@ else:
 @instrument_w_nvtx
 @torch.no_grad()
 def reduce_scatter_coalesced(
-        tensors: List[Tensor],
-        group: ProcessGroup = None,
+    tensors: List[Tensor],
+    group: ProcessGroup = None,
 ) -> List[Tensor]:
     """simultaneously reduce-scatter a list of tensors - this can be done more
     efficiently than individual reduce scatter calls

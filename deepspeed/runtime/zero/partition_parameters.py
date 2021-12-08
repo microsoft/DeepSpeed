@@ -494,11 +494,11 @@ class AllGatherHandle:
 
 class AllGatherCoalescedHandle:
     def __init__(
-            self,
-            allgather_handle,
-            params: List[Parameter],
-            partitions: List[Tensor],
-            world_size: int,
+        self,
+        allgather_handle,
+        params: List[Parameter],
+        partitions: List[Tensor],
+        world_size: int,
     ) -> None:
         self.__allgather_handle = allgather_handle
         self.__params = params

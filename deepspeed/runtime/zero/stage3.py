@@ -189,12 +189,12 @@ class PartitionedParameterCoordinator:
         step_id_last_used_at: int
 
     def __init__(
-            self,
-            prefetch_bucket_sz: int,
-            max_reuse_distance_in_numel: int,
-            max_available_parameters_in_numel: int,
-            allgather_stream: Stream,
-            prefetch_nvme: bool = False,
+        self,
+        prefetch_bucket_sz: int,
+        max_reuse_distance_in_numel: int,
+        max_available_parameters_in_numel: int,
+        allgather_stream: Stream,
+        prefetch_nvme: bool = False,
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = __class__.__InflightParamRegistry()
@@ -491,7 +491,6 @@ class PartitionedParameterCoordinator:
             swap_in_params[0].nvme_swapper.swap_in(swap_in_params, async_op=True)
 
 
-
 class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
@@ -536,7 +535,6 @@ class PostBackwardFunction(torch.autograd.Function):
             ctx.pre_backward_function(ctx.module)
             #print(f"After Backward: {ctx.module.__class__.__name__}")
         return (None, None) + args
-
 
 
 class FP16_DeepSpeedZeroOptimizer_Stage3(object):
@@ -1813,7 +1811,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def overlapping_partition_gradients_reduce_epilogue(self):
         self.independent_gradient_partition_epilogue()
 
-
     def create_reduce_and_remove_grad_hooks(self):
         print_rank_0(f'[Begin] Create gradient reduction hooks')
         self.grad_accs = []
@@ -1962,7 +1959,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         return grad_partitions_for_rank
 
-
     def set_grad_positions(self):
         for i, group in enumerate(self.fp16_groups):
             current_offset = 0
@@ -2028,7 +2024,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             total_norm = -1
 
         return total_norm
-
 
     @instrument_w_nvtx
     def __partition_grads(self,
@@ -2106,7 +2101,6 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     parameter=self.fp32_partitioned_groups_flat[i],
                     gradient_offsets=offload_fp32_offsets[i],
                     gradient_tensors=offload_fp32_gradients[i])
-
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
@@ -2597,8 +2591,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.optimizer_swapper.swap_out_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
-            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id] is
-            not None)
+            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id]
+            is not None)
 
         self.stop_timers([OPTIMIZER_SWAP_OUT_STATE])
         see_memory_usage(
