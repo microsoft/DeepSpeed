@@ -7,7 +7,7 @@ from common import distributed_test
 
 
 def within_range(val, target, tolerance):
-    return (val - target) < tolerance
+    return abs(val - target) < tolerance
 
 
 TOLERANCE = 0.05

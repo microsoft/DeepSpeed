@@ -261,6 +261,7 @@ class FlopsProfiler(object):
         total_params = self.get_total_params()
 
         self.flops = total_flops
+        self.macs = total_macs
         self.params = total_params
 
         print(
@@ -337,7 +338,7 @@ class FlopsProfiler(object):
             items = [
                 params_to_string(params),
                 "{:.2%} Params".format(params / total_params),
-                macs_to_string(flops),
+                macs_to_string(macs),
                 "{:.2%} MACs".format(0.0 if total_macs == 0 else macs / total_macs),
             ]
             duration = get_module_duration(module)
