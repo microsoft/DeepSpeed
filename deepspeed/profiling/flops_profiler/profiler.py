@@ -809,7 +809,8 @@ def _patch_functionals():
     F.elu = wrapFunc(F.elu, _elu_flops_compute)
     F.leaky_relu = wrapFunc(F.leaky_relu, _leaky_relu_flops_compute)
     F.relu6 = wrapFunc(F.relu6, _relu6_flops_compute)
-    F.silu = wrapFunc(F.silu, _silu_flops_compute)
+    if hasattr(F, "silu"):
+        F.silu = wrapFunc(F.silu, _silu_flops_compute)
     F.gelu = wrapFunc(F.gelu, _gelu_flops_compute)
 
     # Normalizations
