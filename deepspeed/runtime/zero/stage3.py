@@ -39,6 +39,7 @@ from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedO
 pg_correctness_test = False
 
 FWD_MODULE_STACK = list()
+from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
 def print_rank_0(message, debug=False, force=False):
@@ -490,6 +491,7 @@ class PartitionedParameterCoordinator:
             swap_in_params[0].nvme_swapper.swap_in(swap_in_params, async_op=True)
 
 
+
 class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
@@ -536,6 +538,7 @@ class PostBackwardFunction(torch.autograd.Function):
         return (None, None) + args
 
 
+
 class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
@@ -570,7 +573,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                  sub_group_size=1000000000000,
                  mpu=None,
                  clip_grad=0.0,
-                 allreduce_always_fp32=False,
+                 communication_data_type=torch.float16,
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
@@ -690,11 +693,16 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.overflow = False
         self.clip_grad = clip_grad
-        self.allreduce_always_fp32 = allreduce_always_fp32
+        self.communication_data_type = communication_data_type
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = 0
+
+        if self.reduce_scatter:
+            assert self.communication_data_type in (torch.float16, torch.bfloat16), f"ZeRO-3 supports only float16 or bfloat16 communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
+            assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-2 with reduce scatter enabled"
+            assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-2 with reduce scatter enabled"
 
         # Holds the mode parameter
         # The param.data may not hold any meaningful data
@@ -804,6 +812,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.extra_large_param_to_reduce = None
         self.grads_in_ipg_bucket = []
         self.params_in_ipg_bucket = []
+
         self.params_already_reduced = []
         self.is_gradient_accumulation_boundary = True
         self._release_ipg_buffers()
@@ -1195,6 +1204,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                         print_rank_0(
                             f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elements {flat_offset + total_elements}",
                             force=False)
+
                     elif self.params_in_nvme_and_cpu:
                         fp16_partitioned_group_flat = None
                         print_rank_0(
@@ -1803,6 +1813,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
     def overlapping_partition_gradients_reduce_epilogue(self):
         self.independent_gradient_partition_epilogue()
 
+
     def create_reduce_and_remove_grad_hooks(self):
         print_rank_0(f'[Begin] Create gradient reduction hooks')
         self.grad_accs = []
@@ -1951,6 +1962,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         return grad_partitions_for_rank
 
+
     def set_grad_positions(self):
         for i, group in enumerate(self.fp16_groups):
             current_offset = 0
@@ -2016,6 +2028,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             total_norm = -1
 
         return total_norm
+
 
     @instrument_w_nvtx
     def __partition_grads(self,
@@ -2094,6 +2107,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     gradient_offsets=offload_fp32_offsets[i],
                     gradient_tensors=offload_fp32_gradients[i])
 
+
     def reduce_ready_partitions_and_remove_grads(self, param, i):
         #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
@@ -2166,17 +2180,21 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     ######################Reduction Related Methods##############################
 
-    def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
+    def allreduce_bucket(self,
+                         bucket,
+                         communication_data_type=torch.float16,
+                         rank=None,
+                         log=None):
         rank = None
         tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
         if pg_correctness_test:
-            allreduce_always_fp32 = True
+            communication_data_type = torch.float32
 
-        if allreduce_always_fp32:
-            tensor_to_allreduce = tensor.float()
+        if communication_data_type != tensor.dtype:
+            tensor_to_allreduce = tensor.to(communication_data_type)
 
         tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
 
@@ -2187,7 +2205,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             global_rank = _get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
-        if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
+        if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
                 tensor.copy_(tensor_to_allreduce)
 
@@ -2216,6 +2234,20 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 small_bucket = []
         if len(small_bucket) > 0:
             self.allreduce_and_copy(small_bucket, rank=rank, log=log)
+
+    # allows using reduction of gradients instead of using all_reduce
+    def buffered_reduce_fallback(self,
+                                 rank,
+                                 grads,
+                                 elements_per_buffer=500000000,
+                                 log=None):
+        split_buckets = split_half_float_double(grads)
+
+        for i, bucket in enumerate(split_buckets):
+            self.allreduce_no_retain(bucket,
+                                     numel_per_bucket=elements_per_buffer,
+                                     rank=rank,
+                                     log=log)
 
     #############################################################################
     #############################################################################

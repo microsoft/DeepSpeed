@@ -2,6 +2,7 @@ import numpy as np
 import deepspeed
 import pytest
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
+
 from .common import distributed_test
 from .simple_model import SimpleModel, PLD_SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 
