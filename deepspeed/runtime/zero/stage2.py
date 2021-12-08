@@ -2040,7 +2040,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
     def _partition_base_optimizer_state(self, state_key, all_partition_states, group_id):
         partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
         alignment = dist.get_world_size(group=self.real_dp_process_group[group_id])
-        if torch.is_tensor(all_partition_states[0]):
+        if torch.is_tensor(all_partition_states[0]) and 'qmap' not in state_key:
             flat_merged_partitions = self.flatten_dense_tensors_aligned(
                 all_partition_states,
                 alignment)
