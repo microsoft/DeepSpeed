@@ -16,7 +16,7 @@ from torch.autograd import Variable
 
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter, DummyOptim
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
@@ -626,7 +626,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                  sub_group_size=1000000000000,
                  mpu=None,
                  clip_grad=0.0,
-                 allreduce_always_fp32=False,
+                 communication_data_type=torch.float16,
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
@@ -737,14 +737,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.overflow = False
         self.clip_grad = clip_grad
-        self.allreduce_always_fp32 = allreduce_always_fp32
+        self.communication_data_type = communication_data_type
         self.gradient_predivide_factor = gradient_predivide_factor
         self.postscale_gradients = postscale_gradients
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.micro_step_id = INITIAL_MICRO_STEP_ID
 
         if self.reduce_scatter:
-            assert not self.allreduce_always_fp32, "allreduce_always_fp32 is not yet supported with ZeRO-2 with reduce scatter enabled"
+            assert self.communication_data_type in (torch.float16, torch.bfloat16), f"ZeRO-3 supports only float16 or bfloat16 communication_data_type with reduce scatter enabled. Got: '{self.communication_data_type}'"
             assert self.gradient_predivide_factor == 1.0, "gradient_predivide_factor != 1.0 is not yet supported with ZeRO-2 with reduce scatter enabled"
             assert self.postscale_gradients, "pre-scale gradients is not yet supported with ZeRO-2 with reduce scatter enabled"
 
@@ -792,15 +792,18 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self._configure_tensor_swapping(offload_optimizer_config, aio_config)
 
         see_memory_usage("Before creating fp32 partitions", force=False)
-        self._create_fp32_partitions()
+        if not isinstance(self.optimizer, DummyOptim):
+            self._create_fp32_partitions()
         see_memory_usage("After creating fp32 partitions", force=False)
         dist.barrier()
 
         # To support pipelined optimizer swapping
-        self._create_next_swappable_fp32_groups()
+        if not isinstance(init_optimizer, DummyOptim):
+            self._create_next_swappable_fp32_groups()
 
         see_memory_usage("Before initializing optimizer states", force=False)
-        self.initialize_optimizer_states()
+        if not isinstance(init_optimizer, DummyOptim):
+            self.initialize_optimizer_states()
         see_memory_usage("After initializing optimizer states", force=False)
         dist.barrier()
 
@@ -920,7 +923,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         ###################### offload param setup ##################################
         if offload_param_config is not None:
-            assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
+            if not isinstance(self.optimizer, DummyOptim):
+                assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
             self.offload_param = True
             self.offload_param_pin_memory = offload_param_config[
                 OFFLOAD_PARAM_PIN_MEMORY]
@@ -1983,8 +1987,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         tensor_to_allreduce = tensor
 
-        if self.allreduce_always_fp32:
-            tensor_to_allreduce = tensor.float()
+        if self.communication_data_type != tensor.dtype:
+            tensor_to_allreduce = tensor.to(self.communication_data_type)
 
         if self.postscale_gradients:
             if self.gradient_predivide_factor != 1.0:
@@ -1998,7 +2002,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             tensor_to_allreduce.div_(dp_world_size)
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
-        if self.allreduce_always_fp32 and tensor is not tensor_to_allreduce:
+        if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor
@@ -2323,17 +2327,21 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     ######################Reduction Related Methods##############################
 
-    def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
+    def allreduce_bucket(self,
+                         bucket,
+                         communication_data_type=torch.float16,
+                         rank=None,
+                         log=None):
         rank = None
         tensor = self.flatten(bucket)
 
         tensor_to_allreduce = tensor
 
         if pg_correctness_test:
-            allreduce_always_fp32 = True
+            communication_data_type = torch.float32
 
-        if allreduce_always_fp32:
-            tensor_to_allreduce = tensor.float()
+        if communication_data_type != tensor.dtype:
+            tensor_to_allreduce = tensor.to(communication_data_type)
 
         tensor_to_allreduce.div_(dist.get_world_size(group=self.dp_process_group))
 
@@ -2344,7 +2352,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             global_rank = _get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
-        if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
+        if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
                 tensor.copy_(tensor_to_allreduce)
 
@@ -2725,8 +2733,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.optimizer_swapper.swap_out_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
-            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id] is
-            not None)
+            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id]
+            is not None)
 
         self.stop_timers([OPTIMIZER_SWAP_OUT_STATE])
         see_memory_usage(

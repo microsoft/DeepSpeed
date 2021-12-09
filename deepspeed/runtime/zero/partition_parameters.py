@@ -369,10 +369,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             remote_device (string, optional): The initial device to store model
                 weights e.g., ``cpu``, ``nvme``. Passing ``"cpu"`` will create the model in CPU
                 memory. The model may still be moved to GPU based on the
-                offload settings for training. Defaults to the local GPU.
+                offload settings for training. Defaults to param offload device if a config is
+                defined, otherwise GPU.
             pin_memory (bool, optional): Potentially increase performance by
                 using pinned memory for model weights. ``remote_device`` must be
-                ``"cpu"``. Defaults to ``False``.
+                ``"cpu"``. Defaults to pin_memory value in config, otherwise ``False``.
             config_dict_or_path (dict or ``json file``, optional): If provided, provides configuration
                 for swapping fp16 params to NVMe.
             config (dict or ``json file``, optional): Deprecated, use config_dict_or_path instead.
@@ -474,17 +475,22 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.rank = torch.distributed.get_rank(group=self.ds_process_group)
         self.world_size = torch.distributed.get_world_size(group=self.ds_process_group)
 
-        # Local device is the device where the parameters are consumed
+        # Local device is the device where the parameters are consumed, must be default device.
         # It is the device where parameters are fully instantiated using allgather
         self.local_device = torch.device('cuda:{}'.format(os.environ["LOCAL_RANK"]))
+        torch.cuda.set_device(self.local_device)
+
+        if _ds_config is not None and _ds_config.zero_config.offload_param is not None:
+            remote_device = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_DEVICE]
+            pin_memory = _ds_config.zero_config.offload_param[OFFLOAD_PARAM_PIN_MEMORY]
 
         self._validate_remote_device(remote_device, _ds_config)
 
         # Remote device is the device where parameter partiitons are stored
         # It can be same as local_device or it could be CPU or NVMe.
         self.remote_device = self.local_device if remote_device is None else remote_device
-        self.pin_memory = pin_memory if (
-            self.remote_device == OFFLOAD_CPU_DEVICE) else False
+        self.pin_memory = pin_memory if (self.remote_device
+                                         == OFFLOAD_CPU_DEVICE) else False
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OFFLOAD_NVME_DEVICE:
@@ -778,9 +784,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partitioned_tensor = torch.empty(
                         partition_size,
                         dtype=param.dtype,
-                        device=OFFLOAD_CPU_DEVICE
-                        if self.remote_device == OFFLOAD_NVME_DEVICE else
-                        self.remote_device)
+                        device=OFFLOAD_CPU_DEVICE if self.remote_device
+                        == OFFLOAD_NVME_DEVICE else self.remote_device)
                     if self.pin_memory:
                         partitioned_tensor = partitioned_tensor.pin_memory()
 
