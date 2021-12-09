@@ -8,12 +8,14 @@ from common import distributed_test
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
-pytestmark = pytest.mark.skipif(
-    TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
-    reason='requires Pytorch version 1.3 or above')
+pytestmark = pytest.mark.skipif(TORCH_MAJOR < 1
+                                or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
+                                reason='requires Pytorch version 1.3 or above')
+
 
 def within_range(val, target, tolerance):
-    return abs(val - target)/target < tolerance
+    return abs(val - target) / target < tolerance
+
 
 TOLERANCE = 0.05
 
