@@ -1327,7 +1327,7 @@ class DeepSpeedEngine(Module):
 
         if self.zero_legacy_stage1():
             raise Exception(
-                "If you must use the deprecated version of zero stage 1 please revert an an older version of deepspeed (<= 0.5.8)."
+                "The deprecated version of ZeRO Stage 1 is not supported in deepspeed >= 0.5.9. Please downgrade to a version less than 0.5.9 if you need to use this deprecated version of ZeRO."
             )
 
         if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
