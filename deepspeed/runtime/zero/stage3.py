@@ -678,6 +678,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.timers = timers
 
+        self.reduce_scatter = reduce_scatter
+
         self.dp_process_group = dp_process_group
 
         self.partition_count = dist.get_world_size(group=self.dp_process_group)
