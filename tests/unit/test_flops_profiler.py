@@ -1,14 +1,19 @@
 import torch
+import pytest
 import deepspeed
 import deepspeed.runtime.utils as ds_utils
 from deepspeed.profiling.flops_profiler import FlopsProfiler, get_model_profile
 from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 from common import distributed_test
 
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
+pytestmark = pytest.mark.skipif(
+    TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 3),
+    reason='requires Pytorch version 1.3 or above')
 
 def within_range(val, target, tolerance):
-    return abs(val - target) < tolerance
-
+    return abs(val - target)/target < tolerance
 
 TOLERANCE = 0.05
 
