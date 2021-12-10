@@ -24,10 +24,10 @@ do. The Megatron-Turing NLG 530B model took 3 months to train on over 2K A100
 GPUs on the NVIDIA Selene Supercomputer, consuming over 3 million GPU hours.
 Another 3 to 5 times of increase in model size would be infeasible within a
 reasonable timeframe.  Given the exorbitant compute resources required to train
-the state-of-art NLG models, a natural question to ask is: “Is it possible to
+the state-of-art NLG models, a natural question to ask is: "Is it possible to
 make non-trivial improvement to model quality without increasing the compute
-cost?”  Or equivalently, “Is it possible to produce model with similar quality
-using 3 to 5 times less resources?”
+cost?"  Or equivalently, "Is it possible to produce model with similar quality
+using 3 to 5 times less resources?"
 
 Recent works like [GShard](https://arxiv.org/abs/2006.16668) and [Switch
 Transformers](https://arxiv.org/abs/2101.03961) have shown that Mixture of
@@ -61,7 +61,7 @@ To create an MoE based NLG model we studied the GPT like transformer-based NLG
 model. To complete training in a reasonable timeframe, the following models are
 selected: 350M (24 layers, 1024 hidden size, 16 attention heads), 1.3B (24
 layers, 2048 hidden size, 16 attention heads), and 6.7B (32 layers, 4096 hidden
-size, 32 attention heads). We use “350M+MoE-128” to denote a standard MoE model
+size, 32 attention heads). We use "350M+MoE-128" to denote a MoE model
 that uses 350M dense model as the base model and adds 128 experts on every
 other feedforward layer.  That is to say, there are in total 12 MoE layers for
 both 350M+MoE-128 and 1.3B+MoE-128. 
@@ -99,15 +99,15 @@ demonstrating that these models in fact have very similar model quality.
 
 Figure 1: Token-wise validation loss curves for dense and MoE NLG models with different model sizes.
 
-Case | Model size | LAMBADA: completion prediction | PIQA: commonsense reasoning | BoolQ: reading comprehension | RACE-h: reading comprehension | TriviaQA: question answering | WebQs: question answering
---- | ---: | ---: | ---: | ---: | ---: | ---: | ---:
+Model size | LAMBADA: completion prediction | PIQA: commonsense reasoning | BoolQ: reading comprehension | RACE-h: reading comprehension | TriviaQA: question answering | WebQs: question answering
+---: | ---: | ---: | ---: | ---: | ---: | ---:
 | **Dense NLG:** | | | | | | |
-| (1) 350M | 350M | 0.5203 | 0.6931 | 0.5364 | 0.3177 | 0.0321 | 0.0157 |
-| (2) 1.3B | 1.3B | 0.6365 | 0.7339 | 0.6339 | 0.3560 | 0.1005 | 0.0325 |
-| (3) 6.7B | 6.7B | 0.7194 | 0.7671 | 0.6703 | 0.3742 | 0.2347 | 0.0512 |
+| 350M | 0.5203 | 0.6931 | 0.5364 | 0.3177 | 0.0321 | 0.0157 |
+| 1.3B | 0.6365 | 0.7339 | 0.6339 | 0.3560 | 0.1005 | 0.0325 |
+| 6.7B | 0.7194 | 0.7671 | 0.6703 | 0.3742 | 0.2347 | 0.0512 |
 | **MoE NLG:** | | | | | | |
-| (4) 350M+MoE-128 | 13B | 0.6270 | 0.7459 | 0.6046 | 0.3560 | 0.1658 | 0.0517 |
-| (5) 1.3B+MoE-128 | 52B | 0.6984 | 0.7671 | 0.6492 | 0.3809 | 0.3129 | 0.0719 |
+| 350M+MoE-128 (13B) | 0.6270 | 0.7459 | 0.6046 | 0.3560 | 0.1658 | 0.0517 |
+| 1.3B+MoE-128 (52B) | 0.6984 | 0.7671 | 0.6492 | 0.3809 | 0.3129 | 0.0719 |
 
 Table 1: Zero-shot evaluation results (last six columns) for different dense and MoE NLG models. All zero-shot evaluation results use the accuracy metric.
 
