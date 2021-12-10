@@ -95,11 +95,19 @@ Furthermore, the model quality is on par not only for the validation loss but
 also for a wide variety of 6 zero-shot evaluation tasks as shown in Table 1,
 demonstrating that these models in fact have very similar model quality.
 
-<!-- insert image here -->
+![MoE NLG](/assets/images/moe-nlg.png){: .align-center}
 
 Figure 1: Token-wise validation loss curves for dense and MoE NLG models with different model sizes.
 
-<!-- insert table here -->
+Case | Model size | LAMBADA: completion prediction | PIQA: commonsense reasoning | BoolQ: reading comprehension | RACE-h: reading comprehension | TriviaQA: question answering | WebQs: question answering
+--- | ---: | ---: | ---: | ---: | ---: | ---: | ---:
+| **Dense NLG:** | | | | | | |
+| (1) 350M | 350M | 0.5203 | 0.6931 | 0.5364 | 0.3177 | 0.0321 | 0.0157 |
+| (2) 1.3B | 1.3B | 0.6365 | 0.7339 | 0.6339 | 0.3560 | 0.1005 | 0.0325 |
+| (3) 6.7B | 6.7B | 0.7194 | 0.7671 | 0.6703 | 0.3742 | 0.2347 | 0.0512 |
+| **MoE NLG:** | | | | | | |
+| (4) 350M+MoE-128 | 13B | 0.6270 | 0.7459 | 0.6046 | 0.3560 | 0.1658 | 0.0517 |
+| (5) 1.3B+MoE-128 | 52B | 0.6984 | 0.7671 | 0.6492 | 0.3809 | 0.3129 | 0.0719 |
 
 Table 1: Zero-shot evaluation results (last six columns) for different dense and MoE NLG models. All zero-shot evaluation results use the accuracy metric.
 
@@ -123,7 +131,10 @@ training time and training cost reduction by leveraging the efficient DeepSpeed
 MoE training system. Table 2 shows the training throughput of the 1.3B+MoE-128
 model in comparison to the 6.7B dense model on 128 NVIDIA A100 GPUs.
 
-<!-- add table here -->
+| | Training samples per sec | Throughput gain / Cost Reduction
+| --- | ---: | ---:
+| 6.7B dense | 70 | 1x
+| 1.3B+MoE-128 | 372 | 5x
 
 Table 2: Training throughput (on 128 A100 GPUs) comparing MoE based model vs dense model that can both achieve the same model quality.
 
