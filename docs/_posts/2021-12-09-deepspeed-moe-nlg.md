@@ -64,7 +64,7 @@ layers, 2048 hidden size, 16 attention heads), and 6.7B (32 layers, 4096 hidden
 size, 32 attention heads). We use "350M+MoE-128" to denote a MoE model
 that uses 350M dense model as the base model and adds 128 experts on every
 other feedforward layer.  That is to say, there are in total 12 MoE layers for
-both 350M+MoE-128 and 1.3B+MoE-128. 
+both 350M+MoE-128 and 1.3B+MoE-128.
 
 We use a gating function to activate a subset of experts in the MoE layer for
 each token. Specifically, in our experiments, only the top-1 expert is
@@ -84,7 +84,7 @@ the [MoE model training](https://www.microsoft.com/en-us/research/blog/deepspeed
 We used the same training data as described in the MT-NLG blog. For a fair
 comparison, we use 300B tokens to train both the dense model and the MoE model.
 
-## MoE leads to better quality for NLG models 
+## MoE leads to better quality for NLG models
 
 Figure 1 shows that the validation loss for the MoE versions of the model is
 significantly better than their dense counter parts. Furthermore, notice that
@@ -117,14 +117,14 @@ As we saw from the results above, adding MoE with 128 experts to the NLG model
 significantly improves the quality of the NLG model. However, these experts do
 not change the compute requirements of the model as each token is only
 processed by a single expert. Therefore, the compute requirements for dense
-model and its corresponding MoE models with the same base are similar. 
+model and its corresponding MoE models with the same base are similar.
 
 More concretely, a 1.3B+MoE-128  model training requires roughly the same
 amount of compute operations as 1.3B dense, while offering much better model
 quality. Furthermore, our results show that by applying MoE we can achieve the
 model quality of a 6.7B parameter dense model at the training cost of 1.3B
 parameter dense model, resulting in an effective training compute reduction of
-5x. 
+5x.
 
 This compute cost reduction can directly be translated into throughput gain,
 training time and training cost reduction by leveraging the efficient DeepSpeed
@@ -158,14 +158,14 @@ length or a non-unit batch size may require loading all the experts, increasing
 the total number of parameters loaded by 8x compared to the quality-equivalent
 dense model. Therefore, achieving good inference performance with MoE is still
 challenging even though the parameters used and the computation incurred per
-token is small compared to the quality-equivalent dense model. 
+token is small compared to the quality-equivalent dense model.
 
 Nonetheless, we believe that it is possible to use different forms of
 parallelism to leverage massive memory bandwidth by scaling across a large
 number of devices to speed up MoE inference, making it comparable or faster
 than quality-equivalent dense models for extended inference scenarios and
 creating opportunities to make MoE based models cost efficient for inference in
-addition to training. 
+addition to training.
 
 ## Conclusion and Release
 
@@ -173,14 +173,14 @@ We demonstrate that MoE based models can be applied to NLG task, reducing the
 training cost by 5x compared to dense, autoregressive transformer-based models
 like GPT-3 and MT-NLG 530B. Through MoE based low-cost training we hope to make
 high quality language models accessible to a broad audience, even with limited
-compute resources. 
+compute resources.
 
 To this end we are releasing our [end-to-end pipeline for training MoE based
 NLG models](https://github.com/microsoft/Megatron-DeepSpeed/tree/moe-training),
 along with [specific example
 scripts](https://github.com/microsoft/Megatron-DeepSpeed/tree/moe-training/examples/MoE)
 to help get started with our pipeline.  We look forward to the application and
-the innovations that this may bring to the deep learning community.  
+the innovations that this may bring to the deep learning community.
 
 ## Acknowledgement
 
