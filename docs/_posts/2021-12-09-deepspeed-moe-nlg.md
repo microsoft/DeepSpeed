@@ -7,8 +7,6 @@ new_post: false
 date: 2021-12-9 01:00:00
 ---
 
-# DeepSpeed-MoE for NLG: Reducing the training cost of language models by 5x
-
 Published on December 9, 2021
 
 [By DeepSpeed Team](https://www.microsoft.com/en-us/research/project/deepspeed/people/)
