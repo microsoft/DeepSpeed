@@ -50,8 +50,8 @@ model, thanks to the sparse structure of MoE.
 
 Assuming the scaling holds, the results have the potential to completely
 transform the large model training landscape in terms of cost. For example, a
-trillion-parameter model can be potentially trained at the cost of a 200B
-parameter (like GPT-3) sized MoE model, translating to millions of dollars in
+trillion-parameter dense model can be potentially trained at the cost of a 200B
+parameter (like GPT-3) sized dense model, translating to millions of dollars in
 training cost reduction and energy savings (Brown et al., 2020, Language models
 are few-shot learners).
 
