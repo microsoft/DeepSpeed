@@ -99,8 +99,8 @@ demonstrating that these models in fact have very similar model quality.
 
 Figure 1: Token-wise validation loss curves for dense and MoE NLG models with different model sizes.
 
-Model size | LAMBADA: completion prediction | PIQA: commonsense reasoning | BoolQ: reading comprehension | RACE-h: reading comprehension | TriviaQA: question answering | WebQs: question answering
----: | ---: | ---: | ---: | ---: | ---: | ---:
+| Model size | LAMBADA: completion prediction | PIQA: commonsense reasoning | BoolQ: reading comprehension | RACE-h: reading comprehension | TriviaQA: question answering | WebQs: question answering |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | **Dense NLG:** | | | | | | |
 | 350M | 0.5203 | 0.6931 | 0.5364 | 0.3177 | 0.0321 | 0.0157 |
 | 1.3B | 0.6365 | 0.7339 | 0.6339 | 0.3560 | 0.1005 | 0.0325 |
