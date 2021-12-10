@@ -1,6 +1,6 @@
 ---
 layout: single
-title: "DeepSpeed-MoE for NLG: Reducing the training cost of language models by 5x"
+title: "DeepSpeed-MoE for NLG: Reducing the training cost of language models by 5 times"
 excerpt: ""
 categories: news
 new_post: false
