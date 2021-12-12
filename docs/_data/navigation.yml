@@ -59,6 +59,8 @@ lnav:
         url: /docs/config-json/#activation-checkpointing
       - title: "Sparse Attention"
         url: /docs/config-json/#sparse-attention
+      - title: "Logging to TensorBoard"
+        url: /docs/config-json/#tensorboard-options
   - title: "Tutorials"
     url: /tutorials/
     children:
@@ -90,6 +92,8 @@ lnav:
         url: /tutorials/megatron/
       - title: "Mixture-of-Experts (MoE)"
         url: /tutorials/mixture-of-experts/
+      - title: "Mixture-of-Experts for NLG"
+        url: /tutorials/mixture-of-experts-nlg/
       - title: "Mixture-of-Quantization"
         url: /tutorials/MoQ-tutorial/
       - title: "One-Cycle Schedule"
