@@ -15,6 +15,15 @@ from pathlib import Path
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 
 
+def get_master_port():
+    master_port = os.environ.get('DS_TEST_PORT', '29503')
+    xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
+    if xdist_worker is not None:
+        xdist_worker_id = xdist_worker.replace('gw', '')
+        master_port = str(int(master_port) + int(xdist_worker_id))
+    return master_port
+
+
 def distributed_test(world_size=2, backend='nccl'):
     """A decorator for executing a function (e.g., a unit test) in a distributed manner.
     This decorator manages the spawning and joining of processes, initialization of
@@ -36,13 +45,7 @@ def distributed_test(world_size=2, backend='nccl'):
         def dist_init(local_rank, num_procs, *func_args, **func_kwargs):
             """Initialize torch.distributed and execute the user function. """
             os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = os.environ.get('DS_TEST_PORT', '29503')
-            xdist_worker = os.environ.get('PYTEST_XDIST_WORKER', None)
-            if xdist_worker is not None:
-                xdist_worker_id = xdist_worker.replace('gw', '')
-                os.environ['MASTER_PORT'] = str(
-                    int(os.environ['MASTER_PORT']) + int(xdist_worker_id))
-
+            os.environ['MASTER_PORT'] = get_master_port()
             os.environ['LOCAL_RANK'] = str(local_rank)
             # NOTE: unit tests don't support multi-node so local_rank == global rank
             os.environ['RANK'] = str(local_rank)
