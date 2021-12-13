@@ -378,7 +378,7 @@ def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_si
                                               model_parameters=model.parameters())
         else:
             with pytest.raises(AssertionError) as assertinfo:
-                model, _, _, _ = deepspeed.initialize(args=args,
+                model, _, _, _ = deepspeed.initialize(config=config_dict,
                                                   model=model,
                                                   model_parameters=model.parameters())
             assert "allgather_bucket_size must be a multiple of nccl_start_alignment_factor" in str(
