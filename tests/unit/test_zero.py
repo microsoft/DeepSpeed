@@ -284,7 +284,6 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
                     hidden = l(hidden)
                 return self.cross_entropy_loss(hidden, y)
 
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 3
 
         world_size = dist.get_world_size()
@@ -303,10 +302,10 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
         ]
         optim = torch.optim.SGD(optim_groups, lr=0.1)
 
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
+        model, _, _, _ = deepspeed.initialize(model=model,
                                               model_parameters=model.parameters(),
-                                              optimizer = optim,
+                                              optimizer=optim,
+                                              config=ds_config
         )
         data_loader = random_dataloader(model=model,
                                         total_samples=16,
