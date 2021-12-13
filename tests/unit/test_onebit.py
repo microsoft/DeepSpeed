@@ -853,6 +853,11 @@ def test_onebitlamb_fp16_pipeline(topo, tmpdir):
 def test_compressed_allreduce_basic(tmpdir):
     @distributed_test(world_size=[1, 2])
     def _test_compressed_allreduce_basic():
+        print("CUDA_VISIBLE_DEVICES=",
+              os.environ.get("CUDA_VISIBLE_DEVICES",
+                             False),
+              "rank=",
+              torch.distributed.get_rank())
         from deepspeed.runtime.comm.nccl import NcclBackend
         size = dist.get_world_size()
         rank = dist.get_rank()
