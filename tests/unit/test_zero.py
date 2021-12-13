@@ -58,14 +58,13 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
         }
     }
 
-    args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 4
 
     model = SimpleModel(hidden_dim=hidden_dim)
 
     @distributed_test(world_size=[1])
-    def _test_zero_unbalanced_gradients(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+    def _test_zero_unbalanced_gradients(model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -75,7 +74,7 @@ def test_zero_unbalanced_gradients(tmpdir, zero_stage):
 
         run_unbalanced_gradients(model, data_loader)
 
-    _test_zero_unbalanced_gradients(args=args, model=model, hidden_dim=hidden_dim)
+    _test_zero_unbalanced_gradients(model=model, hidden_dim=hidden_dim)
 
 
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
@@ -103,7 +102,6 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
         }
     }
 
-    args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 4
 
     class AlbertLikeModel(torch.nn.Module):
@@ -122,8 +120,8 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
     model = AlbertLikeModel(hidden_dim=hidden_dim)
 
     @distributed_test(world_size=[1])
-    def _test_zero3_repeat_forward_loop(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+    def _test_zero3_repeat_forward_loop(model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -136,7 +134,7 @@ def test_zero3_repeat_forward_loop(tmpdir, zero_stage):
             model.backward(loss)
             model.step()
 
-    _test_zero3_repeat_forward_loop(args=args, model=model, hidden_dim=hidden_dim)
+    _test_zero3_repeat_forward_loop(model=model, hidden_dim=hidden_dim)
 
 
 # testing the fix https://github.com/microsoft/DeepSpeed/pull/1227
@@ -189,7 +187,6 @@ def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
                     hidden = l(hidden)
                 return self.cross_entropy_loss(hidden, y)
 
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 3  # do not change
 
         world_size = dist.get_world_size()
@@ -197,7 +194,7 @@ def test_zero_to_fp32_1_param_group(tmpdir, zero_stage):
         n_layers = world_size * 2
         model = MyModel(hidden_dim=hidden_dim, n_layers=n_layers)
 
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -305,7 +302,7 @@ def test_zero_to_fp32_2_param_groups(tmpdir, zero_stage):
         model, _, _, _ = deepspeed.initialize(model=model,
                                               model_parameters=model.parameters(),
                                               optimizer=optim,
-                                              config=ds_config
+                                              config=config_dict
         )
         data_loader = random_dataloader(model=model,
                                         total_samples=16,
@@ -369,15 +366,14 @@ def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_si
         }
     }
 
-    args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 4
 
     model = SimpleModel(hidden_dim=hidden_dim)
 
     @distributed_test(world_size=[1])
-    def _test_incorrect_allgather_bucket_size(args, model, hidden_dim):
+    def _test_incorrect_allgather_bucket_size(model, hidden_dim):
         if allgather_bucket_size % 2 == 0:
-            model, _, _, _ = deepspeed.initialize(args=args,
+            model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         else:
@@ -388,7 +384,7 @@ def test_incorrect_allgather_bucket_size(tmpdir, zero_stage, allgather_bucket_si
             assert "allgather_bucket_size must be a multiple of nccl_start_alignment_factor" in str(
                 assertinfo)
 
-    _test_incorrect_allgather_bucket_size(args=args, model=model, hidden_dim=hidden_dim)
+    _test_incorrect_allgather_bucket_size(model=model, hidden_dim=hidden_dim)
 
 
 @pytest.mark.parametrize('zero_stage, world_size', [(2, 2), (2, 3), (2, 4)])
@@ -412,14 +408,13 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
         }
     }
 
-    args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 4
 
     model = SimpleModel(hidden_dim=hidden_dim)
 
     @distributed_test(world_size=world_size)
-    def _test_partition_nccl_alignment(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+    def _test_partition_nccl_alignment(model, hidden_dim):
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
 
@@ -433,4 +428,4 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
                 assert (partitioned_data.data_ptr() %
                         (2 * nccl_start_alignment_factor) == 0)
 
-    _test_partition_nccl_alignment(args=args, model=model, hidden_dim=hidden_dim)
+    _test_partition_nccl_alignment(model=model, hidden_dim=hidden_dim)
