@@ -1629,7 +1629,7 @@ class FP16_DeepSpeedZeroOptimizer(object):
 
             if dist.get_rank() == 0:
                 logger.info(
-                    "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                    "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                     "reducing to {}".format(dist.get_rank(),
                                             prev_scale,
                                             self.loss_scale))

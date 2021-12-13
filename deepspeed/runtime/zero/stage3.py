@@ -125,7 +125,7 @@ def _apply_forward_and_backward_to_tensors_only(module,
 
 
 class ZeROOrderedDict(OrderedDict):
-    def __init__(self, parent_module, *args, **kwargs):
+    def __init__(self, parent_module, grandparent_module, *args, **kwargs):
         """A replacement for ``collections.OrderedDict`` to detect external ZeRO params.
 
         Args:
@@ -134,6 +134,7 @@ class ZeROOrderedDict(OrderedDict):
 
         super().__init__(*args, **kwargs)
         self._parent_module = parent_module
+        self._grandparent_module = grandparent_module
         self._in_forward = False
 
     def __getitem__(self, key):
@@ -142,6 +143,23 @@ class ZeROOrderedDict(OrderedDict):
         # Params can be registered as None (e.g., bias)
         if param is None:
             return param
+
+        if not hasattr(param, 'ds_status'):
+            # Current param is not z3 managed, we need to find a param that is z3 managed
+            # either in the parent or grandparent modules in order to re-use its context
+            # to register the new param. High probability that we can find one in these two
+            # options but still possible this will fail if the user is replacing multiple
+            # modules at a time (which feels unlikely)
+            zero_params = [
+                p for p in self._parent_module.parameters() if is_zero_param(p)
+            ]
+            if len(zero_params) == 0 and self._grandparent_module is not None:
+                zero_params = [
+                    p for p in self._grandparent_module.parameters() if is_zero_param(p)
+                ]
+            assert len(zero_params) > 0, "unable to find a z3 managed param in parent or grandparent modules"
+            zero_params[0].convert_to_zero_parameters(param_list=[param])
+            PrefetchCoordinator.reset_trace = True
 
         if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
@@ -154,20 +172,26 @@ class ZeROOrderedDict(OrderedDict):
 
 
 def _inject_parameters(module, cls):
+    grandparent = None
     for module in module.modules():
         if cls == ZeROOrderedDict:
-            new_param = cls(parent_module=module)
+            new_param = cls(parent_module=module, grandparent_module=grandparent)
         else:
             new_param = cls()
 
         for key, param in module._parameters.items():
             new_param[key] = param
         module._parameters = new_param
+        grandparent = module
 
 
-# TODO Needs to be implemented
 class PrefetchCoordinator(object):
+    reset_trace = False
+
     def __init__(self):
+        self.reset_data_structures()
+
+    def reset_data_structures(self):
         # step_id keeps track of the number of sub-modules invoked so far
         # the step_id is tracking forward and backward sequence of sub-modules
         self.step_id = 0
@@ -2765,7 +2789,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         if torch.distributed.get_rank() == 0:
             logger.info(
-                "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
                                         prev_scale,
                                         self.loss_scale))
@@ -2791,6 +2815,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #Gathering persisting parameters
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].all_gather(self.persistent_parameters)
+
+        if PrefetchCoordinator.reset_trace:
+            PrefetchCoordinator.reset_trace = False
+            self.param_coordinator.prefetch_coordinator.reset_data_structures()
 
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
@@ -2851,6 +2879,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self.stop_timers(['optimizer_step'])
 
         self._post_step(timer_names)
+
         return
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
