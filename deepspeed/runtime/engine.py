@@ -22,8 +22,7 @@ from torch.distributed.distributed_c10d import _get_global_rank
 from typing import Callable, Dict, Optional, Union, Iterable
 
 from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
-from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
+from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import (
     is_zero_supported_optimizer,
@@ -212,6 +211,7 @@ class DeepSpeedEngine(Module):
         self.moe_layers = []
         self._step_applied = False
         self._global_grad_norm = None
+        self._is_gradient_accumulation_boundary = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -510,10 +510,10 @@ class DeepSpeedEngine(Module):
         return self._config.tensorboard_job_name
 
     def get_summary_writer(
-        self,
-        name="DeepSpeedJobName",
-        base=os.path.join(os.path.expanduser("~"),
-                          "tensorboard"),
+            self,
+            name="DeepSpeedJobName",
+            base=os.path.join(os.path.expanduser("~"),
+                              "tensorboard"),
     ):
         if self.tensorboard_output_path():
             base_dir = self.tensorboard_output_path()
@@ -741,8 +741,17 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
-    def allreduce_always_fp32(self):
-        return self._config.allreduce_always_fp32
+    @property
+    def communication_data_type(self):
+        res = self._config.communication_data_type
+        if res is not None:
+            return res
+        elif self.fp16_enabled() or self.zero_optimization_stage():
+            return torch.float16
+        elif self.bfloat16_enabled():
+            return torch.bfloat16
+
+        return torch.float32
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -1004,11 +1013,11 @@ class DeepSpeedEngine(Module):
             for _, module in self.module.named_modules():
                 if isinstance(module, TopKGate):
                     self.gate_modules.append(module)
-                    if self.wall_clock_breakdown:
+                    if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
                 if isinstance(module, MOELayer):
                     self.moe_layers.append(module)
-                    if self.wall_clock_breakdown:
+                    if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
 
         if not self.pipeline_parallelism:
@@ -1309,37 +1318,19 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
-        log_dist("Creating fp16 ZeRO stage {} optimizer".format(zero_stage), ranks=[0])
-        assert (
-            not self.allreduce_always_fp32()
-        ), "ZeRO does not support 'fp32_allreduce': true"
+        log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
+        assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
         if optimizer is None:
             optimizer = DummyOptim(list(self.module.parameters()))
 
-        if self.zero_legacy_stage1(
-        ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert not self.has_moe_layers, "MoE not supported with Stage 1"
-            assert not isinstance(optimizer, DummyOptim), "zero stage 1 requires an optimizer"
-
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
-                optimizer,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                all_gather_partitions=self.zero_allgather_partitions(),
-                allgather_size=self.zero_allgather_bucket_size(),
-                max_elements_per_comm=self.zero_reduce_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                elastic_checkpoint=self.zero_elastic_checkpoint(),
-                mpu=self.mpu,
-                postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_predivide=self.gradient_predivide,
+        if self.zero_legacy_stage1():
+            raise Exception(
+                "The deprecated version of ZeRO Stage 1 is not supported in deepspeed >= 0.5.9. Please downgrade to a version less than 0.5.9 if you need to use this deprecated version of ZeRO."
             )
-        elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
+
+        if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
             round_robin_gradients = self.zero_round_robin_gradients()
@@ -1358,7 +1349,7 @@ class DeepSpeedEngine(Module):
                     )
                     overlap_comm = False
 
-            optimizer = FP16_DeepSpeedZeroOptimizer(
+            optimizer = DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
                 static_loss_scale=self.loss_scale(),
@@ -1385,14 +1376,15 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
-                ))
+                ),
+                communication_data_type=self.communication_data_type)
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
             print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
-            from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
+            from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage3(
+            optimizer = DeepSpeedZeroOptimizer_Stage3(
                 self.module,
                 optimizer,
                 timers=timers,
@@ -1418,7 +1410,7 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 aio_config=self.aio_config(),
-            )
+                communication_data_type=self.communication_data_type)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -1561,8 +1553,8 @@ class DeepSpeedEngine(Module):
         else:
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
 
-        flops_profiler_active = (self.flops_profiler_enabled() and
-                                 self.global_steps == self.flops_profiler_profile_step()
+        flops_profiler_active = (self.flops_profiler_enabled() and self.global_steps
+                                 == self.flops_profiler_profile_step()
                                  and self.global_rank == 0)
 
         if flops_profiler_active:
@@ -1746,11 +1738,40 @@ class DeepSpeedEngine(Module):
         """Query whether the current micro-batch is at the boundary of
         gradient accumulation, and thus will trigger gradient reductions and
         an optimizer step.
-
         Returns:
             bool: if the current step is a gradient accumulation boundary.
         """
-        return (self.micro_steps + 1) % self.gradient_accumulation_steps() == 0
+        if self._is_gradient_accumulation_boundary is None:
+            return (self.micro_steps + 1) % \
+                self.gradient_accumulation_steps() == 0
+        else:
+            return self._is_gradient_accumulation_boundary
+
+    def set_gradient_accumulation_boundary(self, is_boundary):
+        """Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
+        feature and should be used with care. The state should be set before to the intended
+        value before each forward/backward. The final fordward/backward should have the
+        boundary state set to True. This style allows client code to only call engine.step() once after all
+        the gradient accumulation passes are complete. See example below:
+
+        .. code-block:: python
+
+        engine.set_gradient_accumulation_boundary(False)
+        for _ in range(gradient_accumulation_steps - 1):
+            micro_batch = next(data_loader)
+            loss = engine(micro_batch)
+            engine.backward(loss)
+        engine.set_gradient_accumulation_boundary(True)
+        micro_batch = next(data_loader)
+        loss = engine(micro_batch)
+        engine.backward(loss)
+        engine.step()
+
+        Arguments:
+            is_boundary (bool): are we at a gradient accumulation boundary or not?
+        """
+        self._is_gradient_accumulation_boundary = is_boundary
+        self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
     def zero_grad(self):
         """
@@ -2052,8 +2073,8 @@ class DeepSpeedEngine(Module):
 
         tensor_to_allreduce = tensor
 
-        if self.allreduce_always_fp32():
-            tensor_to_allreduce = tensor.float()
+        if self.communication_data_type != tensor.dtype:
+            tensor_to_allreduce = tensor.to(self.communication_data_type)
 
         if self.postscale_gradients():
             if self.gradient_predivide_factor() != 1.0:
@@ -2066,10 +2087,10 @@ class DeepSpeedEngine(Module):
                     tensor_to_allreduce.mul_(self.gradient_predivide_factor() /
                                              dist.get_world_size(group=dp_group))
         else:
-            tensor_to_allreduce.div_(dist.get_world_size(group=dp_group))
+            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
-        if self.allreduce_always_fp32() and tensor is not tensor_to_allreduce:
+        if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor
@@ -2175,11 +2196,22 @@ class DeepSpeedEngine(Module):
         # Pre-divide for fp16 stability
         sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
-        indices_device_list = self.sparse_all_gather(sparse.indices, dp_group)
-        values_device_list = self.sparse_all_gather(sparse.values, dp_group)
+        original_data_type = sparse.values.dtype
+        if self.communication_data_type != sparse.values.dtype:
+            if self.communication_data_type in (torch.float16, torch.bfloat16):
+                indices = sparse.indices.to(torch.int32)
+            else:
+                indices = sparse.indices
+            values = sparse.values.to(self.communication_data_type)
+        else:
+            indices = sparse.indices
+            values = sparse.values
 
-        sparse.indices = torch.cat(indices_device_list)
-        sparse.values = torch.cat(values_device_list)
+        indices_device_list = self.sparse_all_gather(indices, dp_group)
+        values_device_list = self.sparse_all_gather(values, dp_group)
+
+        sparse.indices = torch.cat(indices_device_list).to(torch.long)
+        sparse.values = torch.cat(values_device_list).to(original_data_type)
         return sparse
 
     def sparse_all_gather(self, value, dp_group):
@@ -2191,16 +2223,16 @@ class DeepSpeedEngine(Module):
         assert value.dim() in [1, 2]
         if value.dim() == 1:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size)])
+                value = torch.cat([value, value.new_empty(fill_size)])
             tensor_list = [
-                value.new_zeros(max_size)
+                value.new_empty(max_size)
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
         else:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size, value.size()[1])])
+                value = torch.cat([value, value.new_empty(fill_size, value.size()[1])])
             tensor_list = [
-                value.new_zeros(max_size,
+                value.new_empty(max_size,
                                 value.size()[1])
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
