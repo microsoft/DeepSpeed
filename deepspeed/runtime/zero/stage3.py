@@ -592,7 +592,7 @@ class PostBackwardFunction(torch.autograd.Function):
 INITIAL_MICRO_STEP_ID = -1
 
 
-class FP16_DeepSpeedZeroOptimizer_Stage3(object):
+class DeepSpeedZeroOptimizer_Stage3(object):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
@@ -2733,8 +2733,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
         self.optimizer_swapper.swap_out_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
-            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id] is
-            not None)
+            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id]
+            is not None)
 
         self.stop_timers([OPTIMIZER_SWAP_OUT_STATE])
         see_memory_usage(

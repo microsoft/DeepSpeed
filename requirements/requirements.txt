@@ -1,7 +1,8 @@
-torch
-tqdm
+hjson
 ninja
 numpy
-psutil
 packaging
-hjson
+psutil
+py-cpuinfo
+torch
+tqdm
