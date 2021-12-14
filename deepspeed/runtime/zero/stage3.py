@@ -537,7 +537,10 @@ class PostBackwardFunction(torch.autograd.Function):
         return (None, None) + args
 
 
-class FP16_DeepSpeedZeroOptimizer_Stage3(object):
+INITIAL_MICRO_STEP_ID = -1
+
+
+class DeepSpeedZeroOptimizer_Stage3(object):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
