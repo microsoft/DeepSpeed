@@ -42,8 +42,15 @@ def set_cuda_visibile():
     if cuda_visible is None:
         # CUDA_VISIBLE_DEVICES is not set, discover it from nvidia-smi instead
         import subprocess
-        nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
-        num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
+        is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
+        if is_rocm_pytorch:
+            rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
+            gpu_ids = filter(lambda s: 'GPU' in s,
+                             rocm_smi.decode('utf-8').strip().split('\n'))
+            num_gpus = len(list(gpu_ids))
+        else:
+            nvidia_smi = subprocess.check_output(['nvidia-smi', '--list-gpus'])
+            num_gpus = len(nvidia_smi.decode('utf-8').strip().split('\n'))
         cuda_visible = ",".join(map(str, range(num_gpus)))
 
     # rotate list based on xdist worker id, example below
