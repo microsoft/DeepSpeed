@@ -415,27 +415,6 @@ class DeepSpeedEngine(Module):
         """
         return self._global_grad_norm
 
-    def set_train_batch_size(self, train_batch_size):
-        """Adjust the global batch size by increasing or decreasing the number of
-        micro-batches (i.e., gradient accumulation steps). The size of each micro-batch
-        (i.e., ``train_micro_batch_size_per_gpu``) is not changed.
-        Args:
-            train_batch_size (int): The new global batch size for training.
-        Raises:
-            ValueError: if ``train_batch_size`` is not divisible by the
-                configured micro-batch size and data parallelism.
-        """
-        if train_batch_size % (self.train_micro_batch_size_per_gpu() *
-                               self.dp_world_size) != 0:
-            #print(f'{train_batch_size=} {self.train_micro_batch_size_per_gpu()=} {self.dp_world_size=}')
-            raise ValueError(
-                f'Train batch size must be divisible by micro-batch data parallelism')
-        new_gas = train_batch_size // (self.train_micro_batch_size_per_gpu() *
-                                       self.dp_world_size)
-        # overwrite config
-        self._config.train_batch_size = train_batch_size
-        self._config.gradient_accumulation_steps = new_gas
-
     def get_global_grad_norm(self) -> float:
         """Return the 2-norm of all gradients. If there is model parallelism,
         the norm will be global.
@@ -3057,27 +3036,3 @@ class DeepSpeedEngine(Module):
             with open(path, 'wb') as fd:
                 torch.save(state_dict, fd)
                 fd.flush()
-
-    def set_train_batch_size(self, train_batch_size):
-        """Adjust the global batch size by increasing or decreasing the size of
-        each micro-batch (i.e., ``train_micro_batch_size_per_gpu``). The number of
-        micro-batches (i.e., gradient accumulation steps) is not changed.
-        Args:
-            train_batch_size (int): The new global batch size for training.
-        Raises:
-            ValueError: if ``train_batch_size`` is not divisible by the
-                configured gradient_accumulation_steps and data parallelism.
-        """
-
-        if train_batch_size % (self.gradient_accumulation_steps() *
-                               self.dp_world_size) != 0:
-            raise ValueError(
-                f'Train batch size must be divisible by gradient_accumulation_steps * data parallelism'
-            )
-
-        new_micro_bsz = train_batch_size // (self.gradient_accumulation_steps() *
-                                             self.dp_world_size)
-
-        # overwrite config
-        self._config.train_batch_size = train_batch_size
-        self._config.train_micro_batch_size_per_gpu = new_micro_bsz
