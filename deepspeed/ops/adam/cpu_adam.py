@@ -130,7 +130,7 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         if type(fp16_param_groups) is list:
             if type(fp16_param_groups[0]) is not list:
                 fp16_param_groups = [fp16_param_groups]
-        else:
+        elif fp16_param_groups is not None:
             fp16_param_groups = [[fp16_param_groups]]
 
         for group_id, group in enumerate(self.param_groups):
