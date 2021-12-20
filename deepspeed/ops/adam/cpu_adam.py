@@ -127,8 +127,8 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                 loss = closure()
 
         # converting the fp16 params to a group of parameter
-        if fp16_param_groups is list:
-            if fp16_param_groups[0] is not list:
+        if type(fp16_param_groups) is list:
+            if type(fp16_param_groups[0]) is not list:
                 fp16_param_groups = [fp16_param_groups]
         else:
             fp16_param_groups = [[fp16_param_groups]]
