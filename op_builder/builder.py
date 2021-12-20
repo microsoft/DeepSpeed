@@ -278,7 +278,7 @@ class OpBuilder(ABC):
             cpu_info = get_cpu_info()
         except json.decoder.JSONDecodeError as e:
             #FIXME: temp workaround, seeing strange JSON stack trace from
-            # cpuinfo on A100-80GB machines.
+            # cpuinfo on A100-80GB machines and possibly others.
             cpu_info = _backup_cpuinfo()
             if cpu_info is None:
                 return "-march=native"
@@ -327,7 +327,7 @@ class OpBuilder(ABC):
         except json.decoder.JSONDecodeError as e:
             cpu_info = _backup_cpuinfo()
             #FIXME: temp workaround, seeing strange JSON stack trace from
-            # cpuinfo on A100-80GB machines.
+            # cpuinfo on A100-80GB machines and possibly others.
             if cpu_info is None:
                 return '-D__SCALAR__'
 
