@@ -7,7 +7,7 @@ import pytest
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus, partitioned_param_data_shape
 
-from common import distributed_test, get_master_port
+from .common import distributed_test, get_master_port
 
 
 def setup_serial_env():

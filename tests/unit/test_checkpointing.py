@@ -15,7 +15,7 @@ PipeTopo = PipeDataParallelTopology
 from deepspeed.ops.op_builder import FusedLambBuilder, CPUAdamBuilder
 
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-from util import required_torch_version
+from .util import required_torch_version
 
 import argparse
 import pytest
