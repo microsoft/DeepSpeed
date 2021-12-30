@@ -362,7 +362,7 @@ class DeepSpeedEngine(Module):
                 self.autotuning_model_info[
                     "trainable_num_params"] = trainable_num_params * self.mp_world_size
 
-            print(f"model parameter = {num_params}")
+            logger.info(f"model parameter = {num_params}")
 
     def get_batch_info(self):
         """Get all training batch related settings.
@@ -1387,7 +1387,7 @@ class DeepSpeedEngine(Module):
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
-            print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
+            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 
             optimizer = DeepSpeedZeroOptimizer_Stage3(
@@ -2559,7 +2559,7 @@ class DeepSpeedEngine(Module):
             load_optimizer_states=load_optimizer_states,
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
         )
-        print(
+        logger.info(
             f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
         )
         return True
@@ -2622,7 +2622,7 @@ class DeepSpeedEngine(Module):
             zero_sd_list.append(torch.load(ckpt_name, map_location="cpu"))
 
         zero_optimizer_sd = [sd["optimizer_state_dict"] for sd in zero_sd_list]
-        print(
+        logger.info(
             f"successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
         return zero_optimizer_sd
@@ -3032,6 +3032,10 @@ class DeepSpeedEngine(Module):
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
 
+        Returns:
+            ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
+            stage3_gather_fp16_weights_on_model_save is ``False``.
+
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
         waiting to synchronize with other processes if it's called just for the process with rank 0.
@@ -3049,7 +3053,7 @@ class DeepSpeedEngine(Module):
                 logger.info(
                     f"Did not save the model {path} because `stage3_gather_fp16_weights_on_model_save` is False"
                 )
-                return
+                return False
         else:
             state_dict = self.module.state_dict()
 
@@ -3057,3 +3061,5 @@ class DeepSpeedEngine(Module):
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)
+
+        return True
