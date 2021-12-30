@@ -437,7 +437,6 @@ def test_partition_nccl_alignment(tmpdir, zero_stage, world_size):
     _test_partition_nccl_alignment(model=model, hidden_dim=hidden_dim)
 
 
-
 def _ds_initialize_for_param_partitioning_testing(model: Module,
                                                   cfg: dict) -> DeepSpeedEngine:
     ds_engine, _, _, _ = deepspeed.initialize(
