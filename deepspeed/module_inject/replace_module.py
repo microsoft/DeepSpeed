@@ -200,11 +200,12 @@ def replace_transformer_layer(orig_layer_impl,
             _4hh_w = _4hh_w.half()
 
         if quantize or fp16:
-            dense_b = dense_b.half()
+            qkvb = qkvb if qkvb is None else qkvb.half()
+            dense_b = dense_b if dense_b is None else dense_b.half()
             _h4h_b = _h4h_b.half()
             _4hh_b = _4hh_b.half()
-            attn_nw = attn_nw.half()
-            attn_nb = attn_nb.half()
+            attn_nw = attn_nw if dense_b is None else attn_nw.half()
+            attn_nb = attn_nb if dense_b is None else attn_nb.half()
             input_nw = input_nw.half()
             input_nb = input_nb.half()
 
@@ -227,7 +228,9 @@ def replace_transformer_layer(orig_layer_impl,
                                  if hasattr(config,
                                             'attention_layers') else False),
                 window_size=(config.window_size if hasattr(config,
-                                                           'window_size') else 1))
+                                                           'window_size') else 1),
+                rotary_dim=(config.rotary_dim if hasattr(config,
+                                                         'rotary_dim') else -1))
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -279,14 +282,8 @@ def replace_transformer_layer(orig_layer_impl,
             attn_block.attn_qkvw.data = mp_replace.qkv_copy(attn_block.attn_qkvw.data,
                                                             qkvw)
 
-            if qkvb is not None:
-                if fp16:
-                    qkvb = qkvb.half()
-                attn_block.attn_qkvb.data = mp_replace.qkv_copy(
-                    attn_block.attn_qkvb.data,
-                    qkvb)
-            else:
-                attn_block.attn_qkvb = qkvb
+            attn_block.attn_qkvb.data = mp_replace.qkv_copy(attn_block.attn_qkvb.data,
+                                                            qkvb)
 
             attn_block.attn_ow.data = mp_replace.copy(attn_block.attn_ow.data, dense_w)
             attn_block.attn_ob.data = mp_replace.copy(attn_block.attn_ob.data, dense_b)
