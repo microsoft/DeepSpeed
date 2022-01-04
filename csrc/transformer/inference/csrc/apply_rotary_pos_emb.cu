@@ -1,5 +1,7 @@
 #include "custom_cuda_layers.h"
 
+#include <cuda_profiler_api.h>
+
 __global__ void apply_rotary_pos_emb(float* mixed_query,
                                      float* key_layer,
                                      unsigned rotary_dim,

@@ -265,12 +265,12 @@ template void launch_bias_residual<__half>(__half*,
                                            int,
                                            cudaStream_t);
 
-__global__ void fused_bias_residual(float* input,
-                                    float* output,
-                                    float* attn,
-                                    float* bias,
-                                    int total_count,
-                                    int intermediate_size)
+__global__ void gptj_residual_add(float* input,
+                                  float* output,
+                                  float* attn,
+                                  float* bias,
+                                  int total_count,
+                                  int intermediate_size)
 {
     float4* input_cast = reinterpret_cast<float4*>(input);
     float4* output_cast = reinterpret_cast<float4*>(output);
@@ -293,12 +293,12 @@ __global__ void fused_bias_residual(float* input,
     }
 }
 
-__global__ void fused_bias_residual(__half* input,
-                                    __half* output,
-                                    __half* attn,
-                                    __half* bias,
-                                    int total_count,
-                                    int intermediate_size)
+__global__ void gptj_residual_add(__half* input,
+                                  __half* output,
+                                  __half* attn,
+                                  __half* bias,
+                                  int total_count,
+                                  int intermediate_size)
 {
 #if __CUDA_ARCH__ >= 700
 
@@ -348,19 +348,19 @@ __global__ void fused_bias_residual(__half* input,
 }
 
 template <typename T>
-void launch_bias_residual(T* input,
-                          T* output,
-                          T* attn,
-                          T* bias,
-                          int batch,
-                          int head_size,
-                          cudaStream_t stream)
+void launch_gptj_residual_add(T* input,
+                              T* output,
+                              T* attn,
+                              T* bias,
+                              int batch,
+                              int head_size,
+                              cudaStream_t stream)
 {
     int total_count = batch * head_size / 4;
     dim3 block_dims(1024);
     dim3 grid_dims((total_count - 1) / 1024 + 1);  // (batch_size);
 
-    fused_bias_residual<<<grid_dims, block_dims, 0, stream>>>(
+    gptj_residual_add<<<grid_dims, block_dims, 0, stream>>>(
         input, output, attn, bias, total_count, head_size / 4);
 }
 
