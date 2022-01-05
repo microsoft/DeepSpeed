@@ -41,9 +41,10 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA
+    PLD_THETA, PLD_GAMMA, OPTIMIZER_STATE_DICT
 from deepspeed.runtime.zero.constants import \
-    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
+    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS, \
+    SINGLE_PARTITION_OF_FP32_GROUPS
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
 import deepspeed.runtime.lr_schedules as lr_schedules
@@ -1377,7 +1378,8 @@ class DeepSpeedEngine(Module):
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
                 ),
-                communication_data_type=self.communication_data_type)
+                communication_data_type=self.communication_data_type,
+                elastic_checkpoint=self.zero_elastic_checkpoint())
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -2609,10 +2611,27 @@ class DeepSpeedEngine(Module):
             return None
 
         zero_sd_list = []
-        for ckpt_name in zero_ckpt_names:
-            zero_sd_list.append(torch.load(ckpt_name, map_location="cpu"))
+        for i, ckpt_name in enumerate(zero_ckpt_names):
+            _state = None
+            # Fully load state for current rank
+            if self.zero_elastic_checkpoint() or dist.get_rank(
+                    group=self.optimizer.dp_process_group) == i:
+                _state = torch.load(ckpt_name, map_location='cpu')
+            elif self.zero_optimization_stage(
+            ) <= ZERO_OPTIMIZATION_GRADIENTS and self.zero_load_from_fp32_weights():
+                # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
+                _state = torch.load(ckpt_name, map_location='cpu')
+                _state = {
+                    OPTIMIZER_STATE_DICT: {
+                        SINGLE_PARTITION_OF_FP32_GROUPS:
+                        _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
+                    }
+                }
+            else:
+                _state = {OPTIMIZER_STATE_DICT: None}
+            zero_sd_list.append(_state)
 
-        zero_optimizer_sd = [sd["optimizer_state_dict"] for sd in zero_sd_list]
+        zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
         logger.info(
             f"successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )

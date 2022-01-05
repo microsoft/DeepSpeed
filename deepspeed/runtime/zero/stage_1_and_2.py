@@ -5,12 +5,8 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 import torch.distributed as dist
-import math
 from torch._six import inf
-from torch.autograd import Variable
 from packaging import version as pkg_version
-
-import collections
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
@@ -21,6 +17,8 @@ from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
+
+from .constants import SINGLE_PARTITION_OF_FP32_GROUPS
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -107,7 +105,8 @@ class DeepSpeedZeroOptimizer(object):
                  partition_grads=True,
                  round_robin_gradients=False,
                  has_moe_layers=False,
-                 fp16_master_weights_and_gradients=False):
+                 fp16_master_weights_and_gradients=False,
+                 elastic_checkpoint=False):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -117,6 +116,8 @@ class DeepSpeedZeroOptimizer(object):
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
+
+        self.elastic_checkpoint = elastic_checkpoint
 
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
@@ -1981,7 +1982,17 @@ class DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+
+        if self.elastic_checkpoint:
+            state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
+            # Remove paddings for DP alignment to enable loading for other alignment values
+            fp32_groups_without_padding = self._get_groups_without_padding(
+                self.single_partition_of_fp32_groups)
+            state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
+        else:
+            state_dict['base_optimizer_state'] = self.optimizer.state_dict()
+            state_dict[
+                SINGLE_PARTITION_OF_FP32_GROUPS] = self.single_partition_of_fp32_groups
 
         state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
         state_dict['partition_count'] = self.partition_count
@@ -1991,7 +2002,7 @@ class DeepSpeedZeroOptimizer(object):
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
-        state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
+        state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
 
         #        if self.cpu_offload:
         #            state_dict_tmp = async_copy_to(state_dict,
@@ -2011,7 +2022,7 @@ class DeepSpeedZeroOptimizer(object):
         for i in range(len(self.single_partition_of_fp32_groups)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             merged_partitions = [
-                sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict
+                sd[SINGLE_PARTITION_OF_FP32_GROUPS][i] for sd in all_state_dict
             ]
             if self.is_moe_group(self.optimizer.param_groups[i]):
                 ranks = self.get_ep_ranks()
@@ -2124,24 +2135,35 @@ class DeepSpeedZeroOptimizer(object):
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
+        dp_rank = dist.get_rank(group=self.dp_process_group)
         # I think it should actually be ok to reload the optimizer before the model.
-        self.loss_scaler = state_dict_list[0]['loss_scaler']
-        self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
-        self.overflow = state_dict_list[0]['overflow']
+        self.loss_scaler = state_dict_list[dp_rank]['loss_scaler']
+        self.dynamic_loss_scale = state_dict_list[dp_rank]['dynamic_loss_scale']
+        self.overflow = state_dict_list[dp_rank]['overflow']
+
+        ckpt_version = state_dict_list[dp_rank].get("ds_version", False)
+        assert ckpt_version, f"Empty ds_version! {error_str}"
+        ckpt_version = pkg_version.parse(ckpt_version)
 
         # zero stage 1 mode
         if not self.partition_gradients:
             required_version = pkg_version.parse("0.3.17")
-            ckpt_version = state_dict_list[0].get("ds_version", False)
             error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
                 "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
                 "please use an older version of DeepSpeed (<= 0.5.8) and set 'legacy_stage1': true in your zero config json."
+            assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
-            assert ckpt_version, f"Empty ds_version! {error_str}"
-            assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
+        if ckpt_version < pkg_version.parse("0.5.10"):
+            # zero checkpoints before 0.5.10 defaulted to elastic enabled, must
+            # load checkpoint state using elastic logic
+            self.elastic_checkpoint = True
 
         if load_optimizer_states:
-            self._restore_base_optimizer_state(state_dict_list)
+            if self.elastic_checkpoint:
+                self._restore_base_optimizer_state(state_dict_list)
+            else:
+                self.optimizer.load_state_dict(
+                    state_dict_list[dp_rank]['base_optimizer_state'])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
@@ -2159,8 +2181,10 @@ class DeepSpeedZeroOptimizer(object):
         # are guaranteed to exist, so we can just copy_() from the saved master params.
 
         if load_from_fp32_weights:
+            # option 2 from above
             self._restore_from_fp32_weights(state_dict_list)
         else:
+            # option 1 from above
             self._restore_from_bit16_weights()
 
 
