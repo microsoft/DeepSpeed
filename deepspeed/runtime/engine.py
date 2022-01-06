@@ -2617,16 +2617,6 @@ class DeepSpeedEngine(Module):
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 _state = torch.load(ckpt_name, map_location='cpu')
-            elif self.zero_optimization_stage(
-            ) <= ZERO_OPTIMIZATION_GRADIENTS and self.zero_load_from_fp32_weights():
-                # Extract fp32 groups only, otherwise throw away to prevent unnecessary CPU memory overheads
-                _state = torch.load(ckpt_name, map_location='cpu')
-                _state = {
-                    OPTIMIZER_STATE_DICT: {
-                        SINGLE_PARTITION_OF_FP32_GROUPS:
-                        _state[OPTIMIZER_STATE_DICT][SINGLE_PARTITION_OF_FP32_GROUPS]
-                    }
-                }
             else:
                 _state = {OPTIMIZER_STATE_DICT: None}
             zero_sd_list.append(_state)
