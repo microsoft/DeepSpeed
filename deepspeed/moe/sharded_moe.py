@@ -246,6 +246,7 @@ def top1gating(logits: torch.Tensor,
 
 def top2gating(logits: torch.Tensor,
                capacity_factor: float,
+               used_token: torch.Tensor = None,
                drop_tokens: bool = True,
                use_rts: bool = True) -> Tuple[Tensor,
                                                 Tensor,
@@ -274,11 +275,10 @@ def top2gating(logits: torch.Tensor,
     indices2_s = torch.argmax(logits_except1, dim=1)
     mask2 = F.one_hot(indices2_s, num_classes=num_experts)
 
-    # Compute locations in capacity buffer
-    locations1 = torch.cumsum(mask1, dim=0) - 1
-    locations2 = torch.cumsum(mask2, dim=0) - 1
-    # Update 2nd's location by accounting for locations of 1st
-    locations2 += torch.sum(mask1, dim=0, keepdim=True)
+    # mask only used tokens
+    if used_token is not None:
+        mask1 = einsum("s,se->se", used_token, mask1)
+        mask2 = einsum("s,se->se", used_token, mask2)
 
     # gating decisions
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
@@ -311,10 +311,18 @@ def top2gating(logits: torch.Tensor,
 
         new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
         mask1 = new_mask1
+        # Compute locations in capacity buffer
+        locations1 = torch.cumsum(mask1, dim=0) - 1
     else:
+        # Compute locations in capacity buffer
+        locations1 = torch.cumsum(mask1, dim=0) - 1
         # Remove locations outside capacity from mask
         mask1 *= torch.lt(locations1, capacity)
 
+    # Compute locations in capacity buffer
+    locations2 = torch.cumsum(mask2, dim=0) - 1
+    # Update 2nd's location by accounting for locations of 1st
+    locations2 += torch.sum(mask1, dim=0, keepdim=True)
     mask2 *= torch.lt(locations2, capacity)
 
     # Store the capacity location for each token
@@ -426,6 +434,7 @@ class TopKGate(torch.nn.Module):
             gate_output = top2gating(
                 logits,
                 self.capacity_factor if self.training else self.eval_capacity_factor,
+                used_token,
                 self.drop_tokens,
                 self.use_rts,
                 )
