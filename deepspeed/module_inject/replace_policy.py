@@ -151,9 +151,9 @@ class HFGPTJLayerPolicy(DSPolicy):
         self.client_module = client_module
         try:
             import transformers
-            HFGPTNEOLayerPolicy._orig_layer_class = transformers.models.gptj.modeling_gptj.GPTJBlock
+            HFGPTJLayerPolicy._orig_layer_class = transformers.models.gptj.modeling_gptj.GPTJBlock
         except:
-            HFGPTNEOLayerPolicy._orig_layer_class = None
+            HFGPTJLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
         return self.client_module.attn.q_proj.weight.data.shape[1], \
@@ -175,10 +175,10 @@ class HFGPTJLayerPolicy(DSPolicy):
 
     def mlp(self):
         return self.linear_layer, \
-                self.client_module.mlp.c_fc.weight.data, \
-                self.client_module.mlp.c_fc.bias.data, \
-                self.client_module.mlp.c_proj.weight.data, \
-                self.client_module.mlp.c_proj.bias.data
+                self.client_module.mlp.fc_in.weight.data, \
+                self.client_module.mlp.fc_in.bias.data, \
+                self.client_module.mlp.fc_out.weight.data, \
+                self.client_module.mlp.fc_out.bias.data
 
     def layerNorm(self):
         return None, \
@@ -278,6 +278,7 @@ class HFGPT2LayerPolicy(DSPolicy):
 replace_policies = [
     HFBertLayerPolicy,
     HFGPTNEOLayerPolicy,
+    HFGPTJLayerPolicy,
     MegatronLayerPolicy,
     HFGPT2LayerPolicy,
 ]

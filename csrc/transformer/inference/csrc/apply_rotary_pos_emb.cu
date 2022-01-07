@@ -2,34 +2,48 @@
 
 #include <cuda_profiler_api.h>
 
+namespace cg = cooperative_groups;
+
 __global__ void apply_rotary_pos_emb(float* mixed_query,
                                      float* key_layer,
                                      unsigned rotary_dim,
                                      unsigned seq_len,
                                      unsigned seq_offset,
-                                     unsigned head_size)
+                                     unsigned num_heads,
+                                     unsigned head_size,
+                                     unsigned total_count)
 {
-    int offset = (blockIdx.x * blockDim.y + threadIdx.y) * head_size + threadIdx.x;
-    unsigned tid = threadIdx.x;
-    unsigned seq_id = (blockIdx.x / num_heads) % seq_len + seq_offset;
-
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
-    while (tid < rotary_dim) {
-        float inv_freq = 1.0 / (10000 * *((tid / 2) / rotary_dim)) * seq_id;
-        float q = mixed_query[offset];
-        float k = key_layer[offset];
-        float rotary_sign = (tid % 2 ? -1 : 1);
+    int id = threadIdx.x;
+    int gid = id >> 5;
+    int lane = id & 0x1f;
 
-        q = q * cos(inv_freq) + g.shfl_xor(q, 1) * rotary_sign * sin(inv_freq);
-        k = k * cos(inv_freq) + g.shfl_xor(k, 1) * rotary_sign * sin(inv_freq);
+    unsigned head_id = blockIdx.x * MAX_WARP_NUM + gid;
+    unsigned offset = head_id * head_size;
 
-        mixed_query[offset] = q;
-        key_layer[offset] = k;
+    unsigned seq_id = (head_id / num_heads) % seq_len + seq_offset;
 
-        tid += blockDim.x;
-        offset += blockDim.x;
+    if (head_id < total_count) {
+        while (lane < rotary_dim) {
+            float inv_freq = (float)((lane / 2) * 2) / (float)rotary_dim;
+            inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
+            float q = mixed_query[offset + lane];
+            float k = key_layer[offset + lane];
+            float rotary_sign = (lane % 2 == 1 ? -1.0 : 1.0);
+            float q_rot = (q * rotary_sign);
+            float k_rot = (k * rotary_sign);
+            q_rot = g.shfl_xor(q_rot, 1);
+            k_rot = g.shfl_xor(k_rot, 1);
+            q = q * cosf(inv_freq) + q_rot * sinf(inv_freq);
+            k = k * cosf(inv_freq) + k_rot * sinf(inv_freq);
+
+            mixed_query[offset + lane] = q;
+            key_layer[offset + lane] = k;
+
+            lane += WARP_SIZE;
+        }
     }
 }
 
@@ -38,31 +52,36 @@ __global__ void apply_rotary_pos_emb(__half* mixed_query,
                                      unsigned rotary_dim,
                                      unsigned seq_len,
                                      unsigned seq_offset,
-                                     unsigned head_size)
+                                     unsigned num_heads,
+                                     unsigned head_size,
+                                     unsigned total_count)
 {
 #if __CUDA_ARCH__ >= 700
 
-    int offset = (blockIdx.x * blockDim.y + threadIdx.y) * head_size + threadIdx.x;
-    unsigned tid = threadIdx.x;
-    unsigned seq_id = (blockIdx.x / num_heads) % seq_len + seq_offset;
+    unsigned head_id = blockIdx.x * blockDim.y + threadIdx.y;
+    if (head_id < total_count) {
+        unsigned offset = head_id * head_size + threadIdx.x;
+        unsigned tid = threadIdx.x;
+        unsigned seq_id = (head_id / num_heads) % seq_len + seq_offset;
 
-    cg::thread_block b = cg::this_thread_block();
-    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+        cg::thread_block b = cg::this_thread_block();
+        cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
-    while (tid < rotary_dim) {
-        float inv_freq = 1.0 / (10000 * *((tid / 2) / rotary_dim)) * seq_id;
-        float q = (float)mixed_query[offset];
-        float k = (float)key_layer[offset];
-        float rotary_sign = (tid % 2 ? -1 : 1);
+        while (tid < rotary_dim) {
+            float inv_freq = 1.0 / pow(10000.0, ((tid / 2) / rotary_dim)) * seq_id;
+            float q = (float)mixed_query[offset];
+            float k = (float)key_layer[offset];
+            float rotary_sign = (tid % 2 ? -1 : 1);
 
-        q = q * cos(inv_freq) + g.shfl_xor(q, 1) * rotary_sign * sin(inv_freq);
-        k = k * cos(inv_freq) + g.shfl_xor(k, 1) * rotary_sign * sin(inv_freq);
+            q = q * cos(inv_freq) + g.shfl_xor((q * rotary_sign), 1) * sin(inv_freq);
+            k = k * cos(inv_freq) + g.shfl_xor((k * rotary_sign), 1) * sin(inv_freq);
 
-        mixed_query[offset] = (__half)q;
-        key_layer[offset] = (__half)k;
+            mixed_query[offset] = (__half)q;
+            key_layer[offset] = (__half)k;
 
-        tid += blockDim.x;
-        offset += blockDim.x;
+            tid += blockDim.x;
+            offset += blockDim.x;
+        }
     }
 #endif
 }
@@ -79,11 +98,11 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  cudaStream_t stream)
 {
     int total_count = batch * num_heads * seq_len;
-    dim3 block_dims(WARP_SIZE, MAX_WARP_NUM);
+    dim3 block_dims(1024);
     dim3 grid_dims((total_count - 1) / MAX_WARP_NUM + 1);  // (batch_size);
 
     apply_rotary_pos_emb<<<grid_dims, block_dims, 0, stream>>>(
-        mixed_query, key_layer, rotary_dim, seq_len, offset, head_size);
+        mixed_query, key_layer, rotary_dim, seq_len, offset, num_heads, head_size, total_count);
 }
 
 template void launch_apply_rotary_pos_emb<float>(float*,

@@ -185,7 +185,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                 mixed_query.shape[1] >= 32 or head_size > 128
 
             if config.rotary_dim > 0:
-                inference_cuda_module.apply_rotary_pos_emb(
+                mixed_query, key_layer = inference_cuda_module.apply_rotary_pos_emb(
                     mixed_query,
                     key_layer,
                     config.rotary_dim,
@@ -304,12 +304,12 @@ class DeepSpeedSelfAttentionFunction(Function):
         if config.q_int8:
             output, key_layer, value_layer, context_layer = selfAttention_int8()
         else:
-            output, key_layer, value_layer, context_layer = selfAttention_fp()
+            output, key_layer, value_layer, context_layer, inp_norm = selfAttention_fp()
 
         if mp_group is not None and torch.distributed.get_world_size(group=mp_group) > 1:
             torch.distributed.all_reduce(output, group=mp_group)
 
-        return (output, key_layer, value_layer, context_layer)
+        return (output, key_layer, value_layer, context_layer, inp_norm)
 
     @staticmethod
     def backward(ctx, grad_output, grad_output1, grad_output2, grad_output3):
@@ -555,21 +555,6 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config = config
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
-        self.attention = DeepSpeedSelfAttention(self.config,
-                                                mp_group,
-                                                quantize_scales,
-                                                quantize_groups,
-                                                merge_count,
-                                                qkv_merging)
-        self.mlp = DeepSpeedMLP(self.config,
-                                mp_group,
-                                quantize_scales,
-                                quantize_groups,
-                                merge_count,
-                                mlp_extra_grouping)
-
-        self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
-        self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
 
         global inference_cuda_module
         global specialized_mode
@@ -586,6 +571,22 @@ class DeepSpeedTransformerInference(nn.Module):
                 inference_cuda_module = op_builder.InferenceBuilder().load()
         self.config.specialized_mode = specialized_mode
         print("DeepSpeed Transformer Inference config is ", self.config.__dict__)
+
+        self.attention = DeepSpeedSelfAttention(self.config,
+                                                mp_group,
+                                                quantize_scales,
+                                                quantize_groups,
+                                                merge_count,
+                                                qkv_merging)
+        self.mlp = DeepSpeedMLP(self.config,
+                                mp_group,
+                                quantize_scales,
+                                quantize_groups,
+                                merge_count,
+                                mlp_extra_grouping)
+
+        self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
+        self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
 
     def forward(self,
                 input,

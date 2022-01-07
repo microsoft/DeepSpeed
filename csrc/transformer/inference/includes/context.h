@@ -96,6 +96,8 @@ public:
         return stream;
     }
 
+    cudaEvent_t GetCompEvent(int id) { return id == 1 ? _comp1_event : _comp2_event; }
+
     cublasHandle_t GetCublasHandle() { return _cublasHandle; }
 
     std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc)

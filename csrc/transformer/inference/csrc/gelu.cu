@@ -352,16 +352,16 @@ void launch_gptj_residual_add(T* input,
                               T* output,
                               T* attn,
                               T* bias,
+                              int hidden_dim,
                               int batch,
-                              int head_size,
                               cudaStream_t stream)
 {
-    int total_count = batch * head_size / 4;
+    int total_count = batch * hidden_dim / 4;
     dim3 block_dims(1024);
     dim3 grid_dims((total_count - 1) / 1024 + 1);  // (batch_size);
 
     gptj_residual_add<<<grid_dims, block_dims, 0, stream>>>(
-        input, output, attn, bias, total_count, head_size / 4);
+        input, output, attn, bias, total_count, hidden_dim / 4);
 }
 
 template void

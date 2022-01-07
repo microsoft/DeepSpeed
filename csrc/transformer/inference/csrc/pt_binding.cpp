@@ -215,7 +215,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 {
     auto inp_norm = ds_layernorm<T>(input, gamma, beta, epsilon);
 
-    cudaEventRecord(_comp1_event, Context::Instance().GetCurrentStream());
+    // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -260,7 +260,8 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
 
     auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
     int bsz = input_cont.size(0) * input_cont.size(1);
-    qkv_unfused_cublas<T>(output, input_cont, weight, bias, gamma, beta, epsilon, add_bias);
+    auto inp_norm =
+        qkv_unfused_cublas<T>(output, input_cont, weight, bias, gamma, beta, epsilon, add_bias);
 
     return {output, inp_norm};
 }
@@ -602,7 +603,8 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                            at::Tensor& bias,
                            at::Tensor& weight_out)
 {
-    cudaStreamWaitEvent(_stream, _comp1_event, 0);
+    // cudaStreamWaitEvent(
+    //    Context::Instance().GetCurrentStream(true), Context::Instance().GetCompEvent(1), 0);
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
                        .dtype(input_cont.options().dtype())
@@ -616,8 +618,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     int bsz = input_cont.size(0) * input_cont.size(1);
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
-    cublasSetStream(Context::Instance().GetCublasHandle(),
-                    Context::Instance().GetCurrentStream(true));
+    cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
                    CUBLAS_OP_N,
                    CUBLAS_OP_N,
@@ -634,7 +635,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                      (T*)bias.data_ptr(),
                      weight.size(1),
                      bsz,
-                     Context::Instance().GetCurrentStream(true));
+                     Context::Instance().GetCurrentStream());
 
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
                    CUBLAS_OP_N,
@@ -648,7 +649,8 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                    (T*)intermediate.data_ptr(),
                    (T*)output.data_ptr(),
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-    cudaEventRecord(_comp2_event, _stream);
+    // cudaEventRecord(Context::Instance().GetCompEvent(2),
+    //                Context::Instance().GetCurrentStream(true));
     return output;
 }
 
@@ -659,8 +661,8 @@ void gptj_residual_add(at::Tensor& output,
 {
     int bsz = input.size(0) * input.size(1);
     int hidden_size = input.size(2);
-
-    cudaStreamWaitEvent(Context::Instance().GetCurrentStream(), _comp2_event, 0);
+    // cudaStreamWaitEvent(
+    //    Context::Instance().GetCurrentStream(), Context::Instance().GetCompEvent(2), 0);
     if (input.scalar_type() == at::kFloat)
         launch_gptj_residual_add<float>((float*)input.data_ptr(),
                                         (float*)output.data_ptr(),
@@ -679,19 +681,22 @@ void gptj_residual_add(at::Tensor& output,
                                          Context::Instance().GetCurrentStream());
 }
 
-void apply_rotary_pos_emb(at::Tensor& mixed_query,
-                          at::Tensor& key_layer,
-                          unsigned rotary_dim,
-                          unsigned offset,
-                          unsigned num_heads)
+std::vector<at::Tensor> apply_rotary_pos_emb(at::Tensor& mixed_query,
+                                             at::Tensor& key_layer,
+                                             unsigned rotary_dim,
+                                             unsigned offset,
+                                             unsigned num_heads)
 {
+    auto query_cont = mixed_query.contiguous();
+    auto key_cont = key_layer.contiguous();
+
     unsigned bsz = mixed_query.size(0);
     unsigned head_size = mixed_query.size(2) / num_heads;
     unsigned seq_len = mixed_query.size(1);
 
-    if (input.scalar_type() == at::kFloat)
-        launch_apply_rotary_pos_emb<float>((float*)mixed_query.data_ptr(),
-                                           (float*)key_layer.data_ptr(),
+    if (mixed_query.scalar_type() == at::kFloat)
+        launch_apply_rotary_pos_emb<float>((float*)query_cont.data_ptr(),
+                                           (float*)key_cont.data_ptr(),
                                            head_size,
                                            seq_len,
                                            rotary_dim,
@@ -700,8 +705,8 @@ void apply_rotary_pos_emb(at::Tensor& mixed_query,
                                            bsz,
                                            Context::Instance().GetCurrentStream());
     else
-        launch_apply_rotary_pos_emb<__half>((__half*)mixed_query.data_ptr(),
-                                            (__half*)key_layer.data_ptr(),
+        launch_apply_rotary_pos_emb<__half>((__half*)query_cont.data_ptr(),
+                                            (__half*)key_cont.data_ptr(),
                                             head_size,
                                             seq_len,
                                             rotary_dim,
@@ -709,6 +714,7 @@ void apply_rotary_pos_emb(at::Tensor& mixed_query,
                                             num_heads,
                                             bsz,
                                             Context::Instance().GetCurrentStream());
+    return {query_cont, key_cont};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
