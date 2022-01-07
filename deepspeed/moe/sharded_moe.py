@@ -193,7 +193,7 @@ def top1gating(logits: torch.Tensor,
     l_aux = torch.sum(me * ce) * num_experts
 
     # Random Token Selection
-    if use_rts:
+    if use_rts and drop_tokens:
         uniform = exp_selection_uniform_map.get(logits.device)
         if uniform is None:
             uniform = torch.distributions.uniform.Uniform(
@@ -245,7 +245,9 @@ def top1gating(logits: torch.Tensor,
 
 
 def top2gating(logits: torch.Tensor,
-               capacity_factor: float) -> Tuple[Tensor,
+               capacity_factor: float,
+               drop_tokens: bool = True,
+               use_rts: bool = True) -> Tuple[Tensor,
                                                 Tensor,
                                                 Tensor]:
     """Implements Top2Gating on logits."""
@@ -281,13 +283,38 @@ def top2gating(logits: torch.Tensor,
     # gating decisions
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
 
+    # if we don't want to drop any tokens
+    if not drop_tokens:
+        new_capacity = torch.max(exp_counts).to(logits.device)
+        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.group.WORLD)
+        capacity = new_capacity
+
     # Compute l_aux
     me = torch.mean(gates, dim=0)
     ce = torch.mean(mask1.float(), dim=0)
     l_aux = torch.mean(me * ce) * num_experts * num_experts
 
-    # Remove locations outside capacity from mask
-    mask1 *= torch.lt(locations1, capacity)
+    # Random Token Selection
+    if use_rts and drop_tokens:
+        uniform = exp_selection_uniform_map.get(logits.device)
+        if uniform is None:
+            uniform = torch.distributions.uniform.Uniform(
+                low=torch.tensor(0.0,
+                                 device=logits.device),
+                high=torch.tensor(1.0,
+                                  device=logits.device)).rsample
+            exp_selection_uniform_map[logits.device] = uniform
+
+        mask1_rand = mask1 * uniform(mask1.shape)
+
+        _, top_idx = torch.topk(mask1_rand, k=capacity, dim=0)
+
+        new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
+        mask1 = new_mask1
+    else:
+        # Remove locations outside capacity from mask
+        mask1 *= torch.lt(locations1, capacity)
+
     mask2 *= torch.lt(locations2, capacity)
 
     # Store the capacity location for each token
@@ -398,7 +425,10 @@ class TopKGate(torch.nn.Module):
         else:
             gate_output = top2gating(
                 logits,
-                self.capacity_factor if self.training else self.eval_capacity_factor)
+                self.capacity_factor if self.training else self.eval_capacity_factor,
+                self.drop_tokens,
+                self.use_rts,
+                )
 
         if self.wall_clock_breakdown:
             self.timers('TopKGate').stop()
