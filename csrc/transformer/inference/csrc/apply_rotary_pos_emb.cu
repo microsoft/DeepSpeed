@@ -68,13 +68,17 @@ __global__ void apply_rotary_pos_emb(__half* mixed_query,
         cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
         while (tid < rotary_dim) {
-            float inv_freq = 1.0 / pow(10000.0, ((tid / 2) / rotary_dim)) * seq_id;
+            float inv_freq = (float)((lane / 2) * 2) / (float)rotary_dim;
+            inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
             float q = (float)mixed_query[offset];
             float k = (float)key_layer[offset];
-            float rotary_sign = (tid % 2 ? -1 : 1);
-
-            q = q * cos(inv_freq) + g.shfl_xor((q * rotary_sign), 1) * sin(inv_freq);
-            k = k * cos(inv_freq) + g.shfl_xor((k * rotary_sign), 1) * sin(inv_freq);
+            float rotary_sign = (lane % 2 == 1 ? -1.0 : 1.0);
+            float q_rot = (q * rotary_sign);
+            float k_rot = (k * rotary_sign);
+            q_rot = g.shfl_xor(q_rot, 1);
+            k_rot = g.shfl_xor(k_rot, 1);
+            q = q * cosf(inv_freq) + q_rot * sinf(inv_freq);
+            k = k * cosf(inv_freq) + k_rot * sinf(inv_freq);
 
             mixed_query[offset] = (__half)q;
             key_layer[offset] = (__half)k;
