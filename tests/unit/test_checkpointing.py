@@ -1275,8 +1275,8 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
                                               model=models[1],
                                               model_parameters=models[1].parameters())
         if load_optim:
-            #with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
-            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+            with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
+                model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
         else:
             model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
 
