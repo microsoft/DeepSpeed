@@ -24,10 +24,7 @@ from typing import Callable, Dict, Optional, Union, Iterable
 from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.utils import (
-    is_zero_supported_optimizer,
-    _initialize_parameter_parallel_groups,
-)
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.activation_checkpointing import (
     checkpointing as activation_checkpointing,
 )
@@ -2431,8 +2428,6 @@ class DeepSpeedEngine(Module):
         if checkpoint is None:
             return None, None
 
-        # TODO: merge the above two after talking to Reza/Jeff.
-
         if is_pipe_parallel:
             # Pipeline parallelism uses this to load its own checkpoint files.
             self._curr_ckpt_path = os.path.join(load_dir, tag)
@@ -2442,12 +2437,6 @@ class DeepSpeedEngine(Module):
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
-
-        # TODO: Do the following before we merge to master.
-        #   if load_optimizer states and not load_module_only:
-        #           Add consistency check between fp16 and fp32 parameters
-        #           If the consistency check fails, crash with a message telling users
-        #           to turn on load_module_only.
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
@@ -2547,6 +2536,13 @@ class DeepSpeedEngine(Module):
         if zero_sd_list is None:
             return False
 
+        if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
+            raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
+                f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
+                f"current world size is {self.dp_world_size}. Automatic adjustment " \
+                "of ZeRO's optimizer state partitioning with a new world size is not " \
+                "currently supported.")
+
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
             load_optimizer_states=load_optimizer_states,
@@ -2623,7 +2619,7 @@ class DeepSpeedEngine(Module):
 
         zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
         logger.info(
-            f"successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
+            f"successfully read {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
         return zero_optimizer_sd
 

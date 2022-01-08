@@ -2162,16 +2162,18 @@ class DeepSpeedZeroOptimizer(object):
                 "please use an older version of DeepSpeed (<= 0.5.8) and set 'legacy_stage1': true in your zero config json."
             assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
-        if ckpt_version < pkg_version.parse("0.5.10"):
-            # zero checkpoints before 0.5.10 defaulted to elastic enabled, must
-            # load checkpoint state using elastic logic
-            self.elastic_checkpoint = True
-
         if load_optimizer_states:
-            if self.elastic_checkpoint:
-                self._restore_elastic_base_optimizer_state(state_dict_list)
-            else:
+            if isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict):
+                # loading rigid ckpt into either rigid or elastic exec
                 self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
+            else:
+                if self.elastic_checkpoint:
+                    # loading elastic into elastic exec
+                    self._restore_elastic_base_optimizer_state(state_dict_list)
+                else:
+                    # loading an elastic checkpoint into rigid exec
+                    self._restore_base_optimizer_state(
+                        current_rank_sd[BASE_OPTIMIZER_STATE])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
