@@ -57,7 +57,7 @@ class ReplaceWithTensorSlicing:
         src_shape = src.shape
         dst_shape = dst.shape
 
-        src_split = torch.split(src, src.shape[-1] // 3, dim=-1)
+        src_split = torch.split(src.data, src.shape[-1] // 3, dim=-1)
 
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[1] == dst_shape[1]:
@@ -71,7 +71,8 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=1) for i in range(len(qkv_split[0]))
             ]
-            dst = weight_split[self.gpu_index].to(torch.cuda.current_device())
+            dst.copy_(weight_split[self.gpu_index].to(
+                torch.cuda.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 return src
@@ -82,9 +83,10 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=0) for i in range(len(qkv_split[0]))
             ]
-            dst = bias_split[self.gpu_index].to(torch.cuda.current_device())
+            dst.data.copy_(bias_split[self.gpu_index].to(
+                torch.cuda.current_device()).contiguous())
 
-        return dst.contiguous()
+        return dst
 
     def copy(self, dst, src):
         if src is None:
@@ -105,13 +107,15 @@ class ReplaceWithTensorSlicing:
                 self.merge_assert(src_shape[1], dst_shape[1])
                 weight_split = torch.split(src, dst_shape[1], dim=1)
 
-            dst = weight_split[self.gpu_index].to(torch.cuda.current_device())
+            dst.copy_(weight_split[self.gpu_index].to(
+                torch.cuda.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 return src
 
             bias_split = torch.split(src, dst_shape[-1])
-            dst = bias_split[self.gpu_index].to(torch.cuda.current_device())
+            dst.copy_(bias_split[self.gpu_index].to(
+                torch.cuda.current_device()).contiguous())
 
         return dst.contiguous()
 
@@ -253,11 +257,11 @@ def replace_transformer_layer(orig_layer_impl,
                     quantize_bits = 8
                     quantizer = WeightQuantization()
                     if policy_cls is HFBertLayerPolicy:
-                        data_quantized, _ = quantizer.quantize_data(qkvw, quantize_bits, quantize_groups * 3)
+                        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups * 3)
                     else:
-                        data_quantized, _ = quantizer.quantize_data(qkvw, quantize_bits, quantize_groups)
-                    qkvw.copy_(data_quantized)
-                    qkvw = qkvw.to(torch.int8)
+                        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups)
+                    qkvw.data.copy_(data_quantized)
+                    qkvw.data = qkvw.data.to(torch.int8)
             else:
                 new_module = transformer_inference.DeepSpeedTransformerInference(
                     transformer_config,
@@ -274,26 +278,25 @@ def replace_transformer_layer(orig_layer_impl,
                 return data
 
             if attn_linear_layer:
-                qkvw = transpose(qkvw.data)
-                dense_w = transpose(dense_w)
+                qkvw.data = transpose(qkvw.data)
+                dense_w.data = transpose(dense_w.data)
 
             if mlp_linear_layer:
-                _h4h_w = transpose(_h4h_w)
-                _4hh_w = transpose(_4hh_w)
+                _h4h_w.data = transpose(_h4h_w.data)
+                _4hh_w.data = transpose(_4hh_w.data)
 
             attn_block = new_module.attention
-            attn_block.attn_qkvw.data = mp_replace.qkv_copy(attn_block.attn_qkvw.data,
-                                                            qkvw)
-            attn_block.attn_qkvb = mp_replace.qkv_copy(attn_block.attn_qkvb.data, qkvb)
+            attn_block.attn_qkvw = mp_replace.qkv_copy(attn_block.attn_qkvw, qkvw)
+            attn_block.attn_qkvb = mp_replace.qkv_copy(attn_block.attn_qkvb, qkvb)
 
-            attn_block.attn_ow.data = mp_replace.copy(attn_block.attn_ow.data, dense_w)
-            attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob.data, dense_b)
+            attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
+            attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
 
             mpl_block = new_module.mlp
-            mpl_block.inter_w.data = mp_replace.copy(mpl_block.inter_w.data, _h4h_w)
-            mpl_block.inter_b.data = mp_replace.copy(mpl_block.inter_b.data, _h4h_b)
-            mpl_block.output_w.data = mp_replace.copy(mpl_block.output_w.data, _4hh_w)
-            mpl_block.output_b.data = mp_replace.copy(mpl_block.output_b.data, _4hh_b)
+            mpl_block.inter_w = mp_replace.copy(mpl_block.inter_w, _h4h_w)
+            mpl_block.inter_b = mp_replace.copy(mpl_block.inter_b, _h4h_b)
+            mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
+            mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
 
             new_module.mlp.attn_nw = attn_nw if dense_b is None else attn_nw.to(
                 torch.cuda.current_device())
@@ -432,9 +435,10 @@ def replace_transformer_layer(orig_layer_impl,
                     setattr(
                         r_module,
                         name,
-                        linear_policies[child.__class__](child,
-                                                         prev_name + '.' + name,
-                                                         conv_linear_layer))
+                        linear_policies[child.__class__](
+                            child,
+                            name if prev_name == '' else prev_name + '.' + name,
+                            conv_linear_layer))
                 else:
                     update_mp_params(child)
                     _replace_module(child, name)

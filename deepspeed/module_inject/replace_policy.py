@@ -55,7 +55,7 @@ class HFBertLayerPolicy(DSPolicy):
                 HFBertLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attention.self.query.weight.data.shape[1], \
+        return self.client_module.attention.self.query.weight.shape[1], \
                 self.client_module.attention.self.num_attention_heads
 
     def attention(self):
@@ -66,14 +66,14 @@ class HFBertLayerPolicy(DSPolicy):
         vw = self.client_module.attention.self.value.weight.data
         vb = self.client_module.attention.self.value.bias.data
 
-        qkvw = torch.cat((qw, kw, vw), dim=0)
-        qkvb = torch.cat((qb, kb, vb), dim=0)
+        qkvw = torch.nn.parameter.Parameter(torch.cat((qw, kw, vw), dim=0))
+        qkvb = torch.nn.parameter.Parameter(torch.cat((qb, kb, vb), dim=0))
 
         return self.linear_layer, \
                qkvw, \
                qkvb, \
-               self.client_module.attention.output.dense.weight.data, \
-               self.client_module.attention.output.dense.bias.data, \
+               self.client_module.attention.output.dense.weight, \
+               self.client_module.attention.output.dense.bias, \
                self.scale_attention
 
     def mlp(self):
@@ -82,9 +82,9 @@ class HFBertLayerPolicy(DSPolicy):
         else:
             intermediate_ff = self.client_module.intermediate.dense
 
-        return self.linear_layer, intermediate_ff.weight.data, intermediate_ff.bias.data, \
-            self.client_module.output.dense.weight.data, \
-            self.client_module.output.dense.bias.data
+        return self.linear_layer, intermediate_ff.weight, intermediate_ff.bias, \
+            self.client_module.output.dense.weight, \
+            self.client_module.output.dense.bias
 
     def layerNorm(self):
         if self.preln:
@@ -93,10 +93,10 @@ class HFBertLayerPolicy(DSPolicy):
         else:
             attention_layernorm = self.client_module.attention.output.LayerNorm
             transformer_layernorm = self.client_module.output.LayerNorm
-        return attention_layernorm.weight.data, \
-               attention_layernorm.bias.data, \
-               transformer_layernorm.weight.data, \
-               transformer_layernorm.bias.data
+        return attention_layernorm.weight, \
+               attention_layernorm.bias, \
+               transformer_layernorm.weight, \
+               transformer_layernorm.bias
 
 
 class HFGPTNEOLayerPolicy(DSPolicy):
@@ -112,7 +112,7 @@ class HFGPTNEOLayerPolicy(DSPolicy):
             HFGPTNEOLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attn.attention.q_proj.weight.data.shape[1], \
+        return self.client_module.attn.attention.q_proj.weight.shape[1], \
                 self.client_module.attn.attention.num_heads
 
     def attention(self):
@@ -120,27 +120,27 @@ class HFGPTNEOLayerPolicy(DSPolicy):
         kw = self.client_module.attn.attention.k_proj.weight.data
         vw = self.client_module.attn.attention.v_proj.weight.data
 
-        qkvw = torch.cat((qw, kw, vw), dim=0)
+        qkvw = torch.nn.parameter.Parameter(torch.cat((qw, kw, vw), dim=0))
 
         return self.linear_layer, \
                 qkvw, \
                 None, \
-                self.client_module.attn.attention.out_proj.weight.data, \
-                self.client_module.attn.attention.out_proj.bias.data, \
+                self.client_module.attn.attention.out_proj.weight, \
+                self.client_module.attn.attention.out_proj.bias, \
                 self.scale_attention
 
     def mlp(self):
         return self.linear_layer, \
-                self.client_module.mlp.c_fc.weight.data, \
-                self.client_module.mlp.c_fc.bias.data, \
-                self.client_module.mlp.c_proj.weight.data, \
-                self.client_module.mlp.c_proj.bias.data
+                self.client_module.mlp.c_fc.weight, \
+                self.client_module.mlp.c_fc.bias, \
+                self.client_module.mlp.c_proj.weight, \
+                self.client_module.mlp.c_proj.bias
 
     def layerNorm(self):
-        return self.client_module.ln_2.weight.data, \
-               self.client_module.ln_2.bias.data, \
-               self.client_module.ln_1.weight.data, \
-               self.client_module.ln_1.bias.data
+        return self.client_module.ln_2.weight, \
+               self.client_module.ln_2.bias, \
+               self.client_module.ln_1.weight, \
+               self.client_module.ln_1.bias
 
 
 class HFGPTJLayerPolicy(DSPolicy):
@@ -156,7 +156,7 @@ class HFGPTJLayerPolicy(DSPolicy):
             HFGPTJLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attn.q_proj.weight.data.shape[1], \
+        return self.client_module.attn.q_proj.weight.shape[1], \
                 self.client_module.attn.num_attention_heads
 
     def attention(self):
@@ -164,27 +164,27 @@ class HFGPTJLayerPolicy(DSPolicy):
         kw = self.client_module.attn.k_proj.weight.data
         vw = self.client_module.attn.v_proj.weight.data
 
-        qkvw = torch.cat((qw, kw, vw), dim=0)
+        qkvw = torch.nn.parameter.Parameter(torch.cat((qw, kw, vw), dim=0))
 
         return self.linear_layer, \
                 qkvw, \
                 None, \
-                self.client_module.attn.out_proj.weight.data, \
+                self.client_module.attn.out_proj.weight, \
                 None, \
                 self.scale_attention
 
     def mlp(self):
         return self.linear_layer, \
-                self.client_module.mlp.fc_in.weight.data, \
-                self.client_module.mlp.fc_in.bias.data, \
-                self.client_module.mlp.fc_out.weight.data, \
-                self.client_module.mlp.fc_out.bias.data
+                self.client_module.mlp.fc_in.weight, \
+                self.client_module.mlp.fc_in.bias, \
+                self.client_module.mlp.fc_out.weight, \
+                self.client_module.mlp.fc_out.bias
 
     def layerNorm(self):
         return None, \
                None, \
-               self.client_module.ln_1.weight.data, \
-               self.client_module.ln_1.bias.data
+               self.client_module.ln_1.weight, \
+               self.client_module.ln_1.bias
 
 
 class MegatronLayerPolicy(DSPolicy):
@@ -205,7 +205,7 @@ class MegatronLayerPolicy(DSPolicy):
                 MegatronLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attention.query_key_value.weight.data.shape[1], \
+        return self.client_module.attention.query_key_value.weight.shape[1], \
                 self.client_module.attention.num_attention_heads
 
     def attention(self):
@@ -216,24 +216,24 @@ class MegatronLayerPolicy(DSPolicy):
                 attention = self.client_module.self_attention
 
         return self.linear_layer, \
-                attention.query_key_value.weight.data, \
-                attention.query_key_value.bias.data, \
-                attention.dense.weight.data, \
-                attention.dense.bias.data, \
+                attention.query_key_value.weight, \
+                attention.query_key_value.bias, \
+                attention.dense.weight, \
+                attention.dense.bias, \
                 self.scale_attention
 
     def mlp(self):
         return self.linear_layer, \
-            self.client_module.mlp.dense_h_to_4h.weight.data, \
-            self.client_module.mlp.dense_h_to_4h.bias.data, \
-            self.client_module.mlp.dense_4h_to_h.weight.data, \
-            self.client_module.mlp.dense_4h_to_h.bias.data
+            self.client_module.mlp.dense_h_to_4h.weight, \
+            self.client_module.mlp.dense_h_to_4h.bias, \
+            self.client_module.mlp.dense_4h_to_h.weight, \
+            self.client_module.mlp.dense_4h_to_h.bias
 
     def layerNorm(self):
-        return self.client_module.post_attention_layernorm.weight.data, \
-               self.client_module.post_attention_layernorm.bias.data, \
-               self.client_module.input_layernorm.weight.data, \
-               self.client_module.input_layernorm.bias.data
+        return self.client_module.post_attention_layernorm.weight, \
+               self.client_module.post_attention_layernorm.bias, \
+               self.client_module.input_layernorm.weight, \
+               self.client_module.input_layernorm.bias
 
 
 class HFGPT2LayerPolicy(DSPolicy):
@@ -255,24 +255,24 @@ class HFGPT2LayerPolicy(DSPolicy):
 
     def attention(self):
         return self.linear_layer, \
-                self.client_module.attn.c_attn.weight.data, \
-                self.client_module.attn.c_attn.bias.data, \
-                self.client_module.attn.c_proj.weight.data, \
-                self.client_module.attn.c_proj.bias.data, \
+                self.client_module.attn.c_attn.weight, \
+                self.client_module.attn.c_attn.bias, \
+                self.client_module.attn.c_proj.weight, \
+                self.client_module.attn.c_proj.bias, \
                 self.scale_attention
 
     def mlp(self):
         return self.linear_layer, \
-            self.client_module.mlp.c_fc.weight.data, \
-            self.client_module.mlp.c_fc.bias.data, \
-            self.client_module.mlp.c_proj.weight.data, \
-            self.client_module.mlp.c_proj.bias.data
+            self.client_module.mlp.c_fc.weight, \
+            self.client_module.mlp.c_fc.bias, \
+            self.client_module.mlp.c_proj.weight, \
+            self.client_module.mlp.c_proj.bias
 
     def layerNorm(self):
-        return self.client_module.ln_2.weight.data, \
-               self.client_module.ln_2.bias.data, \
-               self.client_module.ln_1.weight.data, \
-               self.client_module.ln_1.bias.data
+        return self.client_module.ln_2.weight, \
+               self.client_module.ln_2.bias, \
+               self.client_module.ln_1.weight, \
+               self.client_module.ln_1.bias
 
 
 replace_policies = [
