@@ -126,11 +126,24 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
+        # intended device for step
+        device = torch.device('cpu')
+
+        # converting the fp16 params to a group of parameter
+        if type(fp16_param_groups) is list:
+            if type(fp16_param_groups[0]) is not list:
+                fp16_param_groups = [fp16_param_groups]
+        elif fp16_param_groups is not None:
+            fp16_param_groups = [[fp16_param_groups]]
+
         for group_id, group in enumerate(self.param_groups):
             for param_id, p in enumerate(group['params']):
 
                 if p.grad is None:
                     continue
+
+                assert p.device == device, f"CPUAdam param is on {p.device} and must be 'cpu', make " \
+                        "sure you enabled 'offload_optimizer': 'cpu' in your ZeRO config."
 
                 state = self.state[p]
                 # State initialization
@@ -144,12 +157,12 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                     # gradient momentums
                     state['exp_avg'] = torch.zeros_like(p.data,
                                                         dtype=state_dtype,
-                                                        device='cpu')
+                                                        device=device)
                     #memory_format=torch.preserve_format)
                     # gradient variances
                     state['exp_avg_sq'] = torch.zeros_like(p.data,
                                                            dtype=state_dtype,
-                                                           device='cpu')
+                                                           device=device)
                     #memory_format=torch.preserve_format)
 
                 state['step'] += 1
