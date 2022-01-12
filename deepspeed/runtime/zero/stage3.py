@@ -311,7 +311,7 @@ class PartitionedParameterCoordinator:
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
-        for param in iter_params(current_submodule):
+        for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
             debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
