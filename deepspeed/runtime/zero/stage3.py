@@ -233,6 +233,7 @@ class PartitionedParameterCoordinator:
         # because ideally in the future its replaced by an async allocation
         # mechanism which doesnt require any configuration by the user.
         self.__ongoing_fetch_events: Deque[Event] = collections.deque()
+        # TODO. make this configurable via JSON
         self.__max_ongoing_fetch_events: int = 2
 
     """Tracing and Tracking
@@ -801,6 +802,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.is_gradient_accumulation_boundary: bool = True
 
         self.__param_reduce_events: Deque[Event] = collections.deque()
+        # TODO. make this configurable via JSON
         self.__max_param_reduce_events: int = 2
 
         if dist.get_rank() == 0:
@@ -892,6 +894,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
 
+    # TODO. factor out to a utility outside of stage3
     @staticmethod
     def defragment(tensors: List[Tensor]) -> Tensor:
         """move provided tensors into a contiguous flat buffer, with some additional
