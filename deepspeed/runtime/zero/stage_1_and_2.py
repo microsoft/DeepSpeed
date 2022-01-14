@@ -2162,8 +2162,10 @@ class DeepSpeedZeroOptimizer(object):
                 "please use an older version of DeepSpeed (<= 0.5.8) and set 'legacy_stage1': true in your zero config json."
             assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
+        ckpt_is_rigid = isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict)
+
         if load_optimizer_states:
-            if isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict):
+            if ckpt_is_rigid:
                 # loading rigid ckpt into either rigid or elastic exec
                 self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
             else:
@@ -2192,7 +2194,7 @@ class DeepSpeedZeroOptimizer(object):
 
         if load_from_fp32_weights:
             # option 2 from above
-            if self.elastic_checkpoint:
+            if self.elastic_checkpoint and not ckpt_is_rigid:
                 self._restore_from_elastic_fp32_weights(state_dict_list)
             else:
                 # For non-elastic checkpoint, simply copying from saved weights of current rank is sufficient.

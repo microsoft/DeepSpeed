@@ -1235,7 +1235,7 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
                                            elastic_load,
                                            load_optim):
     ds_config = {
-        "train_batch_size": 2,
+        "train_batch_size": 4,
         "optimizer": {
             "type": 'Adam'
         },
@@ -1251,7 +1251,7 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
     hidden_dim = 10
     models = [SimpleModel(hidden_dim) for _ in range(2)]
 
-    @distributed_test(world_size=[2])
+    @distributed_test(world_size=[4])
     def _go2(models):
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                               model=models[0],
@@ -1268,7 +1268,7 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
 
     _go2(models)
 
-    @distributed_test(world_size=[1])
+    @distributed_test(world_size=[2])
     def _go1(models):
         ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
         model, _, _, _ = deepspeed.initialize(config=ds_config,
