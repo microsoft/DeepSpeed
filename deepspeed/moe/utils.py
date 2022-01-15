@@ -1,6 +1,18 @@
 from typing import List, Tuple, Dict
 import torch
 import deepspeed.utils.groups as groups
+from .layer import MoE
+
+
+def has_moe_layers(m):
+    has_moe = False
+    num_experts = 0
+    for _, module in m.named_modules():
+        if isinstance(module, MoE):
+            has_moe = True
+            num_experts = module.num_experts
+            break
+    return has_moe, num_experts
 
 
 def is_moe_param(param: torch.Tensor) -> bool:

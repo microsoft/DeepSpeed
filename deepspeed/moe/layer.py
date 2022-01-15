@@ -68,7 +68,9 @@ class MoE(torch.nn.Module):
         else:
             self.expert_group_name = f"ep_size_{max_ep_size}"
 
-        num_local_experts = num_experts // groups.get_expert_parallel_world_size(
+        num_local_experts = 1 if num_experts < groups.get_expert_parallel_world_size(
+            self.expert_group_name
+        ) else num_experts // groups.get_expert_parallel_world_size(
             self.expert_group_name)
 
         log_dist(
