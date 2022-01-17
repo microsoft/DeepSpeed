@@ -71,7 +71,13 @@ def split_params_into_different_moe_groups_for_optimizer(
         Tuple[Dict]:
         list of MoE/non-MoE groups for optimizer
     """
-    param_groups = list(param_groups)  # Tuple cannot be modified
+    if isinstance(param_groups, tuple):
+        param_groups = list(param_groups)  # Tuple cannot be modified
+    elif isinstance(param_groups, dict):
+        param_groups = [param_groups]
+    elif not isinstance(param_groups, list):
+        raise ValueError(f"Unknown param group type of {type(param_groups)}")
+
     group_moe = {}
 
     # Create the param MoE groups, leave param assign to next step
