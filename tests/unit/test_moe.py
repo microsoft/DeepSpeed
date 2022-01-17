@@ -42,7 +42,7 @@ def test_moe(tmpdir, ep_size):
         # E only -- ep_size = 4
         #groups.initialize_model_parallel(1)
         #groups.initialize_expert_parallel(2)
-        groups.initialize(max_ep_size=ep_size)
+        groups.initialize(ep_size=ep_size)
         model = SimpleMoEModel(hidden_dim)
         optimizer = torch.optim.AdamW(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
