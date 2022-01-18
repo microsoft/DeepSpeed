@@ -11,7 +11,7 @@ You would need to install DeepSpeed v0.6.0 or higher to use the MoE feature. The
 ## 2. Training NLG+MoE models
 
 ### 2.1. Changes to the model
-To apply MoE to the GPT-style model, we made several changes in Megatron framework, mostly in `megatron/model/` where we add the MoE layers into the model. 
+To apply MoE to the GPT-style model, we made several changes in Megatron framework, mostly in `megatron/model/` where we add the MoE layers into the model.
 
 ### 2.2. Pre-training the Standard MoE model
 We provide example training scripts under [examples/MoE](https://github.com/microsoft/Megatron-DeepSpeed/tree/moe/examples/MoE) which we used to perform the experiments in our [Blog]({{ site.press_release_v6 }}). There are a few new hyperparameters for standard MoE model:
