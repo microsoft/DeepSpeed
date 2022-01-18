@@ -298,7 +298,7 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu, num_ep_list
     dp_rank = mpu.get_data_parallel_rank()
 
     log_dist(
-        f"Initializing deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, and data parallel size {world_size}",
+        f"Initializing deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
         [0])
 
     global _DATA_PARALLEL_GROUP, _MODEL_PARALLEL_GROUP
@@ -326,7 +326,8 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu, num_ep_list
             # For data parallel
             # Similar as initialize_expert_parallel we will need to think about two cases
             if num_ep >= expert_parallel_size_:
-                if f"ep_size_{expert_parallel_size_}" not in _EXPERT_DATA_PARALLEL_GROUP:
+                #TODO: refactor this part of code to check condition in outer for-loop
+                if True:  #f"ep_size_{expert_parallel_size_}" not in _EXPERT_DATA_PARALLEL_GROUP:
                     for i in range(expert_parallel_size_):
                         ranks = range(i * model_parallel_size_ + j,
                                       world_size,
@@ -346,7 +347,8 @@ def initialize_model_and_expert_parallel(expert_parallel_size_, mpu, num_ep_list
 
             # For expert parallel
             if num_ep >= expert_parallel_size_:
-                if f"ep_size_{expert_parallel_size_}" not in _EXPERT_PARALLEL_GROUP:
+                #TODO: refactor this part of code to check condition in outer for-loop
+                if True:  #f"ep_size_{expert_parallel_size_}" not in _EXPERT_PARALLEL_GROUP:
                     for i in range(dp_world_size // expert_parallel_size_):
                         ranks = range(
                             i * expert_parallel_size_ * model_parallel_size_ + j,
