@@ -993,14 +993,9 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     args = args_from_dict(tmpdir, config_dict)
 
     def create_param_groups(model):
-        params_with_weight_decay = {'params': [], 'name': 'weight_decay_params'}
-
-        for module_ in model.modules():
-            params_with_weight_decay['params'].extend(
-                [p for n,
-                 p in list(module_._parameters.items()) if p is not None])
-
-        return params_with_weight_decay
+        # param group must have a random unique name (for now)
+        # TODO: clean-up this requirement, the unique name should not be required here
+        return {'params': model.parameters(), 'name': 'random-unique-name'}
 
     @distributed_test(world_size=[4])
     def _helper(args):
