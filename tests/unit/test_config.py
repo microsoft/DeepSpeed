@@ -3,6 +3,9 @@ import torch
 import pytest
 import json
 import argparse
+
+from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
+
 from .common import distributed_test, get_test_path
 from .simple_model import SimpleModel, create_config_from_dict, random_dataloader
 import torch.distributed as dist
@@ -112,6 +115,22 @@ def test_temp_config_json(tmpdir):
     config_path = create_config_from_dict(tmpdir, config_dict)
     config_json = json.load(open(config_path, 'r'))
     assert 'train_batch_size' in config_json
+
+
+@pytest.mark.parametrize("gather_weights_key",
+                         [
+                             "stage3_gather_16bit_weights_on_model_save",
+                             "stage3_gather_fp16_weights_on_model_save"
+                         ])
+def test_gather_16bit_params_on_model_save(gather_weights_key):
+    config_dict = {
+        "zero_optimization": {
+            gather_weights_key: True,
+        },
+    }
+    config = DeepSpeedZeroConfig(config_dict)
+
+    assert config.gather_16bit_weights_on_model_save == True
 
 
 def test_deprecated_deepscale_config(tmpdir):
