@@ -113,9 +113,9 @@ The relevant function that creates these param groups is as follows.
 def create_moe_param_groups(model):
     from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
-    params_with_weight_decay = {'params': model.parameters(), 'name': 'parameters'}
+    parameters = {'params': model.parameters(), 'name': 'parameters'}
 
-    return split_params_into_different_moe_groups_for_optimizer(params_with_weight_decay)
+    return split_params_into_different_moe_groups_for_optimizer(parameters)
 ```
 
 The above param groups can then be fed to the ZeRO stage-2 optimizer as follows.
