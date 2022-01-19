@@ -4,7 +4,7 @@ title: "Getting Started with DeepSpeed-MoE for Inferencing Large-Scale MoE Model
 
 DeepSpeed-MoE Inference introduces several important features on top of the inference optimization for dense models ([DeepSpeed-Inference blog post](https://www.microsoft.com/en-us/research/blog/deepspeed-accelerating-large-scale-model-inference-and-training-via-system-optimizations-and-compression/)). It embraces several different types of parallelism, i.e. data-parallelism and tensor-slicing for the non-expert parameters and expert-parallelism and expert-slicing for the expert parameters. To maximize the aggregate memory-bandwidth, we provide the communication scheduling with parallelism coordination to effectively group and route tokens with the same critical-data-path. Moreover, we propose new modeling optimizations, PR-MoE and MoS, to reduce MoE model size while maintaining accuracy. For more information on the DeepSpeed MoE inference optimization, please refer to our [blog post](TODO: Add the link to the blog).
 
-DeepSpeed provides a seamless inference mode for the variant of MoE models which are trained through the DeepSpeed-MoE library ([MoE tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/). To do so, one needs to simply use the deepspeed-inference engine to initialize the model to run the model in the eval mode. 
+DeepSpeed provides a seamless inference mode for the variant of MoE models that are trained via the DeepSpeed-MoE library ([MoE tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/)). To do so, one needs to simply use the deepspeed-inference engine to initialize the model to run the model in the eval mode. 
 In the next part, we elaborate on how to run MoE models at inference-mode through DeepSpeed and describing the different features for adding different parallelism support to serve the model at unprecedented scale and speed.
 
 
@@ -49,7 +49,7 @@ output = model('Input String')
 Here, we show a text-generation example using an MoE model for which we can specify the model-parallel size and number of experts. 
 DeepSpeed inference-engine takes care of creating the different parallelism groups using the tensor-slicing degree, number of experts, and the total number of GPUs used for running the MoE model. Regarding the expert parameters, we first use the expert-parallelism to assign each group of experts to one GPU. If number of GPUs is higher than experts, we use expert-slicing to partition each expert vertically/horizontally across the GPUs.
 
-Let's take a look at some of the parameters passed to run our example. Please refer to [DeepSpeed-Example](https://github.com/microsoft/Megatron-DeepSpeed/blob/moe-training/examples/generate_text.sh) for a complete generate-text inference example.
+Let's take a look at some of the parameters passed to run our example. Please refer to [DeepSpeed-Example](https://github.com/microsoft/Megatron-DeepSpeed/blob/moe/examples/generate_text.sh) for a complete generate-text inference example.
 
 
 ```bash
