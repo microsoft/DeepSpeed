@@ -81,6 +81,7 @@ def assert_ints_same_as_other_ranks(ints: List[int]) -> None:
     if ints != rank0_ints:
         raise RuntimeError(f"disagreement between rank0 and rank{dist.get_rank()}: "
                            f"rank0: {rank0_ints}, rank{dist.get_rank()}: {ints}")
-        
+
+
 class ZeRORuntimeException(Exception):
     pass
