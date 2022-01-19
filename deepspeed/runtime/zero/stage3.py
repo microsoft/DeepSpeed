@@ -2693,8 +2693,6 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     @instrument_w_nvtx
     def unscale_and_clip_grads(self, sub_group_id, total_norm):
-        grad_groups_flat = [self.fp32_partitioned_groups_flat[sub_group_id].grad]
-
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
         if self.clip_grad > 0.:
@@ -2702,16 +2700,8 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             clip = ((total_norm / self.loss_scale) + 1e-6) / self.clip_grad
             if clip > 1:
                 combined_scale = clip * self.loss_scale
-        # to maintain behavior of averaging over accumulation steps
-        combined_scale *= self.micro_step_id + 1
 
-        for grad in grad_groups_flat:
-            if isinstance(grad, list):
-                sub_partitions = grad
-                for g in sub_partitions:
-                    g.data.mul_(1. / combined_scale)
-            else:
-                grad.data.mul_(1. / combined_scale)
+        self.fp32_partitioned_groups_flat[sub_group_id].grad.mul_(1. / combined_scale)
 
     def _check_overflow(self, partition_gradients=True):
         self.overflow = self.has_overflow(partition_gradients)
