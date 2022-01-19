@@ -35,7 +35,7 @@ ds_engine = deepspeed.init_inference(model,
                                      mp_size=tensor_slicing_size,
                                      dtype=torch.half,
                                      moe_experts=args.num_experts,
-                                     checkpoint==getattr(args, 'checkpoint_path')
+                                     checkpoint=getattr(args, 'checkpoint_path')
                                      replace_method='auto',
                                      replace_with_kernel_inject=True,)
 model = ds_engine.module
@@ -67,6 +67,8 @@ generate_samples_gpt.py \
 ```
 
 In order to show the performance scaling of DeepSpeed-MoE inference with increasing number of GPUs, we consider a 52B model architecture with 128 experts and 1.3B dense model using the parameters shown in the script above. In this example, we set tensor-slicing degree to one since the non-expert part of the model is relatively small (805M parameters). We use the last flag, `ds-inference`, to switch between DeepSpeed-MoE and PyTorch implementations.
+
+For the DeepSpeed-MoE inference, we use two versions: 1) Generic, based on the current open-source version which includes the support of flexible parallelism and the PR-MoE optimization , and 2) Specialized, the most optimized version of DeepSpeed-MoE inference system that includes special kernels for running the MoE part of the inference. We plan to release these optimizations soon in the staged release as mentioned in the [blog post]({{ site.press_release_v6 }}).
 
 Figure 1 shows the inference performance of three different configuration, PyTorch, DeepSpeed-MoE (Generic), and DeepSpeed-MoE (Specialized), running on 8, 16, and 32 GPUs. Compared to PyTorch, DeepSpeed-MoE obtains significantly higher performance benefit as we increased the number of GPUs. By using the generic DeepSpeed-MoE inference, we can get between 24% to 60% performance improvement over PyTorch. Additionally, by enabling the full features of DeepSpeed-MoE inference, such as communication optimization and MoE customized kernels, the performance speedup gets boosted (2x – 3.2x).
 
@@ -101,7 +103,9 @@ To evaluate the performance of PR-MoE, we use the two model structures, `'standa
 
 We use 1 node (8 A100 GPUs) to run inference on the 2.4B+MoE-128 and 8 nodes (64 A100 GPUs) for the 24B+MoE-128. Figure 2 shows the performance of three different configuration: MoE-Standard (PyTorch), MoE-Standard (DeepSpeed-Generic), PR-MoE (DeepSpeed-Generic). By using the standard-MoE DeepSpeed improves inference performance by 1.4x and 1.65x compared to PyTorch for the two models, respectively. Furthermore, by using the PR-MoE, we can improve the performance speedups to 1.81x and 1.87x, while keeping the model quality maintained.
 
-
 ![52b-MoE-128](/assets/images/prmoe.png)
+
+For more performance results and scaling towards bigger models and larger number of GPUs, please refer to [blog post]({{ site.press_release_v6 }}) and [our paper](https://arxiv.org/abs/2201.05596).
+
 
 Congratulations! You have completed DeepSpeed-MoE inference Tutorial.
