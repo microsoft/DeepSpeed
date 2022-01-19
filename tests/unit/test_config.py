@@ -12,7 +12,7 @@ import torch.distributed as dist
 
 # A test on its own
 import deepspeed
-from deepspeed.runtime.config import DeepSpeedConfig
+from deepspeed.runtime.config import DeepSpeedConfig, get_bfloat16_enabled
 
 
 def test_cuda():
@@ -131,6 +131,16 @@ def test_gather_16bit_params_on_model_save(gather_weights_key):
     config = DeepSpeedZeroConfig(config_dict)
 
     assert config.gather_16bit_weights_on_model_save == True
+
+
+@pytest.mark.parametrize("bf16_key", ["bf16", "bfloat16"])
+def test_get_bfloat16_enabled(bf16_key):
+    cfg = {
+        bf16_key: {
+            "enabled": True,
+        },
+    }
+    assert get_bfloat16_enabled(cfg) == True
 
 
 def test_deprecated_deepscale_config(tmpdir):
