@@ -35,7 +35,7 @@ import torch.distributed as dist
 world_size = dist.get_world_size()
 expert_parallel_size = min(world_size, args.num_experts)
 
-# Initialize the expert- parallel group
+# Initialize the expert-parallel group
 deepspeed.utils.groups.initialize(expert_parallel_size)
 
 # create the model
@@ -47,7 +47,7 @@ ds_engine = deepspeed.init_inference(model,
                                      mp_size=tensor_slicing_size,
                                      dtype=torch.half,
                                      moe_experts=args.num_experts,
-                                     checkpoint=getattr(args, 'checkpoint_path')
+                                     checkpoint=args.checkpoint_path,
                                      replace_method='auto',
                                      replace_with_kernel_inject=True,)
 model = ds_engine.module
