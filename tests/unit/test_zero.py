@@ -1015,7 +1015,7 @@ def test_zero3_param_partitioning_base_bf16(
                     "lr": 1.
                 }
             },
-            "bfloat16": {
+            "bf16": {
                 "enabled": True,
                 "loss_scale": 1.,
             }

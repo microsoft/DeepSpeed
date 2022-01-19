@@ -251,7 +251,7 @@ Example of <i>**scheduler**</i>
 | Configuration for using [bfloat16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) floating-point format as an alternative to FP16. BFLOAT16 requires hardware support (e.g., NVIDIA A100). An example, including the available dictionary keys is illustrated below. Training with bfloat16 does not require loss scaling. | None    |
 
 ```json
-"bfloat16": {
+"bf16": {
    "enabled": true
  }
 ```
