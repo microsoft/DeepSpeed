@@ -22,7 +22,7 @@ Remove until pypi issue is resolved: https://status.python.org/incidents/2jj696s
 * [2021/08/18] [DeepSpeed powers 8x larger MoE model training with high performance](https://www.microsoft.com/en-us/research/blog/deepspeed-powers-8x-larger-moe-model-training-with-high-performance/)
 * [2021/08/16] [Curriculum learning: a regularization method for stable and 3.3x faster GPT-2 pre-training with 8x/4x larger batch size/learning rate](https://www.deepspeed.ai/tutorials/curriculum-learning/)
 
-### DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=deepspeed%20open%20source)
+### DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai)
 ---
 
 [DeepSpeed](https://www.deepspeed.ai/) is a deep learning optimization
