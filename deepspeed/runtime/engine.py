@@ -708,8 +708,8 @@ class DeepSpeedEngine(Module):
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
-    def zero_gather_fp16_weights_on_model_save(self):
-        return self._config.zero_config.gather_fp16_weights_on_model_save
+    def zero_gather_16bit_weights_on_model_save(self):
+        return self._config.zero_config.gather_16bit_weights_on_model_save
 
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
@@ -2955,7 +2955,7 @@ class DeepSpeedEngine(Module):
             self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
-    def _zero3_consolidated_fp16_state_dict(self):
+    def _zero3_consolidated_16bit_state_dict(self):
         """
 
         Get a full non-partitioned state_dict with fp16 weights on cpu.
@@ -3024,9 +3024,14 @@ class DeepSpeedEngine(Module):
         return state_dict
 
     def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
-        r"""Save fp16 model weights
+        """has been renamed to save_16bit_model, keeping this around for backwards
+        compatibility"""
+        return self.save_16bit_model(save_dir, save_filename)
 
-        This method saves the fp16 model weights at the desired destination.
+    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
+        r"""Save 16bit model weights
+
+        This method saves the 16bit model weights at the desired destination.
 
         Arguments:
             save_dir: Required. Directory for saving the model
@@ -3034,7 +3039,7 @@ class DeepSpeedEngine(Module):
 
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
-            stage3_gather_fp16_weights_on_model_save is ``False``.
+            stage3_gather_16bit_weights_on_model_save is ``False``.
 
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
@@ -3045,13 +3050,13 @@ class DeepSpeedEngine(Module):
         path = os.path.join(save_dir, save_filename)
 
         if self.zero_optimization_partition_weights():
-            if self.zero_gather_fp16_weights_on_model_save():
+            if self.zero_gather_16bit_weights_on_model_save():
                 # consolidation is expensive in time and memory and therefore isn't a default
-                state_dict = self._zero3_consolidated_fp16_state_dict()
+                state_dict = self._zero3_consolidated_16bit_state_dict()
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
-                    f"Did not save the model {path} because `stage3_gather_fp16_weights_on_model_save` is False"
+                    f"Did not save the model {path} because `stage3_gather_16bit_weights_on_model_save` is False"
                 )
                 return False
         else:
