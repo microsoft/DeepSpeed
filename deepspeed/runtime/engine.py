@@ -2594,13 +2594,6 @@ class DeepSpeedEngine(Module):
         if zero_sd_list is None:
             return False
 
-        if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
-            raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
-                f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
-                f"current world size is {self.dp_world_size}. Automatic adjustment " \
-                "of ZeRO's optimizer state partitioning with a new world size is not " \
-                "currently supported.")
-
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
             load_optimizer_states=load_optimizer_states,

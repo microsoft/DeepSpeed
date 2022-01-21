@@ -2170,6 +2170,16 @@ class DeepSpeedZeroOptimizer(object):
 
         ckpt_is_rigid = isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict)
 
+        # padding is always at the last rank/partition
+        # if DP=1024 and param-group elems=16 -> padding will be 1024-16 across all but one rank
+        # scenario-1 (shrink): saving w. 4 gpus -> loading w. 2 gpus
+        # scenario-2 (expand): saving w. 2 gpus -> loading w. 4 gpus
+        # if load_optimizer_states:
+        #     if new_dp_size:
+        #         self.strip_padding()
+        #         self.add_padding_w_new_dp_size()
+        #     self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
+
         if load_optimizer_states:
             if ckpt_is_rigid:
                 # loading rigid ckpt into either rigid or elastic exec
