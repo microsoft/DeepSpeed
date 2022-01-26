@@ -52,5 +52,5 @@ def test_lightning_model():
     """Test that DeepSpeed works with a simple LightningModule and LightningDataModule."""
 
     model = BoringModel()
-    trainer = Trainer(strategy=DeepSpeedStrategy(), precision=16, gpus=1)
+    trainer = Trainer(strategy=DeepSpeedStrategy(), max_epochs=1, precision=16, gpus=1)
     trainer.fit(model)
