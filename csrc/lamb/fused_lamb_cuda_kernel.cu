@@ -508,7 +508,7 @@ void fused_lamb_cuda(at::Tensor& p,
                         lamb_coeff.data<scalar_t>());
             }));
     }
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
 }
 
 // template __device__ void reduce_two_vectors_in_register<float,512>(float a, float b, float* g_a,
