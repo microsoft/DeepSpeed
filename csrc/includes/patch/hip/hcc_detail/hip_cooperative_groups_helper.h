@@ -33,7 +33,7 @@ THE SOFTWARE.
 
 #if __cplusplus
 
-#if ROCM_VERSION_MINOR < 4
+#if ROCM_VERSION_MAJOR < 5 and ROCM_VERSION_MINOR < 4
 #include <hip/hcc_detail/device_functions.h>
 #include <hip/hcc_detail/hip_runtime_api.h>
 #else

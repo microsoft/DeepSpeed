@@ -35,7 +35,7 @@ THE SOFTWARE.
 //#if __cplusplus
 #if __cplusplus && defined(__clang__) && defined(__HIP__)
 #include <hip/hcc_detail/hip_cooperative_groups_helper.h>
-#if ROCM_VERSION_MINOR < 4
+#if ROCM_VERSION_MAJOR < 5 and ROCM_VERSION_MINOR < 4
 #include <hip/hcc_detail/device_functions.h>
 #endif
 namespace cooperative_groups {
