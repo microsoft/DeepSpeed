@@ -449,7 +449,8 @@ def main(args=None):
 
     if args.save_pid and pid_file is not None:
         # clean-up saved pid file
-        os.remove(pid_file)
+        if os.path.isfile(pid_file):
+            os.remove(pid_file)
 
     # In case of failure must propagate the error-condition back to the caller (usually shell). The
     # actual error and traceback should have been printed in the subprocess, so in order to avoid
