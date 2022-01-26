@@ -552,15 +552,15 @@ class PreBackwardFunction(torch.autograd.Function):
         if not hasattr(module, "applied_pre_backward_ref_cnt"):
             module.applied_pre_backward_ref_cnt = 0
         module.applied_pre_backward_ref_cnt += 1
-        if dist.get_rank() == 0:
-            print(f"After Forward: {ctx.module.__class__.__name__}")
+        # if dist.get_rank() == 0:
+        #     print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
 
     @staticmethod
     def backward(ctx, *args):
-        if dist.get_rank() == 0:
-            print(f"Before Backward: {ctx.module.__class__.__name__}")
+        # if dist.get_rank() == 0:
+        #     print(f"Before Backward: {ctx.module.__class__.__name__}")
         ctx.pre_backward_function(ctx.module)
         return (None, None) + args
 
