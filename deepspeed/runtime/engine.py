@@ -67,6 +67,8 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
+from fairseq.optim.fairseq_optimizer import FairseqOptimizer
+
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
 DeepSpeedOptimizerCallable = \
@@ -446,6 +448,19 @@ class DeepSpeedEngine(Module):
             float: norm
         """
         return self._global_grad_norm
+
+    def __getattr__(self, name):
+        _module = {}
+        if "module" in self.__dict__:
+            _module = self.__dict__['module']
+
+        if name in dir(self):
+            return getattr(self, name)
+        elif name in dir(_module):
+            return getattr(_module, name)
+        else:
+            raise AttributeError("'{}' object has no attribute '{}'".format(
+                type(self).__name__, name))
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -926,7 +941,7 @@ class DeepSpeedEngine(Module):
 
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
-        assert isinstance(self.client_optimizer, (type(None), Optimizer, Callable)), \
+        assert isinstance(self.client_optimizer, (type(None), Optimizer, Callable, FairseqOptimizer)), \
             f'Client Optimizer is of unexpected type {type(self.client_optimizer)}'
 
         if not self.client_optimizer:
@@ -970,6 +985,7 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self.module = model
+        self.__dict__['module'] = model
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
@@ -1083,7 +1099,7 @@ class DeepSpeedEngine(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         if client_optimizer is not None:
-            if isinstance(client_optimizer, Optimizer):
+            if isinstance(client_optimizer, (Optimizer, FairseqOptimizer)):
                 client_optimizer.param_groups[:] = [
                     pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
                 ]
