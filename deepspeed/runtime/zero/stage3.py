@@ -310,6 +310,8 @@ class PartitionedParameterCoordinator:
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
+            if dist.get_rank() == 0:
+                print(f"-fetch: {param.ds_summary()}")
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -501,13 +503,15 @@ class PreBackwardFunction(torch.autograd.Function):
         if not hasattr(module, "applied_pre_backward_ref_cnt"):
             module.applied_pre_backward_ref_cnt = 0
         module.applied_pre_backward_ref_cnt += 1
-        #print(f"After Forward: {ctx.module.__class__.__name__}")
+        if dist.get_rank() == 0:
+            print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
 
     @staticmethod
     def backward(ctx, *args):
-        #print(f"Before Backward: {ctx.module.__class__.__name__}")
+        if dist.get_rank() == 0:
+            print(f"Before Backward: {ctx.module.__class__.__name__}")
         ctx.pre_backward_function(ctx.module)
         return (None, None) + args
 
@@ -608,6 +612,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
+
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
 
         self.optimizer_swapper = None
         self.swap_optimizer = False
@@ -894,6 +901,15 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
+
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
 
     # TODO. factor out to a utility outside of stage3
     @staticmethod
@@ -1389,10 +1405,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 param.ds_persist = True
                 persistent_params.append(param)
                 total_persistent_parameters += param.ds_numel
+            if param.ds_id in [390, 305, 221]:
+                print(f"ds param persist={param.ds_persist}, ds_id={param.ds_id}, numel={param.ds_numel}")
 
         print_rank_0(
             f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
-            force=False)
+            force=True)
         return persistent_params
 
     def _register_hooks_recursively(self, module, count=[0]):
@@ -2598,6 +2616,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         else:
             self._partitioned_params_swap_out(sub_group_id)
 
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
     @instrument_w_nvtx
     def step(self, closure=None):
         """
@@ -2775,7 +2801,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 return True
             return False
 
-    @instrument_w_nvtx
+    # @instrument_w_nvtx
     def backward(self, loss, retain_graph=False):
         """
         :attr:`backward` performs the following steps:
@@ -2789,7 +2815,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage(f"Before backward", force=False)
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            # logger.info(f'effective loss scale: {self.external_loss_scale}')
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         self.param_coordinator.reset_step()
 
@@ -2855,7 +2886,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value

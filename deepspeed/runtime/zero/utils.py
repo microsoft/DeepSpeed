@@ -43,7 +43,23 @@ except ImportError:
     pass
 
 
+_fairseq = None
+
+
+def _lazy_fairseq():
+    global _fairseq
+    if _fairseq is None:
+        # Add fairseq adam if available
+        try:
+            import fairseq
+            _fairseq = fairseq
+            ZERO_SUPPORTED_OPTIMIZERS.append(fairseq.optim.adam.FairseqAdam)
+        except ImportError:
+            pass
+
+
 def is_zero_supported_optimizer(optimizer):
+    _lazy_fairseq()
     if dist.get_rank() == 0:
         logger.info(
             f'Checking ZeRO support for optimizer={optimizer.__class__.__name__} type={type(optimizer)}'
