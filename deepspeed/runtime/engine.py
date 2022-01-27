@@ -47,7 +47,7 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
 from deepspeed.runtime.utils import get_grad_norm
-from deepspeed.utils import logger, log_dist, init_distributed
+from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
@@ -706,8 +706,8 @@ class DeepSpeedEngine(Module):
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
-    def zero_gather_fp16_weights_on_model_save(self):
-        return self._config.zero_config.gather_fp16_weights_on_model_save
+    def zero_gather_16bit_weights_on_model_save(self):
+        return self._config.zero_config.gather_16bit_weights_on_model_save
 
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
@@ -861,7 +861,7 @@ class DeepSpeedEngine(Module):
     def _configure_with_arguments(self, args, mpu):
         # After the distributed backend is initialized we are guaranteed the LOCAL_RANK
         # environment variable is set. We must align args.local_rank to this value for
-        # backwards compatability with scripts relying on [args|self].local_rank containing
+        # backwards compatibility with scripts relying on [args|self].local_rank containing
         # the correct local rank info. _do_args_sanity_check will ensure this is the case.
 
         if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
@@ -969,6 +969,16 @@ class DeepSpeedEngine(Module):
                                    self.broadcast_src_rank,
                                    group=self.data_parallel_group)
 
+    @staticmethod
+    def __check_params(model: Module, dtype: torch.dtype) -> None:
+        if not all(param.dtype == dtype
+                   for param in model.parameters()) and dist.get_rank() == 0:
+            raise ValueError(
+                f"{dtype} is enabled but the following parameters have dtype that is "
+                f"not {dtype}: "
+                f"{[(n, p.dtype) for n, p in model.named_parameters() if p.dtype != dtype]}"
+            )
+
     def _configure_distributed_model(self, model):
         self.module = model
         if self.fp16_enabled():
@@ -986,17 +996,13 @@ class DeepSpeedEngine(Module):
                     )
             self.module.half()
         elif self.bfloat16_enabled():
+            if self.zero_optimization_partition_weights() and any(
+                    hasattr(param,
+                            'ds_id') for param in self.module.parameters()):
+                self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
-            if not all(
-                [param.dtype == torch.float for param in self.module.parameters()]):
-                names = [
-                    n for n,
-                    p in self.module.named_parameters() if p.dtype != torch.float
-                ]
-                raise ValueError(
-                    f"fp32 is enabled but the following parameters have dtype that is not fp32: {', '.join(names)}"
-                )
+            self.__check_params(self.module, torch.float)
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -1542,6 +1548,7 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
+    @instrument_w_nvtx
     def forward(self, *inputs, **kwargs):
         r"""Execute forward propagation
         Arguments:
@@ -1637,6 +1644,7 @@ class DeepSpeedEngine(Module):
             f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
             ranks=[0])
 
+    @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
         self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
@@ -1654,6 +1662,7 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
+    @instrument_w_nvtx
     def backward(self, loss, allreduce_gradients=True, release_loss=False):
         r"""Execute backward pass on the loss
 
@@ -1996,7 +2005,7 @@ class DeepSpeedEngine(Module):
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
             import atexit
-            atexit.register(print, "Autotuning: done with runing current ds config.")
+            atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
 
     def _write_tensorboard(self):
@@ -2281,7 +2290,7 @@ class DeepSpeedEngine(Module):
                 global_expert_id = expp_rank * num_local_experts + local_expert_id
                 expert_state_dict = torch.load(self._get_expert_ckpt_name(
                     checkpoint_path,
-                    -1, # -1 means ingore layer_id
+                    -1, # -1 means ignore layer_id
                     global_expert_id,
                     tag),
                     map_location=torch.device('cpu'))
@@ -2451,7 +2460,7 @@ class DeepSpeedEngine(Module):
                 tag,
                 load_optimizer_states=load_optimizer_states)
             if not success:
-                self.optimizer._restore_from_fp16_weights()
+                self.optimizer._restore_from_bit16_weights()
 
         return load_path, client_states
 
@@ -3006,7 +3015,7 @@ class DeepSpeedEngine(Module):
             self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
-    def _zero3_consolidated_fp16_state_dict(self):
+    def _zero3_consolidated_16bit_state_dict(self):
         """
 
         Get a full non-partitioned state_dict with fp16 weights on cpu.
@@ -3075,9 +3084,14 @@ class DeepSpeedEngine(Module):
         return state_dict
 
     def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
-        r"""Save fp16 model weights
+        """has been renamed to save_16bit_model, keeping this around for backwards
+        compatibility"""
+        return self.save_16bit_model(save_dir, save_filename)
 
-        This method saves the fp16 model weights at the desired destination.
+    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
+        r"""Save 16bit model weights
+
+        This method saves the 16bit model weights at the desired destination.
 
         Arguments:
             save_dir: Required. Directory for saving the model
@@ -3085,7 +3099,7 @@ class DeepSpeedEngine(Module):
 
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
-            stage3_gather_fp16_weights_on_model_save is ``False``.
+            stage3_gather_16bit_weights_on_model_save is ``False``.
 
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
@@ -3096,13 +3110,13 @@ class DeepSpeedEngine(Module):
         path = os.path.join(save_dir, save_filename)
 
         if self.zero_optimization_partition_weights():
-            if self.zero_gather_fp16_weights_on_model_save():
+            if self.zero_gather_16bit_weights_on_model_save():
                 # consolidation is expensive in time and memory and therefore isn't a default
-                state_dict = self._zero3_consolidated_fp16_state_dict()
+                state_dict = self._zero3_consolidated_16bit_state_dict()
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
-                    f"Did not save the model {path} because `stage3_gather_fp16_weights_on_model_save` is False"
+                    f"Did not save the model {path} because `stage3_gather_16bit_weights_on_model_save` is False"
                 )
                 return False
         else:

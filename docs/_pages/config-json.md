@@ -233,7 +233,7 @@ Example of <i>**scheduler**</i>
 | ----------------------------------------------------------------------------------------------------- | ------- |
 | <i>**min_loss_scale**</i> is  a **fp16** parameter representing the minimum dynamic loss scale value. | `1000`  |
 
-### BFLOAT16 options
+### BFLOAT16 training options
 
 **Note:** this mode cannot be combined with the `amp` mode described below.
 {: .notice--warning}
@@ -241,26 +241,23 @@ Example of <i>**scheduler**</i>
 **Note:** this mode cannot be combined with the `fp16` mode described above.
 {: .notice--warning}
 
-**Note:** this mode is only compatible with ZeRO stages 1 and 2.
-{: .notice--warning}
-
-<i>**bfloat16**</i>: [dictionary]
+<i>**bf16**</i>: [dictionary]
 
 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Default |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Configuration for using [bfloat16](https://en.wikipedia.org/wiki/Bfloat16_floating-point_format) floating-point format as an alternative to FP16. BFLOAT16 requires hardware support (e.g., NVIDIA A100). An example, including the available dictionary keys is illustrated below. Training with bfloat16 does not require loss scaling. | None    |
 
 ```json
-"bfloat16": {
+"bf16": {
    "enabled": true
  }
 ```
 
-<i>**bfloat16:enabled**</i>: [boolean]
+<i>**bf16:enabled**</i>: [boolean]
 
-| Description                                                                                 | Default |
-| ------------------------------------------------------------------------------------------- | ------- |
-| <i>**enabled**</i> is a **bfloat16** parameter indicating whether or not BFLOAT16 training enabled. | `false` |
+| Description                                                        | Default |
+|--------------------------------------------------------------------| ------- |
+| <i>**enabled**</i> indicates whether BFLOAT16 training is enabled. | `false` |
 
 
 ### Automatic mixed precision (AMP) training options
@@ -329,7 +326,7 @@ Enabling and configuring ZeRO memory optimizations
     "stage3_param_persistence_threshold" : 1e6,
     "sub_group_size" : 1e12,
     "elastic_checkpoint" : [true|false],
-    "stage3_gather_fp16_weights_on_model_save": [true|false],
+    "stage3_gather_16bit_weights_on_model_save": [true|false],
     "ignore_unused_parameters": [true|false]
     "round_robin_gradients": [true|false]
     }
@@ -433,11 +430,11 @@ Enabling and configuring ZeRO memory optimizations
 | Do not partition parameters smaller than this threshold. Smaller values use less memory, but can greatly increase communication (especially latency-bound messages). | `1e6`   |
 
 
-***stage3_gather_fp16_weights_on_model_save***: [boolean]
+***stage3_gather_16bit_weights_on_model_save***: [boolean]
 
 | Description                                                                                                                                                                                                                                                                    | Default |
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ------- |
-| Consolidate the weights before saving the model by `save_fp16_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gathers the weights when this option is enabled and then saves the fp16 model weights. | `False` |
+| Consolidate the weights before saving the model by `save_16bit_model()`. Since the weights are partitioned across GPUs, they aren't part of `state_dict`, so this function automatically gathers the weights when this option is enabled and then saves the fp16 model weights. | `False` |
 
 
 ***cpu_offload***: [boolean]
@@ -656,9 +653,9 @@ Configuring the asynchronous I/O module for offloading parameter and optimizer s
 
 <i>**overwrite**</i>: [boolean]
 
-| Description                                                                               | Default |
-| ----------------------------------------------------------------------------------------- | ------- |
-| Whether to run autotuing experiments whose results alreay exsit. Setting it to true would overwrite the existing result. | `false` |
+| Description                                                                                                               | Default |
+|---------------------------------------------------------------------------------------------------------------------------| ------- |
+| Whether to run autotuing experiments whose results already exist. Setting it to true would overwrite the existing result. | `false` |
 
 
 <i>**metric**</i>: [string]
