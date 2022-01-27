@@ -441,7 +441,7 @@ def main(args=None):
     if args.save_pid:
         main_pid = os.getpid()
         launcher_pid = result.pid
-        pid_file = os.path.join(PID_FILE_BASEPATH, f"{main_pid}.ds")
+        pid_file = os.path.join(PID_FILE_BASEPATH, f"{main_pid}.deepspeed")
         with open(pid_file, 'w') as fd:
             fd.write(f"{launcher_pid}")
 
