@@ -4,6 +4,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import time
+import json
 import importlib
 from pathlib import Path
 import subprocess
@@ -153,7 +154,7 @@ class OpBuilder(ABC):
         '''
         return []
 
-    def is_compatible(self):
+    def is_compatible(self, verbose=True):
         '''
         Check if all non-python dependencies are satisfied to build this op
         '''
@@ -266,41 +267,76 @@ class OpBuilder(ABC):
         return [x for x in args if len(x) > 0]
 
     def cpu_arch(self):
-        if not self.command_exists('lscpu'):
-            self.warning(
-                f"{self.name} attempted to query 'lscpu' to detect the CPU architecture. "
-                "However, 'lscpu' does not appear to exist on "
-                "your system, will fall back to use -march=native.")
-            return '-march=native'
+        try:
+            from cpuinfo import get_cpu_info
+        except ImportError as e:
+            cpu_info = self._backup_cpuinfo()
+            if cpu_info is None:
+                return "-march=native"
 
-        result = subprocess.check_output('lscpu', shell=True)
-        result = result.decode('utf-8').strip().lower()
-        if 'ppc64le' in result:
+        try:
+            cpu_info = get_cpu_info()
+        except Exception as e:
+            self.warning(
+                f"{self.name} attempted to use `py-cpuinfo` but failed (exception type: {type(e)}, {e}), "
+                "falling back to `lscpu` to get this information.")
+            cpu_info = self._backup_cpuinfo()
+            if cpu_info is None:
+                return "-march=native"
+
+        if cpu_info['arch'].startswith('PPC_'):
             # gcc does not provide -march on PowerPC, use -mcpu instead
             return '-mcpu=native'
         return '-march=native'
 
-    def simd_width(self):
+    def _backup_cpuinfo(self):
+        # Construct cpu_info dict from lscpu that is similar to what py-cpuinfo provides
         if not self.command_exists('lscpu'):
             self.warning(
-                f"{self.name} attempted to query 'lscpu' to detect the existence "
-                "of AVX instructions. However, 'lscpu' does not appear to exist on "
-                "your system, will fall back to non-vectorized execution.")
-            return '-D__SCALAR__'
+                f"{self.name} attempted to query 'lscpu' after failing to use py-cpuinfo "
+                "to detect the CPU architecture. 'lscpu' does not appear to exist on "
+                "your system, will fall back to use -march=native and non-vectorized execution."
+            )
+            return None
+        result = subprocess.check_output('lscpu', shell=True)
+        result = result.decode('utf-8').strip().lower()
+
+        cpu_info = {}
+        cpu_info['arch'] = None
+        cpu_info['flags'] = ""
+        if 'genuineintel' in result or 'authenticamd' in result:
+            cpu_info['arch'] = 'X86_64'
+            if 'avx512' in result:
+                cpu_info['flags'] += 'avx512,'
+            if 'avx2' in result:
+                cpu_info['flags'] += 'avx2'
+        elif 'ppc64le' in result:
+            cpu_info['arch'] = "PPC_"
+
+        return cpu_info
+
+    def simd_width(self):
+        try:
+            from cpuinfo import get_cpu_info
+        except ImportError as e:
+            cpu_info = self._backup_cpuinfo()
+            if cpu_info is None:
+                return '-D__SCALAR__'
 
         try:
-            result = subprocess.check_output('lscpu', shell=True)
-            result = result.decode('utf-8').strip().lower()
+            cpu_info = get_cpu_info()
         except Exception as e:
-            print(
-                f"{WARNING} {self.name} SIMD_WIDTH cannot be recognized due to {str(e)}!"
-            )
-            return '-D__SCALAR__'
+            self.warning(
+                f"{self.name} attempted to use `py-cpuinfo` but failed (exception type: {type(e)}, {e}), "
+                "falling back to `lscpu` to get this information.")
+            cpu_info = self._backup_cpuinfo()
+            if cpu_info is None:
+                return '-D__SCALAR__'
 
-        if 'genuineintel' in result:
-            if 'avx512' in result:
+        if cpu_info['arch'] == 'X86_64':
+            if 'avx512' in cpu_info['flags']:
                 return '-D__AVX512__'
-            elif 'avx2' in result:
+            elif 'avx2' in cpu_info['flags']:
                 return '-D__AVX256__'
         return '-D__SCALAR__'
 
@@ -367,7 +403,7 @@ class OpBuilder(ABC):
             return self.jit_load(verbose)
 
     def jit_load(self, verbose=True):
-        if not self.is_compatible():
+        if not self.is_compatible(verbose):
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
             )
@@ -429,7 +465,6 @@ class CUDAOpBuilder(OpBuilder):
         - `cross_compile_archs` uses ; separator.
 
         """
-
         ccs = []
         if self.jit_mode:
             # Compile for underlying architectures since we know those at runtime
@@ -479,8 +514,8 @@ class CUDAOpBuilder(OpBuilder):
             version_ge_1_5 = ['-DVERSION_GE_1_5']
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
-    def is_compatible(self):
-        return super().is_compatible()
+    def is_compatible(self, verbose=True):
+        return super().is_compatible(verbose)
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension
@@ -501,10 +536,12 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
+        cuda_major, _ = installed_cuda_version()
         args = [
             '-O3',
             '--use_fast_math',
-            '-std=c++17' if sys.platform == "win32" else '-std=c++14',
+            '-std=c++17'
+            if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
             '-U__CUDA_NO_HALF_OPERATORS__',
             '-U__CUDA_NO_HALF_CONVERSIONS__',
             '-U__CUDA_NO_HALF2_OPERATORS__'
@@ -517,3 +554,26 @@ class CUDAOpBuilder(OpBuilder):
             return ['cublas', 'curand']
         else:
             return []
+
+
+class TorchCPUOpBuilder(CUDAOpBuilder):
+    def extra_ldflags(self):
+        return ['-lcurand']
+
+    def cxx_args(self):
+        import torch
+        CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        CPU_ARCH = self.cpu_arch()
+        SIMD_WIDTH = self.simd_width()
+
+        args = super().cxx_args()
+        args += [
+            f'-L{CUDA_LIB64}',
+            '-lcudart',
+            '-lcublas',
+            '-g',
+            CPU_ARCH,
+            '-fopenmp',
+            SIMD_WIDTH,
+        ]
+        return args

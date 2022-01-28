@@ -114,11 +114,12 @@ SPARSE_GRADIENTS_DEFAULT = False
 # Users can configure in ds_config.json as below example:
 BFLOAT16_FORMAT = '''
 BFLOAT16 parameters should be of the format:
-"bfloat16": {
+"bf16": {
   "enabled": true
 }
 '''
-BFLOAT16 = "bfloat16"
+BFLOAT16 = "bf16"
+BFLOAT16_OLD = "bfloat16"  # keeping for backwards compatibility
 
 BFLOAT16_ENABLED = "enabled"
 BFLOAT16_ENABLED_DEFAULT = False
@@ -199,16 +200,17 @@ GRADIENT_CLIPPING = 'gradient_clipping'
 GRADIENT_CLIPPING_DEFAULT = 0.
 
 #########################################
-# FP32 AllReduce
+# Communication data type
 #########################################
-# FP32 All reduce. By default, this feature is not enabled.
+# Supported types: ['none', 'fp16', 'fp32']
+# By default, this feature is not enabled ('none' value)
 # Users can configure in ds_config.json as below example:
-FP32_ALLREDUCE_FORMAT = '''
-FP32 Allreduce should be enabled as:
-"fp32_allreduce": true
+COMMUNICATION_DATA_TYPE_FORMAT = '''
+Communication data type should be set as:
+"communication_data_type": "fp32"
 '''
-FP32_ALLREDUCE = "fp32_allreduce"
-FP32_ALLREDUCE_DEFAULT = False
+COMMUNICATION_DATA_TYPE = "communication_data_type"
+COMMUNICATION_DATA_TYPE_DEFAULT = None
 
 #########################################
 # Scale/predivide gradients before allreduce
@@ -444,3 +446,9 @@ The last incomplete batch can be dropped by setting:
 '''
 DATALOADER_DROP_LAST = "dataloader_drop_last"
 DATALOADER_DROP_LAST_DEFAULT = False
+
+#########################################
+# Optimizer checkpoint keys
+#########################################
+OPTIMIZER_STATE_DICT = "optimizer_state_dict"
+FP32_GROUPS = "fp32_groups"

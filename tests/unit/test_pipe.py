@@ -13,10 +13,11 @@ import deepspeed.runtime.utils as ds_utils
 
 
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+
 PipeTopo = PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
 
-from common import distributed_test
+from .common import distributed_test
 
 
 def rel_diff(A, B):
@@ -24,7 +25,7 @@ def rel_diff(A, B):
 
 
 # All models
-from simple_model import args_from_dict
+from .simple_model import args_from_dict
 
 
 class AlexNet(nn.Module):

@@ -3,8 +3,8 @@ from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 import torch
 import pytest
 import deepspeed
-from common import distributed_test
-from simple_model import SimpleModel, args_from_dict, random_dataset
+from .common import distributed_test
+from .simple_model import SimpleModel, args_from_dict, random_dataset
 
 
 def test_repeating_loader():

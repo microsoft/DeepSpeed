@@ -72,6 +72,7 @@ html_context = {
 
 # Mock imports so we don't have to install torch to build the docs.
 from unittest.mock import MagicMock
+
 sys.path.insert(0, os.path.abspath('../../../'))
 
 # Prepend module names to class descriptions?
@@ -79,4 +80,4 @@ add_module_names = True
 
 autoclass_content = 'both'
 
-autodoc_mock_imports = ["torch", "apex", "mpi4py", "tensorboardX", "numpy", "cupy"]
+autodoc_mock_imports = ["apex", "mpi4py", "tensorboardX", "numpy", "cupy"]

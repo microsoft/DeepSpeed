@@ -46,18 +46,6 @@ __version_major__, __version_minor__, __version_patch__ = _parse_version(__versi
 __git_hash__ = git_hash
 __git_branch__ = git_branch
 
-# Provide backwards compatability with old deepspeed.pt module structure, should hopefully not be used
-pt = types.ModuleType('pt', 'dummy pt module for backwards compatability')
-deepspeed = sys.modules[__name__]
-setattr(deepspeed, 'pt', pt)
-setattr(deepspeed.pt, 'deepspeed_utils', deepspeed.runtime.utils)
-sys.modules['deepspeed.pt'] = deepspeed.pt
-sys.modules['deepspeed.pt.deepspeed_utils'] = deepspeed.runtime.utils
-setattr(deepspeed.pt, 'deepspeed_config', deepspeed.runtime.config)
-sys.modules['deepspeed.pt.deepspeed_config'] = deepspeed.runtime.config
-setattr(deepspeed.pt, 'loss_scaler', deepspeed.runtime.fp16.loss_scaler)
-sys.modules['deepspeed.pt.loss_scaler'] = deepspeed.runtime.fp16.loss_scaler
-
 
 def initialize(args=None,
                model: torch.nn.Module = None,
@@ -230,20 +218,29 @@ def add_config_arguments(parser):
 
 
 def init_inference(model,
+                   triangular_masking=True,
                    mp_size=1,
                    mpu=None,
+                   ep_group=None,
+                   expert_mp_group=None,
                    checkpoint=None,
-                   module_key='module',
                    dtype=None,
                    injection_policy=None,
                    replace_method='auto',
                    quantization_setting=None,
                    replace_with_kernel_inject=False,
-                   return_tuple=True):
+                   return_tuple=True,
+                   ep_size=1,
+                   moe=False,
+                   moe_experts=1,
+                   moe_type='standard'):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
         model: Required: nn.module class before apply any wrappers
+
+        triangular_masking: Required: this shows the type of masking for attention scores in transformer layer
+            note that the masking is application specific.
 
         mp_size: Optional: Desired model parallel size, default is 1 meaning no
             model parallelism.
@@ -284,14 +281,21 @@ def init_inference(model,
         raise NotImplementedError("pipeline module support is not implemented yet")
     else:
         engine = InferenceEngine(model,
+                                 triangular_masking,
                                  mp_size,
+                                 ep_size,
                                  mpu,
+                                 ep_group,
+                                 expert_mp_group,
                                  checkpoint,
                                  dtype,
                                  injection_policy,
                                  return_tuple,
                                  replace_method,
                                  quantization_setting,
-                                 replace_with_kernel_inject)
+                                 replace_with_kernel_inject,
+                                 moe,
+                                 moe_experts,
+                                 moe_type)
 
     return engine

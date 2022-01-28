@@ -134,12 +134,12 @@ def get_fp16_enabled(param_dict):
 
 
 def get_bfloat16_enabled(param_dict):
-    if BFLOAT16 in param_dict.keys():
-        return get_scalar_param(param_dict[BFLOAT16],
-                                BFLOAT16_ENABLED,
-                                BFLOAT16_ENABLED_DEFAULT)
-    else:
-        return False
+    for key in [BFLOAT16, BFLOAT16_OLD]:
+        if key in param_dict.keys():
+            return get_scalar_param(param_dict[key],
+                                    BFLOAT16_ENABLED,
+                                    BFLOAT16_ENABLED_DEFAULT)
+    return False
 
 
 def get_fp16_master_weights_and_grads_enabled(param_dict):
@@ -230,8 +230,23 @@ def get_zero_reduce_scatter(param_dict):
     )
 
 
-def get_allreduce_always_fp32(param_dict):
-    return get_scalar_param(param_dict, FP32_ALLREDUCE, FP32_ALLREDUCE_DEFAULT)
+def get_communication_data_type(param_dict):
+    val = get_scalar_param(param_dict,
+                           COMMUNICATION_DATA_TYPE,
+                           COMMUNICATION_DATA_TYPE_DEFAULT)
+    val = val.lower() if val is not None else val
+    if val is None:
+        return val  # we must determine it by other parameters
+    elif val == "fp32":
+        return torch.float32
+    elif val == "fp16":
+        return torch.float16
+    elif val == "bfp16":
+        return torch.bfloat16
+
+    raise ValueError(
+        f"Invalid communication_data_type. Supported data types: ['fp16', 'bfp16', 'fp32']. Got: {val}"
+    )
 
 
 def get_prescale_gradients(param_dict):
@@ -269,32 +284,31 @@ def get_quantize_training(param_dict):
              if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() and
              SCHEDULE_OFFSET in param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE].keys()
              else QUANTIZE_OFFSET_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_GROUPS]
-             if QUANTIZE_GROUPS in param_dict[QUANTIZE_TRAINING].keys() else
-             QUANTIZE_GROUPS_DEFAULT),
+            (param_dict[QUANTIZE_TRAINING][QUANTIZE_GROUPS] if QUANTIZE_GROUPS
+             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_GROUPS_DEFAULT),
             (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE]
              [FP16_MIXED_QUANTIZE_ENABLED]
              if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and FP16_MIXED_QUANTIZE_ENABLED in param_dict[QUANTIZE_TRAINING]
-             [FP16_MIXED_QUANTIZE].keys() else FP16_MIXED_QUANTIZE_ENABLED_DEFAULT),
+             and FP16_MIXED_QUANTIZE_ENABLED
+             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
+             FP16_MIXED_QUANTIZE_ENABLED_DEFAULT),
             (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE][QUANTIZE_CHANGE_RATIO]
              if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and QUANTIZE_CHANGE_RATIO in param_dict[QUANTIZE_TRAINING]
-             [FP16_MIXED_QUANTIZE].keys() else QUANTIZE_CHANGE_RATIO_DEFAULT),
+             and QUANTIZE_CHANGE_RATIO
+             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
+             QUANTIZE_CHANGE_RATIO_DEFAULT),
             (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING]
              and QUANTIZE_TYPE in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_TYPE] ==
-             QUANTIZE_ASYMMETRIC else QUANTIZE_TYPE_DEFAULT),
-            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and
-             QUANTIZE_ROUNDING in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_ROUNDING] ==
-             STOCHASTIC_ROUNDING else QUANTIZE_ROUNDING_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_VERBOSE]
-             if QUANTIZE_VERBOSE in param_dict[QUANTIZE_TRAINING].keys() else
-             QUANTIZE_VERBOSE_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZER_KERNEL]
-             if QUANTIZER_KERNEL in param_dict[QUANTIZE_TRAINING].keys() else
-             QUANTIZER_KERNEL_DEFAULT),
+             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_TYPE]
+             == QUANTIZE_ASYMMETRIC else QUANTIZE_TYPE_DEFAULT),
+            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and QUANTIZE_ROUNDING
+             in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
+             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_ROUNDING]
+             == STOCHASTIC_ROUNDING else QUANTIZE_ROUNDING_DEFAULT),
+            (param_dict[QUANTIZE_TRAINING][QUANTIZE_VERBOSE] if QUANTIZE_VERBOSE
+             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_VERBOSE_DEFAULT),
+            (param_dict[QUANTIZE_TRAINING][QUANTIZER_KERNEL] if QUANTIZER_KERNEL
+             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZER_KERNEL_DEFAULT),
         )
     else:
         return (
@@ -861,7 +875,7 @@ class DeepSpeedConfig(object):
 
     def _initialize_params(self, param_dict):
         self.train_batch_size = get_train_batch_size(param_dict)
-        print(f"beginging get_train_batch_size = {get_train_batch_size}")
+        #print(f"beginning get_train_batch_size = {get_train_batch_size}")
         self.train_micro_batch_size_per_gpu = get_train_micro_batch_size_per_gpu(
             param_dict)
         self.gradient_accumulation_steps = get_gradient_accumulation_steps(param_dict)
@@ -869,7 +883,7 @@ class DeepSpeedConfig(object):
         self.dump_state = get_dump_state(param_dict)
 
         self.disable_allgather = get_disable_allgather(param_dict)
-        self.allreduce_always_fp32 = get_allreduce_always_fp32(param_dict)
+        self.communication_data_type = get_communication_data_type(param_dict)
         self.prescale_gradients = get_prescale_gradients(param_dict)
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
@@ -885,7 +899,7 @@ class DeepSpeedConfig(object):
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
         assert not (self.fp16_enabled and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
-        assert not (self.bfloat16_enabled and (self.zero_optimization_stage != 2)), 'bfloat16 mode is only enabled for Zero2 currently'
+        assert not (self.bfloat16_enabled and (self.zero_optimization_stage not in {2, 3})), f'bfloat16 mode is only enabled for Zero 2 and 3 currently. got {self.zero_optimization_stage}'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
             param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)
@@ -992,7 +1006,7 @@ class DeepSpeedConfig(object):
         micro_batch = self.train_micro_batch_size_per_gpu
         grad_acc = self.gradient_accumulation_steps
 
-        print(f"train_batch = {train_batch}, micro_batch={micro_batch}")
+        #print(f"train_batch = {train_batch}, micro_batch={micro_batch}")
 
         # all values are provided nothing needs to be set
         if train_batch is not None and micro_batch is not None and grad_acc is not None:

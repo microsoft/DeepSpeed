@@ -21,14 +21,10 @@ from torch.distributed.distributed_c10d import _get_global_rank
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
-from deepspeed.runtime.utils import see_memory_usage, get_ma_status
-from deepspeed.runtime.zero.stage2 import FP16_DeepSpeedZeroOptimizer
-from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
+from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
+from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
-from deepspeed.runtime.zero.utils import (
-    is_zero_supported_optimizer,
-    _initialize_parameter_parallel_groups,
-)
+from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.activation_checkpointing import (
     checkpointing as activation_checkpointing,
 )
@@ -42,15 +38,16 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA
+    PLD_THETA, PLD_GAMMA, OPTIMIZER_STATE_DICT
 from deepspeed.runtime.zero.constants import \
-    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
+    ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS, \
+    SINGLE_PARTITION_OF_FP32_GROUPS
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
 from deepspeed.runtime.utils import get_grad_norm
-from deepspeed.utils import logger, log_dist, init_distributed
+from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
@@ -207,11 +204,12 @@ class DeepSpeedEngine(Module):
         self.gas_boundary_ctr = 0
         self.dist_backend = "nccl"
         self.has_moe_layers = False
-        self.num_experts = None
+        self.num_experts = []
         self.gate_modules = []
         self.moe_layers = []
         self._step_applied = False
         self._global_grad_norm = None
+        self._is_gradient_accumulation_boundary = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -293,6 +291,9 @@ class DeepSpeedEngine(Module):
             self._configure_optimizer(optimizer, model_parameters)
             self._configure_lr_scheduler(lr_scheduler)
             self._report_progress(0)
+        elif self.zero_optimization():
+            # no optim selected but zero is enabled
+            self.optimizer = self._configure_zero_optimizer(optimizer=None)
 
         self._get_model_parameters()
 
@@ -359,7 +360,7 @@ class DeepSpeedEngine(Module):
                 self.autotuning_model_info[
                     "trainable_num_params"] = trainable_num_params * self.mp_world_size
 
-            print(f"model parameter = {num_params}")
+            logger.info(f"model parameter = {num_params}")
 
     def get_batch_info(self):
         """Get all training batch related settings.
@@ -507,10 +508,10 @@ class DeepSpeedEngine(Module):
         return self._config.tensorboard_job_name
 
     def get_summary_writer(
-        self,
-        name="DeepSpeedJobName",
-        base=os.path.join(os.path.expanduser("~"),
-                          "tensorboard"),
+            self,
+            name="DeepSpeedJobName",
+            base=os.path.join(os.path.expanduser("~"),
+                              "tensorboard"),
     ):
         if self.tensorboard_output_path():
             base_dir = self.tensorboard_output_path()
@@ -705,8 +706,8 @@ class DeepSpeedEngine(Module):
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
-    def zero_gather_fp16_weights_on_model_save(self):
-        return self._config.zero_config.gather_fp16_weights_on_model_save
+    def zero_gather_16bit_weights_on_model_save(self):
+        return self._config.zero_config.gather_16bit_weights_on_model_save
 
     def zero_grad_hooks(self):
         return self._config.zero_config.grad_hooks
@@ -738,8 +739,17 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
-    def allreduce_always_fp32(self):
-        return self._config.allreduce_always_fp32
+    @property
+    def communication_data_type(self):
+        res = self._config.communication_data_type
+        if res is not None:
+            return res
+        elif self.fp16_enabled() or self.zero_optimization_stage():
+            return torch.float16
+        elif self.bfloat16_enabled():
+            return torch.bfloat16
+
+        return torch.float32
 
     def postscale_gradients(self):
         return not self._config.prescale_gradients
@@ -851,7 +861,7 @@ class DeepSpeedEngine(Module):
     def _configure_with_arguments(self, args, mpu):
         # After the distributed backend is initialized we are guaranteed the LOCAL_RANK
         # environment variable is set. We must align args.local_rank to this value for
-        # backwards compatability with scripts relying on [args|self].local_rank containing
+        # backwards compatibility with scripts relying on [args|self].local_rank containing
         # the correct local rank info. _do_args_sanity_check will ensure this is the case.
 
         if "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ:
@@ -947,16 +957,27 @@ class DeepSpeedEngine(Module):
             return True
 
         for p in self.module.parameters():
+            # Broadcast the model for different parameters
             if hasattr(p, 'allreduce') and not p.allreduce:
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p,
-                                   self.expert_broadcast_src_rank,
-                                   group=self.expert_data_parallel_group)
+                                   self.expert_broadcast_src_rank[p.group_name],
+                                   group=self.expert_data_parallel_group[p.group_name])
             else:
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p,
                                    self.broadcast_src_rank,
                                    group=self.data_parallel_group)
+
+    @staticmethod
+    def __check_params(model: Module, dtype: torch.dtype) -> None:
+        if not all(param.dtype == dtype
+                   for param in model.parameters()) and dist.get_rank() == 0:
+            raise ValueError(
+                f"{dtype} is enabled but the following parameters have dtype that is "
+                f"not {dtype}: "
+                f"{[(n, p.dtype) for n, p in model.named_parameters() if p.dtype != dtype]}"
+            )
 
     def _configure_distributed_model(self, model):
         self.module = model
@@ -975,17 +996,13 @@ class DeepSpeedEngine(Module):
                     )
             self.module.half()
         elif self.bfloat16_enabled():
+            if self.zero_optimization_partition_weights() and any(
+                    hasattr(param,
+                            'ds_id') for param in self.module.parameters()):
+                self.__check_params(self.module, torch.bfloat16)
             self.module.bfloat16()
         else:
-            if not all(
-                [param.dtype == torch.float for param in self.module.parameters()]):
-                names = [
-                    n for n,
-                    p in self.module.named_parameters() if p.dtype != torch.float
-                ]
-                raise ValueError(
-                    f"fp32 is enabled but the following parameters have dtype that is not fp32: {', '.join(names)}"
-                )
+            self.__check_params(self.module, torch.float)
 
         if not self.dont_change_device:
             self.module.to(self.device)
@@ -994,18 +1011,17 @@ class DeepSpeedEngine(Module):
         for _, module in self.module.named_modules():
             if isinstance(module, MoE):
                 self.has_moe_layers = True
-                self.num_experts = module.num_experts
-                break
+                self.num_experts.append(module.num_experts)
 
         if self.has_moe_layers:
             for _, module in self.module.named_modules():
                 if isinstance(module, TopKGate):
                     self.gate_modules.append(module)
-                    if self.wall_clock_breakdown:
+                    if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
                 if isinstance(module, MOELayer):
                     self.moe_layers.append(module)
-                    if self.wall_clock_breakdown:
+                    if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
 
         if not self.pipeline_parallelism:
@@ -1045,13 +1061,15 @@ class DeepSpeedEngine(Module):
 
         if self.has_moe_layers:
             # No assert needed because this will only be true if MoE Layer creation was successful
-            self.expert_data_parallel_group = groups.get_expert_data_parallel_group()
-            self.expert_parallel_group = groups.get_expert_parallel_group()
-            self.ep_world_size = groups.get_expert_parallel_world_size()
-            self.expert_broadcast_src_rank = _get_global_rank(
-                groups.get_expert_data_parallel_group(),
-                0)
 
+            self.expert_data_parallel_group = groups.get_expert_data_parallel_group_dict(
+            )
+            self.expert_parallel_group = groups.get_expert_parallel_group_dict()
+            self.expert_broadcast_src_rank = {}
+            for _key in self.expert_data_parallel_group.keys():  # _key is a string
+                self.expert_broadcast_src_rank[_key] = _get_global_rank(
+                    groups.get_expert_data_parallel_group(_key),
+                    0)
         if not self.amp_enabled():
             self._broadcast_model()
 
@@ -1306,36 +1324,23 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
-        log_dist("Creating fp16 ZeRO stage {} optimizer".format(zero_stage), ranks=[0])
-        assert (
-            not self.allreduce_always_fp32()
-        ), "ZeRO does not support 'fp32_allreduce': true"
+        log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
+        assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
-        if self.zero_legacy_stage1(
-        ) and zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
-            assert not self.has_moe_layers, "MoE not supported with Stage 1"
+        if optimizer is None:
+            optimizer = DummyOptim(list(self.module.parameters()))
 
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage1(
-                optimizer,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                all_gather_partitions=self.zero_allgather_partitions(),
-                allgather_size=self.zero_allgather_bucket_size(),
-                max_elements_per_comm=self.zero_reduce_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                elastic_checkpoint=self.zero_elastic_checkpoint(),
-                mpu=self.mpu,
-                postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_predivide=self.gradient_predivide,
+        if self.zero_legacy_stage1():
+            raise Exception(
+                "The deprecated version of ZeRO Stage 1 is not supported in deepspeed >= 0.5.9. Please downgrade to a version less than 0.5.9 if you need to use this deprecated version of ZeRO."
             )
-        elif zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
+
+        if zero_stage <= ZERO_OPTIMIZATION_GRADIENTS:
             overlap_comm = self.zero_overlap_comm()
             contiguous_gradients = self.zero_contiguous_gradients()
             round_robin_gradients = self.zero_round_robin_gradients()
+            assert not isinstance(optimizer, DummyOptim), "zero stage 2 requires an optimizer"
 
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
@@ -1350,7 +1355,7 @@ class DeepSpeedEngine(Module):
                     )
                     overlap_comm = False
 
-            optimizer = FP16_DeepSpeedZeroOptimizer(
+            optimizer = DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
                 static_loss_scale=self.loss_scale(),
@@ -1377,14 +1382,16 @@ class DeepSpeedEngine(Module):
                 round_robin_gradients=round_robin_gradients,
                 has_moe_layers=self.has_moe_layers,
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
-                ))
+                ),
+                communication_data_type=self.communication_data_type,
+                elastic_checkpoint=self.zero_elastic_checkpoint())
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
-            print("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
-            from deepspeed.runtime.zero.stage3 import FP16_DeepSpeedZeroOptimizer_Stage3
+            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
+            from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 
-            optimizer = FP16_DeepSpeedZeroOptimizer_Stage3(
+            optimizer = DeepSpeedZeroOptimizer_Stage3(
                 self.module,
                 optimizer,
                 timers=timers,
@@ -1410,7 +1417,7 @@ class DeepSpeedEngine(Module):
                 gradient_predivide_factor=self.gradient_predivide_factor(),
                 gradient_accumulation_steps=self.gradient_accumulation_steps(),
                 aio_config=self.aio_config(),
-            )
+                communication_data_type=self.communication_data_type)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -1541,6 +1548,7 @@ class DeepSpeedEngine(Module):
 
         return scaled_loss
 
+    @instrument_w_nvtx
     def forward(self, *inputs, **kwargs):
         r"""Execute forward propagation
         Arguments:
@@ -1553,8 +1561,8 @@ class DeepSpeedEngine(Module):
         else:
             see_memory_usage("Engine before forward", force=self.memory_breakdown())
 
-        flops_profiler_active = (self.flops_profiler_enabled() and
-                                 self.global_steps == self.flops_profiler_profile_step()
+        flops_profiler_active = (self.flops_profiler_enabled() and self.global_steps
+                                 == self.flops_profiler_profile_step()
                                  and self.global_rank == 0)
 
         if flops_profiler_active:
@@ -1636,6 +1644,7 @@ class DeepSpeedEngine(Module):
             f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
             ranks=[0])
 
+    @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
         # Pass (PP) gas boundary flag to optimizer (required for zero)
         self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
@@ -1653,6 +1662,7 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
+    @instrument_w_nvtx
     def backward(self, loss, allreduce_gradients=True, release_loss=False):
         r"""Execute backward pass on the loss
 
@@ -1687,9 +1697,8 @@ class DeepSpeedEngine(Module):
 
         self._start_timers(self.engine_timers.backward_timers)
 
-        assert self.optimizer is not None, (
-            "must provide optimizer during " "init in order to use backward"
-        )
+        assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
+            "must provide optimizer during init in order to use backward"
 
         self._start_timers(self.engine_timers.backward_inner_timers)
 
@@ -1739,11 +1748,40 @@ class DeepSpeedEngine(Module):
         """Query whether the current micro-batch is at the boundary of
         gradient accumulation, and thus will trigger gradient reductions and
         an optimizer step.
-
         Returns:
             bool: if the current step is a gradient accumulation boundary.
         """
-        return (self.micro_steps + 1) % self.gradient_accumulation_steps() == 0
+        if self._is_gradient_accumulation_boundary is None:
+            return (self.micro_steps + 1) % \
+                self.gradient_accumulation_steps() == 0
+        else:
+            return self._is_gradient_accumulation_boundary
+
+    def set_gradient_accumulation_boundary(self, is_boundary):
+        """Manually overrides the DeepSpeed engine's gradient accumulation boundary state, this is an optional
+        feature and should be used with care. The state should be set before to the intended
+        value before each forward/backward. The final fordward/backward should have the
+        boundary state set to True. This style allows client code to only call engine.step() once after all
+        the gradient accumulation passes are complete. See example below:
+
+        .. code-block:: python
+
+        engine.set_gradient_accumulation_boundary(False)
+        for _ in range(gradient_accumulation_steps - 1):
+            micro_batch = next(data_loader)
+            loss = engine(micro_batch)
+            engine.backward(loss)
+        engine.set_gradient_accumulation_boundary(True)
+        micro_batch = next(data_loader)
+        loss = engine(micro_batch)
+        engine.backward(loss)
+        engine.step()
+
+        Arguments:
+            is_boundary (bool): are we at a gradient accumulation boundary or not?
+        """
+        self._is_gradient_accumulation_boundary = is_boundary
+        self.optimizer.is_gradient_accumulation_boundary = is_boundary
 
     def zero_grad(self):
         """
@@ -1835,9 +1873,9 @@ class DeepSpeedEngine(Module):
 
         self._start_timers(self.engine_timers.step_timers)
 
-        assert self.optimizer is not None, (
-            "must provide optimizer during " "init in order to use step"
-        )
+        assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
+            "must provide optimizer during init in order to use step"
+
         report_progress = self.global_rank == 0 if self.global_rank else True
 
         self._step_applied = False  # assume False, will flip to True
@@ -1967,7 +2005,7 @@ class DeepSpeedEngine(Module):
                 msg["latency"]
             print_json_dist(msg, [0], path=self.autotuning_metric_path())
             import atexit
-            atexit.register(print, "Autotuning: done with runing current ds config.")
+            atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
 
     def _write_tensorboard(self):
@@ -2045,8 +2083,8 @@ class DeepSpeedEngine(Module):
 
         tensor_to_allreduce = tensor
 
-        if self.allreduce_always_fp32():
-            tensor_to_allreduce = tensor.float()
+        if self.communication_data_type != tensor.dtype:
+            tensor_to_allreduce = tensor.to(self.communication_data_type)
 
         if self.postscale_gradients():
             if self.gradient_predivide_factor() != 1.0:
@@ -2059,10 +2097,10 @@ class DeepSpeedEngine(Module):
                     tensor_to_allreduce.mul_(self.gradient_predivide_factor() /
                                              dist.get_world_size(group=dp_group))
         else:
-            tensor_to_allreduce.div_(dist.get_world_size(group=dp_group))
+            tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
             dist.all_reduce(tensor_to_allreduce, group=dp_group)
 
-        if self.allreduce_always_fp32() and tensor is not tensor_to_allreduce:
+        if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
 
         return tensor
@@ -2086,7 +2124,12 @@ class DeepSpeedEngine(Module):
             self.allreduce_and_copy(small_bucket, dp_group)
 
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
-        grads, expert_grads = [], []
+        grads = []
+        expert_grads = {}
+        if self.has_moe_layers:
+            for key in self.expert_data_parallel_group.keys():
+                expert_grads[key] = []
+
         for param_name, param in self.module.named_parameters():
             if hasattr(param, 'allreduce') and not param.allreduce:
                 is_moe_param = True
@@ -2102,19 +2145,19 @@ class DeepSpeedEngine(Module):
                                          dtype=param.dtype,
                                          device=param.device)
                 if is_moe_param:
-                    expert_grads.append(param.grad.data)
+                    expert_grads[param.group_name].append(param.grad.data)
                 else:
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
                 if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
                     if is_moe_param:
-                        expert_grads.append(SparseTensor(grad_data))
+                        expert_grads[param.group_name].append(SparseTensor(grad_data))
                     else:
                         grads.append(SparseTensor(grad_data))
                 else:
                     if is_moe_param:
-                        expert_grads.append(grad_data)
+                        expert_grads[param.group_name].append(grad_data)
                     else:
                         grads.append(grad_data)
 
@@ -2135,19 +2178,20 @@ class DeepSpeedEngine(Module):
                                          numel_per_bucket=elements_per_buffer)
 
         if self.has_moe_layers:
-            expert_split_buckets = split_half_float_double_sparse(expert_grads)
-            for i, bucket_tuple in enumerate(expert_split_buckets):
-                bucket_type, bucket = bucket_tuple
-                if bucket_type == SparseTensor.type():
-                    self.sparse_allreduce_no_retain(
-                        bucket,
-                        groups.get_expert_data_parallel_group())
-                else:
-                    # Separate between diff groups
-                    self.allreduce_no_retain(
-                        bucket,
-                        dp_group=groups.get_expert_data_parallel_group(),
-                        numel_per_bucket=elements_per_buffer)
+            for ep_name, expert_grads_group in expert_grads.items():
+                expert_split_buckets = split_half_float_double_sparse(expert_grads_group)
+                for i, bucket_tuple in enumerate(expert_split_buckets):
+                    bucket_type, bucket = bucket_tuple
+                    if bucket_type == SparseTensor.type():
+                        self.sparse_allreduce_no_retain(
+                            bucket,
+                            groups.get_expert_data_parallel_group(ep_name))
+                    else:
+                        # Separate between diff groups
+                        self.allreduce_no_retain(
+                            bucket,
+                            dp_group=groups.get_expert_data_parallel_group(ep_name),
+                            numel_per_bucket=elements_per_buffer)
 
     def sparse_allreduce_no_retain(self, bucket, dp_group):
         allreduced_sparses = self.sparse_allreduce_bucket(bucket, dp_group)
@@ -2168,11 +2212,22 @@ class DeepSpeedEngine(Module):
         # Pre-divide for fp16 stability
         sparse.values.mul_(1.0 / dist.get_world_size(group=dp_group))
 
-        indices_device_list = self.sparse_all_gather(sparse.indices, dp_group)
-        values_device_list = self.sparse_all_gather(sparse.values, dp_group)
+        original_data_type = sparse.values.dtype
+        if self.communication_data_type != sparse.values.dtype:
+            if self.communication_data_type in (torch.float16, torch.bfloat16):
+                indices = sparse.indices.to(torch.int32)
+            else:
+                indices = sparse.indices
+            values = sparse.values.to(self.communication_data_type)
+        else:
+            indices = sparse.indices
+            values = sparse.values
 
-        sparse.indices = torch.cat(indices_device_list)
-        sparse.values = torch.cat(values_device_list)
+        indices_device_list = self.sparse_all_gather(indices, dp_group)
+        values_device_list = self.sparse_all_gather(values, dp_group)
+
+        sparse.indices = torch.cat(indices_device_list).to(torch.long)
+        sparse.values = torch.cat(values_device_list).to(original_data_type)
         return sparse
 
     def sparse_all_gather(self, value, dp_group):
@@ -2184,16 +2239,16 @@ class DeepSpeedEngine(Module):
         assert value.dim() in [1, 2]
         if value.dim() == 1:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size)])
+                value = torch.cat([value, value.new_empty(fill_size)])
             tensor_list = [
-                value.new_zeros(max_size)
+                value.new_empty(max_size)
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
         else:
             if fill_size > 0:
-                value = torch.cat([value, value.new_zeros(fill_size, value.size()[1])])
+                value = torch.cat([value, value.new_empty(fill_size, value.size()[1])])
             tensor_list = [
-                value.new_zeros(max_size,
+                value.new_empty(max_size,
                                 value.size()[1])
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
@@ -2222,25 +2277,58 @@ class DeepSpeedEngine(Module):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
-    def load_moe_state_dict(self, checkpoint_path, tag, state_dict):
-        expp_rank = groups.get_expert_parallel_rank()
+    def load_moe_state_dict(self, checkpoint_path, tag, state_dict, old_moe_load):
 
-        num_local_experts = self.num_experts // self.ep_world_size
-        for local_expert_id in range(num_local_experts):
-            global_expert_id = expp_rank * num_local_experts + local_expert_id
-            expert_state_dict = torch.load(self._get_expert_ckpt_name(
-                checkpoint_path,
-                global_expert_id,
-                tag),
-                                           map_location=torch.device('cpu'))
+        if old_moe_load:
+            expp_rank = groups.get_expert_data_parallel_rank(
+                groups.get_max_expert_size_name())
 
-            # Updating global -> local expert ids
-            moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
-            for key in list(expert_state_dict.keys()):
-                local_key = key.replace(f'{moe_str_prefix}{global_expert_id}',
-                                        f'{moe_str_prefix}{local_expert_id}')
-                expert_state_dict[local_key] = expert_state_dict.pop(key)
-            state_dict.update(expert_state_dict)
+            num_local_experts = max(
+                self.num_experts) // groups.get_expert_parallel_world_size(
+                    groups.get_max_expert_size_name())
+            for local_expert_id in range(num_local_experts):
+                global_expert_id = expp_rank * num_local_experts + local_expert_id
+                expert_state_dict = torch.load(self._get_expert_ckpt_name(
+                    checkpoint_path,
+                    -1, # -1 means ignore layer_id
+                    global_expert_id,
+                    tag),
+                    map_location=torch.device('cpu'))
+
+                # Updating global -> local expert ids
+                moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
+                for key in list(expert_state_dict.keys()):
+                    local_key = key.replace(f'{moe_str_prefix}{global_expert_id}',
+                                            f'{moe_str_prefix}{local_expert_id}')
+                    expert_state_dict[local_key] = expert_state_dict.pop(key)
+                state_dict.update(expert_state_dict)
+
+        else:
+            moe_layer_id = 0
+            for n_module, module in self.module.named_modules():
+                if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
+                    group_name = module.expert_group_name
+                    num_local_experts = module.num_local_experts
+                    expp_rank = groups.get_expert_parallel_rank(group_name)
+                    # loop all local_experts
+                    for local_expert_id in range(num_local_experts):
+                        global_expert_id = expp_rank * num_local_experts + local_expert_id
+                        expert_state_dict = torch.load(self._get_expert_ckpt_name(
+                            checkpoint_path,
+                            moe_layer_id,
+                            global_expert_id,
+                            tag),
+                                                       map_location=torch.device('cpu'))
+                        # print(expert_state_dict.keys())
+                        # Updating global -> local expert ids
+                        moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
+                        for key in list(expert_state_dict.keys()):
+                            local_key = key.replace(
+                                f'{moe_str_prefix}{global_expert_id}',
+                                f'{moe_str_prefix}{local_expert_id}')
+                            expert_state_dict[local_key] = expert_state_dict.pop(key)
+                        state_dict.update(expert_state_dict)
+                    moe_layer_id += 1
 
     def load_module_state_dict(self, state_dict, strict=True):
         self.module.load_state_dict(state_dict, strict=strict)
@@ -2290,12 +2378,21 @@ class DeepSpeedEngine(Module):
             f'expp_rank_{expp_rank}_mp_rank_{mp_rank:02d}_optim_states.pt')
         return ckpt_name
 
-    def _get_expert_ckpt_name(self, checkpoints_path, expert_id, tag):
+    def _get_expert_ckpt_name(self, checkpoints_path, layer_id, expert_id, tag):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
-        ckpt_name = os.path.join(
-            checkpoints_path,
-            str(tag),
-            f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt')
+        if layer_id <= -1:
+            # Used to support old checkpoint loading
+            ckpt_name = os.path.join(
+                checkpoints_path,
+                str(tag),
+                f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt')
+        else:
+            # Used to support new checkpoint loading
+            ckpt_name = os.path.join(
+                checkpoints_path,
+                str(tag),
+                f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
+            )
         return ckpt_name
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
@@ -2363,7 +2460,7 @@ class DeepSpeedEngine(Module):
                 tag,
                 load_optimizer_states=load_optimizer_states)
             if not success:
-                self.optimizer._restore_from_fp16_weights()
+                self.optimizer._restore_from_bit16_weights()
 
         return load_path, client_states
 
@@ -2390,23 +2487,22 @@ class DeepSpeedEngine(Module):
         if checkpoint is None:
             return None, None
 
-        # TODO: merge the above two after talking to Reza/Jeff.
-
         if is_pipe_parallel:
             # Pipeline parallelism uses this to load its own checkpoint files.
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         if self.has_moe_layers:
-            self.load_moe_state_dict(load_dir, tag, state_dict=checkpoint['module'])
+            # print(checkpoint.keys())
+            old_moe_load = False
+            if not isinstance(checkpoint['num_experts'], list):
+                old_moe_load = True
+            self.load_moe_state_dict(load_dir,
+                                     tag,
+                                     state_dict=checkpoint['module'],
+                                     old_moe_load=old_moe_load)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
-
-        # TODO: Do the following before we merge to master.
-        #   if load_optimizer states and not load_module_only:
-        #           Add consistency check between fp16 and fp32 parameters
-        #           If the consistency check fails, crash with a message telling users
-        #           to turn on load_module_only.
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
@@ -2416,7 +2512,8 @@ class DeepSpeedEngine(Module):
                 self.optimizer.refresh_fp32_params()
         else:
             if self.has_moe_layers:
-                expp_rank = groups.get_expert_parallel_rank()
+                largest_group_name = groups.get_max_expert_size_name()
+                expp_rank = groups.get_expert_parallel_rank(largest_group_name)
                 optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
                 optim_checkpoint = torch.load(optim_load_path,
                                               map_location=torch.device('cpu'))
@@ -2506,12 +2603,19 @@ class DeepSpeedEngine(Module):
         if zero_sd_list is None:
             return False
 
+        if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
+            raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
+                f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
+                f"current world size is {self.dp_world_size}. Automatic adjustment " \
+                "of ZeRO's optimizer state partitioning with a new world size is not " \
+                "currently supported.")
+
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
             load_optimizer_states=load_optimizer_states,
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
         )
-        print(
+        logger.info(
             f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
         )
         return True
@@ -2570,12 +2674,19 @@ class DeepSpeedEngine(Module):
             return None
 
         zero_sd_list = []
-        for ckpt_name in zero_ckpt_names:
-            zero_sd_list.append(torch.load(ckpt_name, map_location="cpu"))
+        for i, ckpt_name in enumerate(zero_ckpt_names):
+            _state = None
+            # Fully load state for current rank
+            if self.zero_elastic_checkpoint() or dist.get_rank(
+                    group=self.optimizer.dp_process_group) == i:
+                _state = torch.load(ckpt_name, map_location='cpu')
+            else:
+                _state = {OPTIMIZER_STATE_DICT: None}
+            zero_sd_list.append(_state)
 
-        zero_optimizer_sd = [sd["optimizer_state_dict"] for sd in zero_sd_list]
-        print(
-            f"successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
+        zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
+        logger.info(
+            f"successfully read {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
         return zero_optimizer_sd
 
@@ -2656,81 +2767,82 @@ class DeepSpeedEngine(Module):
 
         return True
 
-    def _get_moe_state_dict(self, full_state_dict, num_local_experts, expp_rank):
-        """Compute moe and non moe state dict from complete local model state dict
-            key : global_expert_id
-            value : state_dict
-            experts_state_dict =
-            {
-                '0': {
-                    'models.seq2seq.encoder.layers.0.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
-                    'models.seq2seq.encoder.layers.1.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
-                    'models.seq2seq.encoder.layers.2.experts.moe.experts.experts.0.fc1.weight' <class 'torch.Tensor'>,
-                    ...
-                },
-                '1' : {
-                    ...
-                }
-            }
-
-            returns experts_state_dict, model_state_dict
+    def _get_non_moe_state_dict(self, full_state_dict):
         """
-        experts_state_dict, moe_state_dict = defaultdict(dict), {}
+            Get the state dict of the non-moe layers
+        """
         for key in list(full_state_dict.keys()):
             if 'expert' in key and 'moe.gate.wg.weight' not in key:
-                moe_state_dict[key] = full_state_dict.pop(key)
-        non_moe_state_dict = full_state_dict
+                full_state_dict.pop(key)
 
-        moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
-        for key in list(moe_state_dict.keys()):
-            m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
-
-            local_expert_id = None
-            if not m:
-                logger.warn(f'No expert found in key {key}.')
-            else:
-                local_expert_id = m.group(1)
-
-            global_expert_id = expp_rank * \
-                num_local_experts + int(local_expert_id)
-            expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}',
-                                     f'{moe_str_prefix}{global_expert_id}')
-            experts_state_dict[str(global_expert_id)][expert_key] = moe_state_dict.pop(
-                key)
-
-        return experts_state_dict, non_moe_state_dict
+        return full_state_dict
 
     def _save_moe_checkpoint(self, save_dir, tag, client_state={}):
-
         save_path = self._get_ckpt_name(save_dir, tag)
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
         # then instead just returns None.
+
+        # Using layer_#_export_# to save the model's expert state_dict
+        moe_layer_id = 0
+        for n_module, module in self.module.named_modules():
+            if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
+                group_name = module.expert_group_name
+                num_local_experts = module.num_local_experts
+                expp_rank = groups.get_expert_parallel_rank(group_name)
+                exp_dp_rank = groups.get_expert_data_parallel_rank(group_name)
+                # print(expp_rank, exp_dp_rank)
+                if exp_dp_rank != 0:
+                    moe_layer_id += 1
+                    continue
+
+                # get all moe parameters
+                moe_state_dict = {}
+                for n, p in module.state_dict().items():
+                    if 'expert' in n and 'moe.gate.wg.weight' not in n:
+                        moe_state_dict[n_module + '.' + n] = p
+                moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
+                # print(moe_state_dict.keys()) # until now, everything is fine. So the bug happens at next few lines
+                # Reorder the moe name rank, so that each checkpoint only has one expert
+                experts_state_dict = defaultdict(dict)
+                for key in list(moe_state_dict.keys()):
+                    m = re.match(f".*{moe_str_prefix}([0-9]+).*", key)
+
+                    local_expert_id = None
+                    if not m:
+                        logger.warn(f'No expert found in key {key}.')
+                    else:
+                        local_expert_id = m.group(1)
+
+                    global_expert_id = expp_rank * \
+                        num_local_experts + int(local_expert_id)
+                    expert_key = key.replace(f'{moe_str_prefix}{local_expert_id}',
+                                             f'{moe_str_prefix}{global_expert_id}')
+                    experts_state_dict[str(
+                        global_expert_id)][expert_key] = moe_state_dict.pop(key)
+
+                # let save the moe parameters
+                for global_expert_id, expert_state_dict in experts_state_dict.items():
+                    # save the moe parameters
+                    moe_save_path = self._get_expert_ckpt_name(
+                        save_dir,
+                        moe_layer_id,
+                        global_expert_id,
+                        tag)
+                    torch.save(expert_state_dict, moe_save_path)
+                moe_layer_id += 1
+
         self._curr_ckpt_path = os.path.join(save_dir, tag)
-        """"
-        experts_state_dict = {
-            'e_id' : state_dict_for_eid
-        }
-        """
-        expp_rank = groups.get_expert_parallel_rank()
-        exp_dp_rank = groups.get_expert_data_parallel_rank()
+
+        largest_group_name = groups.get_max_expert_size_name()
+        expp_rank = groups.get_expert_parallel_rank(largest_group_name)
+        exp_dp_rank = groups.get_expert_data_parallel_rank(largest_group_name)
 
         # In the case of E + D parallelism, only the
         # first expert parallel group should save the expert weights
         # since each expert parallel group is a copy of the model's experts
         if exp_dp_rank != 0:
             return
-
-        num_local_experts = self.num_experts // self.ep_world_size
-        experts_state_dict, model_state_dict = self._get_moe_state_dict(
-            self.module_state_dict(), num_local_experts, expp_rank)
-
-        #  Each rank saves its local experts
-        for global_expert_id, expert_state_dict in experts_state_dict.items():
-            expert_save_dir = self._get_expert_ckpt_name(save_dir, global_expert_id, tag)
-            logger.info(
-                f'Saving model expert {global_expert_id} checkpoint: {expert_save_dir}')
-            torch.save(expert_state_dict, expert_save_dir)
 
         # Save optimizer states. They are different across each exp parallel rank.
         optimizer_state = {
@@ -2742,6 +2854,9 @@ class DeepSpeedEngine(Module):
                    self._get_optimizer_ckpt_name(save_dir,
                                                  tag,
                                                  expp_rank))
+
+        # get non-moe parameters
+        model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
@@ -2907,7 +3022,7 @@ class DeepSpeedEngine(Module):
             self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
 
-    def _zero3_consolidated_fp16_state_dict(self):
+    def _zero3_consolidated_16bit_state_dict(self):
         """
 
         Get a full non-partitioned state_dict with fp16 weights on cpu.
@@ -2976,13 +3091,22 @@ class DeepSpeedEngine(Module):
         return state_dict
 
     def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
-        r"""Save fp16 model weights
+        """has been renamed to save_16bit_model, keeping this around for backwards
+        compatibility"""
+        return self.save_16bit_model(save_dir, save_filename)
 
-        This method saves the fp16 model weights at the desired destination.
+    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
+        r"""Save 16bit model weights
+
+        This method saves the 16bit model weights at the desired destination.
 
         Arguments:
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
+
+        Returns:
+            ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
+            stage3_gather_16bit_weights_on_model_save is ``False``.
 
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
@@ -2993,15 +3117,15 @@ class DeepSpeedEngine(Module):
         path = os.path.join(save_dir, save_filename)
 
         if self.zero_optimization_partition_weights():
-            if self.zero_gather_fp16_weights_on_model_save():
+            if self.zero_gather_16bit_weights_on_model_save():
                 # consolidation is expensive in time and memory and therefore isn't a default
-                state_dict = self._zero3_consolidated_fp16_state_dict()
+                state_dict = self._zero3_consolidated_16bit_state_dict()
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
-                    f"Did not save the model {path} because `stage3_gather_fp16_weights_on_model_save` is False"
+                    f"Did not save the model {path} because `stage3_gather_16bit_weights_on_model_save` is False"
                 )
-                return
+                return False
         else:
             state_dict = self.module.state_dict()
 
@@ -3009,3 +3133,5 @@ class DeepSpeedEngine(Module):
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)
+
+        return True

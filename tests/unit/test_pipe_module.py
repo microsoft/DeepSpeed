@@ -9,13 +9,14 @@ import pytest
 import deepspeed
 
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+
 PipeTopo = PipeDataParallelTopology
 
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.utils import RepeatingLoader
 
-from common import distributed_test
-from simple_model import args_from_dict
+from .common import distributed_test
+from .simple_model import args_from_dict
 
 HIDDEN_DIM = 32
 LAYERS = 8
