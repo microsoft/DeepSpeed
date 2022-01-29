@@ -127,6 +127,13 @@ def parse_args(args=None):
                         "wants to launch on single remote node.")
 
     parser.add_argument(
+        "--save_pid",
+        action="store_true",
+        help="Save file containing launcher process id (pid) at /tmp/<main-pid>.ds, "
+        "where <main-pid> is the pid of the first process that invoked `deepspeed`. "
+        "Useful when launching deepspeed processes programmatically.")
+
+    parser.add_argument(
         "--autotuning",
         default="",
         choices=["tune",
@@ -390,6 +397,8 @@ def main(args=None):
             deepspeed_launch.append("--module")
         if args.no_local_rank:
             deepspeed_launch.append("--no_local_rank")
+        if args.save_pid:
+            deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
@@ -428,6 +437,7 @@ def main(args=None):
 
     logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
+
     result.wait()
 
     # In case of failure must propagate the error-condition back to the caller (usually shell). The
