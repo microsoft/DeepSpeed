@@ -2921,7 +2921,8 @@ class DeepSpeedEngine(Module):
                      buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not self.zero_optimization() else None,
-                     param_shapes=self._get_zero_param_shapes(),
+                     param_shapes=self._get_zero_param_shapes()
+                     if self.optimizer and self.zero_optimization() else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
                      if self.lr_scheduler is not None else None,
                      sparse_tensor_module_names=self.sparse_tensor_module_names,
@@ -2935,7 +2936,6 @@ class DeepSpeedEngine(Module):
         state.update(client_state)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
-        #logger.info('Saving model checkpoint: {}'.format(save_path))
         torch.save(state, save_path)
         self._curr_save_path = None
 
