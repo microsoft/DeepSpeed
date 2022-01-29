@@ -33,7 +33,7 @@ from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
-from deepspeed.runtime.constants import OPTIMIZER_STATE_DICT
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without

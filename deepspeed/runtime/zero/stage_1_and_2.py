@@ -11,14 +11,14 @@ from packaging import version as pkg_version
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
-from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER, OFFLOAD_OPTIMIZER_DEVICE
+from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
 
-from .constants import SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE
+from deepspeed.checkpoint.constants import SINGLE_PARTITION_OF_FP32_GROUPS, BASE_OPTIMIZER_STATE
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
