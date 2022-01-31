@@ -20,3 +20,4 @@ ZERO_STAGE = 'zero_stage'
 #########################################
 PARAM_SHAPES = 'param_shapes'
 BUFFER_NAMES = 'buffer_names'
+DS_VERSION = 'ds_version'
