@@ -18,7 +18,8 @@ from collections import OrderedDict
 # DeepSpeed data structures it has to be available in the current python environment.
 import deepspeed
 from deepspeed.utils import logger
-from deepspeed.checkpoint.constants import (OPTIMIZER_STATE_DICT,
+from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            OPTIMIZER_STATE_DICT,
                                             PARAM_SHAPES,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             FP32_FLAT_GROUPS,
@@ -77,7 +78,9 @@ def parse_model_state(file):
     }
     param_shapes = state_dict[PARAM_SHAPES]
 
-    return buffers, param_shapes
+    ds_version = state_dict.get(DS_VERSION, None)
+
+    return buffers, param_shapes, ds_version
 
 
 def parse_optim_states(files, ds_checkpoint_dir):
@@ -149,7 +152,8 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
         f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
 
     model_file = get_model_state_file(ds_checkpoint_dir, zero_stage)
-    buffers, param_shapes = parse_model_state(model_file)
+    buffers, param_shapes, ds_version = parse_model_state(model_file)
+    print(f'Parsing checkpoint created by deepspeed=={ds_version}')
 
     if zero_stage == 2:
         return _get_fp32_state_dict_from_zero2_checkpoint(world_size,

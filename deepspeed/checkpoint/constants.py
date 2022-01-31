@@ -48,3 +48,4 @@ SEQUENTIAL_LAYERS = [
 ]
 
 LAYER_CONCAT_DIM = {'self_attention.dense.weight': 1, 'mlp.dense_4h_to_h.weight': 1}
+DS_VERSION = 'ds_version'
