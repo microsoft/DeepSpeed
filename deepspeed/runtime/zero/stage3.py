@@ -277,7 +277,7 @@ class PartitionedParameterCoordinator:
             self.__param_order = tuple(self.__param_order)  # freeze
             self.trace_complete = True
             print_rank_0(f"completed trace: {[m.id for m in self.__submodule_order]}",
-                         force=True)
+                         force=False)
 
         self.__param_queue = collections.deque(self.__param_order)  # reset fetch queue
         self.__most_recent_step_id_param_fetched_for = collections.defaultdict(
@@ -585,8 +585,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage("Stage 3 initialize beginning", force=False)
 
+        print_rank_0(f"initialized {__class__.__name__} with args: {locals()}",
+                     force=False)
+
         if dist.get_rank() == 0:
-            logger.info(f"initialized {__class__.__name__} with args: {locals()}")
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {prefetch_bucket_size}")
         # The fused optimizer does all the work. We need this layer for two reason:
