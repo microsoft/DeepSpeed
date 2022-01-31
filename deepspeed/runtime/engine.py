@@ -212,6 +212,8 @@ class DeepSpeedEngine(Module):
         self._step_applied = False
         self._global_grad_norm = None
         self._is_gradient_accumulation_boundary = None
+        self._engine_backward_invoked = False
+        self.scale_wrt_gas = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
         debug_extract_module_and_param_names(model)
@@ -1668,7 +1670,7 @@ class DeepSpeedEngine(Module):
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 
-    def backward(self, loss, allreduce_gradients=True, release_loss=False):
+    def backward(self, loss, allreduce_gradients=True, release_loss=False, scale_wrt_gas=True):
         r"""Execute backward pass on the loss
 
         Arguments:
@@ -1678,13 +1680,17 @@ class DeepSpeedEngine(Module):
 
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
 
+        self._engine_backward_invoked = True
+        if self.scale_wrt_gas is not None:
+            scale_wrt_gas = self.scale_wrt_gas
+
         if not allreduce_gradients:
             logger.warning(
                 f"Argument `allreduce_gradients` is deprecated, ignored, and will soon be removed"
             )
 
         # scale loss w.r.t. gradient accumulation if needed
-        if self.gradient_accumulation_steps() > 1:
+        if self.gradient_accumulation_steps() > 1 and scale_wrt_gas:
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
@@ -1869,6 +1875,9 @@ class DeepSpeedEngine(Module):
         on effective_train_batch.
         """
         see_memory_usage("Engine before step", force=self.memory_breakdown())
+
+        assert self._engine_backward_invoked, "please call engine.backward() before engine.step()!"
+        self._engine_backward_invoked = False
 
         # Check early because self.global_steps is incremented at some point here.
         # TODO: Delay self.global_steps increment until very end of this function.
@@ -2296,8 +2305,11 @@ class DeepSpeedEngine(Module):
                 expert_state_dict[local_key] = expert_state_dict.pop(key)
             state_dict.update(expert_state_dict)
 
-    def load_module_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+    def load_module_state_dict(self, state_dict, strict=True, model_f=None):
+        if model_f:
+            model_f(src=state_dict, dst=self.module)
+        else:
+            self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
         filename = "zero_pp_rank_{}".format(dp_rank)
@@ -2369,7 +2381,8 @@ class DeepSpeedEngine(Module):
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
-                        load_module_only=False):
+                        load_module_only=False,
+                        model_f=None):
         """Load training checkpoint
 
         Arguments:
@@ -2409,7 +2422,8 @@ class DeepSpeedEngine(Module):
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
-                                                         load_module_only=load_module_only)
+                                                         load_module_only=load_module_only,
+                                                         model_f=model_f)
 
         if self.zero_optimization() and load_path is not None:
             success = self._load_zero_checkpoint(
@@ -2427,7 +2441,8 @@ class DeepSpeedEngine(Module):
                          load_module_strict=True,
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True,
-                         load_module_only=False):
+                         load_module_only=False,
+                         model_f=None):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 
@@ -2452,7 +2467,8 @@ class DeepSpeedEngine(Module):
             self.load_moe_state_dict(load_dir, tag, state_dict=checkpoint['module'])
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+                                    strict=load_module_strict,
+                                    model_f=model_f)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
@@ -2516,6 +2532,16 @@ class DeepSpeedEngine(Module):
                         checkpoint["module"])
 
             self.global_steps = checkpoint['global_steps']
+
+            # ensure all ranks are loading the same global steps
+            global_steps_cuda = torch.cuda.FloatTensor([self.global_steps])
+            output = [
+                torch.cuda.FloatTensor([0])
+                for _ in range(torch.distributed.get_world_size())
+            ]
+            torch.distributed.all_gather(output, global_steps_cuda)
+            assert all(map(lambda t: output[0] == t, output)), f"global steps not aligned across all ranks: {output}"
+
             self.global_samples = checkpoint.get(
                 'global_samples',
                 self.global_steps * self.train_batch_size())
@@ -2960,6 +2986,7 @@ class DeepSpeedEngine(Module):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        param_shapes=self._get_zero_param_shapes(),
+                       global_steps=self.global_steps,
                        ds_config=self.config,
                        ds_version=version)
         torch.save(zero_sd, zero_checkpoint_name)
