@@ -3114,6 +3114,10 @@ class DeepSpeedEngine(Module):
 
         """
 
+        if self.zero_optimization_partition_weights():
+            # Prepare for state_dict() by ensuring all parameters are partitioned
+            self.optimizer.save_checkpoint_prologue()
+
         path = os.path.join(save_dir, save_filename)
 
         if self.zero_optimization_partition_weights():
