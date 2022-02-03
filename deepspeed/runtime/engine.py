@@ -21,6 +21,8 @@ from torch.distributed.distributed_c10d import _get_global_rank
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
+import deepspeed
+
 from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -3040,8 +3042,6 @@ class DeepSpeedEngine(Module):
             a consolidated fp16 ``state_dict`` on cpu on rank 0, ``None`` on other ranks
 
         """
-        import deepspeed
-
         if not self.zero_optimization_partition_weights():
             raise ValueError("this function requires ZeRO-3 mode")
 
@@ -3084,9 +3084,14 @@ class DeepSpeedEngine(Module):
                 if child is not None:
                     get_layer_state_dict(child, prefix + name + ".")
 
+        # Prepare for state_dict() by ensuring all parameters are partitioned
+        self.optimizer.save_checkpoint_prologue()
+
         see_memory_usage("before get_layer_state_dict", force=False)
         get_layer_state_dict(self.module, prefix="")
         see_memory_usage("after get_layer_state_dict", force=False)
+
+        self.optimizer.save_checkpoint_epilogue()
 
         return state_dict
 
@@ -3118,13 +3123,8 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization_partition_weights():
             if self.zero_gather_16bit_weights_on_model_save():
-                # Prepare for state_dict() by ensuring all parameters are partitioned
-                self.optimizer.save_checkpoint_prologue()
-
                 # consolidation is expensive in time and memory and therefore isn't a default
                 state_dict = self._zero3_consolidated_16bit_state_dict()
-
-                self.optimizer.save_checkpoint_epilogue()
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
