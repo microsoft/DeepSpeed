@@ -3114,16 +3114,17 @@ class DeepSpeedEngine(Module):
 
         """
 
-        if self.zero_optimization_partition_weights():
-            # Prepare for state_dict() by ensuring all parameters are partitioned
-            self.optimizer.save_checkpoint_prologue()
-
         path = os.path.join(save_dir, save_filename)
 
         if self.zero_optimization_partition_weights():
             if self.zero_gather_16bit_weights_on_model_save():
+                # Prepare for state_dict() by ensuring all parameters are partitioned
+                self.optimizer.save_checkpoint_prologue()
+
                 # consolidation is expensive in time and memory and therefore isn't a default
                 state_dict = self._zero3_consolidated_16bit_state_dict()
+
+                self.optimizer.save_checkpoint_epilogue()
             else:
                 # the model will be bogus if not consolidated so don't confuse the user by saving it
                 logger.info(
