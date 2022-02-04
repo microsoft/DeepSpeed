@@ -750,6 +750,7 @@ def _tensor_addmm_flops_compute(self, mat1, mat2, *, beta=1, alpha=1, out=None):
 def _mul_flops_compute(input, other, *, out=None):
     return _elementwise_flops_compute(input, other)
 
+
 def _add_flops_compute(input, other, *, alpha=1, out=None):
     return _elementwise_flops_compute(input, other)
 
@@ -777,6 +778,7 @@ def _elementwise_flops_compute(input, other):
                 final_shape.append(ot_i)
         flops = _prod(final_shape)
         return flops, 0
+
 
 def wrapFunc(func, funcFlopCompute):
     oldFunc = func
