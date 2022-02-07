@@ -61,6 +61,7 @@ class MoE(torch.nn.Module):
         assert noisy_gate_policy is None or noisy_gate_policy in ['None', 'Jitter', 'RSample'], \
             'Unsupported noisy_gate_policy: ' + noisy_gate_policy
 
+        [32, 32, 64, 64, 128, 128]
         # Get the group name
         max_ep_size = groups.get_max_expert_size()
         if max_ep_size >= num_experts:

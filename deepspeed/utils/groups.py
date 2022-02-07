@@ -60,45 +60,144 @@ _EXPERT_PARALLEL_GROUP = None  # {"32_expert": parallel_group}
 _EXPERT_DATA_PARALLEL_GROUP = None
 # Data parallel group that the current rank belongs to.
 _DATA_PARALLEL_GROUP = None
+# new type
+_NEW_GROUP_TYPE = None
+
 # Max EP SIZE
 _MAX_EP_SIZE = None
 _MAX_EP_SIZE_NAME = None
 
+# Samyam's proposal:
+"""
+  -- extend what I said about an on-demand group creation for each use
+    -- we started with PR-MoE where there is a need to decouple the use-case (expert) from the groups API
+
+  Does it makes sense to make groups an even simple wrapper around Process Group (PG) creation APIs?
+   - a PG creation API should just take a set of ranks (e.g. torch.dist.new_group(rank_list))
+   - Pros: simple and extensible
+   - Cons: same use-cases will become clients and might do repeated things like create EP group 
+                   and create MP group will be just the same code but repeated in both use-cases
+
+"""
 
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
     assert numerator % denominator == 0, '{} is not divisible by {}'.format(
         numerator, denominator)
 
-
-def initialize(ep_size=1, mpu=None, num_ep_list=None):
+def initialize(ep_size=1, mp_size=1, es_size=1, mpu=None, num_ep_list=None):
     """
-    Process groups initialization supporting expert (E), data (D), and model (M) parallelism. DeepSpeed considers
-    the following scenarios w.r.t. process group creation.
+	Various process groups need to be initialized for supporting MoE models. These differ for training and inference.
 
-    * S1: There is no expert parallelism or model parallelism, only data (D)::
+        1) For Training:  expert-parallelism (EP), tensor-slicing model-parallelism (MP), and data-parallelism (DP)  
+        2) For Inference: expert-parallelism (EP), expert-slicing (ES), tensor-slicing model-parallelism (MP), and data-parallelism (DP)
+        
+        DeepSpeed considers the following scenarios w.r.t. process group creation. 
+	
+	For examples below, we assume a top-line of import deepspeed.utils.groups as groups
+    	
+	For Inference 
+    -------------
 
-        model = my_model(args)
-        engine = deepspeed.initialize(model) # initialize groups without mpu
+	    A. User inputs: 
+            1) expert-parallel degree (ep_size)
+            2) model-parallel degree (mp_size)
+            3) expert-slicing degree (es_size)
+            4) number of GPUs (world_size)
+            5) number of experts (num_experts) -- this should not be needed and the caller of this groups initialize should be responsible for it
 
-    * S2: There is expert parallelism but no model parallelism (E+D)::
+	    B. Scenarios: 
 
-        deepspeed.utils.groups.initialize(ep_size) # groups will be initialized here
-        model = my_model(args)
-        engine = deepspeed.initialize(model)
+	    * S1: There is no expert or model parallelism, only data parallelism (DP)::
 
-    * S3: There is model parallelism but no expert parallelism (M)::
+	        model = my_model(args)        	
+		    engine = deepspeed.init_inference(model)
 
-        mpu.init() # client initializes it's model parallel unit
-        model = my_model(args)
-        engine = deepspeed.initialize(model, mpu=mpu) # init w. mpu but ep_size = dp_world_size
+	    * S2: There is expert parallelism but no model parallelism (EP)::
 
-    * S4: There is model, data, and expert parallelism (E+D+M)::
+		# groups will be initialized here; use ep_size = world_size
+	        
+            groups.initialize(ep_size=ep_size) 
+        	model = my_model(args)
+        	engine = deepspeed.init_inference(model)
 
-        mpu.init() # client initializes it's model parallel unit
-        deepspeed.utils.groups.initialize(ep_size, mpu) # initialize expert groups wrt mpu
-        model = my_model(args)
-        engine = deepspeed.initialize(model, mpu=mpu) # passing mpu is optional in this case
+	    * S3: There is model parallelism but no expert parallelism (MP)::
+
+		S3-A: if client initializes an mpu, then use it and don't do anything in groups API
+	        	
+            mpu.init() 
+            model = my_model(args)	
+            engine = deepspeed.init_inference(model, mpu=mpu) <-- this will get the mp_group from mpu
+
+		S3-B: if client has no mpu, but want model parallelism (MP), use groups API to create group
+
+            model = my_model(args)
+            groups.initialize(mp_size=mp_size)	
+            engine = deepspeed.init_inference(model) <-- remove mp_size as an input arg here as the line above 
+
+	    * S4: There is expert-parallelism and tensor-slicing model parallelism (EP + MP):
+		
+		S4-A: if client initializes an mpu, then use it and don't do anything in groups API
+	        	
+            mpu.init()
+            groups.initialize(ep_size=ep_size, mpu=mpu) <-- this will get the mp_group from mpu and create an ep_group
+            model = my_model(args)	
+            engine = deepspeed.init_inference(model, mpu=mpu) <-- check if this mpu is same as mpu passed earlier
+
+		S4-B: if client has no mpu, but want model parallelism (MP), use groups API to create group both MP and EP groups
+                
+            groups.initialize(ep_size=ep_size, mp_size=mp_size)	
+            model = my_model(args)
+            engine = deepspeed.init_inference(model) 
+
+	    * S5: There is expert-parallelism, expert-slicing, and tensor-slicing model parallelism (EP + ES + MP):
+
+		    -- Is S5 similar to S4 but the user needs to set es_size = world_size/ep_size -- Reza, please help me with this scenario
+        
+        64 GPUs, mp_size=8, dp_size=64/8=8, ep_size=dp_world_size, 64 experts, 
+        
+        ep_size=128, -->  es_size=128/64
+	 	
+        Notes for implementation changes:
+	    Note: https://github.com/microsoft/DeepSpeed/blob/df724e71e935414bb8e73b78f9f422baca344895/deepspeed/inference/engine.py#L90
+            - current code is making an mp_size MP group if mpu is None but mp_size>1
+            - _create_model_parallel_group 
+            - _create_ep_parallel_group  -- both ep_group and es_group are made here. We need to take this out and use inputs of ep_size and es_size to make these groups
+
+
+    For Training
+    ------------
+        A. User Inputs:
+            1) expert-parallel degree (ep_size)
+            2) model-parallel degree (mp_size)
+            3) expert-slicing degree (es_size) -- Does not work yet so ignore it
+            4) number of GPUs (world_size)
+            5) number of experts (num_experts) -- this should not be needed I think
+
+        B. Scenarios:
+        * S1: There is no expert parallelism or model parallelism, only data (D):
+
+            model = my_model(args)
+            engine = deepspeed.initialize(model) # initialize groups without mpu
+
+        * S2: There is expert parallelism but no model parallelism (EP + DP)::
+
+            deepspeed.utils.groups.initialize(ep_size) # groups will be initialized here
+            model = my_model(args)
+            engine = deepspeed.initialize(model)
+
+        * S3: There is model parallelism but no expert parallelism (MP)::
+
+            mpu.init() # client initializes it's model parallel unit
+            model = my_model(args)
+            engine = deepspeed.initialize(model, mpu=mpu) # init w. mpu but ep_size = dp_world_size
+
+        * S4: There is model, data, and expert parallelism (EP + DP + MP)::
+
+            mpu.init() # client initializes it's model parallel unit
+            deepspeed.utils.groups.initialize(ep_size, mpu) # initialize expert groups wrt mpu
+            model = my_model(args)
+            engine = deepspeed.initialize(model, mpu=mpu) # passing mpu is optional in this case
 
     Arguments:
         ep_size (int, optional): default=1, maximum expert parallel size, which should be divisible/divided by the world size.
@@ -106,7 +205,6 @@ def initialize(ep_size=1, mpu=None, num_ep_list=None):
         mpu (module, optional): default=None, model parallel unit (e.g., from Megatron)
             that describes model/data parallel ranks.
         num_ep_list (list, optional): default=None, list of number of expert parallel sizes in each MoE layer.
-
     """
 
     if num_ep_list is None:
