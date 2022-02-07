@@ -13,6 +13,24 @@ from .reshape_meg_2d import reshape_meg_2d_parallel, meg_2d_parallel_map
 from .zero_checkpoint import ZeROCheckpoint
 from .constants import *
 
+EMBEDDING_LAYER_INDEX = 0
+FINAL_LAYER_NORM_INDEX = -1
+ARGS_KEY = 'args'
+CHECKPOINT_INFO_KEY = 'checkpoint_info'
+ITERATION_KEY = 'iteration'
+
+SEQUENTIAL_LAYERS = [
+    'input_layernorm.weight',
+    'input_layernorm.bias',
+    'self_attention.dense.bias',
+    'post_attention_layernorm.weight',
+    'post_attention_layernorm.bias',
+    'mlp.dense_4h_to_h.bias',
+    'position_embeddings.weight'
+]
+
+LAYER_CONCAT_DIM = {'self_attention.dense.weight': 1, 'mlp.dense_4h_to_h.weight': 1}
+
 
 class DeepSpeedCheckpoint(object):
     def __init__(self, dir, tp_degree=None, pp_degree=None, dp_degree=None):
