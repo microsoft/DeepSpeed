@@ -20,6 +20,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.distributed.distributed_c10d import _get_global_rank
 
 from typing import Callable, Dict, Optional, Union, Iterable
+from deepspeed.checkpoint.utils import get_zero_ckpt_name_for_rank
 
 from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer

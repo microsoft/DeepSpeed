@@ -1,6 +1,8 @@
 import os
 from typing import Dict
 import torch
+
+from deepspeed.checkpoint.reshape_3d_utils import model_3d_desc
 from .reshape_utils import (basic_folder_validation,
                             partition_data,
                             get_files,
@@ -66,7 +68,15 @@ class DeepSpeedCheckpoint(object):
                                                   old_tp_degree=self.original_tp_degree,
                                                   new_pp_degree=self.pp_degree,
                                                   new_tp_degree=self.tp_degree)
+
         self.zero_checkpoint = ZeROCheckpoint(dir)
+        if self.is_change_pp_degree() or self.is_change_tp_degree(
+        ) or self.is_change_dp_degree():
+            self.zero_checkpoint.reshape(
+                model_3d_desc(self.pp_degree,
+                              self.tp_degree,
+                              self.dp_degree))
+
         self.global_state = {}
 
         self._sanity_check()
@@ -76,6 +86,15 @@ class DeepSpeedCheckpoint(object):
         self.tp_to_final_norm_map = self._build_tp_other_layer_map(
             FINAL_LAYER_NORM_INDEX)
         self._build_global_state()
+
+    def is_change_tp_degree(self):
+        return self.tp_degree != self.original_tp_degree
+
+    def is_change_pp_degree(self):
+        return self.pp_degree != self.original_pp_degree
+
+    def is_change_dp_degree(self):
+        return self.dp_degree != self.original_dp_degree
 
     def show_2d_mapping(self):
         print(f'reshaped 2d map ---- begin')
@@ -104,11 +123,11 @@ class DeepSpeedCheckpoint(object):
         self.global_state[ITERATION_KEY] = sd.get(ITERATION_KEY, 0)
         self.global_state[ARGS_KEY] = sd.get(ARGS_KEY, None)
 
-    def get_zero_checkpoint_state(self, global_rank) -> dict:
-        return self.zero_checkpoint.get_state_for_global_rank(
-            self.world_size,
-            global_rank,
-            keys_to_ignore=[PARAM_SHAPES])
+    def get_zero_checkpoint_state(self, pp_index, tp_index, dp_index) -> dict:
+        return self.zero_checkpoint.get_state_for_rank(pp_index=pp_index,
+                                                       tp_index=tp_index,
+                                                       dp_index=dp_index,
+                                                       keys_to_ignore=[PARAM_SHAPES])
 
     def get_embedding_layer_id(self):
         return self.layer_keys[EMBEDDING_LAYER_INDEX]
