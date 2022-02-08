@@ -20,6 +20,8 @@ class MoE(torch.nn.Module):
                  hidden_size,
                  expert,
                  num_experts=1,
+                 ep_size=1,
+                 mpu=None,
                  k=1,
                  capacity_factor=1.,
                  eval_capacity_factor=1.,
@@ -56,16 +58,21 @@ class MoE(torch.nn.Module):
 
         super(MoE, self).__init__()
 
-        assert groups.is_initialized(), \
-            'Please call deepspeed.utils.groups.initialize() before using MoE layers'
+        if groups.is_initialized():
+            print('Deprecated API Warning! Please use the MoE layer API to automatically initialize groups instead of groups.initialize()')
+        else:
+            # initialize the groups
+            self.expert_group_name = f"ep_size_{num_experts}"
+            if get_expert_parallel_group(self.expert_group_name) is None:
+                groups.initialize(ep_size=ep_size, mpu=mpu)
+
         assert noisy_gate_policy is None or noisy_gate_policy in ['None', 'Jitter', 'RSample'], \
             'Unsupported noisy_gate_policy: ' + noisy_gate_policy
 
-        [32, 32, 64, 64, 128, 128]
         # Get the group name
         max_ep_size = groups.get_max_expert_size()
         if max_ep_size >= num_experts:
-            self.expert_group_name = f"ep_size_{num_experts}"
+
         else:
             self.expert_group_name = f"ep_size_{max_ep_size}"
 
