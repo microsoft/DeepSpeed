@@ -3,7 +3,7 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import warnings
 from .builder import OpBuilder
-from packaging import version as pkg_version
+# from packaging import version as pkg_version
 
 
 class SparseAttnBuilder(OpBuilder):
@@ -23,6 +23,7 @@ class SparseAttnBuilder(OpBuilder):
         return ['-O2', '-fopenmp']
 
     def is_compatible(self, verbose=True):
+        return False
         # Check to see if llvm and cmake are installed since they are dependencies
         #required_commands = ['llvm-config|llvm-config-9', 'cmake']
         #command_status = list(map(self.command_exists, required_commands))
