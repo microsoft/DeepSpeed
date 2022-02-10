@@ -3,7 +3,11 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import warnings
 from .builder import OpBuilder
-from packaging import version as pkg_version
+
+try:
+    from packaging import version as pkg_version
+except ImportError:
+    pkg_version = None
 
 
 class SparseAttnBuilder(OpBuilder):
