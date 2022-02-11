@@ -3105,14 +3105,14 @@ class DeepSpeedEngine(Module):
                 if child is not None:
                     get_layer_state_dict(child, prefix + name + ".")
 
-        # Prepare for state_dict() by ensuring all parameters are partitioned
-        self.optimizer.save_checkpoint_prologue()
+        # Prepare for checkpoint save by ensuring all parameters are partitioned
+        self.optimizer.checkpoint_event_prologue()
 
         see_memory_usage("before get_layer_state_dict", force=False)
         get_layer_state_dict(self.module, prefix="")
         see_memory_usage("after get_layer_state_dict", force=False)
 
-        self.optimizer.save_checkpoint_epilogue()
+        self.optimizer.checkpoint_event_epilogue()
 
         return state_dict
 
