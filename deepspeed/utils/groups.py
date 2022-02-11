@@ -443,12 +443,29 @@ def get_expert_data_parallel_group_dict():
     return _EXPERT_DATA_PARALLEL_GROUP
 
 
+_WORLD_GROUP = None
+
+
+def clone_world_group():
+    """Create a clone of the world group
+        Note: We need to clone the torch.distributed world group because we
+        use _get_global_rank() utility function in DeepSpeed at many places.
+        As that function does not work on torch.distributed.group.WORLD, we
+        need to keep a clone of it.
+    """
+    assert torch.distributed.is_initialized(), "torch.distributed is not initialized"
+    global _WORLD_GROUP
+    if _WORLD_GROUP is not None:
+        _WORLD_GROUP = dist.new_group(ranks=range(dist.get_world_size()))
+    return _WORLD_GROUP
+
+
 def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     assert torch.distributed.is_initialized(), \
         'torch.distributed is not initialized'
-    # Return the torch.distributed world group
-    return torch.distributed.group.WORLD
+    # Return the clone of torch.distributed world group
+    return clone_world_group()
 
 
 def get_model_parallel_world_size():
