@@ -447,8 +447,8 @@ def get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     assert torch.distributed.is_initialized(), \
         'torch.distributed is not initialized'
-    # torch.distributed uses None as a group argument for its world group
-    return None
+    # Return the torch.distributed world group
+    return torch.distributed.group.WORLD
 
 
 def get_model_parallel_world_size():
