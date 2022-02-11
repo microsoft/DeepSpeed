@@ -63,21 +63,28 @@ class MoE(torch.nn.Module):
         #        'Deprecated API Warning! Please use the MoE layer API to automatically initialize groups instead of groups.initialize()'
         #    )
         #else:
-            
+
         # initialize the groups
         self.ep_size = min(ep_size, num_experts)
         self.expert_group_name = f"ep_size_{self.ep_size}"
 
-        if groups.get_expert_parallel_group(self.expert_group_name) is None:
+        if self.expert_group_name not in groups.get_expert_parallel_group_dict():
+            print(
+                f"MoE Layer found no existing expert parallel process group, creating a new group named: {self.expert_group_name}"
+            )
             if mpu is None:
-                groups.initialize_expert_parallel(ep_size=self.ep_size)
+                groups.create_expert_and_data_parallel(self.ep_size)
             else:
-                groups.initialize_model_and_expert_parallel(ep_size=self.ep_size, mpu=mpu)
+                groups.create_expert_data_and_model_parallel(ep_size=self.ep_size,
+                                                             mpu=mpu)
 
         assert noisy_gate_policy is None or noisy_gate_policy in ['None', 'Jitter', 'RSample'], \
             'Unsupported noisy_gate_policy: ' + noisy_gate_policy
 
-        num_local_experts = 1 if num_experts < groups.get_expert_parallel_world_size(self.expert_group_name) else num_experts // groups.get_expert_parallel_world_size(self.expert_group_name)
+        num_local_experts = 1 if num_experts < groups.get_expert_parallel_world_size(
+            self.expert_group_name
+        ) else num_experts // groups.get_expert_parallel_world_size(
+            self.expert_group_name)
 
         log_dist(
             f'num_experts: {num_experts} | num_local_experts: {num_local_experts} | expert_parallel_size: {groups.get_expert_parallel_world_size(self.expert_group_name)}',

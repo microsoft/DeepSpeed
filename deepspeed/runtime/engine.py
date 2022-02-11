@@ -1024,44 +1024,23 @@ class DeepSpeedEngine(Module):
                     if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
 
-        if not self.pipeline_parallelism:
-            # PipeEngine's mpu object is different from Megatron's mpu object
-            # so we handle them separately
-            if self.mpu is not None:
-                if groups.is_initialized():
-                    # Scenario 4 - Case 1
-                    assert self.mpu.get_data_parallel_world_size() == groups.get_data_parallel_world_size(
-                    ), "mpu object provided must match mpu object provided to groups.initialize()"
-                    assert self.mpu.get_model_parallel_world_size() == groups.get_model_parallel_world_size(
-                    ), "mpu object provided must match mpu object provided to groups.initialize()"
-                else:
-                    # Scenario 3
-                    groups.initialize(mpu=self.mpu)
-            else:
-                if not groups.is_initialized():
-                    # Scenario 1
-                    groups.initialize()
-                # else:
-                # Scenario 2
-                # Scenario 4 - Case 2
-                # pass
-
-            self.data_parallel_group = groups.get_data_parallel_group()
-            self.dp_world_size = groups.get_data_parallel_world_size()
-            self.mp_world_size = groups.get_model_parallel_world_size()
-            self.broadcast_src_rank = _get_global_rank(groups.get_data_parallel_group(),
-                                                       0)
-        else:
+        if self.mpu is not None:
+            # Use the Megatron mpu object to get correct group and sizes
             self.data_parallel_group = self.mpu.get_data_parallel_group()
             self.dp_world_size = self.mpu.get_data_parallel_world_size()
             self.mp_world_size = self.mpu.get_model_parallel_world_size()
             self.broadcast_src_rank = _get_global_rank(
                 self.mpu.get_data_parallel_group(),
                 0)
+        else:
+            # These will just be returned using the torch.distributed world group
+            self.data_parallel_group = groups.get_data_parallel_group()
+            self.dp_world_size = groups.get_data_parallel_world_size()
+            self.mp_world_size = 1
+            self.broadcast_src_rank = 0
 
         if self.has_moe_layers:
             # No assert needed because this will only be true if MoE Layer creation was successful
-
             self.expert_data_parallel_group = groups.get_expert_data_parallel_group_dict(
             )
             self.expert_parallel_group = groups.get_expert_parallel_group_dict()
