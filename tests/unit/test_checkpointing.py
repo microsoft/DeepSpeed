@@ -1347,7 +1347,6 @@ def test_load_immediate_save(tmpdir, zero_stage):
     _test_load_immediate_save(args, model, tmpdir)
 
 
-
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
     config_dict = {
@@ -1390,11 +1389,10 @@ def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
         ds_model.backward(loss)
         ds_model.step()
 
-        # step only once, but save before gradient_accumulation_steps=10 is complete
+        # we stepped only once, and now save 16bit model before gradient_accumulation_steps=2 is complete
         ds_model.save_16bit_model(tmpdir, "model.pt")
 
         # let's test just as well that we can save the checkpoint too
         ds_model.save_checkpoint(tmpdir)
-
 
     _test_save_before_accum_grad_is_done(args, model, tmpdir)
