@@ -2279,22 +2279,29 @@ class DeepSpeedEngine(Module):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
-    def load_moe_state_dict(self, checkpoint_path, tag, state_dict, old_moe_load):
-
+    @staticmethod
+    def load_moe_state_dict(checkpoint_path,
+                            tag,
+                            state_dict,
+                            old_moe_load,
+                            model=None,
+                            mpu=None,
+                            num_experts=1):
         if old_moe_load:
             expp_rank = groups.get_expert_data_parallel_rank(
                 groups.get_max_expert_size_name())
 
             num_local_experts = max(
-                self.num_experts) // groups.get_expert_parallel_world_size(
+                num_experts) // groups.get_expert_parallel_world_size(
                     groups.get_max_expert_size_name())
             for local_expert_id in range(num_local_experts):
                 global_expert_id = expp_rank * num_local_experts + local_expert_id
-                expert_state_dict = torch.load(self._get_expert_ckpt_name(
+                expert_state_dict = torch.load(DeepSpeedEngine._get_expert_ckpt_name(
                     checkpoint_path,
                     -1, # -1 means ignore layer_id
                     global_expert_id,
-                    tag),
+                    tag,
+                    mpu),
                     map_location=torch.device('cpu'))
 
                 # Updating global -> local expert ids
@@ -2307,7 +2314,7 @@ class DeepSpeedEngine(Module):
 
         else:
             moe_layer_id = 0
-            for n_module, module in self.module.named_modules():
+            for n_module, module in model.named_modules():
                 if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
                     group_name = module.expert_group_name
                     num_local_experts = module.num_local_experts
@@ -2315,12 +2322,14 @@ class DeepSpeedEngine(Module):
                     # loop all local_experts
                     for local_expert_id in range(num_local_experts):
                         global_expert_id = expp_rank * num_local_experts + local_expert_id
-                        expert_state_dict = torch.load(self._get_expert_ckpt_name(
-                            checkpoint_path,
-                            moe_layer_id,
-                            global_expert_id,
-                            tag),
-                                                       map_location=torch.device('cpu'))
+                        expert_state_dict = torch.load(
+                            DeepSpeedEngine._get_expert_ckpt_name(
+                                checkpoint_path,
+                                moe_layer_id,
+                                global_expert_id,
+                                tag,
+                                mpu),
+                            map_location=torch.device('cpu'))
                         # print(expert_state_dict.keys())
                         # Updating global -> local expert ids
                         moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
@@ -2380,19 +2389,20 @@ class DeepSpeedEngine(Module):
             f'expp_rank_{expp_rank}_mp_rank_{mp_rank:02d}_optim_states.pt')
         return ckpt_name
 
-    def _get_expert_ckpt_name(self, checkpoints_path, layer_id, expert_id, tag):
-        mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
+    @staticmethod
+    def _get_expert_ckpt_name(checkpoints_path, layer_id, expert_id, tag, mpu=None):
+        mp_rank = 0 if mpu is None else mpu.get_model_parallel_rank()
         if layer_id <= -1:
             # Used to support old checkpoint loading
             ckpt_name = os.path.join(
                 checkpoints_path,
-                str(tag),
+                '' if tag is None else str(tag),
                 f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt')
         else:
             # Used to support new checkpoint loading
             ckpt_name = os.path.join(
                 checkpoints_path,
-                str(tag),
+                '' if tag is None else str(tag),
                 f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
             )
         return ckpt_name
@@ -2449,6 +2459,10 @@ class DeepSpeedEngine(Module):
                 )
                 return None, None
 
+        if self.zero_optimization_partition_weights():
+            # Prepare for checkpoint load by ensuring all parameters are partitioned
+            self.optimizer.checkpoint_event_prologue()
+
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
                                                          load_module_strict=load_module_strict,
@@ -2463,6 +2477,9 @@ class DeepSpeedEngine(Module):
                 load_optimizer_states=load_optimizer_states)
             if not success:
                 self.optimizer._restore_from_bit16_weights()
+
+        if self.zero_optimization_partition_weights():
+            self.optimizer.checkpoint_event_epilogue()
 
         return load_path, client_states
 
@@ -2498,10 +2515,13 @@ class DeepSpeedEngine(Module):
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
                 old_moe_load = True
-            self.load_moe_state_dict(load_dir,
-                                     tag,
-                                     state_dict=checkpoint['module'],
-                                     old_moe_load=old_moe_load)
+            DeepSpeedEngine.load_moe_state_dict(load_dir,
+                                                tag,
+                                                state_dict=checkpoint['module'],
+                                                old_moe_load=old_moe_load,
+                                                model=self.module,
+                                                mpu=self.mpu,
+                                                num_experts=self.num_experts)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict)
@@ -2726,8 +2746,8 @@ class DeepSpeedEngine(Module):
         process with rank 0.
         """
         if self.zero_optimization_partition_weights():
-            # Prepare for state_dict() by ensuring all parameters are partitioned
-            self.optimizer.save_checkpoint_prologue()
+            # Prepare for checkpoint save by ensuring all parameters are partitioned
+            self.optimizer.checkpoint_event_prologue()
 
         # This is to make sure the checkpoint names are created without collision
         # There seems to be issue creating them in parallel
@@ -2759,7 +2779,7 @@ class DeepSpeedEngine(Module):
             self._save_zero_checkpoint(save_dir, tag)
 
         if self.zero_optimization_partition_weights():
-            self.optimizer.save_checkpoint_epilogue()
+            self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
         torch.distributed.barrier()
@@ -2830,7 +2850,8 @@ class DeepSpeedEngine(Module):
                         save_dir,
                         moe_layer_id,
                         global_expert_id,
-                        tag)
+                        tag,
+                        self.mpu)
                     torch.save(expert_state_dict, moe_save_path)
                 moe_layer_id += 1
 
