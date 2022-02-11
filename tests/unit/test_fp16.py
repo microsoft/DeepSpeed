@@ -8,17 +8,18 @@ import pytest
 import json
 import os
 from deepspeed.ops.adam import FusedAdam
-from common import distributed_test
+from .common import distributed_test
 from deepspeed.ops.op_builder import CPUAdamBuilder
-from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
-from util import required_torch_version
+from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
+from .util import required_torch_version
 
 try:
     from apex import amp
     _amp_available = True
 except ImportError:
     _amp_available = False
-amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
+amp_available = pytest.mark.skipif(not _amp_available,
+                                   reason="apex/amp is not installed")
 
 
 def test_lamb_fp32_grad_clip(tmpdir):

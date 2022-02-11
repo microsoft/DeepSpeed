@@ -5,22 +5,24 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 import torch.distributed as dist
-import math
 from torch._six import inf
-from torch.autograd import Variable
 from packaging import version as pkg_version
-
-import collections
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
-from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER, OFFLOAD_OPTIMIZER_DEVICE
+from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
+
+from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            PARTITION_COUNT,
+                                            SINGLE_PARTITION_OF_FP32_GROUPS,
+                                            BASE_OPTIMIZER_STATE,
+                                            ZERO_STAGE)
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -70,6 +72,15 @@ def print_rank_msg(msg):
     print(f"rank {dist.get_rank()} - {msg}")
 
 
+def _get_padded_tensor(src_tensor, size):
+    if src_tensor.numel() >= size:
+        return src_tensor
+    padded_tensor = torch.zeros(size, dtype=src_tensor.dtype, device=src_tensor.device)
+    slice_tensor = torch.narrow(padded_tensor, 0, 0, src_tensor.numel())
+    slice_tensor.data.copy_(src_tensor.data)
+    return padded_tensor
+
+
 class DeepSpeedZeroOptimizer(object):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
@@ -107,7 +118,8 @@ class DeepSpeedZeroOptimizer(object):
                  partition_grads=True,
                  round_robin_gradients=False,
                  has_moe_layers=False,
-                 fp16_master_weights_and_gradients=False):
+                 fp16_master_weights_and_gradients=False,
+                 elastic_checkpoint=False):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -118,11 +130,13 @@ class DeepSpeedZeroOptimizer(object):
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
 
+        self.elastic_checkpoint = elastic_checkpoint
+
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
-        # - master gard and unflat master weight never exist. TODO: a way to save out unflat master?
+        # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
         self.optimizer = init_optimizer
@@ -171,7 +185,6 @@ class DeepSpeedZeroOptimizer(object):
         self.contiguous_gradients = contiguous_gradients or cpu_offload
 
         self.has_moe_layers = has_moe_layers
-
         if self.has_moe_layers:
             self._configure_moe_settings()
         self._global_grad_norm = 0.
@@ -244,6 +257,7 @@ class DeepSpeedZeroOptimizer(object):
         self.round_robin_bit16_groups = []
         self.round_robin_bit16_indices = []
 
+        # Use different parallel to do all_to_all_reduce related things
         # padding on each partition for alignment purposes
         self.groups_padding = []
         # loop to deal with groups
@@ -381,7 +395,7 @@ class DeepSpeedZeroOptimizer(object):
         # simplified param id
         self.param_id = {}
 
-        #interesting code: unique ids being assigned to individual paramters
+        #interesting code: unique ids being assigned to individual parameters
         largest_param_numel = 0
         count = 0
         for i, params_group in enumerate(self.bit16_groups):
@@ -497,9 +511,10 @@ class DeepSpeedZeroOptimizer(object):
         for i, group in enumerate(self.optimizer.param_groups):
             if self.is_moe_group(group):
                 assert all([is_moe_param(param) for param in group['params']]), "All params in MoE group must be MoE params"
-                self.real_dp_process_group[i] = self.expert_dp_process_group
+                self.real_dp_process_group[i] = self.expert_dp_process_group[
+                    group['name']]
                 self.partition_count[i] = dist.get_world_size(
-                    group=self.expert_dp_process_group)
+                    group=self.expert_dp_process_group[group['name']])
                 self.is_moe_param_group.append(True)
             else:
                 self.is_moe_param_group.append(False)
@@ -891,12 +906,15 @@ class DeepSpeedZeroOptimizer(object):
                 process_group = self.dp_process_group
                 #Averages gradients at parameter level if ipg has a moe param
                 #Otherwise averaging is done at the entire buffer level at the end of the loop
+                # MoE param have different groups
                 if self.ipg_bucket_has_moe_params:
-                    process_group = self.expert_dp_process_group if is_moe_param(
-                        param) else self.dp_process_group
+                    process_group = self.expert_dp_process_group[
+                        param.group_name] if is_moe_param(
+                            param) else self.dp_process_group
                     param.grad.data.div_(dist.get_world_size(group=process_group))
 
                 partition_ids = self.param_to_partition_ids[i][param_id]
+                assert all([p_id < dist.get_world_size(group=process_group) for p_id in partition_ids]), f"world size {dist.get_world_size(group=process_group)} and p_ids: {partition_ids}"
                 partition_size = self.partition_size[i]
                 # Get all partition ids + their offsets
                 partition_ids_w_offsets = []
@@ -1780,11 +1798,11 @@ class DeepSpeedZeroOptimizer(object):
         for i, norm in enumerate(norm_groups):
             if self.is_moe_param_group[i]:
                 scaled_norm = norm * 1.0 / float(
-                    dist.get_world_size(group=self.ep_process_group))
+                    dist.get_world_size(group=self.real_dp_process_group[i]))
                 scaled_norm_tensor = torch.tensor(scaled_norm,
                                                   device='cuda',
                                                   dtype=torch.float)
-                dist.all_reduce(scaled_norm_tensor, group=self.ep_process_group)
+                dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
                 norm_groups[i] = scaled_norm_tensor.item()
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
@@ -1984,40 +2002,39 @@ class DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['base_optimizer_state'] = self._get_base_optimizer_state()
 
-        state_dict['zero_stage'] = ZERO_OPTIMIZATION_GRADIENTS
-        state_dict['partition_count'] = self.partition_count
-
-        state_dict['ds_version'] = version
+        if self.elastic_checkpoint:
+            state_dict[BASE_OPTIMIZER_STATE] = self._get_base_optimizer_state()
+        else:
+            state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
 
         # Remove paddings for DP alignment to enable loading for other alignment values
         fp32_groups_without_padding = self._get_groups_without_padding(
             self.single_partition_of_fp32_groups)
-        state_dict['single_partition_of_fp32_groups'] = fp32_groups_without_padding
+        state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
 
-        #        if self.cpu_offload:
-        #            state_dict_tmp = async_copy_to(state_dict,
-        #                                           'cpu',
-        #                                           torch.cuda.current_stream())
-        #            state_dict = state_dict_tmp
+        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict[PARTITION_COUNT] = self.partition_count
+
+        state_dict[DS_VERSION] = version
 
         return state_dict
 
-    # Restore base optimizer fp32 weights from checkpoint by:
+    # Restore base optimizer fp32 weights from elastic checkpoint by:
     # 1) Merging fp32 weights from checkpoints of all partitions
     # 2) Extracting fp32 weights for current partition from merged weights
     # 3) Using extracted weights to update base optimizer weights directly.
-    def _restore_from_fp32_weights(self, all_state_dict):
+    def _restore_from_elastic_fp32_weights(self, all_state_dict):
         merged_single_partition_of_fp32_groups = []
 
         for i in range(len(self.single_partition_of_fp32_groups)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             merged_partitions = [
-                sd['single_partition_of_fp32_groups'][i] for sd in all_state_dict
+                sd[SINGLE_PARTITION_OF_FP32_GROUPS][i] for sd in all_state_dict
             ]
             if self.is_moe_group(self.optimizer.param_groups[i]):
-                ranks = self.get_ep_ranks()
+                ranks = self.get_ep_ranks(
+                    group_name=self.optimizer.param_groups[i]['name'])
                 merged_partitions = [merged_partitions[i] for i in ranks]
             flat_merged_partitions = self.flatten_dense_tensors_aligned(
                 merged_partitions,
@@ -2054,28 +2071,42 @@ class DeepSpeedZeroOptimizer(object):
             # Assume non-tensor states are not partitioned and equal across ranks, so return first one
             return all_partition_states[0]
 
-    def get_ep_ranks(self, rank=0):
+    def _restore_base_optimizer_state(self, base_optimizer_group_states):
+        if type(base_optimizer_group_states) == dict:
+            base_optimizer_group_states = base_optimizer_group_states['state']
+        for i, group in enumerate(self.optimizer.param_groups):
+            p = group['params'][0]
+            for key, saved in base_optimizer_group_states[i].items():
+                if torch.is_tensor(self.optimizer.state[p][key]):
+                    dst_tensor = self.optimizer.state[p][key]
+                    src_tensor = _get_padded_tensor(saved, dst_tensor.numel())
+                    self.optimizer.state[p][key].data.copy_(src_tensor.data)
+                else:
+                    self.optimizer.state[p][key] = saved
+
+    def get_ep_ranks(self, rank=0, group_name=None):
         from deepspeed.utils import groups
-        expert_parallel_size_ = groups.get_expert_parallel_world_size()
+        expert_parallel_size_ = groups.get_expert_parallel_world_size(group_name)
         world_size = groups.get_data_parallel_world_size()
-        rank = groups.get_expert_parallel_rank()
+        rank = groups.get_expert_parallel_rank(group_name)
         ranks = range(rank, world_size, expert_parallel_size_)
         return list(ranks)
 
-    # Restore base optimizer state from checkpoint by
+    # Restore base optimizer state from elastic checkpoint by
     # 1) Merging optimizer state from checkpoints of all partitions
     # 2) Extracting optimizer state for current partition from the merged state
     # 3) Using the extracted value to directly update the base optimizer.
-    def _restore_base_optimizer_state(self, all_state_dict):
+    def _restore_elastic_base_optimizer_state(self, all_state_dict):
         base_optimizer_group_states = []
         for i in range(len(self.optimizer.param_groups)):
             partition_states = {}
             all_partition_group_states = [
-                sd['base_optimizer_state'][i] for sd in all_state_dict
+                sd[BASE_OPTIMIZER_STATE][i] for sd in all_state_dict
             ]
 
             if self.is_moe_group(self.optimizer.param_groups[i]):
-                ranks = self.get_ep_ranks()
+                ranks = self.get_ep_ranks(
+                    group_name=self.optimizer.param_groups[i]['name'])
                 all_partition_group_states = [
                     all_partition_group_states[i] for i in ranks
                 ]
@@ -2090,13 +2121,7 @@ class DeepSpeedZeroOptimizer(object):
                     i)
             base_optimizer_group_states.append(partition_states)
 
-        for i, group in enumerate(self.optimizer.param_groups):
-            p = group['params'][0]
-            for key, saved in base_optimizer_group_states[i].items():
-                if torch.is_tensor(self.optimizer.state[p][key]):
-                    self.optimizer.state[p][key].data.copy_(saved.data)
-                else:
-                    self.optimizer.state[p][key] = saved
+        self._restore_base_optimizer_state(base_optimizer_group_states)
 
     def load_state_dict(self,
                         state_dict_list,
@@ -2127,24 +2152,40 @@ class DeepSpeedZeroOptimizer(object):
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
         """
+
         # I think it should actually be ok to reload the optimizer before the model.
-        self.loss_scaler = state_dict_list[0]['loss_scaler']
-        self.dynamic_loss_scale = state_dict_list[0]['dynamic_loss_scale']
-        self.overflow = state_dict_list[0]['overflow']
+        dp_rank = dist.get_rank(group=self.dp_process_group)
+        current_rank_sd = state_dict_list[dp_rank]
+        self.loss_scaler = current_rank_sd['loss_scaler']
+        self.dynamic_loss_scale = current_rank_sd['dynamic_loss_scale']
+        self.overflow = current_rank_sd['overflow']
+
+        ckpt_version = current_rank_sd.get(DS_VERSION, False)
+        assert ckpt_version, f"Empty ds_version in checkpoint, not clear how to proceed"
+        ckpt_version = pkg_version.parse(ckpt_version)
 
         # zero stage 1 mode
         if not self.partition_gradients:
             required_version = pkg_version.parse("0.3.17")
-            ckpt_version = state_dict_list[0].get("ds_version", False)
             error_str = f"ZeRO stage 1 changed in {required_version} and is not backwards compatible " \
                 "with older stage 1 checkpoints. If you'd like to load an old ZeRO-1 checkpoint " \
                 "please use an older version of DeepSpeed (<= 0.5.8) and set 'legacy_stage1': true in your zero config json."
+            assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
-            assert ckpt_version, f"Empty ds_version! {error_str}"
-            assert required_version <= pkg_version.parse(ckpt_version), f"Old version: {ckpt_version} {error_str}"
+        ckpt_is_rigid = isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict)
 
         if load_optimizer_states:
-            self._restore_base_optimizer_state(state_dict_list)
+            if ckpt_is_rigid:
+                # loading rigid ckpt into either rigid or elastic exec
+                self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
+            else:
+                if self.elastic_checkpoint:
+                    # loading elastic into elastic exec
+                    self._restore_elastic_base_optimizer_state(state_dict_list)
+                else:
+                    # loading an elastic checkpoint into rigid exec
+                    self._restore_base_optimizer_state(
+                        current_rank_sd[BASE_OPTIMIZER_STATE])
 
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
@@ -2162,8 +2203,16 @@ class DeepSpeedZeroOptimizer(object):
         # are guaranteed to exist, so we can just copy_() from the saved master params.
 
         if load_from_fp32_weights:
-            self._restore_from_fp32_weights(state_dict_list)
+            # option 2 from above
+            if self.elastic_checkpoint and not ckpt_is_rigid:
+                self._restore_from_elastic_fp32_weights(state_dict_list)
+            else:
+                # For non-elastic checkpoint, simply copying from saved weights of current rank is sufficient.
+                for current, saved in zip(self.single_partition_of_fp32_groups, current_rank_sd[SINGLE_PARTITION_OF_FP32_GROUPS]):
+                    src_tensor = _get_padded_tensor(saved, current.numel())
+                    current.data.copy_(src_tensor.data)
         else:
+            # option 1 from above
             self._restore_from_bit16_weights()
 
 

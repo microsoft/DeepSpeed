@@ -8,10 +8,10 @@ import pytest
 import json
 import os
 from deepspeed.ops.adam import FusedAdam
-from common import distributed_test
+from .common import distributed_test
 from deepspeed.ops.op_builder import CPUAdamBuilder
-from simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
-from util import required_torch_version
+from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
+from .util import required_torch_version
 
 try:
     from apex import amp
@@ -52,7 +52,7 @@ def test_moe(tmpdir, ep_size):
         #dist_init_required=False -- parameterize to True/False?
 
         assert dist.get_world_size() == groups.get_data_parallel_world_size(), "incorrect data parallel world size"
-        assert ep_size == groups.get_expert_parallel_world_size(), "incorrect expert parallel world size"
+        assert ep_size == groups.get_expert_parallel_world_size(groups.get_max_expert_size_name()), "incorrect expert parallel world size"
 
         data_loader = sequence_dataloader(model=model,
                                           total_samples=50,

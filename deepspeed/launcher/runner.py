@@ -127,6 +127,13 @@ def parse_args(args=None):
                         "wants to launch on single remote node.")
 
     parser.add_argument(
+        "--save_pid",
+        action="store_true",
+        help="Save file containing launcher process id (pid) at /tmp/<main-pid>.ds, "
+        "where <main-pid> is the pid of the first process that invoked `deepspeed`. "
+        "Useful when launching deepspeed processes programmatically.")
+
+    parser.add_argument(
         "--autotuning",
         default="",
         choices=["tune",
@@ -172,6 +179,16 @@ def fetch_hostfile(hostfile_path):
             resource_pool[hostname] = slot_count
 
     return resource_pool
+
+
+def _stable_remove_duplicates(data):
+    # Create a new list in the same order as original but with duplicates
+    # removed, should never be more than ~16 elements so simple is best
+    new_list = []
+    for x in data:
+        if x not in new_list:
+            new_list.append(x)
+    return new_list
 
 
 def parse_resource_filter(host_info, include_str="", exclude_str=""):
@@ -247,7 +264,7 @@ def parse_resource_filter(host_info, include_str="", exclude_str=""):
     del_keys = []
     for hostname in filtered_hosts:
         # Remove duplicates
-        filtered_hosts[hostname] = list(set(filtered_hosts[hostname]))
+        filtered_hosts[hostname] = _stable_remove_duplicates(filtered_hosts[hostname])
         # Remove empty hosts
         if len(filtered_hosts[hostname]) == 0:
             del_keys.append(hostname)
@@ -332,7 +349,6 @@ def main(args=None):
     active_resources = parse_inclusion_exclusion(resource_pool,
                                                  args.include,
                                                  args.exclude)
-
     env = os.environ.copy()
 
     if not args.master_addr:
@@ -381,6 +397,8 @@ def main(args=None):
             deepspeed_launch.append("--module")
         if args.no_local_rank:
             deepspeed_launch.append("--no_local_rank")
+        if args.save_pid:
+            deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
@@ -412,13 +430,14 @@ def main(args=None):
             if os.path.isfile(environ_file):
                 with open(environ_file, 'r') as fd:
                     for var in fd.readlines():
-                        key, val = var.split('=')
+                        key, val = var.split('=', maxsplit=1)
                         runner.add_export(key, val)
 
         cmd = runner.get_cmd(env, active_resources)
 
     logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
+
     result.wait()
 
     # In case of failure must propagate the error-condition back to the caller (usually shell). The

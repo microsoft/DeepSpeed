@@ -188,9 +188,11 @@ class CheckOverflow(object):
             # In this case, we need to do an all_reduce across
             # the expert_parallel_group, so that if there was
             # an overflow due to expert weights, we detect it
+
+            # Only need to check groups.get_largest_expert_parallel_group()
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups.get_max_expert_parallel_group())
         if self.mpu is not None:
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -241,7 +243,7 @@ class CheckOverflow(object):
             # overflows, we detect it here
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups.get_max_expert_parallel_group())
         if self.zero_reduce_scatter:
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -856,3 +858,12 @@ def call_to_str(base, *args, **kwargs):
         name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
+
+
+def get_only_unique_item(items):
+    item_set = set(items)
+    if len(item_set) != 1:
+        raise RuntimeError(f"expected there to be only one unique element in {items}")
+    unique_item, = item_set
+
+    return unique_item
