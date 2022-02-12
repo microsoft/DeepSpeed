@@ -287,7 +287,8 @@ def clone_world_group():
     global _WORLD_GROUP
     if _WORLD_GROUP is None:
         # If not cloned already, clone the world group
-        _WORLD_GROUP = torch.distributed.new_group(ranks=range(dist.get_world_size()))
+        _WORLD_GROUP = torch.distributed.new_group(
+            ranks=range(torch.distributed.get_world_size()))
     return _WORLD_GROUP
 
 
