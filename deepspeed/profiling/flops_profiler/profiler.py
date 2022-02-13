@@ -1182,7 +1182,7 @@ def get_model_profile(
         try:
             input = torch.ones(()).new_empty(
                 (*input_shape,
-                    ),
+                 ),
                 dtype=next(model.parameters()).dtype,
                 device=next(model.parameters()).device,
             )
