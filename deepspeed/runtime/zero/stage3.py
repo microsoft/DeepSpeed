@@ -33,7 +33,7 @@ from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
-from deepspeed.runtime.constants import OPTIMIZER_STATE_DICT
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -277,7 +277,7 @@ class PartitionedParameterCoordinator:
             self.__param_order = tuple(self.__param_order)  # freeze
             self.trace_complete = True
             print_rank_0(f"completed trace: {[m.id for m in self.__submodule_order]}",
-                         force=True)
+                         force=False)
 
         self.__param_queue = collections.deque(self.__param_order)  # reset fetch queue
         self.__most_recent_step_id_param_fetched_for = collections.defaultdict(
@@ -401,9 +401,9 @@ class PartitionedParameterCoordinator:
 
     @instrument_w_nvtx
     @torch.no_grad()
-    def release_and_reset_all(self) -> None:
+    def release_and_reset_all(self, module: Module) -> None:
         """release all module parameters"""
-        for param in map(lambda p: p.param, self.__param_order):
+        for param in iter_params(module, recurse=True):
             if param in self.__inflight_param_registry:
                 raise RuntimeError(f"param {param.ds_summary()} still in flight")
 
@@ -412,10 +412,9 @@ class PartitionedParameterCoordinator:
             param.ds_active_sub_modules.clear()
             self.__release_param(param)
 
-        for param_in_trace in self.__param_order:
-            if param_in_trace.param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
-                raise RuntimeError(
-                    f"{param_in_trace.param.ds_summary()} expected to be released")
+        for param in iter_params(module, recurse=True):
+            if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
+                raise RuntimeError(f"{param.ds_summary()} expected to be released")
 
     @instrument_w_nvtx
     def __all_gather_params(self, params: Set[Parameter]) -> None:
@@ -585,8 +584,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage("Stage 3 initialize beginning", force=False)
 
+        print_rank_0(f"initialized {__class__.__name__} with args: {locals()}",
+                     force=False)
+
         if dist.get_rank() == 0:
-            logger.info(f"initialized {__class__.__name__} with args: {locals()}")
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Allgather bucket size {prefetch_bucket_size}")
         # The fused optimizer does all the work. We need this layer for two reason:
@@ -2823,7 +2824,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         """Partitioning Parameters that were not partitioned usually if parameters
         of modules whose input parameters do not require grad computation do not
         trigger post call and will therefore will remain unpartitioned"""
-        self.param_coordinator.release_and_reset_all()
+        self.param_coordinator.release_and_reset_all(self.module)
         for param in iter_params(self.module, recurse=True):
             if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
                 raise RuntimeError(f"{param.ds_summary()} expected to be released")
@@ -2918,15 +2919,15 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     def _rigid_state_dict(self):
         state_dict = {}
-        state_dict['zero_stage'] = ZERO_OPTIMIZATION_WEIGHTS
+        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_WEIGHTS
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
-        state_dict['partition_count'] = self.partition_count
+        state_dict[PARTITION_COUNT] = self.partition_count
 
         self._set_fp32_optimizer_param_groups()
         state_dict[OPTIMIZER_STATE_DICT] = self.optimizer.state_dict()
-        state_dict['fp32_flat_groups'] = self.fp32_partitioned_groups_flat
+        state_dict[FP32_FLAT_GROUPS] = self.fp32_partitioned_groups_flat
         self._clear_fp32_optimizer_param_groups()
 
         return state_dict
@@ -3042,7 +3043,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             self._clear_fp32_optimizer_param_groups()
 
         # restore fp32 partitions
-        for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict['fp32_flat_groups']):
+        for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict[FP32_FLAT_GROUPS]):
             curr_param.data.copy_(saved_param.data)
 
         # restore fp16 partitions from fp32
@@ -3108,10 +3109,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             self.persistent_parameters[0].partition(self.persistent_parameters)
             self.persistent_parameters[0].all_gather(self.persistent_parameters)
 
-    def save_checkpoint_prologue(self):
+    def checkpoint_event_prologue(self):
         self._partition_all_parameters()
 
-    def save_checkpoint_epilogue(self):
+    def checkpoint_event_epilogue(self):
         if len(self.persistent_parameters) > 0:
             self.persistent_parameters[0].all_gather(self.persistent_parameters)
 
