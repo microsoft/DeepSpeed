@@ -72,7 +72,7 @@ class DeepSpeedDataLoader(object):
         self.dataloader_drop_last = dataloader_drop_last
 
         if self.dataloader_drop_last:
-            self.len = len(self.data_sampler // self.batch_size)
+            self.len = len(self.data_sampler) // self.batch_size
         else:
             from math import ceil
             self.len = ceil(len(self.data_sampler) / self.batch_size)
