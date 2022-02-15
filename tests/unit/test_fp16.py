@@ -22,6 +22,19 @@ amp_available = pytest.mark.skipif(not _amp_available,
                                    reason="apex/amp is not installed")
 
 
+def get_grouped_optimizer_parameters(model):
+    param_optimizer = list(model.named_parameters())
+    param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
+    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in param_optimizer if not any(
+            nd in n for nd in no_decay)], 'weight_decay': 0.1},
+        {'params': [p for n, p in param_optimizer if any(
+            nd in n for nd in no_decay)], 'weight_decay': 0.0}
+    ]
+    return optimizer_grouped_parameters
+
 def test_lamb_fp32_grad_clip(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -416,20 +429,6 @@ def test_adamw_fp16_empty_grad(tmpdir):
             model.step()
 
     _test_adamw_fp16_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
-
-def get_grouped_optimizer_parameters(model):
-    param_optimizer = list(model.named_parameters())
-    param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
-    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-    weight_decay = 0.01
-
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(
-            nd in n for nd in no_decay)], 'weight_decay': weight_decay},
-        {'params': [p for n, p in param_optimizer if any(
-            nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-    return optimizer_grouped_parameters
 
 @pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [(1,
