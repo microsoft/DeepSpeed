@@ -61,7 +61,6 @@ def initialize(ep_size=1, mpu=None):
         create_expert_data_and_model_parallel(ep_size, mpu)
     else:
         log_dist(message="creating deepspeed groups", ranks=[0])
-        create_model_parallel(1)
         create_expert_and_data_parallel(ep_size)
 
 
