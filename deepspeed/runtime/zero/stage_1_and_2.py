@@ -283,7 +283,7 @@ class DeepSpeedZeroOptimizer(object):
             see_memory_usage(f"Before moving param group {i} to CPU")
             # move all the parameters to cpu to free up GPU space for creating flat buffer
             move_to_cpu(self.bit16_groups[i])
-            see_memory_usage(f"After moving param group {i} to CPU", force=False)
+            see_memory_usage(f"After moving param group {i} to CPU", force=True)
 
             # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
             # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.
@@ -1722,7 +1722,7 @@ class DeepSpeedZeroOptimizer(object):
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
                 bit16_param_groups = [
-                    bit16_partitions[partition_id]
+                    [bit16_partitions[partition_id]]
                     for bit16_partitions in self.parallel_partitioned_bit16_groups
                 ]
                 self.optimizer.step(fp16_param_groups=bit16_param_groups)
