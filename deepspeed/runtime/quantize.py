@@ -69,7 +69,10 @@ class Quantizer(object):
         self.update_fp16_ratio()
 
         for i in range(len(parameter_group)):
-            for p in parameter_group[i]:
+            param_group = parameter_group[i]
+            if type(param_group) is dict and 'params' in param_group:
+                param_group = param_group['params']
+            for p in param_group:
                 if len(p.size()) > 1:
                     param_id = id(p)
                     eigenvalue, layer_id = block_eigenvalue[param_id] if param_id in block_eigenvalue else (None, 0)
@@ -151,8 +154,11 @@ class Quantizer(object):
                         self.q_period[i] <<= 1
                 if self.q_verbose:
                     logger.info(
-                        f'Quantization settings: current bit-precision = {self.q_start_bits[index]}, step = {self.qsteps}, quantization period = {self.q_period[index]}, index = {index}'
-                    )
+                        f'''\n**************************** Quantization settings **************************
+                        current bit-precision = {self.q_start_bits[index]},
+                        step = {self.qsteps},
+                        quantization period = {self.q_period[index]},
+                        index = {index}\n''')
         assert (self.q_start_bits[index] >= self.q_target_bits), \
             'Quantization bit is lower than target precision bits!'
 
