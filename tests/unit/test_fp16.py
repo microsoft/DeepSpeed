@@ -27,13 +27,24 @@ def get_grouped_optimizer_parameters(model):
     param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(
-            nd in n for nd in no_decay)], 'weight_decay': 0.1},
-        {'params': [p for n, p in param_optimizer if any(
-            nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
+    optimizer_grouped_parameters = [{
+        'params':
+        [p for n,
+         p in param_optimizer if not any(no_d in n for no_d in no_decay)],
+        'weight_decay':
+        0.1
+    },
+                                    {
+                                        'params': [
+                                            p for n,
+                                            p in param_optimizer
+                                            if any(no_d in n for no_d in no_decay)
+                                        ],
+                                        'weight_decay':
+                                        0.0
+                                    }]
     return optimizer_grouped_parameters
+
 
 def test_lamb_fp32_grad_clip(tmpdir):
     config_dict = {
@@ -429,6 +440,7 @@ def test_adamw_fp16_empty_grad(tmpdir):
             model.step()
 
     _test_adamw_fp16_empty_grad(args=args, model=model, hidden_dim=hidden_dim)
+
 
 @pytest.mark.parametrize('zero_stage, use_cpu_offload',
                          [(1,
