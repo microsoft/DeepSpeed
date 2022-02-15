@@ -26,7 +26,7 @@ def get_grouped_optimizer_parameters(model):
     param_optimizer = list(model.named_parameters())
     param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-    
+
     optimizer_grouped_parameters = [
         {'params': [p for n, p in param_optimizer if not any(
             nd in n for nd in no_decay)], 'weight_decay': 0.1},
@@ -528,7 +528,7 @@ def test_zero_static_scale(tmpdir, zero_stage, use_cpu_offload):
         },
         "fp16": {
             "enabled": True,
-            "initial_scale_power": 8
+            "initial_scale_power": 8,
             "loss_scale": 138.
         },
         "zero_optimization": {
@@ -581,7 +581,7 @@ def test_zero_static_scale_deprecated_format(tmpdir):
         },
         "fp16": {
             "enabled": True,
-            "initial_scale_power": 8
+            "initial_scale_power": 8,
             "loss_scale": 138.
         },
         "zero_optimization": {
@@ -806,7 +806,7 @@ def test_adam_amp_o2(tmpdir):
         "gradient_clipping": 1.0,
         "amp": {
             "enabled": True,
-            "initial_scale_power": 8
+            "initial_scale_power": 8,
             "opt_level": "O2"
         }
     }
@@ -847,7 +847,7 @@ def test_adam_amp_o2_empty_grad(tmpdir):
         "gradient_clipping": 1.0,
         "amp": {
             "enabled": True,
-            "initial_scale_power": 8
+            "initial_scale_power": 8,
             "opt_level": "O2"
         }
     }
