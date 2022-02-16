@@ -119,7 +119,8 @@ class DeepSpeedZeroOptimizer(object):
                  round_robin_gradients=False,
                  has_moe_layers=False,
                  fp16_master_weights_and_gradients=False,
-                 elastic_checkpoint=False):
+                 elastic_checkpoint=False,
+                 zero_config=None):
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
@@ -131,6 +132,9 @@ class DeepSpeedZeroOptimizer(object):
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
 
         self.elastic_checkpoint = elastic_checkpoint
+
+        assert zero_config is not None
+        self.zero_config = zero_config
 
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
@@ -280,10 +284,11 @@ class DeepSpeedZeroOptimizer(object):
             # not sure why apex was cloning the weights before flattening
             # removing cloning here
 
-            see_memory_usage(f"Before moving param group {i} to CPU")
-            # move all the parameters to cpu to free up GPU space for creating flat buffer
-            move_to_cpu(self.bit16_groups[i])
-            see_memory_usage(f"After moving param group {i} to CPU", force=False)
+            if self.zero_config.move_params_to_cpu_during_init:
+                see_memory_usage(f"Before moving param group {i} to CPU")
+                # move all the parameters to cpu to free up GPU space for creating flat buffer
+                move_to_cpu(self.bit16_groups[i])
+                see_memory_usage(f"After moving param group {i} to CPU", force=False)
 
             # Reorder group parameters for load balancing of gradient partitioning during backward among ranks.
             # This ensures that gradients are reduced in a fashion such that ownership round robins among the ranks.

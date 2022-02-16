@@ -41,6 +41,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.ignore_unused_parameters = None
         self.round_robin_gradients = None
 
+        self.move_params_to_cpu_during_init = None
+
         if ZERO_OPTIMIZATION in param_dict.keys():
             zero_config_dict = param_dict[ZERO_OPTIMIZATION]
             if type(zero_config_dict) is bool:
@@ -195,3 +197,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS,
             ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT)
+
+        self.move_params_to_cpu_during_init = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_MOVE_PARAMS_TO_CPU_DURING_INIT,
+            ZERO_OPTIMIZATION_MOVE_PARAMS_TO_CPU_DURING_INIT_DEFAULT)
