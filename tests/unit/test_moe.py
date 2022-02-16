@@ -30,7 +30,7 @@ amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not install
                            True),
                           (4,
                            False)])
-def test_moe(tmpdir, ep_size):
+def test_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -73,7 +73,7 @@ def test_moe(tmpdir, ep_size):
 
 
 @pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])
-def test_pr_moe(tmpdir, ep_size):
+def test_pr_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 

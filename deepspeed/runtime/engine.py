@@ -1038,7 +1038,7 @@ class DeepSpeedEngine(Module):
             # Create and assign process groups for MoE layers
             if self.has_moe_layers:
                 for layer in self.moe_layers:
-                    _create_process_groups(layer, mpu=self.mpu)
+                    self._create_process_groups(layer, mpu=self.mpu)
         else:
             # These will just be returned using the torch.distributed world group
             self.data_parallel_group = groups.get_data_parallel_group()
@@ -1048,7 +1048,7 @@ class DeepSpeedEngine(Module):
             # Create and assign process groups for MoE layers
             if self.has_moe_layers:
                 for layer in self.moe_layers:
-                    _create_process_groups(layer)
+                    self._create_process_groups(layer)
 
         if self.has_moe_layers:
             # Since these groups were created above by us, no need to check anything
