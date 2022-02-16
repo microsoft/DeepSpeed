@@ -74,6 +74,7 @@ class MoE(torch.nn.Module):
                                                use_rts),
                                       experts,
                                       self.expert_group_name,
+                                      self.ep_size,
                                       self.num_local_experts,
                                       use_tutel=use_tutel)
         if self.use_residual:

@@ -448,13 +448,14 @@ class MOELayer(Base):
                  gate: Module,
                  experts: Module,
                  ep_group_name,
+                 ep_size,
                  num_local_experts: int,
                  use_tutel: bool = False) -> None:
         super().__init__()
         self.gate = gate
         self.experts = experts
         self.ep_group = None
-        self.ep_size = None
+        self.ep_size = ep_size
         self.ep_group_name = ep_group_name
         self.num_local_experts = num_local_experts
         self.time_falltoall = 0.0
@@ -473,7 +474,6 @@ class MOELayer(Base):
 
     def _set_ep_group(self, ep_group):
         self.ep_group = ep_group
-        self.ep_eize = torch.distributed.get_world_size(group=ep_group)
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
 
