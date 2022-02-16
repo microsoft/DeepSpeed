@@ -317,23 +317,37 @@ def test_checkpoint_fused_optimizer(tmpdir):
                                      load_optimizer_states=False)
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
-                         [(1,
-                           False,
-                           'Adam'),
-                          (2,
-                           False,
-                           'Adam'),
-                          (2,
-                           True,
-                           'deepspeed_adam'),
-                          (3,
-                           False,
-                           'Adam'),
-                          (3,
-                           True,
-                           'deepspeed_adam')])
-def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_optimizer):
+@pytest.mark.parametrize(
+    'zero_stage, use_cpu_offload, adam_optimizer, checkpoint_comm_enabled',
+    [(1,
+      False,
+      'Adam',
+      True),
+     (1,
+      False,
+      'Adam',
+      False),
+     (2,
+      False,
+      'Adam',
+      True),
+     (2,
+      True,
+      'deepspeed_adam',
+      True),
+     (3,
+      False,
+      'Adam',
+      True),
+     (3,
+      True,
+      'deepspeed_adam',
+      True)])
+def test_checkpoint_zero_optimizer(tmpdir,
+                                   zero_stage,
+                                   use_cpu_offload,
+                                   adam_optimizer,
+                                   checkpoint_comm_enabled):
     if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
         pytest.skip("cpu-adam is not compatible")
 
@@ -358,7 +372,8 @@ def test_checkpoint_zero_optimizer(tmpdir, zero_stage, use_cpu_offload, adam_opt
         "zero_optimization": {
             "stage": zero_stage,
             "cpu_offload": use_cpu_offload
-        }
+        },
+        "checkpoint_comm_enabled": checkpoint_comm_enabled
     }
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 10

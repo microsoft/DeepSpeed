@@ -456,7 +456,7 @@ class DeepSpeedEngine(Module):
         return self._config.checkpoint_tag_validation_fail
 
     def checkpoint_comm_enabled(self):
-        return self._config.get_checkpoint_comm_enabled
+        return self._config.checkpoint_comm_enabled
 
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
