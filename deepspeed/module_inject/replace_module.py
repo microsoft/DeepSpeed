@@ -71,7 +71,7 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=1) for i in range(len(qkv_split[0]))
             ]
-            dst.data.copy(weight_split[self.gpu_index].to(
+            dst.data.copy_(weight_split[self.gpu_index].to(
                 torch.cuda.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
@@ -83,7 +83,7 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=0) for i in range(len(qkv_split[0]))
             ]
-            dst.data.copy(bias_split[self.gpu_index].to(
+            dst.data.copy_(bias_split[self.gpu_index].to(
                 torch.cuda.current_device()).contiguous())
 
         return dst
@@ -294,8 +294,9 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module = transformer_inference.DeepSpeedMoEInference(
                         transformer_config,
                         mp_group=mp_group,
-                        ep_group=ep_group[num_experts],
-                        expert_mp_group=expert_mp_group[num_experts],
+                        ep_group=None if ep_group is None else ep_group[num_experts],
+                        expert_mp_group=None
+                        if expert_mp_group is None else expert_mp_group[num_experts],
                         quantize_scales=quantization_scales[layer_id],
                         quantize_groups=quantize_groups,
                         merge_count=merge_count,
@@ -327,8 +328,9 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module = transformer_inference.DeepSpeedMoEInference(
                         transformer_config,
                         mp_group=mp_group,
-                        ep_group=ep_group[num_experts],
-                        expert_mp_group=expert_mp_group[num_experts],
+                        ep_group=None if ep_group is None else ep_group[num_experts],
+                        expert_mp_group=None
+                        if expert_mp_group is None else expert_mp_group[num_experts],
                     )
 
                 else:
