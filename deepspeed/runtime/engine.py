@@ -62,6 +62,7 @@ from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
+from ..moe.utils import is_moe_param
 from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
@@ -958,10 +959,10 @@ class DeepSpeedEngine(Module):
 
         for p in self.module.parameters():
             # Broadcast the model for different parameters
-            if hasattr(p, 'allreduce') and not p.allreduce:
+            if is_moe_param(p):
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p,
-                                   self.expert_broadcast_src_rank[p.group_name],
+                                   self._get_expert_broadcast_src_rank(p.group_name),
                                    group=self.expert_data_parallel_group[p.group_name])
             else:
                 if torch.is_tensor(p) and is_replicated(p):
@@ -1032,25 +1033,46 @@ class DeepSpeedEngine(Module):
             self.broadcast_src_rank = _get_global_rank(
                 self.mpu.get_data_parallel_group(),
                 0)
+            # Create and assign process groups for MoE layers
+            if self.has_moe_layers:
+                for layer in self.moe_layers:
+                    _create_process_groups(layer, mpu=self.mpu)
         else:
             # These will just be returned using the torch.distributed world group
             self.data_parallel_group = groups.get_data_parallel_group()
             self.dp_world_size = groups.get_data_parallel_world_size()
             self.mp_world_size = 1
             self.broadcast_src_rank = 0
+            # Create and assign process groups for MoE layers
+            if self.has_moe_layers:
+                for layer in self.moe_layers:
+                    _create_process_groups(layer)
 
         if self.has_moe_layers:
-            # No assert needed because this will only be true if MoE Layer creation was successful
+            # Since these groups were created above by us, no need to check anything
+            self.expert_parallel_group = groups.get_expert_parallel_group_dict()
             self.expert_data_parallel_group = groups.get_expert_data_parallel_group_dict(
             )
-            self.expert_parallel_group = groups.get_expert_parallel_group_dict()
-            self.expert_broadcast_src_rank = {}
-            for _key in self.expert_data_parallel_group.keys():  # _key is a string
-                self.expert_broadcast_src_rank[_key] = _get_global_rank(
-                    groups.get_expert_data_parallel_group(_key),
-                    0)
+
         if not self.amp_enabled():
             self._broadcast_model()
+
+    def _get_expert_broadcast_src_rank(self, group_name):
+        _get_global_rank(group=groups.get_expert_data_parallel_group(group_name), 0)
+
+    def _create_process_groups(self, layer, mpu=None):
+        # Create process group for a layer if needed
+        if layer.expert_group_name not in groups.get_expert_parallel_group_dict():
+            print(
+                f"No existing process group, creating a new group named: {layer.ep_group_name}"
+            )
+            if mpu is None:
+                groups.create_expert_and_data_parallel(layer.ep_size)
+            else:
+                groups.create_expert_data_and_model_parallel(ep_size=layer.ep_size,
+                                                             mpu=mpu)
+        # Set the group handle for the MoE layer
+        layer._set_ep_group(groups.get_expert_parallel_group(layer.ep_group_name))
 
     # check if parameters are duplicated in optimizer param_groups
     def _check_for_duplicates(self, optimizer):
@@ -2110,10 +2132,6 @@ class DeepSpeedEngine(Module):
                 expert_grads[key] = []
 
         for param_name, param in self.module.named_parameters():
-            if hasattr(param, 'allreduce') and not param.allreduce:
-                is_moe_param = True
-            else:
-                is_moe_param = False
             if param.grad is None:
                 # In cases where there is an imbalance of empty grads across
                 # ranks we must create empty grads, this will ensure that every
@@ -2123,19 +2141,19 @@ class DeepSpeedEngine(Module):
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
                                          device=param.device)
-                if is_moe_param:
+                if is_moe_param(param):
                     expert_grads[param.group_name].append(param.grad.data)
                 else:
                     grads.append(param.grad.data)
             else:
                 grad_data = param.grad.data
                 if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
-                    if is_moe_param:
+                    if is_moe_param(param):
                         expert_grads[param.group_name].append(SparseTensor(grad_data))
                     else:
                         grads.append(SparseTensor(grad_data))
                 else:
-                    if is_moe_param:
+                    if is_moe_param(param):
                         expert_grads[param.group_name].append(grad_data)
                     else:
                         grads.append(grad_data)
