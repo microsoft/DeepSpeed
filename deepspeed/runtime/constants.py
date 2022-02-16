@@ -397,6 +397,9 @@ CHECKPOINT_TAG_VALIDATION_MODES = [
     ValidationMode.FAIL
 ]
 
+CHECKPOINT_COMMUNICATION_ENABLED = "checkpoint_comm_enabled"
+CHECKPOINT_COMMUNICATION_ENABLED_DEFAULT = True
+
 #########################################
 # Quantization
 #########################################

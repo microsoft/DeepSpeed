@@ -746,6 +746,11 @@ def get_checkpoint_params(param_dict):
     return param_dict.get(CHECKPOINT, {})
 
 
+def get_checkpoint_comm_enabled(param_dict):
+    return param_dict.get(CHECKPOINT_COMMUNICATION_ENABLED,
+                          CHECKPOINT_COMMUNICATION_ENABLED_DEFAULT)
+
+
 def get_checkpoint_tag_validation_mode(checkpoint_params):
     tag_validation_mode = checkpoint_params.get(CHECKPOINT_TAG_VALIDATION,
                                                 CHECKPOINT_TAG_VALIDATION_DEFAULT)
@@ -971,6 +976,8 @@ class DeepSpeedConfig(object):
         self.checkpoint_tag_validation_enabled = (validation_mode !=
                                                   ValidationMode.IGNORE)
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
+
+        self.chcekpoint_comm_enabled = get_checkpoint_comm_enabled(param_dict)
 
         self.aio_config = get_aio_config(param_dict)
 

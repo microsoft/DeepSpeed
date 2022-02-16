@@ -455,6 +455,9 @@ class DeepSpeedEngine(Module):
     def checkpoint_tag_validation_fail(self):
         return self._config.checkpoint_tag_validation_fail
 
+    def checkpoint_comm_enabled(self):
+        return self._config.get_checkpoint_comm_enabled
+
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
 
@@ -2460,6 +2463,7 @@ class DeepSpeedEngine(Module):
                 return None, None
 
         if self.zero_optimization_partition_weights():
+            assert self.checkpoint_comm_enabled(), "ckpt comm must be enabled for zero-3"
             # Prepare for checkpoint load by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
@@ -2479,6 +2483,7 @@ class DeepSpeedEngine(Module):
                 self.optimizer._restore_from_bit16_weights()
 
         if self.zero_optimization_partition_weights():
+            assert self.checkpoint_comm_enabled(), "ckpt comm must be enabled for zero-3"
             self.optimizer.checkpoint_event_epilogue()
 
         return load_path, client_states
@@ -2511,6 +2516,7 @@ class DeepSpeedEngine(Module):
             self._curr_ckpt_path = os.path.join(load_dir, tag)
 
         if self.has_moe_layers:
+            assert self.checkpoint_comm_enabled(), "ckpt comm must be enabled for MoE"
             # print(checkpoint.keys())
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
@@ -2746,6 +2752,7 @@ class DeepSpeedEngine(Module):
         process with rank 0.
         """
         if self.zero_optimization_partition_weights():
+            assert self.checkpoint_comm_enabled(), "ckpt comm needs to be enabled for zero-3"
             # Prepare for checkpoint save by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
 
@@ -2754,7 +2761,8 @@ class DeepSpeedEngine(Module):
 
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
-        torch.distributed.barrier()
+        if self.checkpoint_comm_enabled():
+            torch.distributed.barrier()
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
@@ -2763,9 +2771,11 @@ class DeepSpeedEngine(Module):
         tag = str(tag)
 
         # Ensure checkpoint tag is consistent across ranks
-        self._checkpoint_tag_validation(tag)
+        if self.checkpoint_comm_enabled():
+            self._checkpoint_tag_validation(tag)
 
         if self.has_moe_layers:
+            assert self.checkpoint_comm_enabled(), "ckpt comm needs to be enabled for moe"
             self.save_non_zero_checkpoint = False
             self._create_checkpoint_file(save_dir, tag, False)
             self._save_moe_checkpoint(save_dir, tag, client_state=client_state)
@@ -2779,10 +2789,12 @@ class DeepSpeedEngine(Module):
             self._save_zero_checkpoint(save_dir, tag)
 
         if self.zero_optimization_partition_weights():
+            assert self.checkpoint_comm_enabled(), "ckpt comm needs to be enabled for zero-3"
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        torch.distributed.barrier()
+        if self.checkpoint_comm_enabled():
+            torch.distributed.barrier()
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
@@ -2928,7 +2940,8 @@ class DeepSpeedEngine(Module):
             if rank == self.global_rank:
                 success = self._create_checkpoint_file(save_dir, tag, True)
 
-            dist.barrier()
+            if self.checkpoint_comm_enabled():
+                dist.barrier()
 
         return success
 
