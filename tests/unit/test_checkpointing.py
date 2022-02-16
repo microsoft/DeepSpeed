@@ -670,8 +670,14 @@ def test_checkpoint_fp32_optimizer(tmpdir):
     _test_checkpoint_fp32_optimizer(args=args, models=models, hidden_dim=hidden_dim)
 
 
-@pytest.mark.parametrize("zero_stage", [0, 1])
-def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
+@pytest.mark.parametrize("zero_stage, checkpoint_comm_enabled",
+                         [(0,
+                           True),
+                          (1,
+                           True),
+                          (1,
+                           False)])
+def test_checkpoint_pipe_engine(zero_stage, checkpoint_comm_enabled, tmpdir, stages=2):
     config_dict = {
         "train_batch_size": 2,
         "train_micro_batch_size_per_gpu": 1,
@@ -703,7 +709,8 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
                 "cycle_max_mom": 0.99,
                 "decay_mom_rate": 0.0
             }
-        }
+        },
+        "checkpoint_comm_enabled": checkpoint_comm_enabled
     }
 
     @distributed_test(world_size=4)
