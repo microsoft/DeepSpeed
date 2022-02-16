@@ -1058,7 +1058,7 @@ class DeepSpeedEngine(Module):
             self._broadcast_model()
 
     def _get_expert_broadcast_src_rank(self, group_name):
-        _get_global_rank(group=groups.get_expert_data_parallel_group(group_name), 0)
+        _get_global_rank(groups.get_expert_data_parallel_group(group_name), 0)
 
     def _create_process_groups(self, layer, mpu=None):
         # Create process group for a layer if needed
