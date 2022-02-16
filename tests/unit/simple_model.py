@@ -38,12 +38,13 @@ class Curriculum_SimpleModel(SimpleModel):
 
 
 class SimpleMoEModel(torch.nn.Module):
-    def __init__(self, hidden_dim, num_experts=4, use_residual=False):
+    def __init__(self, hidden_dim, num_experts=4, ep_size=1, use_residual=False):
         super(SimpleMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear2 = MoE(hidden_size=hidden_dim,
                            expert=linear2,
+                           ep_size=ep_size,
                            use_residual=use_residual,
                            num_experts=num_experts,
                            k=1)
@@ -59,18 +60,20 @@ class SimpleMoEModel(torch.nn.Module):
 
 
 class SimplePRMoEModel(torch.nn.Module):
-    def __init__(self, hidden_dim, num_experts=2, use_residual=False):
+    def __init__(self, hidden_dim, num_experts=2, ep_size=1, use_residual=False):
         super(SimplePRMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear2 = MoE(hidden_size=hidden_dim,
                            expert=linear2,
+                           ep_size=ep_size,
                            use_residual=use_residual,
                            num_experts=num_experts,
                            k=1)
         linear3 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = MoE(hidden_size=hidden_dim,
                            expert=linear3,
+                           ep_size=ep_size,
                            use_residual=use_residual,
                            num_experts=int(2 * num_experts),
                            k=1)

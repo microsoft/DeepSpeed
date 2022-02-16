@@ -21,7 +21,15 @@ except ImportError:
 amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
 
 
-@pytest.mark.parametrize("ep_size", [2, 4], "use_residual", [True, False])
+@pytest.mark.parametrize("ep_size, use_residual",
+                         [(2,
+                           True),
+                          (2,
+                           False),
+                          (4,
+                           True),
+                          (4,
+                           False)])
 def test_moe(tmpdir, ep_size):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
@@ -40,19 +48,13 @@ def test_moe(tmpdir, ep_size):
     def _test_moe(args, hidden_dim, ep_size, use_residual):
         # E+D -- ep_size = 2
         # E only -- ep_size = 4
-        #groups.initialize_model_parallel(1)
-        #groups.initialize_expert_parallel(2)
-        groups.initialize(ep_size=ep_size)
-        model = SimpleMoEModel(hidden_dim, use_residual=use_residual)
+        model = SimpleMoEModel(hidden_dim, ep_size=ep_size, use_residual=use_residual)
         optimizer = torch.optim.AdamW(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
                                               optimizer=optimizer,
                                               dist_init_required=False)
         #dist_init_required=False -- parameterize to True/False?
-
-        assert dist.get_world_size() == groups.get_data_parallel_world_size(), "incorrect data parallel world size"
-        assert ep_size == groups.get_expert_parallel_world_size(groups.get_max_expert_size_name()), "incorrect expert parallel world size"
 
         data_loader = sequence_dataloader(model=model,
                                           total_samples=50,
@@ -70,7 +72,7 @@ def test_moe(tmpdir, ep_size):
               use_residual=use_residual)
 
 
-@pytest.mark.parametrize("ep_size", [2], "use_residual", [True, False])
+@pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])
 def test_pr_moe(tmpdir, ep_size):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
@@ -89,19 +91,13 @@ def test_pr_moe(tmpdir, ep_size):
     def _test_moe(args, hidden_dim, ep_size, use_residual):
         # E+D -- ep_size = 2
         # E only -- ep_size = 4
-        #groups.initialize_model_parallel(1)
-        #groups.initialize_expert_parallel(2)
-        groups.initialize(ep_size=world_size)
-        model = SimpleMoEModel(hidden_dim, use_residual=use_residual)
+
+        model = SimpleMoEModel(hidden_dim, ep_size=world_size, use_residual=use_residual)
         optimizer = torch.optim.AdamW(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
                                               optimizer=optimizer,
                                               dist_init_required=False)
-        #dist_init_required=False -- parameterize to True/False?
-
-        assert dist.get_world_size() == groups.get_data_parallel_world_size(), "incorrect data parallel world size"
-        assert ep_size == groups.get_expert_parallel_world_size(groups.get_max_expert_size_name()), "incorrect expert parallel world size"
 
         data_loader = sequence_dataloader(model=model,
                                           total_samples=50,
