@@ -1064,7 +1064,7 @@ class DeepSpeedEngine(Module):
 
     def _create_process_groups(self, layer, mpu=None):
         # Create process group for a layer if needed
-        if layer.expert_group_name not in groups.get_expert_parallel_group_dict():
+        if layer.ep_group_name not in groups.get_expert_parallel_group_dict():
             print(
                 f"No existing process group, creating a new group named: {layer.ep_group_name}"
             )
