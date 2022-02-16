@@ -1069,10 +1069,10 @@ class DeepSpeedEngine(Module):
                 f"No existing process group, creating a new group named: {layer.ep_group_name}"
             )
             if mpu is None:
-                groups.create_expert_and_data_parallel(layer.ep_size)
+                groups._create_expert_and_data_parallel(layer.ep_size)
             else:
-                groups.create_expert_data_and_model_parallel(ep_size=layer.ep_size,
-                                                             mpu=mpu)
+                groups._create_expert_data_and_model_parallel(ep_size=layer.ep_size,
+                                                              mpu=mpu)
         # Set the group handle for the MoE layer
         layer._set_ep_group(groups.get_expert_parallel_group(layer.ep_group_name))
 

@@ -60,7 +60,7 @@ def initialize(ep_size=1, mpu=None):
 
 
 # Not currently used. Helper function to create model parallel group.
-def create_model_parallel(model_parallel_size_):
+def _create_model_parallel(model_parallel_size_):
     """
     Initialize model data parallel groups.
 
@@ -110,7 +110,7 @@ def create_model_parallel(model_parallel_size_):
     return _DATA_PARALLEL_GROUP, _MODEL_PARALLEL_GROUP
 
 
-def create_expert_and_data_parallel(ep_size):
+def _create_expert_and_data_parallel(ep_size):
     """
         Create expert and data parallel groups.
 
@@ -158,7 +158,7 @@ def create_expert_and_data_parallel(ep_size):
             _EXPERT_PARALLEL_GROUP[group_name] = group
 
 
-def create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
+def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     """
         Create expert and data parallel groups based on MPU (model parallel) group.
 
@@ -215,20 +215,12 @@ def create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
                     _EXPERT_PARALLEL_GROUP[group_name] = group
 
 
-# Deprecated as groups will not longer be a global entity. Instead check for each group independently.
-def is_initialized():
-    print(
-        "Deprecated. Please do not use this API and instead query the individual group objects"
-    )
-    return False
-
-
 def get_max_expert_size():
     """Get the maximum ep_size from all the created groups."""
     assert _EXPERT_PARALLEL_GROUP is not None, "Warning! Process group not initialized"
     keylist = []
     for key in _EXPERT_PARALLEL_GROUP.keys():
-        # index 2 is num_experts in the key (ep_size_<num_experts>)
+        # index 2 is ep_size in the group name: ep_size_<ep_size>
         index = 2
         keylist.append(int(key.split('_')[index]))
     return max(keylist) if len(keylist) > 0 else None
