@@ -92,7 +92,7 @@ def test_pr_moe(tmpdir, ep_size, use_residual):
         # E+D -- ep_size = 2
         # E only -- ep_size = 4
 
-        model = SimpleMoEModel(hidden_dim, ep_size=world_size, use_residual=use_residual)
+        model = SimplePRMoEModel(hidden_dim, ep_size=ep_size, use_residual=use_residual)
         optimizer = torch.optim.AdamW(params=model.parameters())
         model, _, _, _ = deepspeed.initialize(args=args,
                                               model=model,
