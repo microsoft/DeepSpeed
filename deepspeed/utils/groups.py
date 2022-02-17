@@ -82,7 +82,7 @@ def _create_model_parallel(model_parallel_size_):
     assert torch.distributed.is_initialized()
     world_size = torch.distributed.get_world_size()
     model_parallel_size = min(model_parallel_size_, world_size)
-    ensure_divisibility(world_size, model_parallel_size)
+    _ensure_divisibility(world_size, model_parallel_size)
     rank = torch.distributed.get_rank()
 
     _DATA_PARALLEL_GROUP = None
@@ -124,7 +124,7 @@ def _create_expert_and_data_parallel(ep_size):
     rank = torch.distributed.get_rank()
 
     expert_parallel_size_ = min(ep_size, world_size)
-    ensure_divisibility(world_size, expert_parallel_size_)
+    _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
 
@@ -192,7 +192,7 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
 
     expert_parallel_size_ = min(expert_parallel_size_, dp_world_size)
-    ensure_divisibility(world_size, expert_parallel_size_)
+    _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
 
