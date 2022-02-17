@@ -17,7 +17,6 @@ from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.distributed.distributed_c10d import _get_global_rank
 
 from typing import Callable, Dict, Optional, Union, Iterable
 
@@ -964,12 +963,12 @@ class DeepSpeedEngine(Module):
             if is_moe_param(p):
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p,
-                                   self._get_expert_broadcast_src_rank(p.group_name),
+                                   groups._get_expert_broadcast_src_rank(p.group_name),
                                    group=self.expert_data_parallel_group[p.group_name])
             else:
                 if torch.is_tensor(p) and is_replicated(p):
                     dist.broadcast(p,
-                                   self.broadcast_src_rank,
+                                   groups._get_broadcast_src_rank(),
                                    group=self.data_parallel_group)
 
     @staticmethod
@@ -1027,54 +1026,24 @@ class DeepSpeedEngine(Module):
                     if self.wall_clock_breakdown():
                         module.wall_clock_breakdown = True
 
+        # Pass the mpu from here to groups. For subsequent use, just query groups
         if self.mpu is not None:
-            # Use the Megatron mpu object to get correct group and sizes
-            self.data_parallel_group = self.mpu.get_data_parallel_group()
-            self.dp_world_size = self.mpu.get_data_parallel_world_size()
-            self.mp_world_size = self.mpu.get_model_parallel_world_size()
-            self.broadcast_src_rank = _get_global_rank(
-                self.mpu.get_data_parallel_group(),
-                0)
-            # Create and assign process groups for MoE layers
-            if self.has_moe_layers:
-                for layer in self.moe_layers:
-                    self._create_process_groups(layer, mpu=self.mpu)
-        else:
-            # These will just be returned using the torch.distributed world group
-            self.data_parallel_group = groups.get_data_parallel_group()
-            self.dp_world_size = groups.get_data_parallel_world_size()
-            self.mp_world_size = 1
-            self.broadcast_src_rank = 0
-            # Create and assign process groups for MoE layers
-            if self.has_moe_layers:
-                for layer in self.moe_layers:
-                    self._create_process_groups(layer)
+            groups.mpu = self.mpu
 
-        if self.has_moe_layers:
-            # Since these groups were created above by us, no need to check anything
-            self.expert_parallel_group = groups.get_expert_parallel_group_dict()
-            self.expert_data_parallel_group = groups.get_expert_data_parallel_group_dict(
-            )
+        # Set deepspeed parallelism spec. for the model including expert parallelism
+        for _module in self.module.named_modules():
+            if hasattr(_module, 'set_deepspeed_parallelism'):
+                _module.set_deepspeed_parallelism()
+
+        # Query the groups module to get information about various parallel groups
+        self.data_parallel_group = groups._get_data_parallel_group()
+        self.dp_world_size = groups._get_data_parallel_world_size()
+        self.mp_world_size = groups._get_model_parallel_world_size()
+        self.expert_parallel_group = groups._get_expert_parallel_group_dict()
+        self.expert_data_parallel_group = groups._get_expert_data_parallel_group_dict()
 
         if not self.amp_enabled():
             self._broadcast_model()
-
-    def _get_expert_broadcast_src_rank(self, group_name):
-        return _get_global_rank(groups.get_expert_data_parallel_group(group_name), 0)
-
-    def _create_process_groups(self, layer, mpu=None):
-        # Create process group for a layer if needed
-        if layer.ep_group_name not in groups.get_expert_parallel_group_dict():
-            print(
-                f"No existing process group, creating a new group named: {layer.ep_group_name}"
-            )
-            if mpu is None:
-                groups._create_expert_and_data_parallel(layer.ep_size)
-            else:
-                groups._create_expert_data_and_model_parallel(ep_size=layer.ep_size,
-                                                              mpu=mpu)
-        # Set the group handle for the MoE layer
-        layer._set_ep_group(groups.get_expert_parallel_group(layer.ep_group_name))
 
     # check if parameters are duplicated in optimizer param_groups
     def _check_for_duplicates(self, optimizer):
@@ -2167,7 +2136,7 @@ class DeepSpeedEngine(Module):
             if self.pipeline_parallelism:
                 dp_group = self.mpu.get_data_parallel_group()
             else:
-                dp_group = groups.get_data_parallel_group()
+                dp_group = groups._get_data_parallel_group()
 
             if bucket_type == SparseTensor.type():
                 self.sparse_allreduce_no_retain(bucket, dp_group=dp_group)
@@ -2184,12 +2153,12 @@ class DeepSpeedEngine(Module):
                     if bucket_type == SparseTensor.type():
                         self.sparse_allreduce_no_retain(
                             bucket,
-                            groups.get_expert_data_parallel_group(ep_name))
+                            groups._get_expert_data_parallel_group(ep_name))
                     else:
                         # Separate between diff groups
                         self.allreduce_no_retain(
                             bucket,
-                            dp_group=groups.get_expert_data_parallel_group(ep_name),
+                            dp_group=groups._get_expert_data_parallel_group(ep_name),
                             numel_per_bucket=elements_per_buffer)
 
     def sparse_allreduce_no_retain(self, bucket, dp_group):
@@ -2285,12 +2254,12 @@ class DeepSpeedEngine(Module):
                             mpu=None,
                             num_experts=1):
         if old_moe_load:
-            expp_rank = groups.get_expert_data_parallel_rank(
-                groups.get_max_expert_size_name())
+            expp_rank = groups._get_expert_data_parallel_rank(
+                groups._get_max_expert_size_name())
 
             num_local_experts = max(
-                num_experts) // groups.get_expert_parallel_world_size(
-                    groups.get_max_expert_size_name())
+                num_experts) // groups._get_expert_parallel_world_size(
+                    groups._get_max_expert_size_name())
             for local_expert_id in range(num_local_experts):
                 global_expert_id = expp_rank * num_local_experts + local_expert_id
                 expert_state_dict = torch.load(DeepSpeedEngine._get_expert_ckpt_name(
@@ -2315,7 +2284,7 @@ class DeepSpeedEngine(Module):
                 if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
                     group_name = module.expert_group_name
                     num_local_experts = module.num_local_experts
-                    expp_rank = groups.get_expert_parallel_rank(group_name)
+                    expp_rank = groups._get_expert_parallel_rank(group_name)
                     # loop all local_experts
                     for local_expert_id in range(num_local_experts):
                         global_expert_id = expp_rank * num_local_experts + local_expert_id
@@ -2531,8 +2500,8 @@ class DeepSpeedEngine(Module):
                 self.optimizer.refresh_fp32_params()
         else:
             if self.has_moe_layers:
-                largest_group_name = groups.get_max_expert_size_name()
-                expp_rank = groups.get_expert_parallel_rank(largest_group_name)
+                largest_group_name = groups._get_max_expert_size_name()
+                expp_rank = groups._get_expert_parallel_rank(largest_group_name)
                 optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
                 optim_checkpoint = torch.load(optim_load_path,
                                               map_location=torch.device('cpu'))
@@ -2808,8 +2777,8 @@ class DeepSpeedEngine(Module):
             if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
                 group_name = module.expert_group_name
                 num_local_experts = module.num_local_experts
-                expp_rank = groups.get_expert_parallel_rank(group_name)
-                exp_dp_rank = groups.get_expert_data_parallel_rank(group_name)
+                expp_rank = groups._get_expert_parallel_rank(group_name)
+                exp_dp_rank = groups._get_expert_data_parallel_rank(group_name)
                 # print(expp_rank, exp_dp_rank)
                 if exp_dp_rank != 0:
                     moe_layer_id += 1
@@ -2854,9 +2823,9 @@ class DeepSpeedEngine(Module):
 
         self._curr_ckpt_path = os.path.join(save_dir, tag)
 
-        largest_group_name = groups.get_max_expert_size_name()
-        expp_rank = groups.get_expert_parallel_rank(largest_group_name)
-        exp_dp_rank = groups.get_expert_data_parallel_rank(largest_group_name)
+        largest_group_name = groups._get_max_expert_size_name()
+        expp_rank = groups._get_expert_parallel_rank(largest_group_name)
+        exp_dp_rank = groups._get_expert_data_parallel_rank(largest_group_name)
 
         # In the case of E + D parallelism, only the
         # first expert parallel group should save the expert weights

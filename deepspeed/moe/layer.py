@@ -82,6 +82,24 @@ class MoE(torch.nn.Module):
             # coefficient is used for weighted sum of the output of expert and mlp
             self.coefficient = torch.nn.Linear(hidden_size, 2)
 
+    def set_deepspeed_parallelism(self):
+        self._create_process_groups()
+
+    def _create_process_groups(self):
+        # Create process group for a layer if needed
+        if self.expert_group_name not in groups._get_expert_parallel_group_dict():
+            print(
+                f"No existing process group found, creating a new group named: {self.expert_group_name}"
+            )
+            if groups.mpu is None:
+                groups._create_expert_and_data_parallel(self.ep_size)
+            else:
+                groups._create_expert_data_and_model_parallel(ep_size=layer.ep_size,
+                                                              mpu=groups.mpu)
+        # Set the group handle for the MOELayer (deepspeed_moe) object
+        self.deepspeed_moe._set_ep_group(
+            groups._get_expert_parallel_group(self.expert_group_name))
+
     def forward(self, hidden_states, used_token=None):
         """ MoE forward
 

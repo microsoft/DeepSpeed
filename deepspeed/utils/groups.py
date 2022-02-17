@@ -19,47 +19,41 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # limitations under the License.
 """
  Support different forms of parallelism in DeepSped using multiple process groups.
- Given that there are multiple scenarios and use-cases, this file is just retaing
- the group creation needed for the training scenario. For inference and other new
- scenarios, the code will be reused but maintained inside the scenario-specific files
+ Given that there are multiple scenarios and use-cases, this file is going to be updated
+ frequently. For now, the group creation needed for the training scenario is being implemented.
+ For inference and other new scenarios, the code will be either reused or added to this file.
 """
 
 import torch
+from torch.distributed.distributed_c10d import _get_global_rank
 from deepspeed.utils import logger, log_dist
 
-# The following groups are being used by the training engine of DeepSpeed for MoE models
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
 # Expert data parallel group that the current rank belongs to.
 _EXPERT_DATA_PARALLEL_GROUP = {}
 # torch.distributed world group needs to be cloned for some cases
 _WORLD_GROUP = None
+# global object to maintain mpu object if passed by a Megatron client
+mpu = None
 
 
-def ensure_divisibility(numerator, denominator):
-    """Ensure that numerator is divisible by the denominator."""
-    assert numerator % denominator == 0, '{} is not divisible by {}'.format(
-        numerator, denominator)
-
-
-# Deprecated old groups initialize function.
+# Deprecated groups initialize function.
 def initialize(ep_size=1, mpu=None):
-    """
-        Deprecated function. Retained to inform the users.
-
-        Arguments:
-        ep_size (int, optional): default=1, maximum expert parallel size, which should be divisible/divided by the world size.
-        by each element in num_ep_list.
-        mpu (module, optional): default=None, model parallel unit (e.g., from Megatron)
-            that describes model/data parallel ranks.
-    """
+    """ Deprecated function. Retained to inform the users."""
     print(
         "Error! Please do not use this API as it is deprecated. Instead, pass the desired ep_size to deepspeed.moe.layer.MoE(..,ep_size,..)"
     )
     exit(0)
 
 
-# Not currently used. Helper function to create model parallel group.
+def _ensure_divisibility(numerator, denominator):
+    """Ensure that numerator is divisible by the denominator."""
+    assert numerator % denominator == 0, '{} is not divisible by {}'.format(
+        numerator, denominator)
+
+
+# Not currently used. Helper function to create a model (tensor) parallel group.
 def _create_model_parallel(model_parallel_size_):
     """
     Initialize model data parallel groups.
@@ -223,7 +217,7 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
                         _EXPERT_PARALLEL_GROUP[group_name] = group
 
 
-def get_max_expert_size():
+def _get_max_expert_size():
     """Get the maximum ep_size from all the created groups."""
     assert _EXPERT_PARALLEL_GROUP is not None, "Warning! Process group not initialized"
     keylist = []
@@ -234,41 +228,41 @@ def get_max_expert_size():
     return max(keylist) if len(keylist) > 0 else None
 
 
-def get_max_expert_size_name():
+def _get_max_expert_size_name():
     """Get the name of the group with max. ep_size"""
-    return f'ep_size_{get_max_expert_size()}'
+    return f'ep_size_{_get_max_expert_size()}'
 
 
-def get_max_expert_parallel_group():
+def _get_max_expert_parallel_group():
     """Get the max expert parallel size."""
-    return get_expert_parallel_group(get_max_expert_size_name())
+    return _get_expert_parallel_group(_get_max_expert_size_name())
 
 
-def get_expert_parallel_group(group_name):
+def _get_expert_parallel_group(group_name):
     """Get the expert parallel group the caller rank belongs to."""
     assert group_name in _EXPERT_PARALLEL_GROUP, \
         'expert parallel group is not initialized'
     return _EXPERT_PARALLEL_GROUP[group_name]
 
 
-def get_expert_parallel_group_dict():
+def _get_expert_parallel_group_dict():
     """Get the expert parallel group dict."""
     return _EXPERT_PARALLEL_GROUP
 
 
-def get_expert_data_parallel_group(group_name):
+def _get_expert_data_parallel_group(group_name):
     """Get the expert data parallel group the caller rank belongs to."""
     assert group_name in _EXPERT_DATA_PARALLEL_GROUP, \
         'expert data parallel group is not initialized'
     return _EXPERT_DATA_PARALLEL_GROUP[group_name]
 
 
-def get_expert_data_parallel_group_dict():
+def _get_expert_data_parallel_group_dict():
     """Get the expert data parallel group dict."""
     return _EXPERT_DATA_PARALLEL_GROUP
 
 
-def clone_world_group():
+def _clone_world_group():
     """Create a clone of the world group
         Note: We need to clone the torch.distributed world group because we
         use _get_global_rank() utility function in DeepSpeed at many places.
@@ -284,31 +278,41 @@ def clone_world_group():
     return _WORLD_GROUP
 
 
-def get_data_parallel_group():
+def _get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     assert torch.distributed.is_initialized(), \
         'torch.distributed is not initialized'
+    if mpu is not None:
+        return mpu.get_data_parallel_group()
     # Return the clone of torch.distributed world group
-    return clone_world_group()
+    return _clone_world_group()
 
 
-def get_expert_parallel_world_size(group_name):
+def _get_broadcast_src_rank():
+    return _get_global_rank(_get_data_parallel_group(), 0)
+
+
+def _get_expert_broadcast_src_rank(group_name):
+    return _get_global_rank(_get_expert_data_parallel_group(group_name), 0)
+
+
+def _get_expert_parallel_world_size(group_name):
     """Return world size for the expert parallel group."""
-    return torch.distributed.get_world_size(group=get_expert_parallel_group(group_name))
+    return torch.distributed.get_world_size(group=_get_expert_parallel_group(group_name))
 
 
-def get_expert_data_parallel_world_size(group_name):
+def _get_expert_data_parallel_world_size(group_name):
     """Return world size for the expert data parallel group."""
     return torch.distributed.get_world_size(
         group=get_expert_data_parallel_group(group_name))
 
 
-def get_expert_parallel_rank(group_name):
+def _get_expert_parallel_rank(group_name):
     """Return my rank for the expert parallel group."""
-    return torch.distributed.get_rank(group=get_expert_parallel_group(group_name))
+    return torch.distributed.get_rank(group=_get_expert_parallel_group(group_name))
 
 
-def get_expert_parallel_src_rank(group_name):
+def _get_expert_parallel_src_rank(group_name):
     """Calculate the global rank corresponding to a local rank zero
     in the expert parallel group."""
     global_rank = torch.distributed.get_rank()
@@ -316,133 +320,27 @@ def get_expert_parallel_src_rank(group_name):
     return (global_rank // local_world_size) * local_world_size
 
 
-def get_expert_data_parallel_rank(group_name):
+def _get_expert_data_parallel_rank(group_name):
     """Return my rank for the expert data parallel group."""
     return torch.distributed.get_rank(group=get_expert_data_parallel_group(group_name))
 
 
-def get_data_parallel_world_size():
+def _get_data_parallel_world_size():
     """Return world size for the data parallel group."""
-    return torch.distributed.get_world_size(group=get_data_parallel_group())
+    if mpu is not None:
+        return mpu.get_data_parallel_world_size()
+    return torch.distributed.get_world_size(group=_get_data_parallel_group())
 
 
-def get_data_parallel_rank():
+def _get_model_parallel_world_size():
+    """Return world size for the model parallel group."""
+    if mpu is not None:
+        return mpu.get_model_parallel_world_size()
+    return 1
+
+
+def _get_data_parallel_rank():
     """Return my rank for the data parallel group."""
-    return torch.distributed.get_rank(group=get_data_parallel_group())
-
-
-# Retaining the different scenarios from older API but can be removed/cleaned up later on.
-"""
-	Various process groups need to be initialized for supporting MoE models. These differ for training and inference.
-
-        1) For Training:  expert-parallelism (EP), tensor-slicing model-parallelism (MP), and data-parallelism (DP)
-        2) For Inference: expert-parallelism (EP), expert-slicing (ES), tensor-slicing model-parallelism (MP), and data-parallelism (DP)
-
-        DeepSpeed considers the following scenarios w.r.t. process group creation.
-
-	For examples below, we assume a top-line of import deepspeed.utils.groups as groups
-
-	For Inference
-    -------------
-
-	    A. User inputs:
-            1) expert-parallel degree (ep_size)
-            2) model-parallel degree (mp_size)
-            3) expert-slicing degree (es_size)
-            4) number of GPUs (world_size)
-            5) number of experts (num_experts) -- this should not be needed and the caller of this groups initialize should be responsible for it
-
-	    B. Scenarios:
-
-	    * S1: There is no expert or model parallelism, only data parallelism (DP)::
-
-	        model = my_model(args)
-		    engine = deepspeed.init_inference(model)
-
-	    * S2: There is expert parallelism but no model parallelism (EP)::
-
-		# groups will be initialized here; use ep_size = world_size
-
-            groups.initialize(ep_size=ep_size)
-        	model = my_model(args)
-        	engine = deepspeed.init_inference(model)
-
-	    * S3: There is model parallelism but no expert parallelism (MP)::
-
-		S3-A: if client initializes an mpu, then use it and don't do anything in groups API
-
-            mpu.init()
-            model = my_model(args)
-            engine = deepspeed.init_inference(model, mpu=mpu) <-- this will get the mp_group from mpu
-
-		S3-B: if client has no mpu, but want model parallelism (MP), use groups API to create group
-
-            model = my_model(args)
-            groups.initialize(mp_size=mp_size)
-            engine = deepspeed.init_inference(model) <-- remove mp_size as an input arg here as the line above
-
-	    * S4: There is expert-parallelism and tensor-slicing model parallelism (EP + MP):
-
-		S4-A: if client initializes an mpu, then use it and don't do anything in groups API
-
-            mpu.init()
-            groups.initialize(ep_size=ep_size, mpu=mpu) <-- this will get the mp_group from mpu and create an ep_group
-            model = my_model(args)
-            engine = deepspeed.init_inference(model, mpu=mpu) <-- check if this mpu is same as mpu passed earlier
-
-		S4-B: if client has no mpu, but want model parallelism (MP), use groups API to create group both MP and EP groups
-
-            groups.initialize(ep_size=ep_size, mp_size=mp_size)
-            model = my_model(args)
-            engine = deepspeed.init_inference(model)
-
-	    * S5: There is expert-parallelism, expert-slicing, and tensor-slicing model parallelism (EP + ES + MP):
-
-		    -- Is S5 similar to S4 but the user needs to set es_size = world_size/ep_size -- Reza, please help me with this scenario
-
-        64 GPUs, mp_size=8, dp_size=64/8=8, ep_size=dp_world_size, 64 experts,
-
-        ep_size=128, -->  es_size=128/64
-
-        Notes for implementation changes:
-	    Note: https://github.com/microsoft/DeepSpeed/blob/df724e71e935414bb8e73b78f9f422baca344895/deepspeed/inference/engine.py#L90
-            - current code is making an mp_size MP group if mpu is None but mp_size>1
-            - _create_model_parallel_group
-            - _create_ep_parallel_group  -- both ep_group and es_group are made here. We need to take this out and use inputs of ep_size and es_size to make these groups
-
-
-    For Training
-    ------------
-        A. User Inputs:
-            1) expert-parallel degree (ep_size)
-            2) model-parallel degree (mp_size)
-            3) expert-slicing degree (es_size) -- Does not work yet so ignore it
-            4) number of GPUs (world_size)
-            5) number of experts (num_experts) -- this should not be needed I think
-
-        B. Scenarios:
-        * S1: There is no expert parallelism or model parallelism, only data (D):
-
-            model = my_model(args)
-            engine = deepspeed.initialize(model) # initialize groups without mpu
-
-        * S2: There is expert parallelism but no model parallelism (EP + DP)::
-
-            deepspeed.utils.groups.initialize(ep_size) # groups will be initialized here
-            model = my_model(args)
-            engine = deepspeed.initialize(model)
-
-        * S3: There is model parallelism but no expert parallelism (MP)::
-
-            mpu.init() # client initializes it's model parallel unit
-            model = my_model(args)
-            engine = deepspeed.initialize(model, mpu=mpu) # init w. mpu but ep_size = dp_world_size
-
-        * S4: There is model, data, and expert parallelism (EP + DP + MP)::
-
-            mpu.init() # client initializes it's model parallel unit
-            deepspeed.utils.groups.initialize(ep_size, mpu) # initialize expert groups wrt mpu
-            model = my_model(args)
-            engine = deepspeed.initialize(model, mpu=mpu) # passing mpu is optional in this case
-
-"""
+    if mpu is not None:
+        return mpu.get_data_parallel_rank()
+    return torch.distributed.get_rank(group=_get_data_parallel_group())
