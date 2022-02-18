@@ -867,3 +867,22 @@ def get_only_unique_item(items):
     unique_item, = item_set
 
     return unique_item
+
+
+def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, eps=1e-6):
+    """Clip the gradient of a list of parameters.
+    Args:
+        parameters: List of parameters whose .grad will be clipped.
+        global_grad_norm (float, optional): Precomputed gradient norm. Defaults to None.
+        mpu (optional): model parallelism unit. Defaults to None.
+        eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
+    Returns:
+        float: the global gradient norm
+    """
+    if global_grad_norm is None:
+        global_grad_norm = get_grad_norm(parameters, mpu=mpu)
+    clip_coef = max_norm / (global_grad_norm + eps)
+    if clip_coef < 1:
+        for p in parameters:
+            p.grad.detach().mul_(clip_coef)
+    return global_grad_norm

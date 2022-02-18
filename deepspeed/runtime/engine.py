@@ -32,6 +32,7 @@ from deepspeed.runtime.activation_checkpointing import (
 )
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
@@ -1002,6 +1003,8 @@ class DeepSpeedEngine(Module):
                     hasattr(param,
                             'ds_id') for param in self.module.parameters()):
                 self.__check_params(self.module, torch.bfloat16)
+            if self.zero_optimization_stage() == 0 and not self.pipeline_parallelism:
+                raise NotImplementedError("BF16 support is not yet implemented when not running ZeRO")
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
@@ -1155,6 +1158,8 @@ class DeepSpeedEngine(Module):
             # TODO: maybe need to broadcast experts differently?
         elif self.fp16_enabled():
             self.optimizer = self._configure_fp16_optimizer(basic_optimizer)
+        elif self.bfloat16_enabled():
+            self.optimizer = self._configure_bf16_optimizer(basic_optimizer)
         else:
             self.optimizer = basic_optimizer
         log_dist("DeepSpeed Final Optimizer = {}".format(self.optimizer_name()),
@@ -1321,6 +1326,25 @@ class DeepSpeedEngine(Module):
                 clip_grad=clip_grad,
                 fused_lamb_legacy=self.optimizer_name() == LAMB_OPTIMIZER,
             )
+
+        return optimizer
+
+    def _configure_bf16_optimizer(self, optimizer):
+        clip_grad = self.gradient_clipping()
+        if APEX_INSTALLED:
+            fused_opts = (apex.optimizers.FusedAdam, FusedAdam)
+        else:
+            fused_opts = FusedAdam
+        if isinstance(optimizer, fused_opts):
+            if self.global_rank == 0:
+                logger.info('Creating unfused BF16 optimizer')
+            timers = self.timers if self.wall_clock_breakdown() else None
+            optimizer = BF16_Optimizer(optimizer,
+                                       mpu=self.mpu,
+                                       clip_grad=clip_grad,
+                                       timers=timers)
+        else:
+            raise NotImplementedError('BF16 requires a fused optimizer for now.')
 
         return optimizer
 
@@ -1731,8 +1755,20 @@ class DeepSpeedEngine(Module):
 
         self._start_timers(self.engine_timers.backward_reduce_timers)
 
-        if self.enable_backward_allreduce:
-            self.allreduce_gradients()
+        if allreduce_gradients and self.enable_backward_allreduce:
+            if self.bfloat16_enabled():
+                # Make our own list of gradients from the optimizer's FP32 grads
+                grads = []
+                for param_group in self.optimizer.fp32_groups:
+                    for param in param_group:
+                        assert param.grad is not None
+                        assert param.grad.dtype == torch.float32
+                        grads.append(param.grad.data)
+                print(f'rank={self.global_rank} {len(grads)=}')
+                self.buffered_allreduce_fallback(grads=grads)
+            else:
+                # Traditional code path that allreduces the module parameter grads
+                self.allreduce_gradients()
 
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
@@ -1799,8 +1835,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs, block_eigenvalue={}):
         if self.gradient_clipping() > 0.0:
-            if not (self.fp16_enabled() or self.amp_enabled()
-                    or self.zero_optimization()):
+            if not (self.fp16_enabled() or self.bfloat16_enabled() 
+                    or self.amp_enabled() or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
@@ -1832,7 +1868,7 @@ class DeepSpeedEngine(Module):
         if (not self.zero_optimization() and not self.fp16_enabled()
                 and not self.amp_enabled()):
             self.zero_grad()
-        else:
+        elif not self.bfloat16_enabled():
             self.optimizer.zero_grad()
 
         report_progress = self.global_rank == 0 if self.global_rank else True
@@ -2126,42 +2162,45 @@ class DeepSpeedEngine(Module):
             self.allreduce_and_copy(small_bucket, dp_group)
 
     def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
-        grads = []
-        expert_grads = {}
-        if self.has_moe_layers:
-            for key in self.expert_data_parallel_group.keys():
-                expert_grads[key] = []
+        if grads is not None:
+            assert not self.has_moe_layers, "attempting to reduce grads in unsupported way w.r.t. MoE"
+        else:
+            grads = []
+            expert_grads = {}
+            if self.has_moe_layers:
+                for key in self.expert_data_parallel_group.keys():
+                    expert_grads[key] = []
 
-        for param_name, param in self.module.named_parameters():
-            if hasattr(param, 'allreduce') and not param.allreduce:
-                is_moe_param = True
-            else:
-                is_moe_param = False
-            if param.grad is None:
-                # In cases where there is an imbalance of empty grads across
-                # ranks we must create empty grads, this will ensure that every
-                # rank is reducing the same size. In some cases it may make
-                # sense in the future to support the ability to average not
-                # w.r.t. world size but with a different value.
-                param.grad = torch.zeros(param.size(),
-                                         dtype=param.dtype,
-                                         device=param.device)
-                if is_moe_param:
-                    expert_grads[param.group_name].append(param.grad.data)
+            for param_name, param in self.module.named_parameters():
+                if hasattr(param, 'allreduce') and not param.allreduce:
+                    is_moe_param = True
                 else:
-                    grads.append(param.grad.data)
-            else:
-                grad_data = param.grad.data
-                if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
+                    is_moe_param = False
+                if param.grad is None:
+                    # In cases where there is an imbalance of empty grads across
+                    # ranks we must create empty grads, this will ensure that every
+                    # rank is reducing the same size. In some cases it may make
+                    # sense in the future to support the ability to average not
+                    # w.r.t. world size but with a different value.
+                    param.grad = torch.zeros(param.size(),
+                                            dtype=param.dtype,
+                                            device=param.device)
                     if is_moe_param:
-                        expert_grads[param.group_name].append(SparseTensor(grad_data))
+                        expert_grads[param.group_name].append(param.grad.data)
                     else:
-                        grads.append(SparseTensor(grad_data))
+                        grads.append(param.grad.data)
                 else:
-                    if is_moe_param:
-                        expert_grads[param.group_name].append(grad_data)
+                    grad_data = param.grad.data
+                    if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
+                        if is_moe_param:
+                            expert_grads[param.group_name].append(SparseTensor(grad_data))
+                        else:
+                            grads.append(SparseTensor(grad_data))
                     else:
-                        grads.append(grad_data)
+                        if is_moe_param:
+                            expert_grads[param.group_name].append(grad_data)
+                        else:
+                            grads.append(grad_data)
 
         split_buckets = split_half_float_double_sparse(grads)
         for _, bucket_tuple in enumerate(split_buckets):

@@ -246,8 +246,29 @@ class PipelineEngine(DeepSpeedEngine):
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
         if self.pipeline_enable_backward_allreduce:
-            self.allreduce_gradients(bucket_size=MEMORY_OPT_ALLREDUCE_SIZE)
+            if self.bfloat16_enabled():
+                if self.zero_optimization_stage() == 0:
+                    self._bf16_reduce_grads()
+                else:
+                    assert self.zero_optimization_stage() == 1, "only bf16 + z1 are supported"
+                    raise NotImplementedError()
+            else:
+                self.allreduce_gradients(bucket_size=MEMORY_OPT_ALLREDUCE_SIZE)
         self._force_grad_boundary = False
+
+    def _bf16_reduce_grads(self):
+        # Make our own list of gradients from the optimizer's FP32 grads
+        grads = []
+        for param_group in self.optimizer.fp32_groups:
+            for param in param_group:
+                if param.grad is None:
+                    continue
+                assert param.grad is not None
+                assert param.grad.dtype == torch.float32
+                grads.append(param.grad.data)
+        self.buffered_allreduce_fallback(
+            grads=grads,
+            elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.
@@ -726,6 +747,10 @@ class PipelineEngine(DeepSpeedEngine):
             part_grad = None
             #print(f'RANK={self.global_rank} BEFORE-BWD restored grad={self.grad_layer[0].size()} {self.grad_layer[1].size()}')
 
+        if self.bfloat16_enabled() and not self.is_last_stage():
+            # manually call because we don't call optimizer.backward()
+            self.optimizer.clear_lp_grads()
+
         # This handles either a single tensor or tuple of tensors.
         if isinstance(outputs, tuple):
             out_tensors = [t for t in outputs if t.is_floating_point()]
@@ -733,6 +758,10 @@ class PipelineEngine(DeepSpeedEngine):
             torch.autograd.backward(tensors=out_tensors, grad_tensors=grad_tensors)
         else:
             torch.autograd.backward(tensors=(outputs, ), grad_tensors=(grad_tensors, ))
+
+        if self.bfloat16_enabled() and not self.is_last_stage():
+            # manually call because we don't call optimizer.backward()
+            self.optimizer.update_hp_grads(clear_lp_grads=False)
 
         # Free up the memory from the output of forward()
         self.pipe_buffers['output_tensors'][buffer_id] = None
