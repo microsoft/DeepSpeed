@@ -50,7 +50,9 @@ class MoE(torch.nn.Module):
         super(MoE, self).__init__()
 
         self.use_residual = use_residual
-        self.ep_size = ep_size
+        self.ep_size = min(
+            ep_size,
+            num_experts)  # the ep size should be less than the number of experts
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
         self.num_local_experts = 1 if num_experts < ep_size else num_experts // ep_size
@@ -94,7 +96,7 @@ class MoE(torch.nn.Module):
             if groups.mpu is None:
                 groups._create_expert_and_data_parallel(self.ep_size)
             else:
-                groups._create_expert_data_and_model_parallel(ep_size=layer.ep_size,
+                groups._create_expert_data_and_model_parallel(ep_size=self.ep_size,
                                                               mpu=groups.mpu)
         # Set the group handle for the MOELayer (deepspeed_moe) object
         self.deepspeed_moe._set_ep_group(

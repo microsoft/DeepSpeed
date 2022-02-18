@@ -304,7 +304,7 @@ def _get_expert_parallel_world_size(group_name):
 def _get_expert_data_parallel_world_size(group_name):
     """Return world size for the expert data parallel group."""
     return torch.distributed.get_world_size(
-        group=get_expert_data_parallel_group(group_name))
+        group=_get_expert_data_parallel_group(group_name))
 
 
 def _get_expert_parallel_rank(group_name):
@@ -316,13 +316,13 @@ def _get_expert_parallel_src_rank(group_name):
     """Calculate the global rank corresponding to a local rank zero
     in the expert parallel group."""
     global_rank = torch.distributed.get_rank()
-    local_world_size = get_expert_parallel_world_size(group_name)
+    local_world_size = _get_expert_parallel_world_size(group_name)
     return (global_rank // local_world_size) * local_world_size
 
 
 def _get_expert_data_parallel_rank(group_name):
     """Return my rank for the expert data parallel group."""
-    return torch.distributed.get_rank(group=get_expert_data_parallel_group(group_name))
+    return torch.distributed.get_rank(group=_get_expert_data_parallel_group(group_name))
 
 
 def _get_data_parallel_world_size():
