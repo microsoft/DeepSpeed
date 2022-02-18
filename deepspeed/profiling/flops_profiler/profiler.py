@@ -1178,20 +1178,19 @@ def get_model_profile(
     prof = FlopsProfiler(model)
     model.eval()
 
-    if input_shape is not None:
-        assert type(input_shape) is tuple, "input_shape must be a tuple"
-        assert len(input_shape) >= 1, "input_shape must have at least one element"
-        try:
-            input = torch.ones(()).new_empty(
-                (*input_shape,
-                 ),
-                dtype=next(model.parameters()).dtype,
-                device=next(model.parameters()).device,
-            )
-        except StopIteration:
-            input = torch.ones(()).new_empty((*input_res, ))
+    assert type(input_shape) is tuple, "input_shape must be a tuple"
+    assert len(input_shape) >= 1, "input_shape must have at least one element"
+    try:
+        input = torch.ones(()).new_empty(
+            (*input_shape,
+             ),
+            dtype=next(model.parameters()).dtype,
+            device=next(model.parameters()).device,
+        )
+    except StopIteration:
+        input = torch.ones(()).new_empty((*input_shape, ))
 
-        args = [input]
+    args = [input]
 
     assert (len(args) > 0) or (len(kwargs) > 0), "args and/or kwargs must be specified if input_shape is None"
 
