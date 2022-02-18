@@ -1033,7 +1033,6 @@ class DeepSpeedEngine(Module):
         # Set deepspeed parallelism spec. for the model including expert parallelism
         for _, module in self.module.named_modules():
             if hasattr(module, 'set_deepspeed_parallelism'):
-                print("deepspeed parallelism found")
                 module.set_deepspeed_parallelism()
 
         # Query the groups module to get information about various parallel groups
