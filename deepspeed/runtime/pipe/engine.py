@@ -266,9 +266,8 @@ class PipelineEngine(DeepSpeedEngine):
                 assert param.grad is not None
                 assert param.grad.dtype == torch.float32
                 grads.append(param.grad.data)
-        self.buffered_allreduce_fallback(
-            grads=grads,
-            elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
+        self.buffered_allreduce_fallback(grads=grads,
+                                         elements_per_buffer=MEMORY_OPT_ALLREDUCE_SIZE)
 
     def _reserve_pipe_buffers(self, num_buffers):
         """Ensure that each pipeline buffer has at least ``num_buffers`` slots.

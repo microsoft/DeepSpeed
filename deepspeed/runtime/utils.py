@@ -886,3 +886,19 @@ def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, ep
         for p in parameters:
             p.grad.detach().mul_(clip_coef)
     return global_grad_norm
+
+
+def align_dense_tensors(tensor_list, alignment):
+    num_elements = sum(t.numel() for t in tensor_list)
+    remaining = num_elements % alignment
+
+    if remaining:
+        elements_to_add = alignment - remaining
+        pad_tensor = torch.zeros(elements_to_add,
+                                 device=tensor_list[0].device,
+                                 dtype=tensor_list[0].dtype)
+        padded_tensor_list = tensor_list + [pad_tensor]
+    else:
+        padded_tensor_list = tensor_list
+
+    return padded_tensor_list

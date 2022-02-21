@@ -1,7 +1,8 @@
 import torch
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+import torch.distributed as dist
+from deepspeed.ops.op_builder import UtilsBuilder
 
-from deepspeed.runtime.utils import get_grad_norm, clip_gradients
+from deepspeed.runtime.utils import (get_grad_norm, clip_gradients, align_dense_tensors)
 
 
 class BF16_Optimizer:
@@ -10,6 +11,7 @@ class BF16_Optimizer:
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
+                 dp_process_group=None,
                  timers=None):
         super().__init__()
         self.timers = timers
@@ -17,13 +19,41 @@ class BF16_Optimizer:
         self.clip_grad = clip_grad
         self.norm_type = norm_type
         self.mpu = mpu
+        self.dp_process_group = dp_process_group
+
+        self.real_dp_process_group = [
+            dp_process_group for i in range(len(self.optimizer.param_groups))
+        ]
+
+        # Load pre-built or JIT compile (un)flatten ops
+        util_ops = UtilsBuilder().load()
+        self.flatten = util_ops.flatten
+        self.unflatten = util_ops.unflatten
+
+        #align nccl all-gather send buffers to 4-bye boundary
+        self.nccl_start_alignment_factor = 2  # 4-byte alignment/sizeof(fp16) = 2
 
         # Build BF16/FP32 groups
         self.bf16_groups = []
+        self.bf16_groups_flat = []
         self.fp32_groups = []
+        self.single_partition_of_fp32_groups = []
+        data_parallel_world_size = dist.get_world_size(group=self.dp_process_group)
+
         for i, param_group in enumerate(self.optimizer.param_groups):
             # grab the original list
             self.bf16_groups.append(param_group['params'])
+            self.bf16_groups_flat.append(
+                self._flatten_dense_tensors_aligned(
+                    self.bf16_groups[i],
+                    self.nccl_start_alignment_factor *
+                    dist.get_world_size(group=self.real_dp_process_group[i])))
+
+            #            self.single_partition_of_fp32_groups.append(self.bf16_groups_flat[i].clone().float().detach())
+            #            self.single_partition_of_fp32_groups[i].requires_grad = True
+
+            #            param_group['params'] = [self.single_partition_of_fp32_groups[i]]
+            #            self._unflatten_dense_tensors(self.bf16_groups[i], self.bf16_groups_flat[i])
 
             fp32_group = [p.clone().float().detach() for p in param_group['params']]
             for p in fp32_group:
@@ -56,6 +86,14 @@ class BF16_Optimizer:
 
         self.optimizer.step()
         self.clear_hp_grads()
+
+    def _unflatten_dense_tensors(self, tensor_list, flattened_tensors):
+        updated_params = self.unflatten(flattened_tensors, tensor_list)
+        for p, q in zip(tensor_list, updated_params):
+            p.data = q.data
+
+    def _flatten_dense_tensors_aligned(self, tensor_list, alignment):
+        return self.flatten(align_dense_tensors(tensor_list, alignment))
 
     @torch.no_grad()
     def step(self, closure=None):

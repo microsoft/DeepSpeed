@@ -9,7 +9,12 @@ from torch._six import inf
 from packaging import version as pkg_version
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
+                                     get_global_norm,
+                                     see_memory_usage,
+                                     is_model_parallel_parameter,
+                                     align_dense_tensors)
+
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -791,19 +796,7 @@ class DeepSpeedZeroOptimizer(object):
 
     # create a flat tensor aligned at the alignment boundary
     def flatten_dense_tensors_aligned(self, tensor_list, alignment):
-        num_elements = sum(t.numel() for t in tensor_list)
-        remaining = num_elements % alignment
-
-        if remaining:
-            elements_to_add = alignment - remaining
-            pad_tensor = torch.zeros(elements_to_add,
-                                     device=tensor_list[0].device,
-                                     dtype=tensor_list[0].dtype)
-            padded_tensor_list = tensor_list + [pad_tensor]
-        else:
-            padded_tensor_list = tensor_list
-
-        return self.flatten(padded_tensor_list)
+        return self.flatten(align_dense_tensors(tensor_list, alignment))
 
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):

@@ -437,19 +437,6 @@ class DeepSpeedEngine(Module):
         self._config.train_batch_size = train_batch_size
         self._config.gradient_accumulation_steps = new_gas
 
-    def get_global_grad_norm(self) -> float:
-        """Return the 2-norm of all gradients. If there is model parallelism,
-        the norm will be global.
-
-        The computed norm will be cached and reused until the next step() pass.
-        .. note::
-            In the presence of model parallelism, this is a collective call
-            and acts as a barrier among ``mpu.get_model_parallel_group()``.
-        Returns:
-            float: norm
-        """
-        return self._global_grad_norm
-
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
 
@@ -1004,7 +991,8 @@ class DeepSpeedEngine(Module):
                             'ds_id') for param in self.module.parameters()):
                 self.__check_params(self.module, torch.bfloat16)
             if self.zero_optimization_stage() == 0 and not self.pipeline_parallelism:
-                raise NotImplementedError("BF16 support is not yet implemented when not running ZeRO")
+                raise NotImplementedError(
+                    "BF16 support is not yet implemented when not running ZeRO")
             self.module.bfloat16()
         else:
             self.__check_params(self.module, torch.float)
@@ -1342,6 +1330,7 @@ class DeepSpeedEngine(Module):
             optimizer = BF16_Optimizer(optimizer,
                                        mpu=self.mpu,
                                        clip_grad=clip_grad,
+                                       dp_process_group=self.data_parallel_group,
                                        timers=timers)
         else:
             raise NotImplementedError('BF16 requires a fused optimizer for now.')
@@ -1745,6 +1734,8 @@ class DeepSpeedEngine(Module):
                 self.optimizer.backward(loss, create_graph=True, retain_graph=True)
             else:
                 self.optimizer.backward(loss)
+        elif self.bfloat16_enabled():
+            self.optimizer.backward(loss)
         else:
             if self.eigenvalue_enabled():
                 loss.backward(create_graph=True, retain_graph=True)
@@ -1756,19 +1747,8 @@ class DeepSpeedEngine(Module):
         self._start_timers(self.engine_timers.backward_reduce_timers)
 
         if allreduce_gradients and self.enable_backward_allreduce:
-            if self.bfloat16_enabled():
-                # Make our own list of gradients from the optimizer's FP32 grads
-                grads = []
-                for param_group in self.optimizer.fp32_groups:
-                    for param in param_group:
-                        assert param.grad is not None
-                        assert param.grad.dtype == torch.float32
-                        grads.append(param.grad.data)
-                print(f'rank={self.global_rank} {len(grads)=}')
-                self.buffered_allreduce_fallback(grads=grads)
-            else:
-                # Traditional code path that allreduces the module parameter grads
-                self.allreduce_gradients()
+            # Traditional code path that allreduces the module parameter grads
+            self.allreduce_gradients()
 
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
@@ -1835,8 +1815,8 @@ class DeepSpeedEngine(Module):
 
     def _take_model_step(self, lr_kwargs, block_eigenvalue={}):
         if self.gradient_clipping() > 0.0:
-            if not (self.fp16_enabled() or self.bfloat16_enabled() 
-                    or self.amp_enabled() or self.zero_optimization()):
+            if not (self.fp16_enabled() or self.bfloat16_enabled() or self.amp_enabled()
+                    or self.zero_optimization()):
                 self.clip_fp32_gradients()
             elif self.amp_enabled():
                 # AMP's recommended way of doing clipping
@@ -2183,8 +2163,8 @@ class DeepSpeedEngine(Module):
                     # sense in the future to support the ability to average not
                     # w.r.t. world size but with a different value.
                     param.grad = torch.zeros(param.size(),
-                                            dtype=param.dtype,
-                                            device=param.device)
+                                             dtype=param.dtype,
+                                             device=param.device)
                     if is_moe_param:
                         expert_grads[param.group_name].append(param.grad.data)
                     else:
@@ -2193,7 +2173,8 @@ class DeepSpeedEngine(Module):
                     grad_data = param.grad.data
                     if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
                         if is_moe_param:
-                            expert_grads[param.group_name].append(SparseTensor(grad_data))
+                            expert_grads[param.group_name].append(
+                                SparseTensor(grad_data))
                         else:
                             grads.append(SparseTensor(grad_data))
                     else:

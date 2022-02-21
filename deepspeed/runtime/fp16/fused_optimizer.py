@@ -32,11 +32,13 @@ class FP16_Optimizer(object):
                  mpu=None,
                  clip_grad=0.0,
                  fused_adam_legacy=False,
+                 has_moe_layers=False,
                  timers=None):
 
         self.fused_adam_legacy = fused_adam_legacy
         self.timers = timers
         self.deepspeed = deepspeed
+        self.has_moe_layers = has_moe_layers
         self.using_pipeline = self.deepspeed.pipeline_parallelism
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
@@ -167,11 +169,15 @@ class FP16_Optimizer(object):
                                                        self.cur_scale))
             return self.overflow
 
-        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
+        scaled_grad_norm = get_global_norm(norm_list=norm_groups)
 
         combined_scale = self.unscale_and_clip_grads(grads_groups_flat,
-                                                     self._global_grad_norm,
+                                                     scaled_grad_norm,
                                                      apply_scale=False)
+
+        # Stash unscaled gradient norm
+        self._global_grad_norm = scaled_global_grad_norm / self.cur_scale
+
         # norm is in fact norm*cur_scale
         self.optimizer.step(grads=[[g] for g in grads_groups_flat],
                             output_params=[[p] for p in self.fp16_groups_flat],
@@ -258,26 +264,19 @@ class FP16_Optimizer(object):
         self.start_timers([COMPUTE_NORM])
 
         all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
-        #all_groups_norm_old = all_groups_norm
-        # Need to allreduce (avg) the norms across different ranks because moe params will not be synced during allreduce
-        if self.using_pipeline:
-            pg = self.deepspeed.mpu.get_data_parallel_group()
-        else:
-            pg = groups.get_data_parallel_group()
-        scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=pg))
-        scaled_norm_tensor = torch.tensor(scaled_norm,
-                                          device=self.fp32_groups_flat[i].device,
-                                          dtype=torch.float)
-        dist.all_reduce(scaled_norm_tensor, group=pg)
-        all_groups_norm = scaled_norm_tensor.item()
-        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {torch.distributed.get_rank()}")
 
         self.stop_timers([COMPUTE_NORM])
 
-        self._global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
+        if self.has_moe_layers:
+            scaled_global_grad_norm = self._get_norm_with_moe_layers(all_groups_norm)
+        else:
+            scaled_global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
+
+        # Stash unscaled gradient norm
+        self._global_grad_norm = scaled_global_grad_norm / self.cur_scale
 
         self.start_timers([UNSCALE_AND_CLIP])
-        self.unscale_and_clip_grads(grads_groups_flat, self._global_grad_norm)
+        self.unscale_and_clip_grads(grads_groups_flat, scaled_global_grad_norm)
         self.stop_timers([UNSCALE_AND_CLIP])
 
         self.start_timers([BASIC_STEP])
@@ -301,6 +300,23 @@ class FP16_Optimizer(object):
         self.log_timers(STEP_TIMERS)
 
         return self.overflow
+
+    def _get_norm_with_moe_layers(self, all_groups_norm):
+        total_norm = get_global_norm(norm_list=[all_groups_norm])
+        #all_groups_norm_old = all_groups_norm
+        # Need to allreduce (avg) the norms across different ranks because moe params will not be synced during allreduce
+        if self.using_pipeline:
+            pg = self.deepspeed.mpu.get_data_parallel_group()
+        else:
+            pg = groups.get_data_parallel_group()
+        scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=pg))
+        scaled_norm_tensor = torch.tensor(scaled_norm,
+                                          device=self.fp32_groups_flat[i].device,
+                                          dtype=torch.float)
+        dist.all_reduce(scaled_norm_tensor, group=pg)
+        all_groups_norm = scaled_norm_tensor.item()
+        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {torch.distributed.get_rank()}")
+        return all_groups_norm
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm, apply_scale=True):
         # compute combined scale factor for this group
