@@ -6,6 +6,7 @@ Copyright NVIDIA/Megatron
 Helper functions and classes from multiple sources.
 '''
 
+from collections.abc import Iterable
 from deepspeed.moe.utils import is_moe_param, split_params_into_shared_and_expert_params
 import os
 import psutil
@@ -19,6 +20,7 @@ from torch._six import inf
 import torch.distributed as dist
 
 from deepspeed.utils import groups, logger
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
 
 # pt-1.9 deprecations
@@ -423,7 +425,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                 continue
 
             # Filter to avoid over-counting replicated tensors from tensor
@@ -469,7 +471,7 @@ def get_grad_zeros(parameters, mpu=None):
     tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
     for p in parameters:
         # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-        if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+        if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
             continue
 
         # Filter to avoid over-counting replicated tensors from tensor
@@ -526,7 +528,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=mpu)
         for p in parameters:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                 continue
 
             # Filter to avoid over-counting replicated tensors from tensor
@@ -886,6 +888,76 @@ def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, ep
         for p in parameters:
             p.grad.detach().mul_(clip_coef)
     return global_grad_norm
+
+
+def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
+    """Get norm of an iterable of tensors.
+
+    This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
+    added functionality to handle model parallel parameters. Taken from Nvidia Megatron.
+
+    Arguments:
+        input_tensors (Iterable[Tensor]): an iterable of Tensors will have norm computed
+        norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
+            infinity norm.
+
+    Returns:
+        Total norm of the tensors (viewed as a single vector).
+    """
+
+    assert isinstance(input_tensors, Iterable), f'expected Iterable type not {type(input_tensors)}'
+    assert all([torch.is_tensor(t) for t in input_tensors]), f'expected list of only tensors'
+
+    norm_type = float(norm_type)
+    if norm_type == inf:
+        total_norm = max(t.data.abs().max() for t in input_tensors)
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if mpu is not None:
+            torch.distributed.all_reduce(total_norm_cuda,
+                                         op=torch.distributed.ReduceOp.MAX,
+                                         group=mpu.get_model_parallel_group())
+            total_norm = total_norm_cuda[0].item()
+    else:
+        total_norm = sum(
+            [t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        if mpu is not None:
+            torch.distributed.all_reduce(total_norm_cuda,
+                                         op=torch.distributed.ReduceOp.SUM,
+                                         group=mpu.get_model_parallel_group())
+        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+
+    if total_norm == float(
+            'inf') or total_norm == -float('inf') or total_norm != total_norm:
+        total_norm = -1
+
+    return total_norm
+
+
+def clip_tensors_by_global_norm(input_tensors,
+                                max_norm=1.0,
+                                global_norm=None,
+                                mpu=None,
+                                eps=1e-6):
+    """Clip list of tensors by global norm.
+    Args:
+        input_tensors: List of tensors to be clipped
+        global_grad_norm (float, optional): Precomputed norm. Defaults to None.
+        mpu (optional): model parallelism unit. Defaults to None.
+        eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
+    Returns:
+        float: the global norm
+    """
+    if global_norm is None:
+        global_norm = get_global_norm_of_tensors(input_tensors, mpu=mpu)
+
+    clip_coef = max_norm / (global_grad_norm + eps)
+
+    if clip_coef < 1:
+        for t in input_tensors:
+            t.detach().mul_(clip_coef)
+
+    return global_norm
 
 
 def align_dense_tensors(tensor_list, alignment):

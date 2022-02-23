@@ -1674,6 +1674,10 @@ class DeepSpeedEngine(Module):
             if self.zero_optimization_stage() == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 self.optimizer.reduce_gradients(
                     pipeline_parallel=self.pipeline_parallelism)
+            elif self.bfloat16_enabled() and self.pipeline_parallelism:
+                self.buffered_allreduce_fallback(
+                    grads=self.optimizer.get_grads_for_reduction(),
+                    elements_per_buffer=bucket_size)
             else:
                 self.buffered_allreduce_fallback(elements_per_buffer=bucket_size)
 

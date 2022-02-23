@@ -1,8 +1,13 @@
 import torch
 import torch.distributed as dist
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.ops.op_builder import UtilsBuilder
 
-from deepspeed.runtime.utils import (get_grad_norm, clip_gradients, align_dense_tensors)
+from deepspeed.runtime.utils import (get_global_norm_of_tensors,
+                                     clip_tensors_by_global_norm,
+                                     get_grad_norm,
+                                     clip_gradients,
+                                     align_dense_tensors)
 
 
 class BF16_Optimizer:
@@ -20,10 +25,7 @@ class BF16_Optimizer:
         self.norm_type = norm_type
         self.mpu = mpu
         self.dp_process_group = dp_process_group
-
-        self.real_dp_process_group = [
-            dp_process_group for i in range(len(self.optimizer.param_groups))
-        ]
+        self.dp_rank = dist.get_rank(group=self.dp_process_group)
 
         # Load pre-built or JIT compile (un)flatten ops
         util_ops = UtilsBuilder().load()
@@ -36,40 +38,67 @@ class BF16_Optimizer:
         # Build BF16/FP32 groups
         self.bf16_groups = []
         self.bf16_groups_flat = []
+        # TODO: Need to only track fp32 params of this partition
         self.fp32_groups = []
+        self.fp32_groups_flat = []
         self.single_partition_of_fp32_groups = []
-        data_parallel_world_size = dist.get_world_size(group=self.dp_process_group)
+        self.fp32_groups_gradients = []
+        self.fp32_groups_gradients_flat = []
+
+        dp_world_size = dist.get_world_size(group=self.dp_process_group)
 
         for i, param_group in enumerate(self.optimizer.param_groups):
             # grab the original list
             self.bf16_groups.append(param_group['params'])
+
+            # create flat bf16 params
             self.bf16_groups_flat.append(
                 self._flatten_dense_tensors_aligned(
                     self.bf16_groups[i],
-                    self.nccl_start_alignment_factor *
-                    dist.get_world_size(group=self.real_dp_process_group[i])))
+                    self.nccl_start_alignment_factor * dp_world_size))
 
-            #            self.single_partition_of_fp32_groups.append(self.bf16_groups_flat[i].clone().float().detach())
-            #            self.single_partition_of_fp32_groups[i].requires_grad = True
+            # Make bf16 params point to flat tensor storage
+            self._update_storage_to_flattened_tensor(
+                tensor_list=self.bf16_groups[i],
+                flat_tensor=self.bf16_groups_flat[i])
 
-            #            param_group['params'] = [self.single_partition_of_fp32_groups[i]]
-            #            self._unflatten_dense_tensors(self.bf16_groups[i], self.bf16_groups_flat[i])
+            # create flat fp32 params
+            self.fp32_groups_flat.append(
+                self.bf16_groups_flat[i].clone().float().detach())
+            self.fp32_groups_flat[i].requires_grad = True
 
-            fp32_group = [p.clone().float().detach() for p in param_group['params']]
-            for p in fp32_group:
-                p.requires_grad = True
+            num_elem_list = [t.numel() for t in self.bf16_groups[i]]
 
-            # Ensure model parallel attributes are carried over
-            for lp, hp in zip(param_group['params'], fp32_group):
-                if hasattr(lp, 'model_parallel'):
-                    hp.model_parallel = lp.model_parallel
-                if hasattr(lp, '_pipe_replicated'):
-                    hp._pipe_replicated = lp._pipe_replicated
+            # create fp32 params using flat tensor storage
+            fp32_group_params = self._split_flat_tensor(
+                flat_tensor=self.fp32_groups_flat[i],
+                num_elem_list=num_elem_list)
+            self._propagate_attributes(src_tensor_list=self.bf16_groups[i],
+                                       dst_tensor_list=fp32_group_params)
+            self.fp32_groups.append(fp32_group_params)
 
-            self.fp32_groups.append(fp32_group)
-            param_group['params'] = self.fp32_groups[i]
+            # create fp32 gradients
+            self.fp32_groups_gradients_flat.append(
+                torch.zeros_like(self.fp32_groups_flat[i]))
+            fp32_gradients = self._split_flat_tensor(
+                flat_tensor=self.fp32_groups_gradients_flat[i],
+                num_elem_list=num_elem_list)
+            self.fp32_groups_gradients.append(fp32_gradients)
+
+            # create fp32 partition from flat tensor storage
+            assert self.fp32_groups_flat[i].numel() % dp_world_size == 0, \
+            f'group {i} flat tensor size {self.fp32_groups_flat[i].numel()} not divisible by DP world size {dp_world_size}'
+
+            partition_size = self.fp32_groups_flat[i].numel() // dp_world_size
+            self.single_partition_of_fp32_groups.append(
+                torch.narrow(self.fp32_groups_flat[i],
+                             0,
+                             self.dp_rank * partition_size,
+                             partition_size))
+            param_group['params'] = [self.single_partition_of_fp32_groups[i]]
 
         self.initialize_optimizer_states()
+        self._init_hp_grads()
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -78,17 +107,32 @@ class BF16_Optimizer:
         This helps prevent memory fragmentation by allocating optimizer state at the
         beginning of training instead of after activations have been allocated.
         """
-        for group in self.fp32_groups:
-            for param in group:
-                param.grad = torch.zeros(param.size(),
-                                         device=param.device,
-                                         dtype=param.dtype)
+        for i, single_partition in enumerate(self.single_partition_of_fp32_groups):
+            single_partition.grad = self.fp32_groups_gradients_flat[i]
 
         self.optimizer.step()
         self.clear_hp_grads()
 
-    def _unflatten_dense_tensors(self, tensor_list, flattened_tensors):
-        updated_params = self.unflatten(flattened_tensors, tensor_list)
+    def _propagate_attributes(self, src_tensor_list, dst_tensor_list):
+        for src_tensor, dst_tensor in zip(src_tensor_list, dst_tensor_list):
+            if hasattr(src_tensor, 'model_parallel'):
+                dst_tensor.model_parallel = src_tensor.model_parallel
+            if hasattr(src_tensor, PIPE_REPLICATED):
+                dst_tensor.ds_pipe_replicated = src_tensor.ds_pipe_replicated
+
+    def _split_flat_tensor(self, flat_tensor, num_elem_list):
+        assert sum(num_elem_list) <= flat_tensor.numel()
+        tensor_list = []
+        offset = 0
+        for num_elem in num_elem_list:
+            dense_tensor = torch.narrow(flat_tensor, 0, offset, num_elem)
+            tensor_list.append(dense_tensor)
+            offset += num_elem
+
+        return tensor_list
+
+    def _update_storage_to_flattened_tensor(self, tensor_list, flat_tensor):
+        updated_params = self.unflatten(flat_tensor, tensor_list)
         for p, q in zip(tensor_list, updated_params):
             p.data = q.data
 
@@ -144,32 +188,39 @@ class BF16_Optimizer:
     @torch.no_grad()
     def update_hp_grads(self, clear_lp_grads=False):
         for i, group in enumerate(self.bf16_groups):
-            for lp, hp in zip(group, self.fp32_groups[i]):
+            for j, (lp, hp) in enumerate(zip(group, self.fp32_groups[i])):
                 if lp.grad is None:
                     continue
 
-                data_type = hp.dtype
+                assert hp.grad is not None, \
+                    f'high precision param has no gradient, param_id = {id(hp)} group_info = [{i}][{j}]'
 
-                if hp.grad is None:
-                    hp.grad = lp.grad.to(data_type)
-                    # give the model parameter access to the hp grad as well
-                    lp._hp_grad = hp.grad
-                else:
-                    hp.grad.data.add_(lp.grad.data.to(data_type))
+                hp.grad.data.add_(lp.grad.data.to(hp.dtype).view(hp.shape))
+                lp._hp_grad = hp.grad
 
                 # clear gradients
                 if clear_lp_grads:
                     lp.grad = None
 
+    @torch.no_grad()
+    def get_grads_for_reduction(self):
+        return self.fp32_groups_gradients_flat
+
+    @torch.no_grad()
     def update_lp_params(self):
         for i, group in enumerate(self.bf16_groups):
             for lp, hp in zip(group, self.fp32_groups[i]):
-                lp.data.copy_(hp.data.to(lp.dtype))
+                lp.data.copy_(hp.data.to(lp.dtype).view(lp.shape))
+
+    @torch.no_grad()
+    def _init_hp_grads(self):
+        for i, group in enumerate(self.bf16_groups):
+            for j, (lp, hp) in enumerate(zip(group, self.fp32_groups[i])):
+                hp.grad = self.fp32_groups_gradients[i][j]
 
     def clear_hp_grads(self):
-        for group in self.fp32_groups:
-            for param in group:
-                param.grad = None
+        for flat_gradients in self.fp32_groups_gradients_flat:
+            flat_gradients.zero_()
 
     def clear_lp_grads(self):
         for group in self.bf16_groups:

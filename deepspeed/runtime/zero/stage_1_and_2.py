@@ -1107,7 +1107,7 @@ class DeepSpeedZeroOptimizer(object):
         norm_type = 2.0
         for p in params:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                 continue
 
             if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
@@ -1519,7 +1519,7 @@ class DeepSpeedZeroOptimizer(object):
             #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params):
                 # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-                if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                     continue
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
