@@ -53,19 +53,15 @@ def _key_list_to_string(key_list):
 
 
 def merge_state_dict(dict_a, dict_b, key_list):
-    if dict_a.keys() != dict_b.keys():
-        print(f'key_list = {_key_list_to_string(key_list)}')
-        raise ValueError(f'''Cannot merge dicts with different keys,
-                a = {dict_a.keys()}
-                b = {dict_b.keys()}
-            ''')
+    merged_dict = type(dict_a)({})
 
-    return type(dict_a)({
-        key: merge_state(dict_a[key],
-                         dict_b[key],
-                         key_list + [str(key)])
-        for key in dict_a.keys()
-    })
+    for key, value in dict_b.items():
+        if key in dict_a.keys():
+            merged_dict[key] = merge_state(dict_a[key], dict_b[key], [str(key)])
+        else:
+            merged_dict[key] = value
+
+    return merged_dict
 
 
 def merge_state_list(list_a, list_b, key_list):

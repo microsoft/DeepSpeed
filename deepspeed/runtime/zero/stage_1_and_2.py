@@ -11,6 +11,7 @@ from packaging import version as pkg_version
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
+from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -19,6 +20,7 @@ from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
 
 from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            GROUP_PADDINGS,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             BASE_OPTIMIZER_STATE,
@@ -268,15 +270,6 @@ class DeepSpeedZeroOptimizer(object):
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
             self.bit16_groups.append(param_group['params'])
 
-            # Record padding required to align group to world size
-            if partition_id == dist.get_world_size(
-                    group=self.real_dp_process_group[i]) - 1:
-                padding = get_alignment_padding(self.bit16_groups[i],
-                                                self.partition_count[i])
-            else:
-                padding = 0
-            self.groups_padding.append(padding)
-
             # not sure why apex was cloning the weights before flattening
             # removing cloning here
 
@@ -310,6 +303,15 @@ class DeepSpeedZeroOptimizer(object):
                         torch.cuda.current_device()))
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
+
+            # Record padding required for alignment
+            if partition_id == dist.get_world_size(
+                    group=self.real_dp_process_group[i]) - 1:
+                padding = self.bit16_groups_flat[i].numel() - sum(
+                    [t.numel() for t in self.round_robin_bit16_groups[i]])
+            else:
+                padding = 0
+            self.groups_padding.append(padding)
 
             if dist.get_rank(group=self.real_dp_process_group[i]) == 0:
                 see_memory_usage(
@@ -2003,17 +2005,12 @@ class DeepSpeedZeroOptimizer(object):
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
 
-        if self.elastic_checkpoint:
-            state_dict[BASE_OPTIMIZER_STATE] = self._get_base_optimizer_state()
-        else:
-            state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
-
-        # Remove paddings for DP alignment to enable loading for other alignment values
-        fp32_groups_without_padding = self._get_groups_without_padding(
-            self.single_partition_of_fp32_groups)
-        state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
-
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
+        state_dict[
+            SINGLE_PARTITION_OF_FP32_GROUPS] = self.single_partition_of_fp32_groups
+        state_dict[
+            ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS if self.partition_gradients else ZERO_OPTIMIZATION_OPTIMIZER_STATES
+        state_dict[GROUP_PADDINGS] = self.groups_padding
         state_dict[PARTITION_COUNT] = self.partition_count
 
         state_dict[DS_VERSION] = version

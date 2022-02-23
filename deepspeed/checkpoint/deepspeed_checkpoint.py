@@ -4,6 +4,7 @@ import torch
 
 from deepspeed.checkpoint.reshape_3d_utils import model_3d_desc
 from .reshape_utils import (basic_folder_validation,
+                            merge_state,
                             partition_data,
                             get_files,
                             get_files_with_prefix,
@@ -173,9 +174,15 @@ class DeepSpeedCheckpoint(object):
             torch.load(fname,
                        map_location=torch.device('cpu')) for fname in fname_list
         ]
-        # HACK HACK HACK, should be merging i.e., sd = self._merge_state_dicts(sd_list)
-        sd = sd_list[0]
-        return sd
+
+        merged_sd = None
+        for sd in sd_list:
+            if merged_sd is None:
+                merged_sd = sd
+            else:
+                merged_sd = merge_state(merged_sd, sd)
+
+        return merged_sd
 
     def get_transformer_state(self, tp_index: int, pp_index: int) -> list:
         assert tp_index < self.tp_degree

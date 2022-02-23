@@ -16,7 +16,7 @@ def get_model_ckpt_name_for_rank(base_folder, mp_rank_str):
 
 def get_zero_ckpt_name_for_rank(base_folder, dp_rank, mp_rank):
     zero_prefix = f'{ZERO_FILE_PREFIX}{dp_rank}'
-    mp_rank_string = f'_{MODEL_FILE_PREFIX}_{mp_rank:02d}'
+    mp_rank_string = f'_{MODEL_FILE_PREFIX}{mp_rank:02d}'
     zero_ckpt_name = os.path.join(
         base_folder,
         zero_prefix + mp_rank_string + OPTIM_FILE_SUFFIX,
