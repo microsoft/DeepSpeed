@@ -41,6 +41,7 @@ class MoE(torch.nn.Module):
             capacity_factor (float, optional): default=1.0, the capacity of the expert at training time.
             eval_capacity_factor (float, optional): default=1.0, the capacity of the expert at eval time.
             min_capacity (int, optional): default=4, the minimum capacity per expert regardless of the capacity_factor.
+            use_residual (bool, optional): default=False, make this MoE layer a Residual MoE (https://arxiv.org/abs/2201.05596) layer.
             noisy_gate_policy (str, optional): default=None, noisy gate policy, valid options are 'Jitter', 'RSample' or 'None'.
             drop_tokens (bool, optional): default=True, whether to drop tokens - (setting to False is equivalent to infinite capacity).
             use_rts (bool, optional): default=True, whether to use Random Token Selection.
