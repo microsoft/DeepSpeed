@@ -1747,8 +1747,22 @@ class DeepSpeedEngine(Module):
         self._start_timers(self.engine_timers.backward_reduce_timers)
 
         if allreduce_gradients and self.enable_backward_allreduce:
-            # Traditional code path that allreduces the module parameter grads
-            self.allreduce_gradients()
+            if self.bfloat16_enabled():
+                # Make our own list of gradients from the optimizer's FP32 grads
+                grads = []
+                for param_group in self.optimizer.fp32_groups:
+                    for param in param_group:
+                        assert param.grad is not None
+                        assert param.grad.dtype == torch.float32
+                        grads.append(param.grad.data)
+                #print(f'rank={self.global_rank} {len(grads)=}')
+                self.buffered_allreduce_fallback(grads=grads)
+            else:
+                # Traditional code path that allreduces the module parameter grads
+                self.allreduce_gradients()
+
+        #    # Traditional code path that allreduces the module parameter grads
+        #    self.allreduce_gradients()
 
         self._stop_timers(self.engine_timers.backward_reduce_timers)
 
