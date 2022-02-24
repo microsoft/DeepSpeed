@@ -7,7 +7,9 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      clip_tensors_by_global_norm,
                                      get_grad_norm,
                                      clip_gradients,
-                                     align_dense_tensors)
+                                     align_dense_tensors,
+                                     all_gather_dp_groups,
+                                     see_memory_usage)
 
 
 class BF16_Optimizer:
@@ -16,16 +18,22 @@ class BF16_Optimizer:
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
+                 allgather_bucket_size=5000000000,
                  dp_process_group=None,
                  timers=None):
         super().__init__()
+        see_memory_usage('begin bf16_optimizer', force=True)
         self.timers = timers
         self.optimizer = init_optimizer
         self.clip_grad = clip_grad
         self.norm_type = norm_type
         self.mpu = mpu
+        self.allgather_bucket_size = int(allgather_bucket_size)
         self.dp_process_group = dp_process_group
         self.dp_rank = dist.get_rank(group=self.dp_process_group)
+        self.real_dp_process_group = [
+            dp_process_group for i in range(len(self.optimizer.param_groups))
+        ]
 
         # Load pre-built or JIT compile (un)flatten ops
         util_ops = UtilsBuilder().load()
@@ -38,16 +46,26 @@ class BF16_Optimizer:
         # Build BF16/FP32 groups
         self.bf16_groups = []
         self.bf16_groups_flat = []
+        self.bf16_partitioned_groups = []
+
         # TODO: Need to only track fp32 params of this partition
         self.fp32_groups = []
         self.fp32_groups_flat = []
-        self.single_partition_of_fp32_groups = []
+        self.fp32_groups_flat_partition = []
+
+        # Maintain different fp32 gradients views for convenience
         self.fp32_groups_gradients = []
         self.fp32_groups_gradients_flat = []
+        self.fp32_groups_actual_gradients_flat = []
+        self.fp32_groups_gradient_flat_partition = []
 
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
 
         for i, param_group in enumerate(self.optimizer.param_groups):
+            see_memory_usage(f'before initializing group {i}', force=True)
+
+            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+
             # grab the original list
             self.bf16_groups.append(param_group['params'])
 
@@ -56,6 +74,16 @@ class BF16_Optimizer:
                 self._flatten_dense_tensors_aligned(
                     self.bf16_groups[i],
                     self.nccl_start_alignment_factor * dp_world_size))
+
+            # divide flat weights into equal sized partitions
+            partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
+            bf16_dp_partitions = [
+                self.bf16_groups_flat[i].narrow(0,
+                                                dp_index * partition_size,
+                                                partition_size)
+                for dp_index in range(dp_world_size)
+            ]
+            self.bf16_partitioned_groups.append(bf16_dp_partitions)
 
             # Make bf16 params point to flat tensor storage
             self._update_storage_to_flattened_tensor(
@@ -80,25 +108,46 @@ class BF16_Optimizer:
             # create fp32 gradients
             self.fp32_groups_gradients_flat.append(
                 torch.zeros_like(self.fp32_groups_flat[i]))
+
             fp32_gradients = self._split_flat_tensor(
                 flat_tensor=self.fp32_groups_gradients_flat[i],
                 num_elem_list=num_elem_list)
+
             self.fp32_groups_gradients.append(fp32_gradients)
+
+            # flat tensor corresponding to actual fp32 gradients
+            length_without_padding = sum(num_elem_list)
+            self.fp32_groups_actual_gradients_flat.append(
+                torch.narrow(self.fp32_groups_gradients_flat[i],
+                             0,
+                             0,
+                             length_without_padding))
+
+            # flat tensor corresponding to gradient partition
+            self.fp32_groups_gradient_flat_partition.append(
+                torch.narrow(self.fp32_groups_gradients_flat[i],
+                             0,
+                             partition_id * partition_size,
+                             partition_size))
 
             # create fp32 partition from flat tensor storage
             assert self.fp32_groups_flat[i].numel() % dp_world_size == 0, \
             f'group {i} flat tensor size {self.fp32_groups_flat[i].numel()} not divisible by DP world size {dp_world_size}'
 
-            partition_size = self.fp32_groups_flat[i].numel() // dp_world_size
-            self.single_partition_of_fp32_groups.append(
+            self.fp32_groups_flat_partition.append(
                 torch.narrow(self.fp32_groups_flat[i],
                              0,
                              self.dp_rank * partition_size,
                              partition_size))
-            param_group['params'] = [self.single_partition_of_fp32_groups[i]]
 
+            param_group['params'] = [self.fp32_groups_flat_partition[i]]
+            see_memory_usage(f'after initializing group {i}', force=True)
+
+        see_memory_usage('before initialize_optimizer', force=True)
         self.initialize_optimizer_states()
-        self._init_hp_grads()
+        see_memory_usage('end initialize_optimizer', force=True)
+
+        see_memory_usage('end bf16_optimizer', force=True)
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -107,8 +156,8 @@ class BF16_Optimizer:
         This helps prevent memory fragmentation by allocating optimizer state at the
         beginning of training instead of after activations have been allocated.
         """
-        for i, single_partition in enumerate(self.single_partition_of_fp32_groups):
-            single_partition.grad = self.fp32_groups_gradients_flat[i]
+        for param_partition, grad_partition in zip(self.fp32_groups_flat_partition, self.fp32_groups_gradient_flat_partition):
+            param_partition.grad = grad_partition
 
         self.optimizer.step()
         self.clear_hp_grads()
@@ -144,10 +193,10 @@ class BF16_Optimizer:
         if closure is not None:
             raise NotImplementedError(f'{self.__class__} does not support closure.')
 
-        params = self.get_fp32_params(filter_nograd=True)
-        all_groups_norm = get_grad_norm(parameters=params,
-                                        mpu=self.mpu,
-                                        norm_type=self.norm_type)
+        all_groups_norm = get_global_norm_of_tensors(
+            input_tensors=self.get_grads_for_norm(),
+            mpu=self.mpu,
+            norm_type=self.norm_type)
         self._global_grad_norm = all_groups_norm
 
         assert all_groups_norm > 0.
@@ -159,16 +208,14 @@ class BF16_Optimizer:
 
         self.optimizer.step()
 
-        self.clear_hp_grads()
         self.update_lp_params()
 
-    def get_fp32_params(self, filter_nograd=False):
-        params = []
-        for group in self.fp32_groups:
-            for param in group:
-                if filter_nograd and param.grad is not None:
-                    params.append(param)
-        return params
+        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+                             dp_process_group=self.real_dp_process_group,
+                             start_alignment_factor=self.nccl_start_alignment_factor,
+                             allgather_bucket_size=self.allgather_bucket_size)
+
+        self.clear_hp_grads()
 
     def backward(self, loss, update_hp_grads=True, clear_lp_grads=False, **bwd_kwargs):
         """Perform a backward pass and copy the low-precision gradients to the
@@ -188,15 +235,16 @@ class BF16_Optimizer:
     @torch.no_grad()
     def update_hp_grads(self, clear_lp_grads=False):
         for i, group in enumerate(self.bf16_groups):
-            for j, (lp, hp) in enumerate(zip(group, self.fp32_groups[i])):
+            for j, lp in enumerate(group):
                 if lp.grad is None:
                     continue
 
-                assert hp.grad is not None, \
-                    f'high precision param has no gradient, param_id = {id(hp)} group_info = [{i}][{j}]'
+                hp_grad = self.fp32_groups_gradients[i][j]
+                assert hp_grad is not None, \
+                    f'high precision param has no gradient, lp param_id = {id(lp)} group_info = [{i}][{j}]'
 
-                hp.grad.data.add_(lp.grad.data.to(hp.dtype).view(hp.shape))
-                lp._hp_grad = hp.grad
+                hp_grad.data.add_(lp.grad.data.to(hp_grad.dtype).view(hp_grad.shape))
+                lp._hp_grad = hp_grad
 
                 # clear gradients
                 if clear_lp_grads:
@@ -207,16 +255,15 @@ class BF16_Optimizer:
         return self.fp32_groups_gradients_flat
 
     @torch.no_grad()
-    def update_lp_params(self):
-        for i, group in enumerate(self.bf16_groups):
-            for lp, hp in zip(group, self.fp32_groups[i]):
-                lp.data.copy_(hp.data.to(lp.dtype).view(lp.shape))
+    def get_grads_for_norm(self):
+        return self.fp32_groups_actual_gradients_flat
 
     @torch.no_grad()
-    def _init_hp_grads(self):
+    def update_lp_params(self):
         for i, group in enumerate(self.bf16_groups):
-            for j, (lp, hp) in enumerate(zip(group, self.fp32_groups[i])):
-                hp.grad = self.fp32_groups_gradients[i][j]
+            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+            for bf16_partitions, fp32_partition in zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition):
+                bf16_partitions[partition_id].data.copy_(fp32_partition.data)
 
     def clear_hp_grads(self):
         for flat_gradients in self.fp32_groups_gradients_flat:
