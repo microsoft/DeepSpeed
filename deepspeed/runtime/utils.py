@@ -72,7 +72,13 @@ def set_random_seed(seed):
 
 
 def is_model_parallel_parameter(p) -> bool:
-    return hasattr(p, 'model_parallel') and p.model_parallel
+    if hasattr(p, 'model_parallel') and p.model_parallel:
+        return True
+
+    if hasattr(p, 'tensor_model_parallel') and p.tensor_model_parallel:
+        return True
+
+    return False
 
 
 def bwc_tensor_model_parallel_rank(mpu=None):
@@ -552,10 +558,6 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         total_norm = -1
 
     return total_norm
-
-
-def is_model_parallel_parameter(p):
-    return hasattr(p, 'model_parallel') and p.model_parallel
 
 
 def prefix_sum_inc(weights):
