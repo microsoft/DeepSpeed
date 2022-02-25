@@ -5,6 +5,7 @@ excerpt: ""
 categories: news
 new_post: false
 date: 2021-12-09 22:00:00
+tags: training
 ---
 
 Published on December 9, 2021

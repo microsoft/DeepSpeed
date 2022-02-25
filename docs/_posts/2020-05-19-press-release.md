@@ -6,4 +6,5 @@ link: https://www.microsoft.com/en-us/research/blog/zero-2-deepspeed-shattering-
 categories: news
 new_post: false
 date: 2020-05-19 02:00:00
+tags: training zero
 ---

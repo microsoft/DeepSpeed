@@ -5,6 +5,7 @@ excerpt: ""
 categories: news
 new_post: false
 date: 2020-05-28 00:00:00
+tags: training
 ---
 
 Good news! **DeepSpeed obtains the fastest BERT training record: 44 minutes on

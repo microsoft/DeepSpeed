@@ -11,7 +11,7 @@ layout: archive
   {% assign posts = site.posts %}
 {% endif %}
 
-
+<!--
 <h2>{{ site.data.ui-text[site.locale].recent_posts | default: "Recent Posts" }}</h2>
 {% assign news = posts | where: "sneak_preview", "false" %}
 {% for post in news %}
@@ -21,4 +21,13 @@ layout: archive
   {% endif %}
 {% endfor %}
 
-{% include paginator.html %}
+{% include paginator.html %} -->
+
+{% for tag in site.tags %}
+  <h3>{{ tag[0] }}</h3>
+  <ul>
+    {% for post in tag[1] %}
+      <li><a href="{{ post.url }}">{{ post.title }}</a></li>
+    {% endfor %}
+  </ul>
+{% endfor %}

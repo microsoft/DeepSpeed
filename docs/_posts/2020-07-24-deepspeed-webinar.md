@@ -7,4 +7,5 @@ link: https://note.microsoft.com/MSR-Webinar-DeepSpeed-Registration-On-Demand.ht
 image: /assets/images/webinar-aug2020.png
 new_post: true
 date: 2020-07-24 00:00:00
+tags: presentations
 ---

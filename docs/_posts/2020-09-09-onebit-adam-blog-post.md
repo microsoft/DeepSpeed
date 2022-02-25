@@ -5,6 +5,7 @@ excerpt: ""
 categories: news
 new_post: false
 date: 2020-09-09 00:00:00
+tags: training communication
 ---
 
 ## 1. Introduction
