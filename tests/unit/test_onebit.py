@@ -417,6 +417,7 @@ def test_onebitadam_fp16_pipeline(topo, tmpdir):
 
     _helper(topo, tmpdir)
 
+
 def test_zerooneadam_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -697,10 +698,10 @@ def test_zerooneadam_checkpointing(tmpdir):
             assert 'server_error' not in v, f"Incorrect server error"
 
     _test_zerooneadam_checkpointing(mask1,
-                                   mask2,
-                                   args=args,
-                                   model=model,
-                                   hidden_dim=hidden_dim)
+                                    mask2,
+                                    args=args,
+                                    model=model,
+                                    hidden_dim=hidden_dim)
 
 
 def test_zerooneadam_checkpointing_overflow(tmpdir):
@@ -753,8 +754,8 @@ def test_zerooneadam_checkpointing_overflow(tmpdir):
             model.save_checkpoint(save_folder, tag=None)
 
     _test_zerooneadam_checkpointing_overflow(args=args,
-                                            model=model,
-                                            hidden_dim=hidden_dim)
+                                             model=model,
+                                             hidden_dim=hidden_dim)
 
 
 @pytest.mark.parametrize('topo',

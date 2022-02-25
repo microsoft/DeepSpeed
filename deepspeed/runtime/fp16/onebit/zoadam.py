@@ -35,7 +35,7 @@ class ZeroOneAdam(torch.optim.Optimizer):
         local_step_scaler (int, optional): The interval to scale the local steps interval
             according to the learning rate policy. (default: 32678)
         local_step_clipper (int, optional): The largest interval for local steps with
-            learning rate policy. This corresponds to the variable H in the 0/1 Adam paper. 
+            learning rate policy. This corresponds to the variable H in the 0/1 Adam paper.
             (default: 16)
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
@@ -90,10 +90,10 @@ class ZeroOneAdam(torch.optim.Optimizer):
         self.cuda_aware = cuda_aware
         self.using_pipeline = False
 
-        self.var_freeze_step     = var_freeze_step
-        self.var_update_scaler   = var_update_scaler
-        self.local_step_scaler   = local_step_scaler
-        self.local_step_clipper  = local_step_clipper
+        self.var_freeze_step = var_freeze_step
+        self.var_update_scaler = var_update_scaler
+        self.local_step_scaler = local_step_scaler
+        self.local_step_clipper = local_step_clipper
         self.freeze_key = False
         self.reinitial_error_buffer = False
 
@@ -180,11 +180,11 @@ class ZeroOneAdam(torch.optim.Optimizer):
 
                 if not self.initialize or 'worker_error' not in state.keys():
                     # Some scalars to help scale the variance update/local step policies
-                    state['var_interval']        = 1
-                    state['var_counter']         = 0
+                    state['var_interval'] = 1
+                    state['var_counter'] = 0
                     state['local_step_interval'] = 1
-                    state['local_step_counter']  = 0
-                    state['lrs']                 = 0
+                    state['local_step_counter'] = 0
+                    state['lrs'] = 0
                     state['tensor_size'] = torch.numel(p.data)
                     state['corrected_tensor_size'] = state['tensor_size']
 
@@ -218,28 +218,29 @@ class ZeroOneAdam(torch.optim.Optimizer):
                             dist.all_reduce(grad)
                             grad.mul_(1 / dist.get_world_size())
                             exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
-                            exp_avg.mul_(beta1).add_(grad, alpha=1-beta1)
+                            exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                         else:
                             if self.size > 1:
                                 with torch.no_grad():
                                     grad_onebit = self.comm_backend_handle.compressed_allreduce(
-                                            grad,
-                                            state['worker_error'],
-                                            state['server_error'],
-                                            self.deepspeed.local_rank)
+                                        grad,
+                                        state['worker_error'],
+                                        state['server_error'],
+                                        self.deepspeed.local_rank)
                                     exp_avg.mul_(beta1).add_(1 - beta1, grad_onebit)
                     else:
-                        exp_avg.mul_(beta1).add_(grad, alpha=1-beta1)
+                        exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                         state['lrs'] += group['lr']
                     grad = None
 
                 if not self.initialize:
                     if self.size > 1:
-                        comm_buffer.set_(self.comm_backend_handle.compressed_allreduce(
-                            comm_buffer,
-                            state['worker_error'],
-                            state['server_error'],
-                            self.deepspeed.local_rank))
+                        comm_buffer.set_(
+                            self.comm_backend_handle.compressed_allreduce(
+                                comm_buffer,
+                                state['worker_error'],
+                                state['server_error'],
+                                self.deepspeed.local_rank))
                     if 'exp_avg_mask' in group:
                         if comm_buffer.device != group['exp_avg_mask'].device:
                             group['exp_avg_mask'] = group['exp_avg_mask'].to(
@@ -254,24 +255,26 @@ class ZeroOneAdam(torch.optim.Optimizer):
                         p.data.add_(-group['lr'] * update)
                         if self.freeze_key is True:
                             comm_buffer.add_(-group['lr'] * update)
-                    if state['step'] % state['local_step_interval'] == 0 and self.freeze_key:
+                    if state['step'] % state[
+                            'local_step_interval'] == 0 and self.freeze_key:
                         with torch.no_grad():
                             p.data.add_(-1 * comm_buffer)
                             comm_buffer.mul_(exp_avg_sq.sqrt() + group['eps'])
                             if self.size > 1:
-                                comm_buffer.copy_(self.comm_backend_handle.compressed_allreduce(
-                                    comm_buffer,
-                                    state['worker_error'],
-                                    state['server_error'],
-                                    self.deepspeed.local_rank))
+                                comm_buffer.copy_(
+                                    self.comm_backend_handle.compressed_allreduce(
+                                        comm_buffer,
+                                        state['worker_error'],
+                                        state['server_error'],
+                                        self.deepspeed.local_rank))
                             exp_avg.zero_().add_(comm_buffer / state['lrs'], alpha=-1)
                             p.data.add_(comm_buffer / (exp_avg_sq.sqrt() + group['eps']))
                             comm_buffer.zero_()
 
                             state['lrs'] = 0
-                    
+
                     # According to 0/1 Adam theory, a fixed variance would allow more accurate estimation of momentum
-                    # However, in practice, we can also disable the manual freezing of variance, since the interval of 
+                    # However, in practice, we can also disable the manual freezing of variance, since the interval of
                     # updating variance will increase exponentially, so that it has negligible effect on the estimation.
                     if self.freeze_key is False:
                         if state['step'] % state['var_interval'] == 0:
@@ -283,8 +286,10 @@ class ZeroOneAdam(torch.optim.Optimizer):
                         state['local_step_counter'] += 1
                         if state['local_step_counter'] == self.local_step_scaler:
                             state['local_step_counter'] = 0
-                            state['local_step_interval'] = min(self.local_step_clipper, state['local_step_interval'] * 2)
-            
+                            state['local_step_interval'] = min(
+                                self.local_step_clipper,
+                                state['local_step_interval'] * 2)
+
             if not self.initialize:
                 print('Pop out errors', flush=True)
                 self.freeze_key = False
@@ -297,12 +302,12 @@ class ZeroOneAdam(torch.optim.Optimizer):
                 f"Finished the initialization step at rank {torch.distributed.get_rank()}"
             )
             return loss
-        
+
         if self.state[self.param_groups[0]['params'][0]]['step'] > self.var_freeze_step:
             self.freeze_key = True
-        
+
         if self.freeze_key is True and self.reinitial_error_buffer is False:
-            # We need to reinitilize the error buffers when local step > 1 since 
+            # We need to reinitialize the error buffers when local step > 1 since
             # the errors will be logged for different metrics (gradient vs. accumulated momentum).
             for group in self.param_groups:
                 for p in group['params']:
