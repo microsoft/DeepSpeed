@@ -11,6 +11,40 @@ layout: archive
   {% assign posts = site.posts %}
 {% endif %}
 
+<div class="button-group filter-button-group justify-content-center">
+  <a class="btn btn-sm btn-primary" data-filter=".training">Training</a>
+  <a class="btn btn-sm btn-primary" data-filter=".inference">Inference</a>
+  <a class="btn btn-sm btn-primary active" data-filter="*">All</a>
+</div>
+
+<div class="grid">
+  {% for post in site.posts %}
+     <div class="col-md-4 col-sm-6 post-item {{ post.tags }}">
+        <a class="post-link" data-toggle="modal" href="#p{{ forloop.index }}">
+          <img class="img-fluid" src="{{ post.caption.thumbnail }}" alt="">
+        </a>
+     </div>
+  {% endfor %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.1.0.min.js" integrity="sha256-cCueBR6CsyA4/9szpPfrX3s49M9vUU5BgtiJj06wt/s=" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/isotope-layout@3.0/dist/isotope.pkgd.js"></script>
+<script src="https://unpkg.com/imagesloaded@4/imagesloaded.pkgd.min.js"></script>
+
+<script>
+  var $grid = $('.grid').imagesLoaded( function() {
+      $grid.isotope({});
+  });
+  $('.filter-button-group').on( 'click', 'a', function() {
+      var filterValue = $(this).attr('data-filter');
+      $grid.isotope({ filter: filterValue });
+   });
+   $('.button-group a.btn').on('click', function(){
+      $('.button-group a.btn').removeClass('active');
+      $(this).addClass('active');
+   });
+</script>
+
 <!--
 <h2>{{ site.data.ui-text[site.locale].recent_posts | default: "Recent Posts" }}</h2>
 {% assign news = posts | where: "sneak_preview", "false" %}
@@ -23,11 +57,11 @@ layout: archive
 
 {% include paginator.html %} -->
 
-{% for tag in site.tags %}
+<!-- {% for tag in site.tags %}
   <h3>{{ tag[0] }}</h3>
   <ul>
     {% for post in tag[1] %}
       <li><a href="{{ post.url }}">{{ post.title }}</a></li>
     {% endfor %}
   </ul>
-{% endfor %}
+{% endfor %} -->

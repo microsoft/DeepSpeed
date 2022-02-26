@@ -2,10 +2,9 @@
 layout: single
 title: "The Fastest and Most Efficient BERT Training through Optimized Transformer Kernels"
 excerpt: ""
-categories: news
+categories: training
 new_post: true
 date: 2020-05-19 00:00:00
-tags: training
 ---
 
 We introduce new technology to accelerate single GPU performance via kernel
