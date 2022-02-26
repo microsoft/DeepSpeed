@@ -78,8 +78,15 @@ defaults:
       path: ""
       type: posts
     values:
-      layout: single
+      layout: single-full
+      classes: wide2
+      author_profile: false
+      read_time: false
+      comments: false
       share: true
+      related: false
+      toc: false
+      show_date: true
 
 analytics:
   provider: "google-gtag"

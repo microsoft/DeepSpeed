@@ -2,7 +2,7 @@ main:
   - title: 'Getting Started'
     url: /getting-started/
   - title: 'Blog'
-    url: /news/
+    url: /posts/
   - title: 'Tutorials'
     url: /tutorials/
   - title: 'Documentation'

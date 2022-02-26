@@ -1,9 +1,7 @@
 ---
-layout: single
 title: "The Fastest and Most Efficient BERT Training through Optimized Transformer Kernels"
 excerpt: ""
-categories: training
-new_post: true
+tags: training
 date: 2020-05-19 00:00:00
 ---
 

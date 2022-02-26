@@ -1,7 +1,6 @@
 ---
 layout: archive
-post-content:
-backsite: javascript:history.back()
+permalink: /posts/
 ---
 
 {% if paginator %}
@@ -13,8 +12,8 @@ backsite: javascript:history.back()
 <script type="text/javascript">
     function filterUsingCategory(selectedCategory) {
       var id = 0;
-      {% for post in site.posts %}
-        var cats = {{ post.categories | jsonify }}
+      {% for post in posts %}
+        var cats = {{ post.tags | jsonify }}
 
         var postDiv = document.getElementById(++id);
         postDiv.style.display = (selectedCategory == 'All' || cats.includes(selectedCategory))
@@ -26,8 +25,8 @@ backsite: javascript:history.back()
 
   <div>
     <button id="All" onclick="filterUsingCategory('All')">*Show All Posts*</button>
-    {% assign categories = site.categories | sort %}
-    {% for category in categories %}
+    {% assign tags = site.tags | sort %}
+    {% for category in tags %}
       {% assign cat = category | first %}
       <button id="{{ cat }}" onclick="filterUsingCategory(this.id)">{{ cat }}</button>
     {% endfor %}
@@ -36,17 +35,20 @@ backsite: javascript:history.back()
 
   <div class="posts-wrapper">
     {% assign id = 0 %}
-    {% for post in site.posts %}
+    {% for post in posts %}
       {% assign id = id | plus:1 %}
       <div class="post" id="{{id}}">
         <p class="itemInteriorSection">
-          <a href="{{post.url}}">{{ post.articletitle }}</a><br />
-            <span><b>&middot;</b></span>
-            {% include archive-single.html %}
-            {% if post.image %}
-              <a href="{{ post.link }}"><img src="{{ post.image }}"></a>
-            {% endif %}
+          <a href="{{post.url}}">{{ post.articletitle }}</a>
+            {%- unless post.hidden -%}
+              {% include archive-single.html %}
+              {% if post.image %}
+                <a href="{{ post.link }}"><img src="{{ post.image }}"></a>
+              {% endif %}
+            {%- endunless -%}
         </p>
       </div>
     {% endfor %}
   </div>
+
+

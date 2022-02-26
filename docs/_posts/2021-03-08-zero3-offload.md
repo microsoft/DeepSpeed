@@ -1,10 +1,8 @@
 ---
-layout: single
 title: "DeepSpeed ZeRO-3 Offload"
 excerpt: ""
-new_post: true
 date: 2021-03-08 00:00:00
-categories: training zero
+tags: training zero
 ---
 Today we are announcing the release of ZeRO-3 Offload, a highly efficient and easy to use implementation of ZeRO Stage 3 and ZeRO Offload combined, geared towards our continued goal of democratizing AI by making efficient large-scale DL training available to everyone.  The key benefits of ZeRO-3 Offload are:
 
