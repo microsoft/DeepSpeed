@@ -648,7 +648,9 @@ class PipelineEngine(DeepSpeedEngine):
         # tensor changes across batches
         self._zero_grads(inputs)
 
+        self.optimizer._dump_tensors(f'inputs', [t[:][:10] for t in inputs[:2]], print_all=True)
         outputs = super().forward(inputs)
+        self.optimizer._dump_tensors(f'outputs', [outputs], print_all=True)
 
         # Partition the outputs if we are not the last stage
         if self.is_pipe_partitioned and not self.is_last_stage():
@@ -680,7 +682,7 @@ class PipelineEngine(DeepSpeedEngine):
         if self.is_last_stage():
             if self._compute_loss and self.loss_model is not None:
                 labels = self.pipe_buffers['labels'][buffer_id]
-                self.loss = self.loss_model(outputs, labels)
+                self.loss = self.loss_model(outputs, labels, self)
             else:
                 # Some models just return loss from forward()
                 self.loss = outputs
