@@ -14,8 +14,6 @@ from deepspeed.utils import groups, logger, log_dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
 import torch.distributed as dist
 
-import os 
-DUMP_FILE = os.environ.get('BIT16_DUMP_FILE', os.path.join('/tmp', 'fp16_debug.txt'))
 
 class FP16_Optimizer(object):
     """
@@ -98,8 +96,6 @@ class FP16_Optimizer(object):
         self.clip_grad = clip_grad
         self.norm_type = 2
         self.step_count = 0
-        self.backward_count = 0
-        self.fp = open(DUMP_FILE, 'w') if dist.get_rank() == 0 else None 
 
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
         TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -266,8 +262,6 @@ class FP16_Optimizer(object):
 
             self.fp32_groups_flat[i].grad = grads_groups_flat[i]
 
-        #self._dump_tensors(f'hp grads before step {self.step_count}', [self.fp32_groups_flat[0].grad[0]])
-
         self.start_timers([COMPUTE_NORM])
 
         all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
@@ -286,9 +280,6 @@ class FP16_Optimizer(object):
         self.unscale_and_clip_grads(grads_groups_flat, scaled_global_grad_norm)
         self.stop_timers([UNSCALE_AND_CLIP])
 
-        #self._dump_tensors(f'hp norm before step {self.step_count}', [self._global_grad_norm])
-        #self._dump_tensors(f'lp weights before step {self.step_count}', [self.fp16_groups[0][0][0]])
-              
         self.start_timers([BASIC_STEP])
         self.optimizer.step()
         self.stop_timers([BASIC_STEP])
@@ -306,8 +297,6 @@ class FP16_Optimizer(object):
                 p.data.copy_(q.data)
 
         self.stop_timers([UPDATE_FP16])
-
-        #self._dump_tensors(f'lp weights after step {self.step_count}', [self.fp16_groups[0][0][0]])
 
         self.log_timers(STEP_TIMERS)
 
@@ -347,22 +336,6 @@ class FP16_Optimizer(object):
 
         return combined_scale
 
-
-    def _dump_tensors(self, tag, tensor_list, print_all=False):
-        if self.fp is None:
-            return 
-        self.fp.write(f"rank {dist.get_rank()} - dump {tag} \n")
-        for i, t in enumerate(tensor_list):
-            if torch.is_tensor(t):
-                if print_all:
-                    value = t
-                else:
-                    value = t[:1] if t.numel() > 1 else t
-            else:
-                value = t 
-            self.fp.write(f"rank {dist.get_rank()} - {i} = {value} \n")
-
-
     def backward(self, loss, create_graph=False, retain_graph=False):
         """
         :attr:`backward` performs the following steps:
@@ -370,16 +343,10 @@ class FP16_Optimizer(object):
         1. fp32_loss = loss.float()
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
-        """    
+        """
 
         scaled_loss = (loss.float()) * self.cur_scale
-        self._dump_tensors(f'scaled_loss in backward {self.backward_count}', [scaled_loss])
-
         scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
-
-        self._dump_tensors(f'lp grads after backward {self.backward_count}', [self.fp16_groups[0][0].grad[0]])
-
-        self.backward_count += 1 
 
     def _update_scale(self, skip):
         if self.dynamic_loss_scale:

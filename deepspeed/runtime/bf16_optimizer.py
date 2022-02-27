@@ -12,8 +12,8 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter,
                                      see_memory_usage)
-import os 
-DUMP_FILE = os.environ.get('BIT16_DUMP_FILE', os.path.join('/tmp', 'bf16_debug.txt'))
+
+
 class BF16_Optimizer:
     def __init__(self,
                  init_optimizer,
@@ -59,8 +59,6 @@ class BF16_Optimizer:
         self.fp32_groups_gradient_flat_partition = []
         self.fp32_groups_has_gradients = []
         self.step_count = 0
-        self.backward_count = 0
-        self.fp = open(DUMP_FILE, 'w') if dist.get_rank() == 0 else None 
 
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
 
@@ -140,7 +138,6 @@ class BF16_Optimizer:
 
         see_memory_usage('end bf16_optimizer', force=True)
 
-
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
         optimizer state.
@@ -174,22 +171,6 @@ class BF16_Optimizer:
     def _flatten_dense_tensors_aligned(self, tensor_list, alignment):
         return self.flatten(align_dense_tensors(tensor_list, alignment))
 
-
-    def _dump_tensors(self, tag, tensor_list, print_all=False):
-        if self.fp is None:
-            return 
-        self.fp.write(f"rank {dist.get_rank()} - dump {tag} \n")
-        for i, t in enumerate(tensor_list):
-            if torch.is_tensor(t):
-                if print_all:
-                    value = t
-                else:
-                    value = t[:1] if t.numel() > 1 else t
-            else:
-                value = t 
-            self.fp.write(f"rank {dist.get_rank()} - {i} = {value} \n")
-
-
     @torch.no_grad()
     def step(self, closure=None):
         if closure is not None:
@@ -208,12 +189,6 @@ class BF16_Optimizer:
                            mpu=self.mpu,
                            global_grad_norm=all_groups_norm)
 
-
-        #self._dump_tensors(f'hp grads before step {self.step_count}', [self.fp32_groups_gradients[0][0]])
-        #self._dump_tensors(f'hp norm before step {self.step_count}', [self._global_grad_norm])        
-        #self._dump_tensors(f'lp weights before step {self.step_count}', [self.bf16_groups[0][0][0]])
-
-
         self.optimizer.step()
 
         self.update_lp_params()
@@ -222,8 +197,6 @@ class BF16_Optimizer:
                              dp_process_group=self.real_dp_process_group,
                              start_alignment_factor=self.nccl_start_alignment_factor,
                              allgather_bucket_size=self.allgather_bucket_size)
-
-        #self._dump_tensors(f'lp weights after step {self.step_count}', [self.bf16_groups[0][0][0]])
 
         self.clear_hp_grads()
         self.step_count += 1
@@ -239,28 +212,18 @@ class BF16_Optimizer:
         """
         self.clear_lp_grads()
         loss.backward(**bwd_kwargs)
-        self._dump_tensors(f'loss in backward {self.backward_count}', [loss])
-        self._dump_tensors(f'lp grads in backward {self.backward_count}', [self.bf16_groups[0][0].grad[0]])
 
         if update_hp_grads:
-            #self._dump_tensors(f'hp grads before update {self.backward_count}', [self.fp32_groups_gradients[0][0]])
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
-            #self._dump_tensors(f'hp grads after update {self.backward_count}', [self.fp32_groups_gradients[0][0]])
-        
-        self.backward_count += 1 
 
     @torch.no_grad()
     def update_hp_grads(self, clear_lp_grads=False):
-        lp_dtypes = []
-        hp_dtypes = []    
         for i, group in enumerate(self.bf16_groups):
             for j, lp in enumerate(group):
                 if lp.grad is None:
                     continue
 
                 hp_grad = self.fp32_groups_gradients[i][j]
-                hp_dtypes.append(hp_grad.dtype)
-                lp_dtypes.append(lp.grad.dtype)
                 assert hp_grad is not None, \
                     f'high precision param has no gradient, lp param_id = {id(lp)} group_info = [{i}][{j}]'
 
@@ -271,9 +234,6 @@ class BF16_Optimizer:
                 # clear gradients
                 if clear_lp_grads:
                     lp.grad = None
-
-#        print(f'dtype in accum in step {self.step_count} lp = {lp_dtypes}')
-#        print(f'dtype in accum in step {self.step_count} hp = {hp_dtypes}')
 
     @torch.no_grad()
     def get_grads_for_reduction(self):
@@ -294,7 +254,6 @@ class BF16_Optimizer:
                 if not self.fp32_groups_has_gradients[i][j]:
                     continue
 
-                # TODO: Only include gradients in this partition
                 grads.append(self.fp32_groups_gradients[i][j])
 
         return grads
@@ -319,6 +278,7 @@ class BF16_Optimizer:
                 param.grad = None
 
     def state_dict(self):
+        # TODO capture all training state for checkpointing
         state_dict = {}
         state_dict['optimizer_state_dict'] = self.optimizer.state_dict()
         state_dict['clip_grad'] = self.clip_grad
