@@ -184,10 +184,10 @@ class BF16_Optimizer:
 
         assert all_groups_norm > 0.
         if self.clip_grad > 0.:
-            clip_gradients(parameters=params,
-                           max_norm=self.clip_grad,
-                           mpu=self.mpu,
-                           global_grad_norm=all_groups_norm)
+            clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(),
+                                        max_norm=self.clip_grad,
+                                        mpu=self.mpu,
+                                        global_grad_norm=all_groups_norm)
 
         self.optimizer.step()
 
