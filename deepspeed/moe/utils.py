@@ -85,7 +85,6 @@ def split_params_into_different_moe_groups_for_optimizer(
             if is_moe_param(param):
                 data_parallel_group_names.add(param.group_name)
     data_parallel_group_names = list(data_parallel_group_names)
-    print(data_parallel_group_names)
     group_moe = {}
     # Create the param MoE groups, leave param assign to next step
     for param_group in param_groups:

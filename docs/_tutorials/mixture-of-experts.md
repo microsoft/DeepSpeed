@@ -56,7 +56,7 @@ Updated with MoE Layers
 
 ```python
     self.fc3 = nn.Linear(84, 84)
-    self.fc3 = deepspeed.moe.layer.MoE(hidden_size=84, expert=self.fc3, num_experts=args.num_experts, ep_size="desired expert-parallel world size" ...)
+    self.fc3 = deepspeed.moe.layer.MoE(hidden_size=84, expert=self.fc3, num_experts=args.num_experts, ep_size=<desired expert-parallel world size> ...)
     self.fc4 = nn.Linear(84, 10)
 ```
 

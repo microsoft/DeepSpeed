@@ -27,6 +27,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import torch
 from torch.distributed.distributed_c10d import _get_global_rank
 from deepspeed.utils import logger, log_dist
+from deepspeed.utils.exceptions import DeprecatedException
 
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
@@ -41,10 +42,9 @@ mpu = None
 # Deprecated groups initialize function.
 def initialize(ep_size=1, mpu=None):
     """ Deprecated function. Retained to inform the users."""
-    print(
-        "Error! Please do not use this API as it is deprecated. Instead, pass the desired ep_size to deepspeed.moe.layer.MoE(..,ep_size,..)"
+    raise DeprecatedException(
+        "Please do not use the groups.initialize() API as it is deprecated. Instead, pass the desired ep_size to deepspeed.moe.layer.MoE(..,ep_size,..)"
     )
-    exit(0)
 
 
 def _ensure_divisibility(numerator, denominator):
@@ -282,6 +282,7 @@ def _get_data_parallel_group():
     """Get the data parallel group the caller rank belongs to."""
     assert torch.distributed.is_initialized(), \
         'torch.distributed is not initialized'
+    global mpu
     if mpu is not None:
         return mpu.get_data_parallel_group()
     # Return the clone of torch.distributed world group
@@ -327,6 +328,7 @@ def _get_expert_data_parallel_rank(group_name):
 
 def _get_data_parallel_world_size():
     """Return world size for the data parallel group."""
+    global mpu
     if mpu is not None:
         return mpu.get_data_parallel_world_size()
     return torch.distributed.get_world_size(group=_get_data_parallel_group())
@@ -334,6 +336,7 @@ def _get_data_parallel_world_size():
 
 def _get_model_parallel_world_size():
     """Return world size for the model parallel group."""
+    global mpu
     if mpu is not None:
         return mpu.get_model_parallel_world_size()
     return 1
@@ -341,6 +344,7 @@ def _get_model_parallel_world_size():
 
 def _get_data_parallel_rank():
     """Return my rank for the data parallel group."""
+    global mpu
     if mpu is not None:
         return mpu.get_data_parallel_rank()
     return torch.distributed.get_rank(group=_get_data_parallel_group())

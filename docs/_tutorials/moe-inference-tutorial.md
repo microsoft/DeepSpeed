@@ -33,16 +33,12 @@ import torch.distributed as dist
 world_size = dist.get_world_size()
 expert_parallel_size = min(world_size, args.num_experts)
 
-# AAA: TODO: Remove this and explain how this will be done under the new set_deepspeed_parallelism function of the moe model itself.
-# Initialize the expert-parallel group
-deepspeed.utils.groups.initialize(expert_parallel_size)
-
-# create the model
-model = get_model(model_provider)
+# create the MoE model
+moe_model = get_model(model, ep_size=expert_parallel_size)
 ...
 
 # Initialize the DeepSpeed-Inference engine
-ds_engine = deepspeed.init_inference(model,
+ds_engine = deepspeed.init_inference(moe_model,
                                      mp_size=tensor_slicing_size,
                                      dtype=torch.half,
                                      moe_experts=args.num_experts,
