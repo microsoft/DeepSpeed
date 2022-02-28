@@ -49,5 +49,3 @@ permalink: /posts/
       </div>
     {% endfor %}
   </div>
-
-
