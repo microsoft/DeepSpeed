@@ -24,11 +24,11 @@ permalink: /posts/
 </script>
 
   <div class="btn-group">
-    <button id="All" class="button-71" role="button" onclick="filterUsingCategory('All')">All</button>
+    <button id="All" class="button-71" role="button" onclick="filterUsingCategory('All')">All ({{ posts.size }})</button>
     {% assign tags = site.tags | sort %}
     {% for category in tags %}
       {% assign cat = category | first %}
-      <button id="{{ cat }}" class="button-71" role="button" onclick="filterUsingCategory(this.id)">{{ cat }}</button>
+      <button id="{{ cat }}" class="button-71" role="button" onclick="filterUsingCategory(this.id)">{{ cat }} ({{ site.tags[cat].size }})</button>
     {% endfor %}
     <hr />
   </div>
