@@ -45,6 +45,7 @@ collections:
       - megatron.md
       - mixture-of-experts.md
       - mixture-of-experts-nlg.md
+      - moe-inference.md
       - one-cycle.md
       - onebit-adam.md
       - onebit-lamb.md

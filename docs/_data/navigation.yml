@@ -96,6 +96,8 @@ lnav:
         url: /tutorials/mixture-of-experts/
       - title: 'Mixture-of-Experts for NLG'
         url: /tutorials/mixture-of-experts-nlg/
+      - title: 'Mixture-of-Experts Inference'
+        url: /tutorials/mixture-of-experts-inference/
       - title: 'Mixture-of-Quantization'
         url: /tutorials/MoQ-tutorial/
       - title: 'One-Cycle Schedule'
