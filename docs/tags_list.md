@@ -22,9 +22,15 @@ permalink: /tags/
 <ul>
 {% for post in posts %}
   {% if post.tags contains t %}
-    <li>
-       <span class="date">{{ post.date | date: '%d %b %y' }}</span>:  <a href="{{ post.url }}">{{ post.title }}</a>
-    </li>
+    {% if post.link %}
+      <li>
+        <span class="date">{{ post.date | date: '%d %b %y' }}</span>:  <a href="{{ post.link }}">{{ post.title }}</a>
+      </li>
+    {% else %}
+      <li>
+        <span class="date">{{ post.date | date: '%d %b %y' }}</span>:  <a href="{{ post.url }}">{{ post.title }}</a>
+      </li>
+    {% endif %}
   {% endif %}
 {% endfor %}
 </ul>

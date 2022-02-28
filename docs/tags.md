@@ -39,13 +39,12 @@ permalink: /posts/
       {% assign id = id | plus:1 %}
       <div class="post" id="{{id}}">
         <p class="itemInteriorSection">
-          <a href="{{post.url}}">{{ post.articletitle }}</a>
-            {%- unless post.hidden -%}
-              {% include archive-single.html %}
-              {% if post.image %}
-                <a href="{{ post.link }}"><img src="{{ post.image }}"></a>
-              {% endif %}
-            {%- endunless -%}
+          {%- unless post.hidden -%}
+            {% include archive-single.html %}
+            {% if post.image %}
+              <a href="{{ post.link }}"><img src="{{ post.image }}"></a>
+            {% endif %}
+          {%- endunless -%}
         </p>
       </div>
     {% endfor %}
