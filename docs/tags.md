@@ -21,14 +21,14 @@ permalink: /posts/
           : 'none';
       {% endfor %}
     }
-  </script>
+</script>
 
-  <div>
-    <button id="All" onclick="filterUsingCategory('All')">*Show All Posts*</button>
+  <div class="btn-group">
+    <button id="All" class="button-71" role="button" onclick="filterUsingCategory('All')">All</button>
     {% assign tags = site.tags | sort %}
     {% for category in tags %}
       {% assign cat = category | first %}
-      <button id="{{ cat }}" onclick="filterUsingCategory(this.id)">{{ cat }}</button>
+      <button id="{{ cat }}" class="button-71" role="button" onclick="filterUsingCategory(this.id)">{{ cat }}</button>
     {% endfor %}
     <hr />
   </div>

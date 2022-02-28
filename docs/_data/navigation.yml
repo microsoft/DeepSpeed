@@ -39,7 +39,7 @@ lnav:
         url: /docs/config-json/#communication-options
       - title: 'FP16'
         url: /docs/config-json/#fp16-training-options
-      - title: 'BFOAT16'
+      - title: 'BFLOAT16'
         url: /docs/config-json/#bfloat16-training-options
       - title: 'Gradient Clipping'
         url: /docs/config-json/#gradient-clipping

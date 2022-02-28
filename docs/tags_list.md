@@ -16,7 +16,9 @@ permalink: /tags/
   {% assign t = tag | first %}
   {% assign posts = tag | last %}
 
+<div style="text-transform:capitalize;">
 <h4 id="{{ t | downcase }}">{{ t }}</h4>
+</div>
 <ul>
 {% for post in posts %}
   {% if post.tags contains t %}
