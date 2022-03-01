@@ -1707,8 +1707,13 @@ class DeepSpeedZeroOptimizer(object):
         if self.has_moe_layers:
             self._average_expert_grad_norms(norm_groups)
 
-        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
-        self.unscale_and_clip_grads(single_partition_grad_groups, self._global_grad_norm)
+        scaled_global_grad_norm = get_global_norm(norm_list=norm_groups)
+        self.unscale_and_clip_grads(single_partition_grad_groups,
+                                    scaled_global_grad_norm)
+
+        # Stash unscaled gradient norm
+        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
+
         self.stop_timers([OPTIMIZER_GRADIENTS])
 
         self.start_timers([OPTIMIZER_STEP])
