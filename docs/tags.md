@@ -11,11 +11,10 @@ permalink: /posts/
 
 <script type="text/javascript">
     function filterUsingCategory(selectedCategory) {
-      var id = 0;
       {% for post in posts %}
         var cats = {{ post.tags | jsonify }}
 
-        var postDiv = document.getElementById(++id);
+        var postDiv = document.getElementById("post-{{post.title | slugify}}");
         postDiv.style.display = (selectedCategory == 'All' || cats.includes(selectedCategory))
           ? 'unset'
           : 'none';
@@ -34,10 +33,8 @@ permalink: /posts/
   </div>
 
   <div class="posts-wrapper">
-    {% assign id = 0 %}
     {% for post in posts %}
-      {% assign id = id | plus:1 %}
-      <div class="post" id="{{id}}">
+      <div class="post" id="post-{{post.title | slugify}}">
         <p class="itemInteriorSection">
           {%- unless post.hidden -%}
             {% include archive-single.html %}
