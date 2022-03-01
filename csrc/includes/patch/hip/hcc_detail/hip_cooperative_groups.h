@@ -131,7 +131,7 @@ public:
 /** \brief The multi-grid cooperative group type
  *
  *  \details Represents an inter-device cooperative group type where the
- *           participating threads within the group spans across multple
+ *           participating threads within the group spans across multiple
  *           devices, running the (same) kernel on these devices
  */
 class multi_grid_group : public thread_group {
@@ -242,7 +242,7 @@ __CG_QUALIFIER__ thread_block this_thread_block()
 }
 
 /**
- *  Implemenation of all publicly exposed base class APIs
+ *  Implementation of all publicly exposed base class APIs
  */
 __CG_QUALIFIER__ uint32_t thread_group::thread_rank() const
 {
@@ -315,7 +315,7 @@ __CG_QUALIFIER__ void thread_group::sync() const
 }
 
 /**
- *  Implemenation of publicly exposed `wrapper` APIs on top of basic cooperative
+ *  Implementation of publicly exposed `wrapper` APIs on top of basic cooperative
  *  group type APIs
  */
 template <class CGTy>
