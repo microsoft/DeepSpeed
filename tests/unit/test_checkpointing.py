@@ -7,6 +7,7 @@ from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.utils import groups
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
 from deepspeed.runtime.pipe.topology import *
 
@@ -15,15 +16,16 @@ PipeTopo = PipeDataParallelTopology
 from deepspeed.ops.op_builder import FusedLambBuilder, CPUAdamBuilder
 
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-from util import required_torch_version
+from .util import required_torch_version
 
+import itertools
 import argparse
 import pytest
 import json
 import os
 import numbers
-from common import distributed_test
-from simple_model import *
+from .common import distributed_test
+from .simple_model import *
 
 
 def compare_deepspeed_states(saved_model, loaded_model):
@@ -938,8 +940,11 @@ def test_checkpoint_moe(tmpdir, ep_size):
 
     @distributed_test(world_size=[4])
     def _helper(args):
-        groups.initialize(ep_size=ep_size)
-        models = [SimpleMoEModel(hidden_dim=hidden_dim) for _ in range(2)]
+        models = [
+            SimpleMoEModel(hidden_dim=hidden_dim,
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
+        ]
         optimizers = [torch.optim.AdamW(params=model.parameters()) for model in models]
         checkpoint_correctness_verification(args,
                                             models=models,
@@ -992,38 +997,22 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     hidden_dim = 16
     args = args_from_dict(tmpdir, config_dict)
 
-    def create_moe_param_groups(model):
-        from deepspeed.moe.utils import is_moe_param
-
-        params_with_weight_decay = {'params': [], 'name': 'weight_decay_params'}
-        moe_params_with_weight_decay = {
-            'params': [],
-            'moe': True,
-            'name': 'weight_decay_moe_params'
-        }
-
-        for module_ in model.modules():
-            moe_params_with_weight_decay['params'].extend([
-                p for n,
-                p in list(module_._parameters.items())
-                if p is not None and is_moe_param(p)
-            ])
-            params_with_weight_decay['params'].extend([
-                p for n,
-                p in list(module_._parameters.items())
-                if p is not None and not is_moe_param(p)
-            ])
-
-        return params_with_weight_decay, moe_params_with_weight_decay
+    def create_param_groups(model):
+        # param group must have a random unique name (for now)
+        # TODO: clean-up this requirement, the unique name should not be required here
+        return {'params': [p for p in model.parameters()], 'name': 'random-unique-name'}
 
     @distributed_test(world_size=[4])
     def _helper(args):
-        groups.initialize(ep_size=ep_size)
         models = [
             SimpleMoEModel(hidden_dim=hidden_dim,
-                           num_experts=ep_size) for _ in range(2)
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
         ]
-        params = [create_moe_param_groups(model) for model in models]
+        params = [
+            split_params_into_different_moe_groups_for_optimizer(
+                create_param_groups(model)) for model in models
+        ]
         optimizers = [torch.optim.AdamW(params=param) for param in params]
         checkpoint_correctness_verification(args,
                                             models=models,
@@ -1161,3 +1150,254 @@ def test_non_strict_load_sparse(tmpdir,
     else:
         model_destination = ModelNoEmbedding()
     _test(model_to_save, model_destination)
+
+
+@pytest.mark.parametrize(["elastic_save",
+                          "elastic_load",
+                          "load_optim"],
+                         itertools.product(*[[True,
+                                              False],
+                                             [True,
+                                              False],
+                                             [True,
+                                              False]]))
+def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim):
+    ds_config = {
+        "train_batch_size": 2,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": 2,
+            "elastic_checkpoint": elastic_save
+        }
+    }
+    hidden_dim = 10
+
+    @distributed_test(world_size=[2])
+    def _go():
+        models = [SimpleModel(hidden_dim) for _ in range(2)]
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                              model=models[0],
+                                              model_parameters=models[0].parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+        model.save_checkpoint(tmpdir)
+
+        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                              model=models[1],
+                                              model_parameters=models[1].parameters())
+        model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+
+    _go()
+
+
+@pytest.mark.parametrize(["elastic_save",
+                          "elastic_load",
+                          "load_optim"],
+                         itertools.product(*[[True,
+                                              False],
+                                             [True,
+                                              False],
+                                             [True,
+                                              False]]))
+def test_checkpoint_zero_elastic_dp_change(tmpdir,
+                                           elastic_save,
+                                           elastic_load,
+                                           load_optim):
+    ds_config = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": 2,
+            "elastic_checkpoint": elastic_save
+        }
+    }
+    hidden_dim = 10
+    models = [SimpleModel(hidden_dim) for _ in range(2)]
+
+    @distributed_test(world_size=[4])
+    def _go2(models):
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                              model=models[0],
+                                              model_parameters=models[0].parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+        model.save_checkpoint(tmpdir)
+
+    _go2(models)
+
+    @distributed_test(world_size=[2])
+    def _go1(models):
+        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                              model=models[1],
+                                              model_parameters=models[1].parameters())
+        if load_optim:
+            with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
+                model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+        else:
+            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+
+    _go1(models)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_immediate_save_load(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+        }
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_immediate_save_load(args, model, tmpdir):
+
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.save_checkpoint(tmpdir)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
+
+    _test_immediate_save_load(args, model, tmpdir)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_load_immediate_save(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+        }
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_load_immediate_save(args, model, tmpdir):
+
+        # 1. pretrain a model and save it
+        dtype = torch.half
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=1,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=dtype)
+        for n, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            ds_model.backward(loss)
+            ds_model.step()
+        ds_model.save_checkpoint(tmpdir)
+
+        # 2. load and immediately save a model with a fresh ds engine
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
+        ds_model.save_checkpoint(tmpdir)
+
+    _test_load_immediate_save(args, model, tmpdir)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+            "stage3_gather_fp16_weights_on_model_save": True,
+        },
+        "gradient_accumulation_steps": 2,
+        "train_micro_batch_size_per_gpu": 1,
+        "train_batch_size": 2,
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_save_before_accum_grad_is_done(args, model, tmpdir):
+
+        # This test reproduces a bug where one tries to retrieve a 16bit model before grad_accum
+        # cycle was completed.
+        # So we config grad_accum=2 and step only once and save_16bit_model
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=2,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=torch.half)
+
+        batch = next(iter(data_loader))
+        loss = ds_model(batch[0], batch[1])
+        ds_model.backward(loss)
+        ds_model.step()
+
+        # we stepped only once, and now save 16bit model before gradient_accumulation_steps=2 is complete
+        ds_model.save_16bit_model(tmpdir, "model.pt")
+
+        # let's test just as well that we can save the checkpoint too
+        ds_model.save_checkpoint(tmpdir)
+
+    _test_save_before_accum_grad_is_done(args, model, tmpdir)

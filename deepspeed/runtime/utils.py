@@ -188,9 +188,11 @@ class CheckOverflow(object):
             # In this case, we need to do an all_reduce across
             # the expert_parallel_group, so that if there was
             # an overflow due to expert weights, we detect it
+
+            # Only need to check groups.get_largest_expert_parallel_group()
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group())
         if self.mpu is not None:
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -241,7 +243,7 @@ class CheckOverflow(object):
             # overflows, we detect it here
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups.get_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group())
         if self.zero_reduce_scatter:
             torch.distributed.all_reduce(overflow_gpu,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -371,7 +373,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     # Need to average total_norm across different GPUs due to the presence of moe params
-    pg = groups.get_data_parallel_group()
+    pg = groups._get_data_parallel_group()
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
     scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
@@ -856,3 +858,12 @@ def call_to_str(base, *args, **kwargs):
         name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
     name += ')'
     return name
+
+
+def get_only_unique_item(items):
+    item_set = set(items)
+    if len(item_set) != 1:
+        raise RuntimeError(f"expected there to be only one unique element in {items}")
+    unique_item, = item_set
+
+    return unique_item

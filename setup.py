@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import warnings
 from setuptools import setup, find_packages
+from setuptools.command import egg_info
 import time
 
 torch_available = True
@@ -60,6 +61,7 @@ extras_require = {
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -190,6 +192,7 @@ if sys.platform == "win32":
     # It needs Administrator privilege to create symlinks on Windows.
     create_dir_symlink('..\\..\\csrc', '.\\deepspeed\\ops\\csrc')
     create_dir_symlink('..\\..\\op_builder', '.\\deepspeed\\ops\\op_builder')
+    egg_info.manifest_maker.template = 'MANIFEST_win.in'
 
 # Parse the DeepSpeed version string from version.txt
 version_str = open('version.txt', 'r').read().strip()
@@ -257,7 +260,9 @@ setup(name='deepspeed',
       install_requires=install_requires,
       extras_require=extras_require,
       packages=find_packages(exclude=["docker",
-                                      "third_party"]),
+                                      "third_party",
+                                      "csrc",
+                                      "op_builder"]),
       include_package_data=True,
       scripts=[
           'bin/deepspeed',

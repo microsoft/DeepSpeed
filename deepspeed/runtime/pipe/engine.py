@@ -156,7 +156,7 @@ class PipelineEngine(DeepSpeedEngine):
                         f'TOTAL_PARAMS={total_params} ({total_params/1e6:0.3f}M) '
                         f'UNIQUE_PARAMS={unique_params} ({unique_params/1e6:0.3f}M)')
 
-        #intialize peer-2-peer communication and allreduce groups
+        #initialize peer-2-peer communication and allreduce groups
         if self.is_pipe_parallel:
             p2p.init_process_groups(self.grid)
 
@@ -1179,8 +1179,11 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             A tensor from torch.zeros() allocated on self.device.
         """
-        if "dtype" not in kwargs and self.fp16_enabled():
-            kwargs["dtype"] = torch.half
+        if "dtype" not in kwargs:
+            if self.fp16_enabled():
+                kwargs["dtype"] = torch.half
+            if self.bfloat16_enabled():
+                kwargs["dtype"] = torch.bfloat16
 
         return torch.zeros(shape, device=self.device, **kwargs)
 
