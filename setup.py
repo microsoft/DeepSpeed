@@ -66,6 +66,7 @@ extras_require = {
 
 # Add specific cupy version to both onebit extension variants
 if torch_available and torch.cuda.is_available():
+    cupy = None
     if is_rocm_pytorch:
         rocm_major, rocm_minor = rocm_version
         # XXX cupy support for rocm 5 is not available yet
@@ -73,8 +74,9 @@ if torch_available and torch.cuda.is_available():
             cupy = f"cupy-rocm-{rocm_major}-{rocm_minor}"
     else:
         cupy = f"cupy-cuda{torch.version.cuda.replace('.','')[:3]}"
-    extras_require['1bit'].append(cupy)
-    extras_require['1bit_mpi'].append(cupy)
+    if cupy:
+        extras_require['1bit'].append(cupy)
+        extras_require['1bit_mpi'].append(cupy)
 
 # Make an [all] extra that installs all needed dependencies
 all_extras = set()
