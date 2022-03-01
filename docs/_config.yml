@@ -5,6 +5,7 @@ description: >-
   training easy, efficient, and effective.
 
 locale : "en-US"
+logo: /assets/images/deepspeed-logo-uppercase-bold-white-1.15.svg
 
 repository: microsoft/DeepSpeed
 baseurl: "/" # the subpath of your site, e.g. /blog
@@ -80,14 +81,21 @@ defaults:
       type: posts
     values:
       layout: single-full
-      classes: wide2
+      classes: wide
       author_profile: false
       read_time: false
       comments: false
       share: true
       related: false
-      toc: false
+      toc: true
+      toc_label: "Contents"
       show_date: true
+  - scope:
+      path: ""
+      type: tutorials
+    values:
+      classes: wide
+      layout: single
 
 analytics:
   provider: "google-gtag"

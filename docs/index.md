@@ -2,13 +2,10 @@
 layout: single
 toc: true
 toc_label: "Contents"
+title: "Latest News"
+
 ---
 
-<div align="center">
- <img src="/assets/images/DeepSpeed_light_transparent.svg" width="500px">
-</div>
-
-## Latest News
 * [2022/1/19] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
     * [Mixture of Experts (MoE) for NLG tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/).
     * [Mixture of Experts (MoE) Inference tutorial](https://www.deepspeed.ai/tutorials/moe-inference-tutorial).
