@@ -115,7 +115,7 @@ jobs:
       # Runs a single command using the runners shell
       - name: environment
         run: |
-          rocm-smi
+          rocm-smi --showhw
           which python
           python --version
           which hipcc
