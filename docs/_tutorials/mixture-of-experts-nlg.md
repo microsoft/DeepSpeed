@@ -53,7 +53,7 @@ Regarding training data, we are not able to release our internal data but any pu
 Table 1: Zero-shot evaluation results (last six columns) for different dense and MoE NLG models. All zero-shot evaluation results use the accuracy metric.
 
 ### 2.4. Reducing the model size with MoS
-MoS, standing for Mixture-of-Students, is a staged distillation-based technique for compressing large MoE models. MoS further reduces the model size by 12.5%, leading to up 3.7x model size reduction when combined with PR-MoE over the standard MoE. The reduced model size helps reduce the latecy and cost during inference.  Our [technical report]({{ https://arxiv.org/abs/2201.05596 }}) offers more details about MoS. To train an MoS model, one needs to specify a few additional parameters. We will use PR-MoE as an example:
+MoS, standing for Mixture-of-Students, is a staged distillation-based technique for compressing large MoE models. MoS further reduces the model size by 12.5%, leading to up 3.7x model size reduction when combined with PR-MoE over the standard MoE. The reduced model size helps reduce the latecy and cost during inference. To train an MoS model, one needs to specify a few additional parameters. We will use PR-MoE as an example:
 
 `--mos`: This would enable Mixture-of-Students via knowledge distillation. 
 
@@ -63,6 +63,6 @@ MoS, standing for Mixture-of-Students, is a staged distillation-based technique 
 
 In addition to the new parameters above, we observe that using the teacher PR-MoE during the entire training process may adversely impact the final student model accuracy. In our experiments, we use a staged distillation method by stopping distillation early in the training process (e.g., after 400K steps) and perform optimization only against the standard language modeling loss for the rest of the training. 
 
-We provide example training scripts under [examples/MoE](https://github.com/microsoft/Megatron-DeepSpeed/tree/moe/examples/MoE). Details of our parameter settings can be found in the example training scripts. 
+We provide example training scripts under [examples/MoE](https://github.com/microsoft/Megatron-DeepSpeed/tree/moe/examples/MoE). Details of our parameter settings can be found in the example training scripts. The performance results of MoS can be seen from our [blog post](https://www.microsoft.com/en-us/research/blog/deepspeed-powers-8x-larger-moe-model-training-with-high-performance/) and our [paper](https://arxiv.org/abs/2201.05596).
 
 
