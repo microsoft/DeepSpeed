@@ -269,7 +269,8 @@ def top1gating(logits: Tensor,
 
 
 def top2gating(logits: Tensor,
-               capacity_factor: float) -> Tuple[Tensor,
+               capacity_factor: float,
+               min_capacity: int) -> Tuple[Tensor,
                                                 Tensor,
                                                 Tensor,
                                                 Tensor]:
@@ -418,7 +419,8 @@ class TopKGate(Module):
         else:
             gate_output = top2gating(
                 logits,
-                self.capacity_factor if self.training else self.eval_capacity_factor)
+                self.capacity_factor if self.training else self.eval_capacity_factor,
+                self.min_capacity)
 
         if self.wall_clock_breakdown:
             self.timers('TopKGate').stop()
