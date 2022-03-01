@@ -23,7 +23,7 @@ from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
-
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
@@ -1747,41 +1747,6 @@ class DeepSpeedZeroOptimizer(object):
             start_alignment_factor=self.nccl_start_alignment_factor,
             allgather_bucket_size=self.allgather_bucket_size)
 
-        #        for group_id, partitioned_params in enumerate(self.parallel_partitioned_bit16_groups):
-        #
-        #            # Sequential AllGather Best of both worlds
-        #            dp_world_size = dist.get_world_size(
-        #                group=self.real_dp_process_group[group_id])
-        #            num_shards = max(
-        #                1,
-        #                partitioned_params[partition_id].numel() * dp_world_size //
-        #                self.allgather_bucket_size)
-        #
-        #            shard_size = partitioned_params[partition_id].numel() // num_shards
-        #
-        #            # Enforce nccl/rccl alignment of start location of each shard
-        #            shard_size = shard_size - (shard_size % self.nccl_start_alignment_factor)
-        #
-        #            num_elements = shard_size
-        #
-        #            assert shard_size * num_shards <= partitioned_params[partition_id].numel()
-        #
-        #            for shard_id in range(num_shards):
-        #
-        #                if shard_id == (num_shards - 1):
-        #                    num_elements = partitioned_params[partition_id].numel(
-        #                    ) - shard_id * shard_size
-        #
-        #                shard_list = []
-        #                for dp_id in range(dp_world_size):
-        #                    curr_shard = partitioned_params[dp_id].narrow(
-        #                        0,
-        #                        shard_id * shard_size,
-        #                        num_elements).detach()
-        #                    shard_list.append(curr_shard)
-        #                dist.all_gather(shard_list,
-        #                                shard_list[partition_id],
-        #                                group=self.real_dp_process_group[group_id])
         self.stop_timers([OPTIMIZER_ALLGATHER])
 
         # TODO: we probably don't need this? just to be safe

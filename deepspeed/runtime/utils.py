@@ -944,7 +944,7 @@ def clip_tensors_by_global_norm(input_tensors,
     """Clip list of tensors by global norm.
     Args:
         input_tensors: List of tensors to be clipped
-        global_grad_norm (float, optional): Precomputed norm. Defaults to None.
+        global_norm (float, optional): Precomputed norm. Defaults to None.
         mpu (optional): model parallelism unit. Defaults to None.
         eps (float, optional): epsilon value added to grad norm. Defaults to 1e-6
     Returns:
@@ -953,7 +953,7 @@ def clip_tensors_by_global_norm(input_tensors,
     if global_norm is None:
         global_norm = get_global_norm_of_tensors(input_tensors, mpu=mpu)
 
-    clip_coef = max_norm / (global_grad_norm + eps)
+    clip_coef = max_norm / (global_norm + eps)
 
     if clip_coef < 1:
         for t in input_tensors:

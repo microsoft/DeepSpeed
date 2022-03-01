@@ -807,7 +807,7 @@ class DeepSpeedEngine(Module):
         self.save_non_zero_checkpoint = (
             dp_rank == 0) or self.zero_optimization_partition_weights()
 
-        if self.zero_optimization():
+        if self.zero_optimization() or self.bfloat16_enabled():
             param_rank = torch.distributed.get_rank(
                 group=self.optimizer.dp_process_group)
 
@@ -2370,7 +2370,8 @@ class DeepSpeedEngine(Module):
         self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
-        filename = "zero_pp_rank_{}".format(dp_rank)
+        filename = "bf16_zero_pp_rank_{}".format(
+            dp_rank) if self.bfloat16_enabled() else "zero_pp_rank_{}".format(dp_rank)
         zero_ckpt_name = os.path.join(
             checkpoints_path,
             str(tag),
@@ -2495,7 +2496,8 @@ class DeepSpeedEngine(Module):
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
                                                          load_module_only=load_module_only)
 
-        if self.zero_optimization() and load_path is not None:
+        load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
+        if load_zero_checkpoint and load_path is not None:
             success = self._load_zero_checkpoint(
                 load_dir,
                 tag,
@@ -2567,8 +2569,9 @@ class DeepSpeedEngine(Module):
             else:
                 optim_checkpoint = checkpoint
 
-            if load_optimizer_states and self.optimizer is not None and not self.zero_optimization(
-            ):
+            has_zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled(
+            )
+            if load_optimizer_states and self.optimizer is not None and not has_zero_optimizer_state:
                 if self.fp16_enabled():
                     self.optimizer.load_state_dict(
                         optim_checkpoint['optimizer'],
@@ -2964,13 +2967,13 @@ class DeepSpeedEngine(Module):
         # module_state_dict() and uses this path to save the model. module_state_dict()
         # then instead just returns None.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
-
+        zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
         state = dict(module=self.module_state_dict(),
                      buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
-                     if self.optimizer and not self.zero_optimization() else None,
+                     if self.optimizer and not zero_optimizer_state else None,
                      param_shapes=self._get_zero_param_shapes()
-                     if self.optimizer and self.zero_optimization() else None,
+                     if self.optimizer and zero_optimizer_state else None,
                      lr_scheduler=self.lr_scheduler.state_dict()
                      if self.lr_scheduler is not None else None,
                      sparse_tensor_module_names=self.sparse_tensor_module_names,
@@ -3028,6 +3031,8 @@ class DeepSpeedEngine(Module):
         # if we don't use it, we get parameters ordered incorrectly
         if hasattr(self.optimizer, "round_robin_bit16_groups"):
             bit16_groups = self.optimizer.round_robin_bit16_groups
+        elif self.bfloat16_enabled() and not self.zero_optimization():
+            bit16_groups = self.optimizer.bf16_groups
         else:
             bit16_groups = self.optimizer.bit16_groups if self.zero_optimization_stage(
             ) == 2 else self.optimizer.fp16_groups
@@ -3068,7 +3073,8 @@ class DeepSpeedEngine(Module):
         torch.save(zero_sd, zero_checkpoint_name)
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
-        logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
+        ckpt_type = 'zero' if self.zero_optimization() else 'bfl6_zero'
+        logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
     def _zero3_consolidated_16bit_state_dict(self):
         """

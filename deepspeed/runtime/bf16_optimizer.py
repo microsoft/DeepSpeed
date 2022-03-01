@@ -2,7 +2,9 @@ import torch
 import torch.distributed as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.ops.op_builder import UtilsBuilder
+from packaging import version as pkg_version
 
+from deepspeed.git_version_info import version
 from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      clip_tensors_by_global_norm,
                                      get_grad_norm,
@@ -12,6 +14,13 @@ from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      bwc_tensor_model_parallel_rank,
                                      is_model_parallel_parameter,
                                      see_memory_usage)
+
+from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            PARTITION_COUNT,
+                                            BASE_OPTIMIZER_STATE,
+                                            SINGLE_PARTITION_OF_FP32_GROUPS,
+                                            CLIP_GRAD,
+                                            GROUPS_PADDING)
 
 
 class BF16_Optimizer:
@@ -36,6 +45,10 @@ class BF16_Optimizer:
         self.real_dp_process_group = [
             dp_process_group for i in range(len(self.optimizer.param_groups))
         ]
+        dp_world_size = dist.get_world_size(group=self.dp_process_group)
+        self.partition_count = [
+            dp_world_size for i in range(len(self.optimizer.param_groups))
+        ]
 
         # Load pre-built or JIT compile (un)flatten ops
         util_ops = UtilsBuilder().load()
@@ -58,9 +71,9 @@ class BF16_Optimizer:
         self.fp32_groups_actual_gradients_flat = []
         self.fp32_groups_gradient_flat_partition = []
         self.fp32_groups_has_gradients = []
-        self.step_count = 0
 
-        dp_world_size = dist.get_world_size(group=self.dp_process_group)
+        self.step_count = 0
+        self.groups_padding = []
 
         for i, param_group in enumerate(self.optimizer.param_groups):
             see_memory_usage(f'before initializing group {i}', force=True)
@@ -127,6 +140,15 @@ class BF16_Optimizer:
             # track fp32 gradient updates
             self.fp32_groups_has_gradients.append([False] * len(self.bf16_groups[i]))
 
+            # Record padding required for alignment
+            if partition_id == dist.get_world_size(
+                    group=self.real_dp_process_group[i]) - 1:
+                padding = self.bf16_groups_flat[i].numel() - length_without_padding
+            else:
+                padding = 0
+
+            self.groups_padding.append(padding)
+
             # update optimizer param groups to reference fp32 params partition
             param_group['params'] = [self.fp32_groups_flat_partition[i]]
 
@@ -186,8 +208,8 @@ class BF16_Optimizer:
         if self.clip_grad > 0.:
             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(),
                                         max_norm=self.clip_grad,
-                                        mpu=self.mpu,
-                                        global_grad_norm=all_groups_norm)
+                                        global_norm=all_groups_norm,
+                                        mpu=self.mpu)
 
         self.optimizer.step()
 
@@ -278,18 +300,47 @@ class BF16_Optimizer:
                 param.grad = None
 
     def state_dict(self):
-        # TODO capture all training state for checkpointing
         state_dict = {}
-        state_dict['optimizer_state_dict'] = self.optimizer.state_dict()
-        state_dict['clip_grad'] = self.clip_grad
+        state_dict[CLIP_GRAD] = self.clip_grad
+        state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
+        state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = self.fp32_groups_flat_partition
+        state_dict[GROUPS_PADDING] = self.groups_padding
+        state_dict[PARTITION_COUNT] = self.partition_count
+        state_dict[DS_VERSION] = version
+
         return state_dict
 
-    def load_state_dict(self, state_dict, load_optimizer_states=True):
+    def load_state_dict(self,
+                        state_dict_list,
+                        load_optimizer_states=True,
+                        load_from_fp32_weights=False):
+        dp_rank = dist.get_rank(group=self.dp_process_group)
+        current_rank_sd = state_dict_list[dp_rank]
+
+        ckpt_version = current_rank_sd.get(DS_VERSION, False)
+        assert ckpt_version, f"Empty ds_version in checkpoint, not clear how to proceed"
+        ckpt_version = pkg_version.parse(ckpt_version)
+
+        self.clip_grad = current_rank_sd[CLIP_GRAD]
+
         if load_optimizer_states:
-            self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-        self.clip_grad = state_dict['clip_grad']
+            self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
+
+        if load_from_fp32_weights:
+            for current, saved in zip(self.fp32_groups_flat_partition, current_rank_sd[SINGLE_PARTITION_OF_FP32_GROUPS]):
+                src_tensor = _get_padded_tensor(saved, current.numel())
+                current.data.copy_(src_tensor.data)
 
     @property
     def param_groups(self):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
+
+
+def _get_padded_tensor(src_tensor, size):
+    if src_tensor.numel() >= size:
+        return src_tensor
+    padded_tensor = torch.zeros(size, dtype=src_tensor.dtype, device=src_tensor.device)
+    slice_tensor = torch.narrow(padded_tensor, 0, 0, src_tensor.numel())
+    slice_tensor.data.copy_(src_tensor.data)
+    return padded_tensor
