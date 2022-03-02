@@ -627,7 +627,6 @@ class CUDAOpBuilder(OpBuilder):
         else:
             cuda_major, _ = installed_cuda_version()
             args += [
-                '-O3',
                 '--use_fast_math',
                 '-std=c++17'
                 if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
