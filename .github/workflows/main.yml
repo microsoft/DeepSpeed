@@ -93,6 +93,8 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/transformers
           cd transformers
+          # XXX: remove when https://github.com/huggingface/transformers/pull/15881 is merged
+          git checkout fix-ds-tests
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
