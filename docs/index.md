@@ -167,7 +167,7 @@ Below we provide a brief feature list, see our detailed [feature overview](https
   * Integration with Megatron-LM
 * [Pipeline Parallelism](https://www.deepspeed.ai/tutorials/pipeline/)
   * 3D Parallelism
-* [The Zero Redundancy Optimizer (ZeRO)](https://www.deepspeed.ai/tutorials/zero/)
+* [The Zero Redundancy Optimizer](https://www.deepspeed.ai/tutorials/zero/)
   * Optimizer State and Gradient Partitioning
   * Activation Partitioning
   * Constant Buffer Optimization

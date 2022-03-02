@@ -1,5 +1,5 @@
 ---
-title: "DeepSpeed  Sparse Attention"
+title: "DeepSpeed Sparse Attention"
 tags: training
 ---
 

@@ -94,9 +94,9 @@ lnav:
         url: /tutorials/megatron/
       - title: 'Mixture-of-Experts (MoE)'
         url: /tutorials/mixture-of-experts/
-      - title: 'Mixture-of-Experts for NLG'
+      - title: 'MoE for NLG'
         url: /tutorials/mixture-of-experts-nlg/
-      - title: 'Mixture-of-Experts Inference'
+      - title: 'MoE Inference'
         url: /tutorials/mixture-of-experts-inference/
       - title: 'Mixture-of-Quantization'
         url: /tutorials/MoQ-tutorial/
@@ -116,7 +116,7 @@ lnav:
         url: /tutorials/transformer_kernel/
       - title: 'ZeRO-Offload'
         url: /tutorials/zero-offload/
-      - title: 'ZeRO Redundancy Optimizer (ZeRO)'
+      - title: 'ZeRO'
         url: /tutorials/zero/
   - title: 'Contributing'
     url: /contributing/

@@ -14,6 +14,7 @@ url: "https://www.deepspeed.ai" # the base hostname & protocol for your site, e.
 # Build settings
 remote_theme: "mmistakes/minimal-mistakes@4.19.0"
 minimal_mistakes_skin : "air"
+search: true
 
 plugins:
   - jekyll-feed
@@ -46,7 +47,7 @@ collections:
       - megatron.md
       - mixture-of-experts.md
       - mixture-of-experts-nlg.md
-      - moe-inference.md
+      - mixture-of-experts-inference.md
       - one-cycle.md
       - onebit-adam.md
       - onebit-lamb.md
@@ -81,7 +82,6 @@ defaults:
       type: posts
     values:
       layout: single-full
-      classes: wide
       author_profile: false
       read_time: false
       comments: false
@@ -89,13 +89,15 @@ defaults:
       related: false
       toc: true
       toc_label: "Contents"
+      toc_sticky: true
       show_date: true
   - scope:
       path: ""
       type: tutorials
     values:
-      classes: wide
       layout: single
+      toc_sticky: true
+
 
 analytics:
   provider: "google-gtag"

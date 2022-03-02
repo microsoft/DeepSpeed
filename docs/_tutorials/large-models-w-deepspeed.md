@@ -1,6 +1,6 @@
 ---
 title: "Training your large model with DeepSpeed"
-tags: training
+tags: training large-model
 ---
 
 ## Overview

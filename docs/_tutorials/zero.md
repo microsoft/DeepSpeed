@@ -1,7 +1,7 @@
 ---
-title: "Zero Redundancy Optimizer (ZeRO)"
+title: "Zero Redundancy Optimizer"
 excerpt: ""
-tags: training
+tags: training large-model
 ---
 
 If you have not done so already, we advise that you read the DeepSpeed tutorials on [Getting Started](/getting-started/) and [Megatron-LM GPT-2](/tutorials/megatron/) before stepping through this tutorial.
