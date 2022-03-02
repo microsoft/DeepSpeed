@@ -50,9 +50,9 @@ body {
   .page__inner-wrap {
     float: left;
     margin-top: 1em;
-    margin-left: 0;
-    margin-right: 0;
-    width: 100%;
+    margin-left: 10%;
+    margin-right: 0%;
+    width: 80%;
     clear: both;
 
     .page__content,
@@ -61,7 +61,7 @@ body {
       position: relative;
       float: left;
       margin-left: 0;
-      margin-right: 0;
+      margin-right: 10%;
       width: 100%;
       clear: both;
     }
