@@ -28,6 +28,7 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             BASE_OPTIMIZER_STATE,
+                                            CLIP_GRAD,
                                             ZERO_STAGE)
 
 # Toggle this to true to enable correctness test
@@ -1971,6 +1972,7 @@ class DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
+        state_dict[CLIP_GRAD] = self.clip_grad
 
         if self.elastic_checkpoint:
             state_dict[BASE_OPTIMIZER_STATE] = self._get_base_optimizer_state()
@@ -2125,9 +2127,11 @@ class DeepSpeedZeroOptimizer(object):
         # I think it should actually be ok to reload the optimizer before the model.
         dp_rank = dist.get_rank(group=self.dp_process_group)
         current_rank_sd = state_dict_list[dp_rank]
-        self.loss_scaler = current_rank_sd['loss_scaler']
-        self.dynamic_loss_scale = current_rank_sd['dynamic_loss_scale']
-        self.overflow = current_rank_sd['overflow']
+        self.loss_scaler = current_rank_sd.get('loss_scaler', self.loss_scaler)
+        self.dynamic_loss_scale = current_rank_sd.get('dynamic_loss_scale',
+                                                      self.dynamic_loss_scale)
+        self.overflow = current_rank_sd.get('overflow', self.overflow)
+        self.clip_grad = current_rank_sd[CLIP_GRAD]
 
         ckpt_version = current_rank_sd.get(DS_VERSION, False)
         assert ckpt_version, f"Empty ds_version in checkpoint, not clear how to proceed"

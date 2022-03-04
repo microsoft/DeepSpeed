@@ -41,7 +41,7 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
@@ -2369,20 +2369,32 @@ class DeepSpeedEngine(Module):
     def load_module_state_dict(self, state_dict, strict=True):
         self.module.load_state_dict(state_dict, strict=strict)
 
-    def _get_rank_zero_ckpt_name(self, checkpoints_path, tag, mp_rank, dp_rank):
-        filename = "bf16_zero_pp_rank_{}".format(
-            dp_rank) if self.bfloat16_enabled() else "zero_pp_rank_{}".format(dp_rank)
+    def _get_zero_ckpt_prefix(self, dp_rank, bf16_mode):
+        return f'bf16_zero_pp_rank_{dp_rank}' if bf16_mode else f'zero_pp_rank_{dp_rank}'
+
+    def _get_rank_zero_ckpt_name(self,
+                                 checkpoints_path,
+                                 tag,
+                                 mp_rank,
+                                 dp_rank,
+                                 bf16_mode):
+        file_prefix = self._get_zero_ckpt_prefix(dp_rank, bf16_mode=bf16_mode)
         zero_ckpt_name = os.path.join(
             checkpoints_path,
             str(tag),
-            filename + "_mp_rank_{:02d}".format(mp_rank) + "_optim_states.pt",
+            file_prefix + "_mp_rank_{:02d}".format(mp_rank) + "_optim_states.pt",
         )
         return zero_ckpt_name
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         pp_rank = torch.distributed.get_rank(group=self.optimizer.dp_process_group)
-        return self._get_rank_zero_ckpt_name(checkpoints_path, tag, mp_rank, pp_rank)
+        bf16_mode = self.bfloat16_enabled()
+        return self._get_rank_zero_ckpt_name(checkpoints_path,
+                                             tag,
+                                             mp_rank,
+                                             pp_rank,
+                                             bf16_mode)
 
     def _get_ckpt_name(self, checkpoints_path, tag, mp_placeholder=None):
         if mp_placeholder is not None:
@@ -2670,41 +2682,31 @@ class DeepSpeedEngine(Module):
         )
         return True
 
-    def _get_mp_rank_zero_checkpoint_names(self, load_dir, tag, mp_rank, dp_world_size):
+    def _get_mp_rank_zero_checkpoint_names(self,
+                                           load_dir,
+                                           tag,
+                                           mp_rank,
+                                           dp_world_size,
+                                           bf16_mode):
         zero_ckpt_names = []
         for dp_rank in range(dp_world_size):
             ckpt_name = self._get_rank_zero_ckpt_name(checkpoints_path=load_dir,
                                                       tag=tag,
                                                       mp_rank=mp_rank,
-                                                      dp_rank=dp_rank)
+                                                      dp_rank=dp_rank,
+                                                      bf16_mode=bf16_mode)
             zero_ckpt_names.append(ckpt_name)
 
         return zero_ckpt_names
 
-    def _get_all_zero_checkpoint_names(self,
-                                       load_dir,
-                                       tag,
-                                       mp_world_size,
-                                       dp_world_size):
-        zero_ckpt_names = []
-        for mp_rank in range(mp_world_size):
-            mp_rank_ckpt_names = self._get_mp_rank_zero_checkpoint_names(
-                load_dir=load_dir,
-                tag=tag,
-                mp_rank=mp_rank,
-                dp_world_size=dp_world_size)
-            zero_ckpt_names += mp_rank_ckpt_names
-
-        return zero_ckpt_names
-
-    def _get_all_zero_checkpoints(self, load_dir, tag):
+    def _get_all_zero_checkpoint_names(self, load_dir, tag, bf16_mode):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         zero_ckpt_names = self._get_mp_rank_zero_checkpoint_names(
             load_dir=load_dir,
             tag=tag,
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
-        )
+            bf16_mode=bf16_mode)
         invalid_zero_ckpt_paths = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             if not os.path.exists(ckpt_name):
@@ -2723,6 +2725,9 @@ class DeepSpeedEngine(Module):
             )
             return None
 
+        return zero_ckpt_names
+
+    def _get_all_zero_checkpoint_state_dicts(self, zero_ckpt_names):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
@@ -2739,6 +2744,24 @@ class DeepSpeedEngine(Module):
             f"successfully read {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
         return zero_optimizer_sd
+
+    def _get_all_zero_checkpoints(self, load_dir, tag):
+        for bf16_mode in [self.bfloat16_enabled(), not self.bfloat16_enabled()]:
+            zero_ckpt_names = self._get_all_zero_checkpoint_names(
+                load_dir,
+                tag,
+                bf16_mode)
+            if zero_ckpt_names is not None:
+                # Warn if loading checkpoint of different bit16 type
+                if bf16_mode is not self.bfloat16_enabled():
+                    checkpoint_bit16 = BFLOAT16 if bf16_mode else FP16
+                    engine_bit16 = BFLOAT16 if self.bfloat16_enabled() else FP16
+                    logger.warn(
+                        f'Loading {checkpoint_bit16} zero checkpoints into {engine_bit16} training engine'
+                    )
+                return self._get_all_zero_checkpoint_state_dicts(zero_ckpt_names)
+
+        return None
 
     def _checkpoint_tag_validation(self, tag):
         if self.checkpoint_tag_validation_enabled():

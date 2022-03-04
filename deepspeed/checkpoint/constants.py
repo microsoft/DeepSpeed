@@ -15,7 +15,7 @@ GROUPS_PADDING = 'groups_padding'
 
 PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
-CLIP_GRAD = 'clip_gradient'
+CLIP_GRAD = 'clip_grad'
 
 #########################################
 # Module checkpoint keys
