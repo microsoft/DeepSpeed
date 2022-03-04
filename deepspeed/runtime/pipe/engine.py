@@ -74,6 +74,8 @@ class PipelineEngine(DeepSpeedEngine):
         # We schedule the all-reduces, so disable it in super().backward()
         self.enable_backward_allreduce = False
         self.has_bool_tensors = has_bool_tensors
+        self.eval_return_logits = False
+        self.outputs = None
 
         # used to disable the pipeline all-reduce when used with 1-bit Adam/1-bit LAMB
         self.pipeline_enable_backward_allreduce = True
@@ -190,7 +192,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.is_last_stage():
             self.loss_model = self.module.loss_fn
-
+        
+        self.has_attention_mask = self.module.__class__.__name__ == 'GPT2ModelPipe'
         # Initialize pipeline communicators. Just send a 0.
         if is_even(self.stage_id):
             if not self.is_last_stage():
@@ -219,6 +222,9 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('step_microstep').start()
             self.timers('step_microstep').stop()
 
+    def set_has_attention_mask(self, value):
+        assert isinstance(value, bool)
+        self.has_attention_mask = value
     def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset,
@@ -364,7 +370,7 @@ class PipelineEngine(DeepSpeedEngine):
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
-    def eval_batch(self, data_iter, compute_loss=True, reduce_output='avg'):
+    def eval_batch(self, data_iter, return_logits=False, compute_loss=True, reduce_output='avg'):
         """Evaluate the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
@@ -391,7 +397,7 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             The arithmetic mean of the losses computed this batch.
         """
-
+        self.eval_return_logits = return_logits
         self.module.eval()
 
         # Curriculum learning could change activation shape
@@ -440,7 +446,11 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Reset any buffers that may have been populated during the forward passes.
         #ds_checkpointing.reset()
-
+        self.eval_return_logits = False
+        if return_logits:
+            outputs = self.outputs
+            self.outputs = None
+            return eval_output, outputs
         return eval_output
 
     def set_train_batch_size(self, train_batch_size):
@@ -664,7 +674,8 @@ class PipelineEngine(DeepSpeedEngine):
             else:
                 # Some models just return loss from forward()
                 self.loss = outputs
-
+            if self.eval_return_logits:
+                self.outputs = outputs
             if isinstance(self.loss, torch.Tensor):
                 self.fwd_outputs.append(self.loss.detach())
 
@@ -916,7 +927,7 @@ class PipelineEngine(DeepSpeedEngine):
         # NCCL does not like to send torch.BoolTensor types, so cast the mask to half().
         # We could do char, but with half() we can eventually flatten with other fp16
         # messages (TODO)
-        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
+        if self.has_attention_mask or self.has_bool_tensors:
             outputs = list(outputs)
             outputs[-1] = outputs[-1].half()
             outputs = tuple(outputs)
@@ -935,7 +946,7 @@ class PipelineEngine(DeepSpeedEngine):
                                       f'{type(outputs)}')
 
         # Restore the boolean tensor
-        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
+        if self.has_attention_mask or self.has_bool_tensors:
             outputs = list(outputs)
             outputs[-1] = outputs[-1].bool()
             outputs = tuple(outputs)
@@ -973,7 +984,7 @@ class PipelineEngine(DeepSpeedEngine):
         # a grad that needs to be communicated. We free the buffer immediately
         # after, so no need to restore it. The receiver also has a hack that skips
         # the recv. This is because NCCL does not let us send torch.BoolTensor :-(.
-        if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
+        if self.has_attention_mask or self.has_bool_tensors:
             inputs = list(inputs)
             inputs.pop()
             inputs = tuple(inputs)
@@ -1034,7 +1045,7 @@ class PipelineEngine(DeepSpeedEngine):
 
             # NCCL does not like to send torch.BoolTensor types, so un-cast the
             # attention mask
-            if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
+            if self.has_attention_mask or self.has_bool_tensors:
                 recvd[-1] = recvd[-1].bool()
 
             recvd = tuple(recvd)
