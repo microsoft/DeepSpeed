@@ -11,7 +11,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import groups, logger, log_dist
-from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
+from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 import torch.distributed as dist
 
 
@@ -418,7 +418,7 @@ class FP16_Optimizer(object):
             state_dict['scale_window'] = self.scale_window
         state_dict[OPTIMIZER_STATE_DICT] = self.optimizer.state_dict()
         state_dict['fp32_groups_flat'] = self.fp32_groups_flat
-        state_dict['clip_grad'] = self.clip_grad
+        state_dict[CLIP_GRAD] = self.clip_grad
         return state_dict
 
     # Refresh fp32 master params from fp16 copies
@@ -452,7 +452,7 @@ class FP16_Optimizer(object):
             self.scale_window = state_dict['scale_window']
         if load_optimizer_states:
             self.optimizer.load_state_dict(state_dict[OPTIMIZER_STATE_DICT])
-        self.clip_grad = state_dict['clip_grad']
+        self.clip_grad = state_dict[CLIP_GRAD]
         # At this point, the optimizer's references to the model's fp32 parameters are up to date.
         # The optimizer's hyperparameters and internal buffers are also up to date.
         # However, the fp32 master copies of the model's fp16 params stored by the optimizer are still

@@ -2131,7 +2131,7 @@ class DeepSpeedZeroOptimizer(object):
         self.dynamic_loss_scale = current_rank_sd.get('dynamic_loss_scale',
                                                       self.dynamic_loss_scale)
         self.overflow = current_rank_sd.get('overflow', self.overflow)
-        self.clip_grad = current_rank_sd[CLIP_GRAD]
+        self.clip_grad = current_rank_sd.get(CLIP_GRAD, self.clip_grad)
 
         ckpt_version = current_rank_sd.get(DS_VERSION, False)
         assert ckpt_version, f"Empty ds_version in checkpoint, not clear how to proceed"
