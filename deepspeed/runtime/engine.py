@@ -1235,6 +1235,7 @@ class DeepSpeedEngine(Module):
                     clip_grad=clip_grad,
                     fused_adam_legacy=self.optimizer_legacy_fusion(),
                     timers=timers,
+                    has_moe_layers=self.has_moe_layers,
                 )
             else:
                 log_dist(
@@ -1249,6 +1250,7 @@ class DeepSpeedEngine(Module):
                     mpu=self.mpu,
                     clip_grad=clip_grad,
                     fused_adam_legacy=self.optimizer_legacy_fusion(),
+                    has_moe_layers=self.has_moe_layers,
                 )
         else:
             log_dist("Creating fp16 unfused optimizer with dynamic loss scale",

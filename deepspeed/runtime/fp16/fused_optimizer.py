@@ -269,9 +269,9 @@ class FP16_Optimizer(object):
         self.stop_timers([COMPUTE_NORM])
 
         if self.has_moe_layers:
-            scaled_global_grad_norm = self._get_norm_with_moe_layers(all_groups_norm)
-        else:
-            scaled_global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
+            all_groups_norm = self._get_norm_with_moe_layers(all_groups_norm)
+
+        scaled_global_grad_norm = get_global_norm(norm_list=[all_groups_norm])
 
         # Stash unscaled gradient norm
         self._global_grad_norm = scaled_global_grad_norm / self.cur_scale
@@ -310,10 +310,10 @@ class FP16_Optimizer(object):
         if self.using_pipeline:
             pg = self.deepspeed.mpu.get_data_parallel_group()
         else:
-            pg = groups.get_data_parallel_group()
+            pg = groups._get_data_parallel_group()
         scaled_norm = all_groups_norm * 1.0 / float(dist.get_world_size(group=pg))
         scaled_norm_tensor = torch.tensor(scaled_norm,
-                                          device=self.fp32_groups_flat[i].device,
+                                          device=self.fp32_groups_flat[0].device,
                                           dtype=torch.float)
         dist.all_reduce(scaled_norm_tensor, group=pg)
         all_groups_norm = scaled_norm_tensor.item()
