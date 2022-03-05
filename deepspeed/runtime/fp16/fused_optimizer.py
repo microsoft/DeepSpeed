@@ -305,7 +305,6 @@ class FP16_Optimizer(object):
         return self.overflow
 
     def _get_norm_with_moe_layers(self, all_groups_norm):
-        total_norm = get_global_norm(norm_list=[all_groups_norm])
         #all_groups_norm_old = all_groups_norm
         # Need to allreduce (avg) the norms across different ranks because moe params will not be synced during allreduce
         if self.using_pipeline:
