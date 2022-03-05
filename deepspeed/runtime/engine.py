@@ -3096,7 +3096,7 @@ class DeepSpeedEngine(Module):
         torch.save(zero_sd, zero_checkpoint_name)
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
-        ckpt_type = 'zero' if self.zero_optimization() else 'bfl6_zero'
+        ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
         logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
 
     def _zero3_consolidated_16bit_state_dict(self):
