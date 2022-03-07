@@ -613,15 +613,16 @@ class CUDAOpBuilder(OpBuilder):
         if self.is_rocm_pytorch():
             from torch.utils.hipify import hipify_python
             hipify_python.hipify(
-                                 project_directory=os.getcwd(),
-                                 output_directory=os.getcwd(),
-                                 header_include_dirs=self.include_paths(),
-                                 includes=[os.path.join(os.getcwd(), '*')],
-                                 extra_files=[os.path.abspath(s) for s in self.sources()],
-                                 show_detailed=True,
-                                 is_pytorch_extension=True,
-                                 hipify_extra_files_only=True,
-                                )
+                project_directory=os.getcwd(),
+                output_directory=os.getcwd(),
+                header_include_dirs=self.include_paths(),
+                includes=[os.path.join(os.getcwd(),
+                                       '*')],
+                extra_files=[os.path.abspath(s) for s in self.sources()],
+                show_detailed=True,
+                is_pytorch_extension=True,
+                hipify_extra_files_only=True,
+            )
 
     def cxx_args(self):
         if sys.platform == "win32":
