@@ -1176,7 +1176,7 @@ class DeepSpeedEngine(Module):
             optimizer = ZeroOneAdam(model_parameters, self, **optimizer_parameters)
             if not self.fp16_enabled():
                 logger.warning(
-                    f'Currently the convergence of 1-bit Adam V2 is only verified under FP16'
+                    f'Currently the convergence of 0/1 Adam is only verified under FP16'
                 )
         elif self.optimizer_name() == ONEBIT_LAMB_OPTIMIZER:
             assert not self.zero_optimization(), "1bit-Lamb is not compatible with ZeRO"

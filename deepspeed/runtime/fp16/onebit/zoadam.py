@@ -228,6 +228,11 @@ class ZeroOneAdam(torch.optim.Optimizer):
                                         state['server_error'],
                                         self.deepspeed.local_rank)
                                     exp_avg.mul_(beta1).add_(1 - beta1, grad_onebit)
+                                    if 'exp_avg_mask' in group:
+                                        if grad_onebit.device != group['exp_avg_mask'].device:
+                                            group['exp_avg_mask'] = group['exp_avg_mask'].to(
+                                                device=grad_onebit.device)
+                                        grad_onebit.mul_(group['exp_avg_mask'])
                     else:
                         exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                         state['lrs'] += group['lr']
@@ -241,11 +246,11 @@ class ZeroOneAdam(torch.optim.Optimizer):
                                 state['worker_error'],
                                 state['server_error'],
                                 self.deepspeed.local_rank))
-                    if 'exp_avg_mask' in group:
-                        if comm_buffer.device != group['exp_avg_mask'].device:
-                            group['exp_avg_mask'] = group['exp_avg_mask'].to(
-                                device=comm_buffer.device)
-                        comm_buffer.mul_(group['exp_avg_mask'])
+                        if 'exp_avg_mask' in group:
+                            if comm_buffer.device != group['exp_avg_mask'].device:
+                                group['exp_avg_mask'] = group['exp_avg_mask'].to(
+                                    device=comm_buffer.device)
+                            comm_buffer.mul_(group['exp_avg_mask'])
 
                 if self.initialize:
                     update = exp_avg / (exp_avg_sq.sqrt() + group['eps'])
@@ -267,6 +272,11 @@ class ZeroOneAdam(torch.optim.Optimizer):
                                         state['worker_error'],
                                         state['server_error'],
                                         self.deepspeed.local_rank))
+                                if 'exp_avg_mask' in group:
+                                    if comm_buffer.device != group['exp_avg_mask'].device:
+                                        group['exp_avg_mask'] = group['exp_avg_mask'].to(
+                                            device=comm_buffer.device)
+                                    comm_buffer.mul_(group['exp_avg_mask'])
                             exp_avg.zero_().add_(comm_buffer / state['lrs'], alpha=-1)
                             p.data.add_(comm_buffer / (exp_avg_sq.sqrt() + group['eps']))
                             comm_buffer.zero_()
