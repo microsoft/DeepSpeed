@@ -227,12 +227,14 @@ class ZeroOneAdam(torch.optim.Optimizer):
                                         state['worker_error'],
                                         state['server_error'],
                                         self.deepspeed.local_rank)
-                                    exp_avg.mul_(beta1).add_(1 - beta1, grad_onebit)
                                     if 'exp_avg_mask' in group:
-                                        if grad_onebit.device != group['exp_avg_mask'].device:
-                                            group['exp_avg_mask'] = group['exp_avg_mask'].to(
-                                                device=grad_onebit.device)
+                                        if grad_onebit.device != group[
+                                                'exp_avg_mask'].device:
+                                            group['exp_avg_mask'] = group[
+                                                'exp_avg_mask'].to(
+                                                    device=grad_onebit.device)
                                         grad_onebit.mul_(group['exp_avg_mask'])
+                                    exp_avg.mul_(beta1).add_(1 - beta1, grad_onebit)
                     else:
                         exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                         state['lrs'] += group['lr']
