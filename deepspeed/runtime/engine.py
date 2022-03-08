@@ -415,27 +415,6 @@ class DeepSpeedEngine(Module):
         """
         return self._global_grad_norm
 
-    def set_train_batch_size(self, train_batch_size):
-        """Adjust the global batch size by increasing or decreasing the number of
-        micro-batches (i.e., gradient accumulation steps). The size of each micro-batch
-        (i.e., ``train_micro_batch_size_per_gpu``) is not changed.
-        Args:
-            train_batch_size (int): The new global batch size for training.
-        Raises:
-            ValueError: if ``train_batch_size`` is not divisible by the
-                configured micro-batch size and data parallelism.
-        """
-        if train_batch_size % (self.train_micro_batch_size_per_gpu() *
-                               self.dp_world_size) != 0:
-            #print(f'{train_batch_size=} {self.train_micro_batch_size_per_gpu()=} {self.dp_world_size=}')
-            raise ValueError(
-                f'Train batch size must be divisible by micro-batch data parallelism')
-        new_gas = train_batch_size // (self.train_micro_batch_size_per_gpu() *
-                                       self.dp_world_size)
-        # overwrite config
-        self._config.train_batch_size = train_batch_size
-        self._config.gradient_accumulation_steps = new_gas
-
     def get_global_grad_norm(self) -> float:
         """Return the 2-norm of all gradients. If there is model parallelism,
         the norm will be global.
@@ -2095,8 +2074,8 @@ class DeepSpeedEngine(Module):
         if len(small_bucket) > 0:
             self.allreduce_and_copy(small_bucket, dp_group)
 
-    def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
-        grads = []
+    def _get_gradients_for_reduction(self):
+        non_expert_grads = []
         expert_grads = {}
         if self.has_moe_layers:
             for key in self.expert_data_parallel_group.keys():
@@ -2112,23 +2091,19 @@ class DeepSpeedEngine(Module):
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
                                          device=param.device)
-                if is_moe_param(param):
-                    expert_grads[param.group_name].append(param.grad.data)
-                else:
-                    grads.append(param.grad.data)
-            else:
-                grad_data = param.grad.data
-                if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
-                    if is_moe_param(param):
-                        expert_grads[param.group_name].append(SparseTensor(grad_data))
-                    else:
-                        grads.append(SparseTensor(grad_data))
-                else:
-                    if is_moe_param(param):
-                        expert_grads[param.group_name].append(grad_data)
-                    else:
-                        grads.append(grad_data)
 
+            grad_data = param.grad.data
+            if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
+                grad_data = SparseTensor(grad_data)
+
+            if is_moe_param(param):
+                expert_grads[param.group_name].append(grad_data)
+            else:
+                non_expert_grads.append(grad_data)
+
+        return non_expert_grads, expert_grads
+
+    def _reduce_non_expert_gradients(self, grads, elements_per_buffer):
         split_buckets = split_half_float_double_sparse(grads)
         for _, bucket_tuple in enumerate(split_buckets):
             bucket_type, bucket = bucket_tuple
@@ -2145,21 +2120,29 @@ class DeepSpeedEngine(Module):
                                          dp_group=dp_group,
                                          numel_per_bucket=elements_per_buffer)
 
+    def _reduce_expert_gradients(self, expert_grads, elements_per_buffer):
+        for ep_name, expert_grads_group in expert_grads.items():
+            expert_split_buckets = split_half_float_double_sparse(expert_grads_group)
+            for i, bucket_tuple in enumerate(expert_split_buckets):
+                bucket_type, bucket = bucket_tuple
+                if bucket_type == SparseTensor.type():
+                    self.sparse_allreduce_no_retain(
+                        bucket,
+                        groups._get_expert_data_parallel_group(ep_name))
+                else:
+                    # Separate between diff groups
+                    self.allreduce_no_retain(
+                        bucket,
+                        dp_group=groups._get_expert_data_parallel_group(ep_name),
+                        numel_per_bucket=elements_per_buffer)
+
+    def buffered_allreduce_fallback(self, grads=None, elements_per_buffer=500000000):
+        non_expert_grads, expert_grads = self._get_gradients_for_reduction()
+
+        self._reduce_non_expert_gradients(non_expert_grads, elements_per_buffer)
+
         if self.has_moe_layers:
-            for ep_name, expert_grads_group in expert_grads.items():
-                expert_split_buckets = split_half_float_double_sparse(expert_grads_group)
-                for i, bucket_tuple in enumerate(expert_split_buckets):
-                    bucket_type, bucket = bucket_tuple
-                    if bucket_type == SparseTensor.type():
-                        self.sparse_allreduce_no_retain(
-                            bucket,
-                            groups._get_expert_data_parallel_group(ep_name))
-                    else:
-                        # Separate between diff groups
-                        self.allreduce_no_retain(
-                            bucket,
-                            dp_group=groups._get_expert_data_parallel_group(ep_name),
-                            numel_per_bucket=elements_per_buffer)
+            self._reduce_expert_gradients(expert_grads, elements_per_buffer)
 
     def sparse_allreduce_no_retain(self, bucket, dp_group):
         allreduced_sparses = self.sparse_allreduce_bucket(bucket, dp_group)
@@ -2839,10 +2822,9 @@ class DeepSpeedEngine(Module):
             self.optimizer.state_dict()
             if self.optimizer and not self.zero_optimization() else None
         }
-        torch.save(optimizer_state,
-                   self._get_optimizer_ckpt_name(save_dir,
-                                                 tag,
-                                                 expp_rank))
+        with open(self._get_optimizer_ckpt_name(save_dir, tag, expp_rank), 'wb') as fd:
+            torch.save(optimizer_state, fd)
+            fd.flush()
 
         # get non-moe parameters
         model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
@@ -2872,7 +2854,9 @@ class DeepSpeedEngine(Module):
             }
             state.update(client_state)
             logger.info(f'Saving model checkpoint: {save_path}')
-            torch.save(state, save_path)
+            with open(save_path, 'wb') as fd:
+                torch.save(state, fd)
+                fd.flush()
         self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
@@ -3006,7 +2990,9 @@ class DeepSpeedEngine(Module):
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        ds_config=self.config,
                        ds_version=version)
-        torch.save(zero_sd, zero_checkpoint_name)
+        with open(zero_checkpoint_name, 'wb') as fd:
+            torch.save(zero_sd, fd)
+            fd.flush()
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
         logger.info('zero checkpoint saved {}'.format(zero_checkpoint_name))
