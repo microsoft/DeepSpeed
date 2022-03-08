@@ -239,8 +239,11 @@ class BF16_Optimizer:
             self.update_hp_grads(clear_lp_grads=clear_lp_grads)
 
     @torch.no_grad()
-    def update_hp_grads(self, clear_lp_grads=False):
-        for i, group in enumerate(self.bf16_groups):
+    def update_hp_grads(self, clear_lp_grads=False):       
+        for i, group in enumerate(self.bf16_groups):            
+            #print(f'updating group {i} hp_params')
+            #print(f'{i}th hp tied_grad = {self.fp32_groups_gradients[i][0]} lp = {self.bf16_groups[i][0]}')
+
             for j, lp in enumerate(group):
                 if lp.grad is None:
                     continue
@@ -256,6 +259,8 @@ class BF16_Optimizer:
                 # clear gradients
                 if clear_lp_grads:
                     lp.grad = None
+            
+            #print(f'group {i} lp_hp_grads = {self.bf16_groups[i][0]._hp_grad}')
 
     @torch.no_grad()
     def get_grads_for_reduction(self):

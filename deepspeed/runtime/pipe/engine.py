@@ -242,12 +242,40 @@ class PipelineEngine(DeepSpeedEngine):
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
+        @torch.no_grad()
+        def non_zero_count(t):
+            if t is None:
+                return None
+            else:
+                return t.gt(0).sum()
+        #self.optimizer.update_hp_grads(clear_lp_grads=False)
+        print("----------------------")
         if self.bfloat16_enabled():
             weight_group_list = self.module.get_tied_weights_and_groups()
             for weight, group in weight_group_list:
+                print(f"group size: {dist.get_world_size(group=group)}")
+                print("lp.grad>0 cnt before", non_zero_count(weight.grad))
+                print("hp.grad>0 cnt before", non_zero_count(weight._hp_grad))
+                #weight._hp_grad.add_()
+                assert weight._hp_grad is not None, \
+                    f'high precision param has no gradient...'
                 dist.all_reduce(weight._hp_grad, group=group)
+                #dist.all_reduce(weight.grad, group=group)
+                print("lp.grad>0 cnt after", non_zero_count(weight.grad))
+                print("hp.grad>0 cnt  after", non_zero_count(weight._hp_grad))
         else:
             self.module.allreduce_tied_weight_gradients()
+        print("----------------------")
+        dist.barrier()
+        #die
+
+
+#        if self.bfloat16_enabled():
+#            weight_group_list = self.module.get_tied_weights_and_groups()
+#            for weight, group in weight_group_list:
+#                dist.all_reduce(weight._hp_grad, group=group)
+#        else:
+#            self.module.allreduce_tied_weight_gradients()
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
