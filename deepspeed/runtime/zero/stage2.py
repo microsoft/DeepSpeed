@@ -225,18 +225,18 @@ class FP16_DeepSpeedZeroOptimizer(object):
             self.fp16_groups.append(param_group['params'])
 
             # pad uneven fp16 params
-            padded_fp16_groups = []
-            for p in self.fp16_groups[i]:
-                padded_fp16_groups.append(p)
-                if p.numel() % 2 != 0:
-                    # turn off load balancing grads, isn't supported
-                    self.load_balance_grads = False
-                    pad_tensor = torch.nn.Parameter(
-                        torch.zeros(1,
-                                    device=p.device,
-                                    dtype=p.dtype))
-                    padded_fp16_groups.append(pad_tensor)
-            self.fp16_groups[i] = padded_fp16_groups
+            #padded_fp16_groups = []
+            #for p in self.fp16_groups[i]:
+            #    padded_fp16_groups.append(p)
+            #    if p.numel() % 2 != 0:
+            #        # turn off load balancing grads, isn't supported
+            #        self.load_balance_grads = False
+            #        pad_tensor = torch.nn.Parameter(
+            #            torch.zeros(1,
+            #                        device=p.device,
+            #                        dtype=p.dtype))
+            #        padded_fp16_groups.append(pad_tensor)
+            #self.fp16_groups[i] = padded_fp16_groups
 
             # Record padding required to align group to world size
             if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
