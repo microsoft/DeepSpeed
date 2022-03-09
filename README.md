@@ -14,7 +14,7 @@ Remove until pypi issue is resolved: https://status.python.org/incidents/2jj696s
 -->
 ## Latest News
 * [2022/03/07] [Maximizing Communication Efficiency for Large-scale Training via 0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/)
-* [2022/1/19] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
+* [2022/01/19] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
     * [Mixture of Experts (MoE) for NLG tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/).
     * [Mixture of Experts (MoE) Inference tutorial](https://www.deepspeed.ai/tutorials/moe-inference-tutorial).
 * [2021/11/15] [Autotuning: Automatically discover the optimal DeepSpeed configuration that delivers good training speed](https://www.deepspeed.ai/news/2021/11/15/autotuning.html)
