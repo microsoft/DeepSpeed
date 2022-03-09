@@ -282,10 +282,9 @@ class BF16_Optimizer:
 
     @torch.no_grad()
     def update_lp_params(self):
-        for i, group in enumerate(self.bf16_groups):
+        for i, (bf16_partitions, fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-            for bf16_partitions, fp32_partition in zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition):
-                bf16_partitions[partition_id].data.copy_(fp32_partition.data)
+            bf16_partitions[partition_id].data.copy_(fp32_partition.data)
 
     def clear_hp_grads(self):
         for flat_gradients in self.fp32_groups_gradients_flat:
