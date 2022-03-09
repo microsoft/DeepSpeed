@@ -2092,7 +2092,7 @@ class DeepSpeedEngine(Module):
                                          dtype=param.dtype,
                                          device=param.device)
 
-            grad_data = param.grad.data
+            grad_data = param.grad
             if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
                 grad_data = SparseTensor(grad_data)
 
