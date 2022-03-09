@@ -425,7 +425,6 @@ def test_onebitadam_fp16_pipeline(topo, tmpdir):
     _helper(topo, tmpdir)
 
 
-@pytest.mark.sequential
 def test_zerooneadam_fp16_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -472,7 +471,6 @@ def test_zerooneadam_fp16_basic(tmpdir):
     _test_zerooneadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@pytest.mark.sequential
 def test_zerooneadam_fp32_basic(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -515,7 +513,6 @@ def test_zerooneadam_fp32_basic(tmpdir):
     _test_zerooneadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@pytest.mark.sequential
 def test_zerooneadam_exp_avg_mask(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -580,7 +577,6 @@ def test_zerooneadam_exp_avg_mask(tmpdir):
     _test_zerooneadam_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
 
-@pytest.mark.sequential
 def test_zerooneadam_checkpointing(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -715,7 +711,6 @@ def test_zerooneadam_checkpointing(tmpdir):
                                     hidden_dim=hidden_dim)
 
 
-@pytest.mark.sequential
 def test_zerooneadam_checkpointing_overflow(tmpdir):
     config_dict = {
         "train_batch_size": 2,
@@ -770,7 +765,6 @@ def test_zerooneadam_checkpointing_overflow(tmpdir):
                                              hidden_dim=hidden_dim)
 
 
-@pytest.mark.sequential
 @pytest.mark.parametrize('topo',
                          [
                              PipeTopo(num_pp=1,
