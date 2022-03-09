@@ -102,11 +102,6 @@ class ZeroOneAdam(torch.optim.Optimizer):
         # Empty initializer. Set handle based on the comm backend as follows.
         self.comm_backend_handle = None
 
-        if self.using_pipeline:
-            self.deepspeed.pipeline_enable_backward_allreduce = False
-        else:
-            self.deepspeed.enable_backward_allreduce = False
-
         if self.comm_backend_name == 'nccl':
             TORCH_MAJOR = int(torch.__version__.split('.')[0])
             TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -215,7 +210,6 @@ class ZeroOneAdam(torch.optim.Optimizer):
                 if self.initialize:
                     if self.freeze_key is False:
                         if state['step'] % state['var_interval'] == 0:
-                            dist.all_reduce(grad)
                             grad.mul_(1 / dist.get_world_size())
                             exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                             exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
@@ -294,6 +288,16 @@ class ZeroOneAdam(torch.optim.Optimizer):
                             if state['var_counter'] == self.var_update_scaler:
                                 state['var_counter'] = 0
                                 state['var_interval'] *= 2
+                        if (state['step'] + 1) % state['var_interval'] == 0:
+                            if self.using_pipeline:
+                                self.deepspeed.pipeline_enable_backward_allreduce = True
+                            else:
+                                self.deepspeed.enable_backward_allreduce = True
+                        else:
+                            if self.using_pipeline:
+                                self.deepspeed.pipeline_enable_backward_allreduce = False
+                            else:
+                                self.deepspeed.enable_backward_allreduce = False
                     else:
                         state['local_step_counter'] += 1
                         if state['local_step_counter'] == self.local_step_scaler:
@@ -317,6 +321,10 @@ class ZeroOneAdam(torch.optim.Optimizer):
 
         if self.state[self.param_groups[0]['params'][0]]['step'] > self.var_freeze_step:
             self.freeze_key = True
+            if self.using_pipeline:
+                self.deepspeed.pipeline_enable_backward_allreduce = False
+            else:
+                self.deepspeed.enable_backward_allreduce = False
 
         if self.freeze_key is True and self.reinitial_error_buffer is False:
             # We need to reinitialize the error buffers when local step > 1 since
@@ -345,14 +353,25 @@ class ZeroOneAdam(torch.optim.Optimizer):
                     'param_groups'][i]:
                 state_dict['param_groups'][i].pop('exp_avg_mask')
         super().load_state_dict(state_dict)
-        if self.using_pipeline:
-            self.deepspeed.pipeline_enable_backward_allreduce = False
-        else:
-            self.deepspeed.enable_backward_allreduce = False
         if self.state[self.param_groups[0]['params'][0]]['step'] < self.var_freeze_step:
             self.var_freeze_key = False
+            if (self.state[self.param_groups[0]['params'][0]]['step'] + 1
+                ) % self.state[self.param_groups[0]['params'][0]]['var_interval'] == 0:
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = True
+                else:
+                    self.deepspeed.enable_backward_allreduce = True
+            else:
+                if self.using_pipeline:
+                    self.deepspeed.pipeline_enable_backward_allreduce = False
+                else:
+                    self.deepspeed.enable_backward_allreduce = False
         else:
             self.var_freeze_key = True
+            if self.using_pipeline:
+                self.deepspeed.pipeline_enable_backward_allreduce = False
+            else:
+                self.deepspeed.enable_backward_allreduce = False
         self.reinitial_error_buffer = False
         for group in self.param_groups:
             for p in group['params']:
