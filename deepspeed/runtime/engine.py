@@ -1270,23 +1270,17 @@ class DeepSpeedEngine(Module):
 
     def _configure_bf16_optimizer(self, optimizer):
         clip_grad = self.gradient_clipping()
-        if APEX_INSTALLED:
-            fused_opts = (apex.optimizers.FusedAdam, FusedAdam)
-        else:
-            fused_opts = FusedAdam
-        if isinstance(optimizer, fused_opts):
-            if self.global_rank == 0:
-                logger.info('Creating unfused BF16 optimizer')
-            timers = self.timers if self.wall_clock_breakdown() else None
-            optimizer = BF16_Optimizer(
-                optimizer,
-                mpu=self.mpu,
-                clip_grad=clip_grad,
-                allgather_bucket_size=self.zero_allgather_bucket_size(),
-                dp_process_group=self.data_parallel_group,
-                timers=timers)
-        else:
-            raise NotImplementedError('BF16 requires a fused optimizer for now.')
+
+        if self.global_rank == 0:
+            logger.info('Creating unfused BF16 optimizer')
+        timers = self.timers if self.wall_clock_breakdown() else None
+        optimizer = BF16_Optimizer(
+            optimizer,
+            mpu=self.mpu,
+            clip_grad=clip_grad,
+            allgather_bucket_size=self.zero_allgather_bucket_size(),
+            dp_process_group=self.data_parallel_group,
+            timers=timers)
 
         return optimizer
 
