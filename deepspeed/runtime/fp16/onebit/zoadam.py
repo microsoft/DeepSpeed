@@ -210,7 +210,6 @@ class ZeroOneAdam(torch.optim.Optimizer):
                 if self.initialize:
                     if self.freeze_key is False:
                         if state['step'] % state['var_interval'] == 0:
-                            grad.mul_(1 / dist.get_world_size())
                             exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
                             exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                         else:
