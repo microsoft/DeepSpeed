@@ -109,6 +109,12 @@ class BF16_Optimizer:
                 bf16_dp_partitions[partition_id].clone().float().detach())
             self.fp32_groups_flat_partition[i].requires_grad = True
 
+            # Link bf16 and fp32 params in partition
+            self._link_hp_params(self.bf16_groups[i],
+                                 self.fp32_groups_flat_partition[i],
+                                 partition_id * partition_size,
+                                 partition_size)
+
             num_elem_list = [t.numel() for t in self.bf16_groups[i]]
 
             # create fp32 gradients
@@ -159,6 +165,32 @@ class BF16_Optimizer:
         see_memory_usage('end initialize_optimizer', force=True)
 
         see_memory_usage('end bf16_optimizer', force=True)
+
+    def _link_hp_params(self,
+                        lp_param_list,
+                        flat_hp_partition,
+                        partition_start,
+                        partition_size):
+        current_offset = 0
+        partition_end = partition_start + partition_size
+        for lp_param in lp_param_list:
+            # lp_param does not overlap with partition if either is true
+            # 1) current_offset >= partition_end, i.e belongs to later partition
+            # 2) current_offset + lp_param.numel() < partition_start, i.e., belongs to earlier partition
+            tensor_end = current_offset + lp_param.numel()
+            if (current_offset >= partition_end) or (tensor_end < partition_start):
+                lp_param._hp_param = None
+                continue
+
+            narrow_offset = max(current_offset, partition_start) - partition_start
+            narrow_elem = min(tensor_end,
+                              partition_end) - max(current_offset,
+                                                   partition_start)
+
+            hp_param = flat_hp_partition.narrow(0, narrow_offset, narrow_elem)
+
+            lp_param._hp_param = hp_param
+            current_offset += lp_param.numel()
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
