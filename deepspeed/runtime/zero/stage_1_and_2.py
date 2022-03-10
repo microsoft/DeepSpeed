@@ -503,7 +503,7 @@ class DeepSpeedZeroOptimizer(object):
         return 'moe' in group and group['moe']
 
     def _configure_moe_settings(self):
-        assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        # assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
         assert self.reduce_scatter, "Reduce Scatter in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
 
         assert any([self.is_moe_group(group) for group in self.optimizer.param_groups]), "The model has moe layers, but None of the param groups are marked as MoE. Create a param group with 'moe' key set to True before creating optimizer"
@@ -599,9 +599,13 @@ class DeepSpeedZeroOptimizer(object):
 
         if not self.overlap_comm:
             for i, group in enumerate(self.bit16_groups):
-                for param in group:
-                    if param.grad is not None:
-                        self.reduce_ready_partitions_and_remove_grads(param, i)
+                if self.is_moe_param_group[i]:
+                    assert not self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 1 must be set to False for MoE. Other code paths are not tested with MoE"
+                    assert self.expert_dp_process_group.size() == 1, "Expert data parallelism is not supported. Don't understand what scenarios we need to do this?"
+                else:
+                    for param in group:
+                        if param.grad is not None:
+                            self.reduce_ready_partitions_and_remove_grads(param, i)
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
 
