@@ -594,9 +594,13 @@ class DeepSpeedZeroOptimizer(object):
 
         if not self.overlap_comm:
             for i, group in enumerate(self.bit16_groups):
-                for param in group:
-                    if param.grad is not None:
-                        self.reduce_ready_partitions_and_remove_grads(param, i)
+                if self.is_moe_param_group[i]:
+                    assert not self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 1 must be set to False for MoE. Other code paths are not tested with MoE"
+                    assert self.expert_dp_process_group.size() == 1, "Expert data parallelism is not supported. Don't understand what scenarios we need to do this?"
+                else:
+                    for param in group:
+                        if param.grad is not None:
+                            self.reduce_ready_partitions_and_remove_grads(param, i)
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
 
