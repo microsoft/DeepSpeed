@@ -6,7 +6,7 @@ title: "Maximizing Communication Efficiency for Large-scale Training via 0/1 Ada
 1) The NCCL-based implementation requires PyTorch >= 1.8 (and NCCL >= 2.8.3 when you have 64 or more GPUs). See details below. 2) Although 0/1 Adam is compatible with both FP16 and FP32, currently we only verified the convergence under mixed precision/FP16 training. 3) Currently the MPI-based implementation is not compatible with pipeline parallelism. 4) Frequent checkpoint loading could hurt 0/1 Adam's convergence. See details below.
 {: .notice--warning}
 
-In this tutorial, we introduce DeepSpeed's 0/1 Adam optimizer, which can improve model training speed on communication-constrained clusters, especially for communication-intensive large models by reducing the overall communication volume by up to 9.3x.
+In this tutorial, we introduce DeepSpeed's 0/1 Adam optimizer, which can improve model training speed on communication-constrained clusters, especially for communication-intensive large models. For instance, it is able to reduce the overall communication volume on BERT-large pre-training by up to 24x without affecting the end-to-end model accuracy.
 Compared to the 1-bit Adam optimizer, 0/1 Adam provides a more flexible way of using compressed communication via adaptive variance state freezing. Additionally, it allows the computing nodes to skip communication rounds during training using a technique called 1-bit sync, without compromising the convergence speed.
 We have a [paper](https://arxiv.org/abs/2202.06009) which provides the technical details including algorithm, system implementation, and evaluations.
 
