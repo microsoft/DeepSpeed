@@ -29,7 +29,7 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
-    
+
     int row = blockIdx.x;
     int id = threadIdx.x;
     int gid = id / WARP_SIZE;

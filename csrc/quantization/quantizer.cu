@@ -5,7 +5,7 @@ namespace cg = cooperative_groups;
 
 __global__ void quantize_kernel(__half* vals, int group_size, int num_bits)
 {
-#if __CUDA_ARCH__ >= 700  || defined(__HIP_PLATFORM_HCC__)
+#if __CUDA_ARCH__ >= 700 || defined(__HIP_PLATFORM_HCC__)
 
     cg::thread_block b = cg::this_thread_block();
     cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
