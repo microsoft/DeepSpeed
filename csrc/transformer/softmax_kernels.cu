@@ -156,7 +156,7 @@ __global__ void attn_softmax(__half* vals,
                              int seq_length,
                              int iterations)
 {
-#if __CUDA_ARCH__ >= 700
+#ifdef HALF_PRECISION_AVAILABLE
     __shared__ float partialSum[MAX_WARP_NUM];
 
     int warp_num = blockDim.x >> WARP_SIZE_BITS;
