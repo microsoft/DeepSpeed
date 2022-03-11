@@ -244,7 +244,8 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     # Only create groups if they don't already exist
     # Need to check conditions outside the group creation loop because of the way torch.dist group creation works
     if group_name not in _EXPERT_DATA_PARALLEL_GROUP and group_name not in _EXPERT_PARALLEL_GROUP:
-        expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks()
+        expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks(
+            world_size, model_parallel_size_, expert_parallel_size_)
         for ranks in expert_parallel_groups:
             group = torch.distributed.new_group(ranks)
             if rank in list(ranks):
