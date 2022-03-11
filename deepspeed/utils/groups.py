@@ -195,12 +195,14 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     expert_parallel_groups = []
     expert_data_parallel_groups = []
     for dp_ranks in data_parallel_groups:
+        # partition of expert parallel groups, e.g. [0,2,4,6], [8,10,12,14]
         part_ep_groups = []
         for i in range(0, dp_world_size, expert_parallel_size_):
             part_ep_groups.append(dp_ranks[i:i + expert_parallel_size_])
         expert_parallel_groups.extend(part_ep_groups)
 
-        for expert_dp_ranks in zip(part_ep_groups):
+        # zip part_ep_groups get expert data parallel ranks, e.g [0,8],[2,10],[4,12],[6,14]
+        for expert_dp_ranks in zip(*part_ep_groups):
             expert_data_parallel_groups.append(list(expert_dp_ranks))
 
     return expert_parallel_groups, expert_data_parallel_groups
