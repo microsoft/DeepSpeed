@@ -195,7 +195,7 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     # Generate expert parallel groups
     expert_parallel_groups = []
     for dp_ranks in data_parallel_groups:
-        for i in range(0, dp_group_size, expert_parallel_size_):
+        for i in range(0, dp_world_size, expert_parallel_size_):
             expert_parallel_groups.append(dp_ranks[i:i + expert_parallel_size_])
 
     # Generate expert data parallel groups
