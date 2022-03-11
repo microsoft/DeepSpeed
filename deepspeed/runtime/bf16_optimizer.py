@@ -238,10 +238,11 @@ class BF16_Optimizer:
 
         assert all_groups_norm > 0.
         if self.clip_grad > 0.:
-            clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(),
-                                        max_norm=self.clip_grad,
-                                        global_norm=all_groups_norm,
-                                        mpu=self.mpu)
+            clip_tensors_by_global_norm(
+                input_tensors=self.get_grads_for_norm(for_clipping=True),
+                max_norm=self.clip_grad,
+                global_norm=all_groups_norm,
+                mpu=self.mpu)
 
         self.optimizer.step()
 
@@ -294,13 +295,14 @@ class BF16_Optimizer:
         return self.fp32_groups_gradients_flat
 
     @torch.no_grad()
-    def get_grads_for_norm(self):
+    def get_grads_for_norm(self, for_clipping=False):
         grads = []
         tensor_mp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
         for i, group in enumerate(self.bf16_groups):
             for j, lp in enumerate(group):
-                if hasattr(lp, PIPE_REPLICATED) and lp.ds_pipe_replicated:
-                    continue
+                if not for_clipping:
+                    if hasattr(lp, PIPE_REPLICATED) and lp.ds_pipe_replicated:
+                        continue
 
                 if (tensor_mp_rank > 0) and not is_model_parallel_parameter(lp):
                     continue
