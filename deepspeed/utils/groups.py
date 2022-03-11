@@ -181,11 +181,6 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     dp_world_size = world_size // model_parallel_size_
     _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
-    def chunks(lst, n):
-        """Yield successive n-sized chunks from lst."""
-        for i in range(0, len(lst), n):
-            yield lst[i:i + n]
-
     # Generate data parallel groups
     data_parallel_groups = []
     dp_group_size = model_parallel_size_
