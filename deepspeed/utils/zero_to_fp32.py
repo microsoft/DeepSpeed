@@ -12,6 +12,7 @@ import torch
 import glob
 import math
 import os
+import re
 from collections import OrderedDict
 
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
@@ -32,6 +33,10 @@ debug = 0
 
 # load to cpu
 device = torch.device('cpu')
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
 
 
 def natural_keys(text):
