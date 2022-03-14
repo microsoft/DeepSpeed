@@ -1,4 +1,4 @@
-name: unit-tests-nv-torch12-p40
+name: nv-torch12-p40
 
 on:
   push:
@@ -12,8 +12,7 @@ on:
       - 'docs/**'
 
 jobs:
-  # unit tests running on nvidia gpus
-  nv-torch12-p40:
+  unit-tests:
     runs-on: [self-hosted, nvidia, torch12, p40]
 
     steps:

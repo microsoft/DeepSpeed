@@ -1,4 +1,4 @@
-name: unit-tests-nv-torch18-v100
+name: nv-torch18-v100
 
 on:
   push:
@@ -12,8 +12,7 @@ on:
       - 'docs/**'
 
 jobs:
-  # unit tests running on nvidia gpus
-  nv-torch18-v100:
+  unit-tests:
     runs-on: [self-hosted, nvidia, torch18, v100]
 
     steps:

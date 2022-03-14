@@ -1,4 +1,4 @@
-name: unit-tests-amd
+name: amd
 
 on:
   push:
@@ -12,8 +12,7 @@ on:
       - 'docs/**'
 
 jobs:
-  # unit tests running on amd gpus
-  amd:
+  unit-tests:
     # The type of runner that the job will run on
     runs-on: [self-hosted, amd]
 
