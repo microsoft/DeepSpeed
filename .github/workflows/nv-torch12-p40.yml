@@ -1,4 +1,4 @@
-name: unit-tests
+name: unit-tests-nv-torch12-p40
 
 on:
   push:

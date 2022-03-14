@@ -1,4 +1,4 @@
-name: unit-tests
+name: unit-tests-nv-lightning-v100
 
 on:
   push:
