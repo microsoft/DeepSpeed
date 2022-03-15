@@ -163,7 +163,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage1(object):
         # loop to deal with groups
         for i, param_group in enumerate(self.optimizer.param_groups):
             # push this group to list before modify
-            self.fp16_groups.append(param_group['params'])
+            trainable_parameters = [
+                param for param in param_group['params'] if param.requires_grad
+            ]
+            self.fp16_groups.append(trainable_parameters)
 
             # calculate best max elements per comm based to minimize padding
             self.max_elems_per_comm.append(
