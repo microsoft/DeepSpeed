@@ -9,7 +9,6 @@ import math
 import torch
 import warnings
 import hashlib
-import glob
 import torch.distributed as dist
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
@@ -2370,8 +2369,7 @@ class DeepSpeedEngine(Module):
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
-                        load_module_only=False,
-                        load_ckpt_as_sequential=False):
+                        load_module_only=False):
         """Load training checkpoint
 
         Arguments:
@@ -2415,8 +2413,7 @@ class DeepSpeedEngine(Module):
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
-                                                         load_module_only=load_module_only,
-                                                         load_ckpt_as_sequential=load_ckpt_as_sequential)
+                                                         load_module_only=load_module_only)
 
         if self.zero_optimization() and load_path is not None:
             success = self._load_zero_checkpoint(
@@ -2431,34 +2428,21 @@ class DeepSpeedEngine(Module):
 
         return load_path, client_states
 
-    def _all_ckpt_layer_paths(self, ckpt_dir, mp_rank):
-        """Get all pipeline module layer ckpt files. """
-        layer_ckpt_path = os.path.join(ckpt_dir, f'layer_*-model_{mp_rank:02d}-model_states.pt')
-        ckpt_files = glob.glob(layer_ckpt_path)
-        ckpt_files.sort()
-        return ckpt_files
-
-    def _get_pp_ckpt_layer_num(self, ckpt_path):
-        p = re.compile(r'layer_(\d+)-model')
-        matches = p.findall(ckpt_path)
-        assert len(matches) == 1, "unable to find layer number in checkpoint path: {ckpt_path}"
-        return matches[0]
-
     def _load_checkpoint(self,
                          load_dir,
                          tag,
                          load_module_strict=True,
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True,
-                         load_module_only=False,
-                         load_ckpt_as_sequential=False):
+                         load_module_only=False):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
         sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
 
-        is_pipe_parallel = isinstance(self.module, PipelineModule) or load_ckpt_as_sequential
+        is_pipe_parallel = isinstance(self.module, PipelineModule)
+
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         load_path, checkpoint, _ = sd_loader.load(
             self.mp_world_size, mp_rank, is_pipe_parallel=is_pipe_parallel
@@ -2484,21 +2468,10 @@ class DeepSpeedEngine(Module):
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
 
-        if load_ckpt_as_sequential:
-            pp_ckpt_layer_paths = self._all_ckpt_layer_paths(os.path.join(load_dir, tag), mp_rank=mp_rank)
-            for ckpt_layer_path in pp_ckpt_layer_paths:
-                layer_num = self._get_pp_ckpt_layer_num(ckpt_layer_path)
-                layer_sd = torch.load(ckpt_layer_path)
-                layer_sd_updated = {}
-                for k,v in layer_sd.items():
-                    layer_sd_updated[f"sequential.{int(layer_num)}.{k}"] = v
-                self.module.load_state_dict(layer_sd_updated, strict=False)
+        self.load_module_state_dict(state_dict=checkpoint['module'],
+                                    strict=load_module_strict)
 
-        if not load_ckpt_as_sequential:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=load_module_strict)
-
-            self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
+        self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
         if load_module_only:
             deepspeed_states = ['module']
