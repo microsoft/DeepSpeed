@@ -609,9 +609,16 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
+        print('************************************* ds forward!')
+        input = (input[0].transpose(1,0).contiguous(), input[1])
+
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
+        attn_mask = None
+        if isinstance(input, tuple):
+            attn_mask = input[1]
+            input = input[0]
         input_type = input.dtype
 
         if (self.config.fp16 or self.config.q_int8) \
@@ -619,47 +626,49 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.half()
 
         with torch.no_grad():
-            attention_output = self.attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              layer_past,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b)
+           attention_output = self.attention(input,
+                                             input_mask,
+                                             head_mask,
+                                             layer_past,
+                                             get_present,
+                                             encoder_hidden_states,
+                                             encoder_attention_mask,
+                                             output_attentions,
+                                             self.norm_w,
+                                             self.norm_b)
 
-            if get_present:
-                presents = (attention_output[1], attention_output[2])
-            elif output_attentions:
-                context_output = attention_output[3]
+           if get_present:
+               presents = (attention_output[1], attention_output[2])
+           elif output_attentions:
+               context_output = attention_output[3]
 
-            output = self.mlp(
-                attention_output[0]
-                if self.config.mlp_after_attn else attention_output[-1],
-                input,
-                self.attention.attn_ob)
+           output = self.mlp(
+               attention_output[0]
+               if self.config.mlp_after_attn else attention_output[-1],
+               input,
+               self.attention.attn_ob)
 
-            if not self.config.pre_layer_norm:
-                ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                        inference_cuda_module.layer_norm_fp32
-                output = ds_layernorm(output,
-                                      self.norm_w,
-                                      self.norm_b,
-                                      self.config.epsilon)
+           if not self.config.pre_layer_norm:
+               ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                       inference_cuda_module.layer_norm_fp32
+               output = ds_layernorm(output,
+                                     self.norm_w,
+                                     self.norm_b,
+                                     self.config.epsilon)
 
-            if not self.config.mlp_after_attn:
-                inference_cuda_module.gptj_residual_add(output,
-                                                        input,
-                                                        attention_output[0],
-                                                        self.mlp.output_b)
+           if not self.config.mlp_after_attn:
+               inference_cuda_module.gptj_residual_add(output,
+                                                       input,
+                                                       attention_output[0],
+                                                       self.mlp.output_b)
 
-            output = output.to(input_type)
+           output = output.to(input_type)
+        # output = input
+        output = output.transpose(1,0).contiguous()
         if get_present:
             output = (output, presents)
 
         if self.config.return_tuple:
-            return output if type(output) is tuple else (output, )
+            return output if type(output) is tuple else (output, attn_mask)
         else:
             return output

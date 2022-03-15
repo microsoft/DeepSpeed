@@ -201,8 +201,8 @@ class MegatronLayerPolicy(DSPolicy):
         if MegatronLayerPolicy._orig_layer_class is None:
             try:
                 import megatron
-                from megatron.model.transformer import ParallelTransformerLayer
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
+                from megatron.model.transformer import ParallelTransformerLayerPipe
+                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayerPipe
             except ImportError:
                 MegatronLayerPolicy._orig_layer_class = None
 
@@ -275,7 +275,7 @@ class HFGPT2LayerPolicy(DSPolicy):
         try:
             import transformers
             HFGPT2LayerPolicy._orig_layer_class = transformers.models.gpt2.modeling_gpt2.GPT2Block
-        except ImportError:
+        except:
             HFGPT2LayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
