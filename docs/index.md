@@ -2,13 +2,10 @@
 layout: single
 toc: true
 toc_label: "Contents"
+title: "Latest News"
+
 ---
 
-<div align="center">
- <img src="/assets/images/DeepSpeed_light_transparent.svg" width="500px">
-</div>
-
-## Latest News
 * [2022/03/07] [Maximizing Communication Efficiency for Large-scale Training via 0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/)
 * [2022/01/19] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
     * [Mixture of Experts (MoE) for NLG tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/).
@@ -171,7 +168,7 @@ Below we provide a brief feature list, see our detailed [feature overview](https
   * Integration with Megatron-LM
 * [Pipeline Parallelism](https://www.deepspeed.ai/tutorials/pipeline/)
   * 3D Parallelism
-* [The Zero Redundancy Optimizer (ZeRO)](https://www.deepspeed.ai/tutorials/zero/)
+* [The Zero Redundancy Optimizer](https://www.deepspeed.ai/tutorials/zero/)
   * Optimizer State and Gradient Partitioning
   * Activation Partitioning
   * Constant Buffer Optimization
