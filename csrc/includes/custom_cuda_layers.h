@@ -301,3 +301,25 @@ void launch_fuse_transpose_bias_kernel(const T* inp,
 
 void launch_param_update(const float* input, __half* output, int size, cudaStream_t stream);
 void launch_param_update_half(const float* input, __half* output, int size, cudaStream_t stream);
+
+
+template <typename T>
+void quantize_kernel1(int8_t* vals_int,
+                     const T* vals,
+                     T* min_max,
+                     float* q_scale_d,
+                     int groups,
+                     int total_count,
+                     int num_bits,
+                     cudaStream_t stream);
+
+
+template <typename T>
+void quantize_kernel(int8_t* vals_int,
+                     const T* vals,
+                     T* min_max,
+                     float* q_scale_d,
+                     int groups,
+                     int total_count,
+                     int num_bits,
+                     cudaStream_t stream);
