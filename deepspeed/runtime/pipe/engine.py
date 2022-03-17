@@ -242,12 +242,10 @@ class PipelineEngine(DeepSpeedEngine):
         if self.zero_optimization_partition_gradients():
             self.optimizer.overlapping_partition_gradients_reduce_epilogue()
 
-        if self.bfloat16_enabled():
-            weight_group_list = self.module.get_tied_weights_and_groups()
-            for weight, group in weight_group_list:
-                dist.all_reduce(weight._hp_grad, group=group)
-        else:
-            self.module.allreduce_tied_weight_gradients()
+        weight_group_list = self.module.get_tied_weights_and_groups()
+        for weight, group in weight_group_list:
+            grad = weight._hp_grad if self.bfloat16_enabled() else weight.grad
+            dist.all_reduce(grad, group=group)
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
