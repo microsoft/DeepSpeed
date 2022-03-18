@@ -270,7 +270,10 @@ class DeepSpeedZeroOptimizer(object):
 
             # push this group to list before modify
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
-            self.bit16_groups.append(param_group['params'])
+            trainable_parameters = [
+                param for param in param_group['params'] if param.requires_grad
+            ]
+            self.bit16_groups.append(trainable_parameters)
 
             # Record padding required to align group to world size
             if partition_id == dist.get_world_size(
@@ -1249,7 +1252,8 @@ class DeepSpeedZeroOptimizer(object):
                     elif self.contiguous_gradients:
                         self.copy_grads_in_partition(param)
                 else:  # zero stage 1 - partition only optimizer state
-                    if self.contiguous_gradients:
+                    if self.contiguous_gradients and self.is_param_in_current_partition[
+                            param_id]:
                         self.copy_grads_in_partition(param)
 
         self.grads_in_ipg_bucket = []
@@ -2090,9 +2094,9 @@ class DeepSpeedZeroOptimizer(object):
 
     def get_ep_ranks(self, rank=0, group_name=None):
         from deepspeed.utils import groups
-        expert_parallel_size_ = groups.get_expert_parallel_world_size(group_name)
-        world_size = groups.get_data_parallel_world_size()
-        rank = groups.get_expert_parallel_rank(group_name)
+        expert_parallel_size_ = groups._get_expert_parallel_world_size(group_name)
+        world_size = groups._get_data_parallel_world_size()
+        rank = groups._get_expert_parallel_rank(group_name)
         ranks = range(rank, world_size, expert_parallel_size_)
         return list(ranks)
 
