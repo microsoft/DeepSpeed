@@ -72,6 +72,7 @@ def test_moe(tmpdir, ep_size, use_residual):
               use_residual=use_residual)
 
 
+@pytest.mark.sequential
 @pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])
 def test_pr_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
