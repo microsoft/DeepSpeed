@@ -9,7 +9,8 @@ from torch._six import inf
 from packaging import version as pkg_version
 
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, get_global_norm, see_memory_usage, is_model_parallel_parameter
+from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, \
+    get_global_norm, see_memory_usage, is_model_parallel_parameter, torch_max_memory_reserved
 from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
@@ -171,6 +172,11 @@ class DeepSpeedZeroOptimizer(object):
 
         #data parallel size for non-experts
         dp_size = dist.get_world_size(group=self.dp_process_group)
+
+        self.total_model_parameters = 0
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            self.total_model_parameters += sum([param.numel() for param in param_group['params']])
+        self.print_rank_0(f"Total model parameters: {self.total_model_parameters}")
 
         #For MoE models this maybe different for different param group
         #It will be modified during MoE setup later in the init
@@ -1767,6 +1773,7 @@ class DeepSpeedZeroOptimizer(object):
             shard_size = shard_size - (shard_size % self.nccl_start_alignment_factor)
 
             num_elements = shard_size
+            self.print_rank_0(f"Effective ABS={num_elements}")
 
             assert shard_size * num_shards <= partitioned_params[partition_id].numel()
 
@@ -1795,7 +1802,45 @@ class DeepSpeedZeroOptimizer(object):
         self.log_timers(timer_names)
         see_memory_usage('After zero_optimizer step')
 
+        self._maximize_bucket_sizes()
         return
+
+    def _maximize_bucket_sizes(self):
+        #Max_CA {round(torch_max_memory_reserved() / (1024 * 1024 * 1024))} GB "
+        # self.total_model_parameters
+        # self.allgather_bucket_size
+        # self.reduce_bucket_size
+
+        # GPU memory has stabalized as we've now finished our first step
+        # Increase our bucket sizes to use up the remaining memory above the max cached allocation observed
+        max_cache_allocated = torch_max_memory_reserved()
+        max_gpu_memory = None
+        for i in range(torch.cuda.device_count()):
+            gpu_memory = torch.cuda.get_device_properties(i).total_memory
+            max_gpu_memory = gpu_memory if max_gpu_memory is None else min(gpu_memory, max_gpu_memory)
+        
+        if self.dtype == torch.float:
+            bytes_per_elem = 4
+        elif self.dtype == torch.float16:
+            bytes_per_elem = 2
+        elif self.dtype == torch.bfloat16:
+            bytes_per_elem = 2
+        else:
+            raise ValueError(f"unknown dtype {self.dtype}")
+        
+        dp_world_size = dist.get_world_size(group=self.real_dp_process_group[0])
+        spare_memory = round((max_gpu_memory - max_cache_allocated) * 0.98)
+
+        curr_bucket_memory = bytes_per_elem * (self.allgather_bucket_size + self.reduce_bucket_size)
+        proposed_bucket_size = (spare_memory + curr_bucket_memory) // bytes_per_elem // 2
+        proposed_bucket_size = min(proposed_bucket_size, self.total_model_parameters)
+
+        if self.reduce_bucket_size != proposed_bucket_size or self.allgather_bucket_size != proposed_bucket_size:
+            self.print_rank_0(f"spare_memory={spare_memory}, current_bucket_memory={curr_bucket_memory}")
+            self.print_rank_0(f"[allgather|reduce]_bucket_size={self.allgather_bucket_size} -> {proposed_bucket_size}")
+            self.reduce_bucket_size = proposed_bucket_size
+            self.allgather_bucket_size = proposed_bucket_size
+
 
     def _average_expert_grad_norms(self, norm_groups):
         for i, norm in enumerate(norm_groups):
