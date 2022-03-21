@@ -350,7 +350,7 @@ class PartitionedParameterCoordinator:
                     params_to_fetch))
             while self.__param_queue and len(discarded_from_prefetch_queue) < len(
                     params_not_already_fetched):
-                param_in_trace = self.__param_queue.popleft()
+                param_in_trace = self.__param_queue.pop()
                 self.__most_recent_step_id_param_fetched_for[
                     param_in_trace.param] = param_in_trace.step_id_last_used_at
                 discarded_from_prefetch_queue.add(param_in_trace.param)
