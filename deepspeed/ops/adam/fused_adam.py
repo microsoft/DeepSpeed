@@ -109,6 +109,9 @@ class FusedAdam(torch.optim.Optimizer):
             bias_correction = 1 if group['bias_correction'] else 0
             beta1, beta2 = group['betas']
 
+            if 'step' not in group:
+                group['step'] = 0
+
             # create lists for multi-tensor apply
             g_16, p_16, m_16, v_16 = [], [], [], []
             g_32, p_32, m_32, v_32 = [], [], [], []
@@ -124,8 +127,10 @@ class FusedAdam(torch.optim.Optimizer):
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
-                    # DeepSpeed processes each subgroup a time, so we need to keep tracking step for each tensor separately
-                    state['step'] = 0
+                    # DeepSpeed ZeRO 3 processes each subgroup a time, so we need to keep tracking step count for each tensor separately.
+                    # While this is not an issue for ZeRO 1 & 2, since they apply a single optimizatin step to the whole param group at the same time.
+                    # In order to keep backward compatibility for the exisiting checkpoints, we use group['state'] to initialize state['step'] if it exists.
+                    state['step'] = group.get('step', 0)
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
@@ -144,8 +149,9 @@ class FusedAdam(torch.optim.Optimizer):
                 else:
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
 
+            state['step'] += 1
+
             if (len(g_16) > 0):
-                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_16,
@@ -161,7 +167,6 @@ class FusedAdam(torch.optim.Optimizer):
                                      bias_correction,
                                      group['weight_decay'])
             if (len(g_32) > 0):
-                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_32,
