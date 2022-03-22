@@ -276,7 +276,7 @@ class PartitionedParameterCoordinator:
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=self.__step_id))
 
-    def reset_step(self) -> None:
+    def reset_step(self, global_step_id=0) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
         if self.__inflight_param_registry:
             raise RuntimeError(
@@ -293,7 +293,11 @@ class PartitionedParameterCoordinator:
 
             self.__submodule_order = tuple(self.__submodule_order)  # freeze
             self.__param_order = tuple(self.__param_order)  # freeze
-            self.trace_complete = True
+            #print(f"self.__param_order = {[param.param.ds_id for param in self.__param_order]}")
+            self.__submodule_order = []
+            self.__param_order = []
+            if global_step_id > 3:
+                self.trace_complete = True
             print_rank_0(f"completed trace: {[m.id for m in self.__submodule_order]}",
                          force=True)
 
@@ -401,7 +405,9 @@ class PartitionedParameterCoordinator:
 
             if self.__prefetch_nvme:
                 self.__prefetch_nvme_param_partitions()
-
+        #self.trace_complete = False
+        #self.__submodule_order = []
+        #self.__param_order = []
         self.__step_id += 1
 
     @instrument_w_nvtx
@@ -644,6 +650,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.offload_param_pin_memory = False
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
+        self.global_step_id = 0
 
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -1403,7 +1410,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         def _end_of_forward_hook(module, *args):
 
             if not torch._C.is_grad_enabled():
-                self.param_coordinator.reset_step()
+                self.param_coordinator.reset_step(self.global_step_id)
 
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
@@ -2704,6 +2711,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                     "that all ranks flush their caches at the same time",
                     alloc_retries - self.__n_caching_allocator_flushes)
             self.__n_caching_allocator_flushes = alloc_retries
+        self.global_step_id += 1
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
         # Dump gradient norms for debugging
