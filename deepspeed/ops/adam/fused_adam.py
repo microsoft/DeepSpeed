@@ -149,9 +149,8 @@ class FusedAdam(torch.optim.Optimizer):
                 else:
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
 
-            state['step'] += 1
-
             if (len(g_16) > 0):
+                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_16,
@@ -167,6 +166,7 @@ class FusedAdam(torch.optim.Optimizer):
                                      bias_correction,
                                      group['weight_decay'])
             if (len(g_32) > 0):
+                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_32,
