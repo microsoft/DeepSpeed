@@ -89,7 +89,7 @@ def iter_params(module: Module, recurse=False) -> Iterable[Parameter]:
 
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
-    if isinstance(outputs, [tuple, list]):
+    if isinstance(outputs, (tuple, list)):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_to_tensors_only(module,
