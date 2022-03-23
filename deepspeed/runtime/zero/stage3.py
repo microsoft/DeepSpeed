@@ -110,7 +110,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
-        logging.warning(f"A module is returning an unknown type ({type(outputs)}) at fwd")
+        logging.warning(f"A module is returning an unknown type ({type(outputs)}) at forward, backward will be skipped for any tensors embedded in this structure.")
         return outputs
 
 
