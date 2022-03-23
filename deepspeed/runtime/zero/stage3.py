@@ -87,6 +87,11 @@ def iter_params(module: Module, recurse=False) -> Iterable[Parameter]:
     return map(lambda pair: pair[1], get_all_parameters(module, recurse))
 
 
+def is_builtin_type(obj):
+    # https://stackoverflow.com/a/17795199
+    return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
+
+
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
     if isinstance(outputs, (tuple, list)):
@@ -110,7 +115,8 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
-        logging.warning(f"A module is returning an unknown type ({type(outputs)}) at forward, backward will be skipped for any tensors embedded in this structure.")
+        if not is_builtin_type(outputs):
+            logger.warning(f"A module is returning an unknown type ({type(outputs)}) at forward, backward will be skipped for any tensors embedded in this structure.")
         return outputs
 
 

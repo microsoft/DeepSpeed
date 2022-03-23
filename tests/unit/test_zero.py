@@ -1253,7 +1253,7 @@ def test_z3_dict_fwd(return_type):
             x = self.l1(x)
             loss = self.cel(x, y)
             if return_type == dict:
-                val = {'a': x, 'loss': loss}
+                val = {'a': x, 'loss': loss, 'b': 1, 'c': None}
             elif return_type == list:
                 val = [x, loss]
             elif return_type == tuple:
