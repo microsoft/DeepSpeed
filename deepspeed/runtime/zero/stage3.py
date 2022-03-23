@@ -253,7 +253,9 @@ class PartitionedParameterCoordinator:
                 "attempted to record trace when trace was already complete")
 
         self.__submodule_order.append(sub_module)
+        #print("TRACING START")
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
+            #print(param)
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=self.__step_id))
@@ -350,7 +352,7 @@ class PartitionedParameterCoordinator:
                     params_to_fetch))
             while self.__param_queue and len(discarded_from_prefetch_queue) < len(
                     params_not_already_fetched):
-                param_in_trace = self.__param_queue.pop()
+                param_in_trace = self.__param_queue.popleft()
                 self.__most_recent_step_id_param_fetched_for[
                     param_in_trace.param] = param_in_trace.step_id_last_used_at
                 discarded_from_prefetch_queue.add(param_in_trace.param)
@@ -382,6 +384,11 @@ class PartitionedParameterCoordinator:
             if self.__prefetch_nvme:
                 self.__prefetch_nvme_param_partitions()
 
+        # Temporary fix, resets trace after 0th step
+        if self.__step_id < 1:
+            self.trace_complete = False
+            self.__submodule_order = []
+            self.__param_order = []
         self.__step_id += 1
 
     @instrument_w_nvtx
