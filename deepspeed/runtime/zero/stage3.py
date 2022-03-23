@@ -99,6 +99,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
             touched_outputs.append(touched_output)
         return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
     elif isinstance(outputs, dict):
+        #XXX: iterate over dict values looking for tensors
         raise NotImplementedError("output type of dict not supported")
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
