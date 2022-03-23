@@ -105,7 +105,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
     elif isinstance(outputs, dict):
         touched_outputs = {}
-        for key,output in outputs.items():
+        for key, output in outputs.items():
             touched_output = _apply_to_tensors_only(module,
                                                     functional,
                                                     backward_function,
@@ -116,7 +116,9 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
-            logger.warning(f"A module is returning an unknown type ({type(outputs)}) at forward, backward will be skipped for any tensors embedded in this structure.")
+            logger.warning(
+                f"A module is returning an unknown type ({type(outputs)}) at forward, backward will be skipped for any tensors embedded in this structure."
+            )
         return outputs
 
 

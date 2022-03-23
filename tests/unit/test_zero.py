@@ -1243,6 +1243,7 @@ def test_z3_dict_fwd(return_type):
         }
     }
     hidden_dim = 10
+
     class MyModel(torch.nn.Module):
         def __init__(self, hidden_dim):
             super(MyModel, self).__init__()
@@ -1283,4 +1284,5 @@ def test_z3_dict_fwd(return_type):
                 loss = loss[1]
             model.backward(loss)
             model.step()
+
     _go(hidden_dim)
