@@ -253,9 +253,7 @@ class PartitionedParameterCoordinator:
                 "attempted to record trace when trace was already complete")
 
         self.__submodule_order.append(sub_module)
-        #print("TRACING START")
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
-            #print(param)
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=self.__step_id))
