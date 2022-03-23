@@ -89,7 +89,7 @@ def iter_params(module: Module, recurse=False) -> Iterable[Parameter]:
 
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
-    if type(outputs) is tuple:
+    if isinstance(outputs, [tuple, list]):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_to_tensors_only(module,
@@ -97,7 +97,9 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     backward_function,
                                                     output)
             touched_outputs.append(touched_output)
-        return tuple(touched_outputs)
+        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
+    elif isinstance(outputs, dict):
+        raise NotImplementedError("output type of dict not supported")
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
