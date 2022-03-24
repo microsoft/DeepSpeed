@@ -304,8 +304,8 @@ class BF16_Optimizer:
                     if hasattr(lp, PIPE_REPLICATED) and lp.ds_pipe_replicated:
                         continue
 
-                if (tensor_mp_rank > 0) and not is_model_parallel_parameter(lp):
-                    continue
+                    if not (tensor_mp_rank == 0 or is_model_parallel_parameter(p)):
+                        continue
 
                 if not self.fp32_groups_has_gradients[i][j]:
                     continue
