@@ -110,6 +110,7 @@ class BF16_Optimizer:
             self.fp32_groups_flat_partition[i].requires_grad = True
 
             # Link bf16 and fp32 params in partition
+            # TODO: Make this configurable
             self._link_hp_params(self.bf16_groups[i],
                                  self.fp32_groups_flat_partition[i],
                                  partition_id * partition_size,
@@ -166,31 +167,128 @@ class BF16_Optimizer:
 
         see_memory_usage('end bf16_optimizer', force=True)
 
+    def _init_lp_to_hp_mapping(self, lp_param_list, partition_start, partition_size):
+        current_offset = 0
+        param_and_offset_list = []
+        partition_end = partition_start + partition_size
+        for lp_param in lp_param_list:
+            lp_param._hp_mapping = None
+            # lp_param overlaps with partition if both are true
+            # 1) current_offset < partition_end,
+            # 2) current_offset + lp_param.numel() >= partition_start
+            lp_param_end = current_offset + lp_param.numel()
+            if current_offset < partition_end and lp_param_end >= partition_start:
+                param_and_offset_list.append((lp_param, current_offset))
+            current_offset += lp_param.numel()
+
+        return param_and_offset_list,
+
+
+#    def _link_hp_params_0(self,
+#                        lp_param_list,
+#                        flat_hp_partition,
+#                        partition_start,
+#                        partition_size):
+#
+#        from dataclasses import dataclass
+#        @dataclass
+#        class fragment_address:
+#            numel: int
+#            start: int
+#            end: int
+#
+#        current_offset = 0
+#        partition_end = partition_start + partition_size
+#        for lp_param in lp_param_list:
+#            # lp_param does not overlap with partition if either is true
+#            # 1) current_offset >= partition_end, i.e belongs to later partition
+#            # 2) current_offset + lp_param.numel() < partition_start, i.e., belongs to earlier partition
+#            lp_param_end = current_offset + lp_param.numel()
+#            if (current_offset >= partition_end) or (lp_param_end < partition_start):
+#                lp_param._hp_param = None
+#                continue
+#
+#            lp_fragment_start = max(current_offset, partition_start)
+#            lp_fragment_end = min(lp_param_end, partition_end)
+#            lp_fragment_elem = lp_fragment_end - lp_fragment_start
+#
+#            hp_fragment_start = lp_fragment_start - partition_start
+#            hp_frag_address = fragment_address(
+#                numel=lp_fragment_elem,
+#                start=hp_fragment_start,
+#                end=lp_fragment_end
+#            )
+#            lp_param._hp_frag_address = hp_frag_address
+#            lp_param._hp_fragment = flat_hp_partition.narrow(0, hp_narrow_offset, lp_fragment_elem)
+#
+#            if current_offset >= partition_start:
+#                lp_param._lp_frag_start = 0
+#            else:
+#                lp_param._hp_copy_offset = partition_start - current_offset
+#
+#            lp_param._lp_frag_address = fragment_address(
+#                numel=lp_fragment_elem,
+#                start=
+#            )
+#            current_offset += lp_param.numel()
+
     def _link_hp_params(self,
                         lp_param_list,
                         flat_hp_partition,
                         partition_start,
                         partition_size):
-        current_offset = 0
-        partition_end = partition_start + partition_size
-        for lp_param in lp_param_list:
-            # lp_param does not overlap with partition if either is true
-            # 1) current_offset >= partition_end, i.e belongs to later partition
-            # 2) current_offset + lp_param.numel() < partition_start, i.e., belongs to earlier partition
-            tensor_end = current_offset + lp_param.numel()
-            if (current_offset >= partition_end) or (tensor_end < partition_start):
-                lp_param._hp_param = None
-                continue
 
-            narrow_offset = max(current_offset, partition_start) - partition_start
-            narrow_elem = min(tensor_end,
-                              partition_end) - max(current_offset,
-                                                   partition_start)
+        local_lp_param_and_offset = self._init_lp_to_hp_mapping(
+            lp_param_list,
+            partition_start,
+            partition_size)
 
-            hp_param = flat_hp_partition.narrow(0, narrow_offset, narrow_elem)
+        from dataclasses import dataclass
 
-            lp_param._hp_param = hp_param
-            current_offset += lp_param.numel()
+        @dataclass
+        class fragment_address:
+            numel: int
+            start: int
+
+        @dataclass
+        class tensor_fragment:
+            lp_fragment: torch.Tensor
+            lp_fragment_address: fragment_address
+            hp_fragment: torch.Tensor
+            hp_fragment_address: fragment_address
+
+            def update_hp(self):
+                self.hp_fragment.data.copy_(self.lp_fragment.data)
+
+            def update_lp(self):
+                self.lp_fragment.data.copy_(self.hp_fragment.data)
+
+        hp_end = partition_start + partition_size
+        for lp_param, lp_start in local_lp_param_and_offset:
+            lp_end = lp_param.numel() + lp_start
+            hp_start = partition_start
+
+            fragment_start = max(lp_start, hp_start)
+            fragment_end = min(lp_end, hp_end)
+            assert fragment_start < fragment_end, \
+                f'fragment start {fragment_start} should be < fragment_end {fragment_end}'
+
+            fragment_numel = fragment_end - fragment_start
+            hp_frag_address = fragment_address(start=fragment_start - hp_start,
+                                               numel=fragment_numel)
+            hp_fragment_tensor = flat_hp_partition.narrow(0,
+                                                          hp_frag_address.start,
+                                                          hp_frag_address.numel)
+
+            lp_frag_address = fragment_address(start=fragment_start - lp_start,
+                                               numel=fragment_numel)
+            lp_fragment_tensor = lp_param.flatten().narrow(0,
+                                                           lp_frag_address.start,
+                                                           lp_frag_address.numel)
+            lp_param._hp_mapping = tensor_fragment(lp_fragment=lp_fragment_tensor,
+                                                   lp_fragment_address=lp_frag_address,
+                                                   hp_fragment=hp_fragment_tensor,
+                                                   hp_fragment_address=hp_frag_address)
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -387,3 +485,86 @@ def _get_padded_tensor(src_tensor, size):
     slice_tensor = torch.narrow(padded_tensor, 0, 0, src_tensor.numel())
     slice_tensor.data.copy_(src_tensor.data)
     return padded_tensor
+
+
+'''
+Logic for lp_param to hp_param mapping
+
+lp      lp0 lp1 lp2         lp3  lp4            <-------  indices/names
+lp      [  ][  ][          ][   ][         ]    <-------- tensors
+flat_lp [                                  ]     <-------- flat lp params
+flat_hp            [                 ]   <------------------ flat hp partition on current rank
+full_hp [                                        ] <------- full flat hp params
+
+
+lp2
+ full numel = 16
+ lp_frag
+   numel = 12
+   frag_start = 3
+   frag_end  = 15
+ hp_frag
+    numel = 12
+    frag_start = 0
+    frag_end = 11
+
+ hp_frag.copy_(lp_frag)
+
+
+lp3:
+  full numel = 4
+  lp_frag
+     numel = 4
+     start = 0
+     end = 3
+  hp_frag
+     numel = 4
+     start = 12
+     end = 15
+
+
+lp4:
+   full numel = 12
+   lp_frag
+     numel = 4
+     start = 0
+     end = 3
+  hp_frag
+     numel = 4
+     start = 16
+     end = 19
+
+
+
+Visual depiction of above
+lp              {         }
+flat_lp [                                ]
+flat_hp            (                 )
+
+
+flat_lp [       {  (      }          )   ]
+                lx  hx   ly          hy
+                    ly-hx
+
+
+lp                             {       }
+flat_lp [                                ]
+flat_hp            (                 )
+
+
+flat_lp [          (            {     ) }  ]
+                   hx           lx   hy ly
+                                   hy-lx
+
+lp                        {   }
+flat_lp [                                ]
+flat_hp            (                 )
+
+
+flat_lp [          (       {   }      )   ]
+                   hx      lx  ly    hy
+                             ly-lx
+
+lp -> (lx, hy)
+flat_hp -> (hx, hy)
+'''
