@@ -583,6 +583,7 @@ class PipelineModule(nn.Module):
                 continue
 
             # get all checkpoint files for the layer.
+            # import pdb;pdb.set_trace()
             model_ckpt_list = self.ckpt_layer_path_list(load_dir, idx)
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()

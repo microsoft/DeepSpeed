@@ -27,6 +27,7 @@ class InferenceEngine(Module):
                  model,
                  triangular_masking=True,
                  mp_size=1,
+                 training_mp_size=1,
                  ep_size=1,
                  mpu=None,
                  ep_group=None,

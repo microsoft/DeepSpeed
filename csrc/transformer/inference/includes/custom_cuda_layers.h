@@ -77,6 +77,7 @@ void launch_residual_layer_norm(T* norm,
                                 int batch_size,
                                 int hidden_dim,
                                 bool preLN,
+                                bool mlp_after_attn,
                                 cudaStream_t stream);
 template <typename T>
 void launch_dequantize(T* output,
@@ -93,8 +94,10 @@ void launch_gptj_residual_add(T* input,
                               T* output,
                               T* attn,
                               T* bias,
+                              T* attn_bias,
                               int batch,
                               int head_size,
+                              int mp_size,
                               cudaStream_t stream);
 template <typename T>
 void launch_apply_rotary_pos_emb(T* mixed_query,
@@ -105,6 +108,8 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned offset,
                                  unsigned num_heads,
                                  unsigned batch,
+                                 bool rotate_half,
+                                 bool rotate_every_two,
                                  cudaStream_t stream);
 
 template <typename T>

@@ -192,7 +192,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.is_last_stage():
             self.loss_model = self.module.loss_fn
-        
+
         self.has_attention_mask = self.module.__class__.__name__ == 'GPT2ModelPipe'
         # Initialize pipeline communicators. Just send a 0.
         if is_even(self.stage_id):
@@ -225,6 +225,7 @@ class PipelineEngine(DeepSpeedEngine):
     def set_has_attention_mask(self, value):
         assert isinstance(value, bool)
         self.has_attention_mask = value
+
     def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset,
@@ -370,7 +371,11 @@ class PipelineEngine(DeepSpeedEngine):
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
-    def eval_batch(self, data_iter, return_logits=False, compute_loss=True, reduce_output='avg'):
+    def eval_batch(self,
+                   data_iter,
+                   return_logits=False,
+                   compute_loss=True,
+                   reduce_output='avg'):
         """Evaluate the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
@@ -1309,6 +1314,10 @@ class PipelineEngine(DeepSpeedEngine):
             state_dict (str, None): unused
             strict (bool, optional): Strict state loading. Defaults to True.
         """
+        print(
+            f"**************** calling load form PIPE Engine {state_dict} **********************"
+        )
+
         if (state_dict is not None) and (not isinstance(state_dict, str)):
             super().load_module_state_dict(state_dict, strict)
             return

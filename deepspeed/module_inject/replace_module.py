@@ -129,6 +129,7 @@ def replace_transformer_layer(orig_layer_impl,
                               hidden_size=-1,
                               num_attention_heads=-1,
                               mp_size=1,
+                              training_mp_size=1,
                               mp_group=None,
                               ep_group=None,
                               expert_mp_group=None,
@@ -203,7 +204,7 @@ def replace_transformer_layer(orig_layer_impl,
             num_experts = child.mlp.num_experts
             moe = True
 
-        attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
+        attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
         if not moe or moe_type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:
@@ -263,6 +264,8 @@ def replace_transformer_layer(orig_layer_impl,
                     global_experts=num_experts,
                     mlp_type=moe_type)
             else:
+                rotary_dim = config.rotary_dim if hasattr(config, 'rotary_dim') else child.attention.rotary_ndims \
+                                            if hasattr(child.attention,'rotary_ndims') else -1
                 transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                     hidden_size=hidden_size,
                     heads=num_attention_heads,
@@ -270,7 +273,7 @@ def replace_transformer_layer(orig_layer_impl,
                         config,
                         'layer_norm_eps') else (config.layer_norm_epsilon if hasattr(
                             config,
-                            'layer_norm_epsilon') else 1e-12),
+                            'layer_norm_epsilon') else 1.0e-5),
                     fp16=fp16,
                     pre_layer_norm=preln,
                     mp_size=mp_size,
@@ -282,9 +285,9 @@ def replace_transformer_layer(orig_layer_impl,
                                                 'attention_layers') else False),
                     window_size=(config.window_size if hasattr(config,
                                                                'window_size') else 1),
-                    rotary_dim=(config.rotary_dim if hasattr(config,
-                                                             'rotary_dim') else -1),
-                    mlp_after_attn=(policy_cls is not HFGPTJLayerPolicy))
+                    rotary_dim=rotary_dim,
+                    mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
+                    training_mp_size=training_mp_size)
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -352,6 +355,42 @@ def replace_transformer_layer(orig_layer_impl,
             if attn_linear_layer:
                 qkvw.data = transpose(qkvw.data)
                 dense_w.data = transpose(dense_w.data)
+
+            if megatron_v2:
+                new_module.config.rotate_half = True
+
+                def _transpose(x):
+                    num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
+                    attention_head_size = x.shape[-1] // num_attention_heads_per_partition
+                    new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
+                                                   attention_head_size)
+                    x_1 = x.view(*new_x_shape)
+                    (q,
+                     k,
+                     v) = torch.split(x_1,
+                                      (x_1.shape[-1] // 3),
+                                      dim=(x_1.dim() - 1))
+                    if len(q.shape) > 2:
+                        return torch.cat((q.reshape(q.shape[0],
+                                                    -1),
+                                          k.reshape(q.shape[0],
+                                                    -1),
+                                          v.reshape(q.shape[0],
+                                                    -1)),
+                                         dim=-1).reshape(x.shape)
+                    else:
+                        return torch.cat((q.reshape(-1),
+                                          k.reshape(-1),
+                                          v.reshape(-1)),
+                                         dim=-1).reshape(x.shape)
+
+                qkvw = torch.nn.Parameter(_transpose(qkvw).contiguous())
+                qkvb = torch.nn.Parameter(_transpose(qkvb).contiguous())
+
+            dense_b = dense_b * (transformer_config.training_mp_size /
+                                 transformer_config.mp_size)
+            _4hh_b = _4hh_b * (transformer_config.training_mp_size /
+                               transformer_config.mp_size)
 
             if mlp_linear_layer:
                 _h4h_w = [transpose(moe_w1.data)

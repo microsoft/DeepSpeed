@@ -67,8 +67,11 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  local_attention=False,
                  window_size=256,
                  rotary_dim=-1,
+                 rotate_half=False,
+                 rotate_every_two=True,
                  return_tuple=True,
-                 mlp_after_attn=True):
+                 mlp_after_attn=True,
+                 training_mp_size=1):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -87,9 +90,12 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.local_attention = local_attention
         self.window_size = window_size
         self.rotary_dim = rotary_dim
+        self.rotate_half = rotate_half
+        self.rotate_every_two = rotate_every_two
         self.return_tuple = return_tuple
         self.mlp_after_attn = mlp_after_attn
         self.specialized_mode = False
+        self.training_mp_size = training_mp_size
 
     @classmethod
     def from_dict(cls, json_object):
@@ -131,11 +137,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                 q_groups,
                 merge_count,
                 qkv_merging):
-
-        #while len(input_mask.shape) < 4:
-        #    input_mask = input_mask.unsqueeze(0)
-        input_mask = torch.empty(1, device='cuda')
-
         def _transpose_for_scores(x, key=False, reshape=False):
             attention_head_size = x.shape[-1] // num_attention_heads_per_partition
             new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
@@ -195,7 +196,9 @@ class DeepSpeedSelfAttentionFunction(Function):
                     key_layer,
                     config.rotary_dim,
                     0 if layer_past is None else layer_past[0].shape[-2],
-                    num_attention_heads_per_partition)
+                    num_attention_heads_per_partition,
+                    config.rotate_half,
+                    config.rotate_every_two)
 
             if layer_past is not None:
                 past_key, past_value = layer_past
@@ -207,7 +210,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                                              value_layer),
                                             dim=-2)
             presents = (key_layer, value_layer)
-
             if unfused_mode:
                 mixed_query = _transpose_for_scores(mixed_query, False, True)
                 key_layer = _transpose_for_scores(
@@ -274,6 +276,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None))
+
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0], input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
 
@@ -289,7 +292,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                     (q_groups * (3 if qkv_merging else 1) * (2**merge_count)))
 
             else:
-                #import pdb;pdb.set_trace()
                 qkv_out = inference_cuda_module.qkv_gemm_int8(
                     input,
                     attn_qkvw,
@@ -312,8 +314,8 @@ class DeepSpeedSelfAttentionFunction(Function):
             output, key_layer, value_layer, context_layer = selfAttention_int8()
         else:
             output, key_layer, value_layer, context_layer, inp_norm = selfAttention_fp()
-
-        if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
+        if self.mlp_after_attn and mp_group is not None and dist.get_world_size(
+                group=mp_group) > 1:
             dist.all_reduce(output, group=mp_group)
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
@@ -409,6 +411,7 @@ class DeepSpeedMLPFunction(Function):
     def forward(ctx,
                 input,
                 residual,
+                residual_norm,
                 bias,
                 inter_w,
                 inter_b,
@@ -446,7 +449,7 @@ class DeepSpeedMLPFunction(Function):
                                                               (merge_count))
         else:
             if attn_nw is None:
-                output = fused_gemm_gelu(input,
+                output = fused_gemm_gelu(residual_norm,
                                          inter_w,
                                          inter_b,
                                          output_w,
@@ -454,23 +457,27 @@ class DeepSpeedMLPFunction(Function):
                                          config.pre_layer_norm,
                                          False)
             else:
-                (intermediate,
-                 residual_add) = mlp_gemm_func(input,
-                                               residual,
-                                               bias,
-                                               inter_w,
-                                               inter_b,
-                                               attn_nw,
-                                               attn_nb,
-                                               config.epsilon,
-                                               config.pre_layer_norm)
+                intermediate = mlp_gemm_func(input,
+                                             residual,
+                                             bias,
+                                             inter_w,
+                                             inter_b,
+                                             attn_nw,
+                                             attn_nb,
+                                             config.epsilon,
+                                             config.pre_layer_norm,
+                                             config.mlp_after_attn)
                 output = vector_matmul_func(intermediate, output_w, False)
 
+        inference_cuda_module.residual_add(output,
+                                           residual,
+                                           input,
+                                           output_b,
+                                           bias,
+                                           config.mp_size,
+                                           config.mlp_after_attn)
         if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
             dist.all_reduce(output, group=mp_group)
-
-        if attn_nw is not None:
-            output = bias_residual_func(output, residual_add, output_b)
 
         return output
 
@@ -519,9 +526,10 @@ class DeepSpeedMLP(nn.Module):
         self.bias_residual_func = inference_cuda_module.bias_residual_fp16 if config.fp16 or config.q_int8 else \
                                     inference_cuda_module.bias_residual_fp32
 
-    def forward(self, input, residual, bias):
+    def forward(self, input, residual, residual_norm, bias):
         return DeepSpeedMLPFunction.apply(input,
                                           residual,
+                                          residual_norm,
                                           bias,
                                           self.inter_w,
                                           self.inter_b,
@@ -594,6 +602,7 @@ class DeepSpeedTransformerInference(nn.Module):
 
         self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
+        self.layer_past = None
 
     def forward(self,
                 input,
@@ -609,11 +618,9 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 output_attentions=False):
-        print('************************************* ds forward!')
-        input = (input[0].transpose(1,0).contiguous(), input[1])
-
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
+        layer_past = layer_past if layer_past is not None else self.layer_past
 
         attn_mask = None
         if isinstance(input, tuple):
@@ -626,45 +633,32 @@ class DeepSpeedTransformerInference(nn.Module):
             input = input.half()
 
         with torch.no_grad():
-           attention_output = self.attention(input,
-                                             input_mask,
-                                             head_mask,
-                                             layer_past,
-                                             get_present,
-                                             encoder_hidden_states,
-                                             encoder_attention_mask,
-                                             output_attentions,
-                                             self.norm_w,
-                                             self.norm_b)
+            attention_output, key, value, context_outputtn_ctx, inp_norm = \
+                                     self.attention(input,
+                                              input_mask,
+                                              head_mask,
+                                              layer_past,
+                                              get_present,
+                                              encoder_hidden_states,
+                                              encoder_attention_mask,
+                                              output_attentions,
+                                              self.norm_w,
+                                              self.norm_b)
+            presents = (key, value)
+            self.layer_past = presents
 
-           if get_present:
-               presents = (attention_output[1], attention_output[2])
-           elif output_attentions:
-               context_output = attention_output[3]
+            output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
-           output = self.mlp(
-               attention_output[0]
-               if self.config.mlp_after_attn else attention_output[-1],
-               input,
-               self.attention.attn_ob)
+            if not self.config.pre_layer_norm:
+                ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
+                                        inference_cuda_module.layer_norm_fp32
+                output = ds_layernorm(output,
+                                      self.norm_w,
+                                      self.norm_b,
+                                      self.config.epsilon)
 
-           if not self.config.pre_layer_norm:
-               ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
-                                       inference_cuda_module.layer_norm_fp32
-               output = ds_layernorm(output,
-                                     self.norm_w,
-                                     self.norm_b,
-                                     self.config.epsilon)
+            output = output.to(input_type)
 
-           if not self.config.mlp_after_attn:
-               inference_cuda_module.gptj_residual_add(output,
-                                                       input,
-                                                       attention_output[0],
-                                                       self.mlp.output_b)
-
-           output = output.to(input_type)
-        # output = input
-        output = output.transpose(1,0).contiguous()
         if get_present:
             output = (output, presents)
 

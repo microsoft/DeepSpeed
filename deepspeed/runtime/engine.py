@@ -718,7 +718,7 @@ class DeepSpeedEngine(Module):
         return self._config.loss_scale
 
     def gradient_accumulation_steps(self):
-        return self._config.gradient_accumulation_steps
+        return 1  #self._config.gradient_accumulation_steps
 
     @property
     def communication_data_type(self):
@@ -2407,7 +2407,6 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
-
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
                                                          load_module_strict=load_module_strict,
