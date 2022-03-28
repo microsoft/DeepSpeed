@@ -109,13 +109,6 @@ class BF16_Optimizer:
                 bf16_dp_partitions[partition_id].clone().float().detach())
             self.fp32_groups_flat_partition[i].requires_grad = True
 
-            # Link bf16 and fp32 params in partition
-            # TODO: Make this configurable
-            self._link_hp_params(self.bf16_groups[i],
-                                 self.fp32_groups_flat_partition[i],
-                                 partition_id * partition_size,
-                                 partition_size)
-
             num_elem_list = [t.numel() for t in self.bf16_groups[i]]
 
             # create fp32 gradients
@@ -165,7 +158,22 @@ class BF16_Optimizer:
         self.initialize_optimizer_states()
         see_memory_usage('end initialize_optimizer', force=True)
 
+        # Need optimizer states initialized before linking lp to optimizer state
+        self._link_all_hp_params()
+
         see_memory_usage('end bf16_optimizer', force=True)
+
+    def _link_all_hp_params(self):
+        dp_world_size = dist.get_world_size(group=self.dp_process_group)
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            # Link bf16 and fp32 params in partition
+            # TODO: Make this configurable
+            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+            partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
+            self._link_hp_params(self.bf16_groups[i],
+                                 self.fp32_groups_flat_partition[i],
+                                 partition_id * partition_size,
+                                 partition_size)
 
     def _init_lp_to_hp_mapping(self, lp_param_list, partition_start, partition_size):
         current_offset = 0
@@ -177,11 +185,11 @@ class BF16_Optimizer:
             # 1) current_offset < partition_end,
             # 2) current_offset + lp_param.numel() >= partition_start
             lp_param_end = current_offset + lp_param.numel()
-            if current_offset < partition_end and lp_param_end >= partition_start:
+            if current_offset < partition_end and lp_param_end > partition_start:
                 param_and_offset_list.append((lp_param, current_offset))
             current_offset += lp_param.numel()
 
-        return param_and_offset_list,
+        return param_and_offset_list
 
 
 #    def _link_hp_params_0(self,
@@ -237,7 +245,6 @@ class BF16_Optimizer:
                         flat_hp_partition,
                         partition_start,
                         partition_size):
-
         local_lp_param_and_offset = self._init_lp_to_hp_mapping(
             lp_param_list,
             partition_start,
@@ -256,12 +263,19 @@ class BF16_Optimizer:
             lp_fragment_address: fragment_address
             hp_fragment: torch.Tensor
             hp_fragment_address: fragment_address
+            optim_fragment: {}
 
             def update_hp(self):
                 self.hp_fragment.data.copy_(self.lp_fragment.data)
 
             def update_lp(self):
                 self.lp_fragment.data.copy_(self.hp_fragment.data)
+
+            def get_optim_state(self, key):
+                if key in self.optim_fragment:
+                    return self.optim_fragment[key]
+                else:
+                    raise ValueError(f'{key} not found in optimizer state fragment')
 
         hp_end = partition_start + partition_size
         for lp_param, lp_start in local_lp_param_and_offset:
@@ -270,6 +284,9 @@ class BF16_Optimizer:
 
             fragment_start = max(lp_start, hp_start)
             fragment_end = min(lp_end, hp_end)
+            print(
+                f'{self.dp_rank=} {lp_start=} {lp_end-lp_start=} {hp_start=} {hp_end-hp_start=} {fragment_start=} {fragment_end-fragment_start=}'
+            )
             assert fragment_start < fragment_end, \
                 f'fragment start {fragment_start} should be < fragment_end {fragment_end}'
 
@@ -280,15 +297,26 @@ class BF16_Optimizer:
                                                           hp_frag_address.start,
                                                           hp_frag_address.numel)
 
+            optim_fragment = {
+                key: value.narrow(0,
+                                  hp_frag_address.start,
+                                  hp_frag_address.numel)
+                for key,
+                value in self.optimizer.state[flat_hp_partition].items()
+                if torch.is_tensor(value)
+            }
+
             lp_frag_address = fragment_address(start=fragment_start - lp_start,
                                                numel=fragment_numel)
             lp_fragment_tensor = lp_param.flatten().narrow(0,
                                                            lp_frag_address.start,
                                                            lp_frag_address.numel)
+
             lp_param._hp_mapping = tensor_fragment(lp_fragment=lp_fragment_tensor,
                                                    lp_fragment_address=lp_frag_address,
                                                    hp_fragment=hp_fragment_tensor,
-                                                   hp_fragment_address=hp_frag_address)
+                                                   hp_fragment_address=hp_frag_address,
+                                                   optim_fragment=optim_fragment)
 
     def initialize_optimizer_states(self):
         """Take an optimizer step with zero-valued gradients to allocate internal
@@ -402,7 +430,7 @@ class BF16_Optimizer:
                     if hasattr(lp, PIPE_REPLICATED) and lp.ds_pipe_replicated:
                         continue
 
-                    if not (tensor_mp_rank == 0 or is_model_parallel_parameter(p)):
+                    if not (tensor_mp_rank == 0 or is_model_parallel_parameter(lp)):
                         continue
 
                 if not self.fp32_groups_has_gradients[i][j]:
@@ -471,6 +499,8 @@ class BF16_Optimizer:
             for current, saved in zip(self.fp32_groups_flat_partition, current_rank_sd[SINGLE_PARTITION_OF_FP32_GROUPS]):
                 src_tensor = _get_padded_tensor(saved, current.numel())
                 current.data.copy_(src_tensor.data)
+
+        self._link_all_hp_params()
 
     @property
     def param_groups(self):
