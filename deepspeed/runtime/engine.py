@@ -1804,11 +1804,16 @@ class DeepSpeedEngine(Module):
             )
         # zero grad in basic optimizer could be unreliable and may not exhibit
         # the behaviour that we want
-        if (not self.zero_optimization() and not self.fp16_enabled()
-                and not self.amp_enabled()):
-            self.zero_grad()
-        elif not self.bfloat16_enabled():
+        if self.bfloat16_enabled():
+            # TODO: Temporary until bf16_optimizer and zero_optimizer are integrated
+            if self.zero_optimization():
+                self.optimizer.zero_grad()
+            else:
+                pass
+        elif self.zero_optimization() or self.fp16_enabled() or self.amp_enabled():
             self.optimizer.zero_grad()
+        else:
+            self.zero_grad()
 
         report_progress = self.global_rank == 0 if self.global_rank else True
 
