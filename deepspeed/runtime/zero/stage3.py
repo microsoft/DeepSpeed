@@ -214,6 +214,7 @@ class PartitionedParameterCoordinator:
         max_available_parameters_in_numel: int,
         allgather_stream: Stream,
         prefetch_nvme: bool = False,
+        module=None
     ) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = __class__.__InflightParamRegistry()
@@ -238,6 +239,8 @@ class PartitionedParameterCoordinator:
         self.__prefetch_bucket_sz: int = prefetch_bucket_sz
         self.__prefetch_nvme: bool = prefetch_nvme
         self.hierarchy: int = 0
+
+        self.module = module
 
         # stream that will be used for allgather operations
         self.__allgather_stream: Stream = allgather_stream
@@ -299,7 +302,7 @@ class PartitionedParameterCoordinator:
             if global_step_id > 3:
                 self.trace_complete = True
             print_rank_0(f"completed trace: {[m.id for m in self.__submodule_order]}",
-                         force=True)
+                         force=False)
 
         self.__param_queue = collections.deque(self.__param_order)  # reset fetch queue
         self.__most_recent_step_id_param_fetched_for = collections.defaultdict(
@@ -332,8 +335,8 @@ class PartitionedParameterCoordinator:
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
-            if dist.get_rank() == 0:
-                print(f"-fetch: {param.ds_summary()}")
+            # if dist.get_rank() == 0:
+            #     print(f"-fetch: {param.ds_summary()}")
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -429,7 +432,8 @@ class PartitionedParameterCoordinator:
     @torch.no_grad()
     def release_and_reset_all(self) -> None:
         """release all module parameters"""
-        for param in map(lambda p: p.param, self.__param_order):
+        for param in iter_params(self.module, recurse=True):
+            #for param in map(lambda p: p.param, self.__param_order):
             if param in self.__inflight_param_registry:
                 raise RuntimeError(f"param {param.ds_summary()} still in flight")
 
@@ -527,15 +531,15 @@ class PreBackwardFunction(torch.autograd.Function):
         if not hasattr(module, "applied_pre_backward_ref_cnt"):
             module.applied_pre_backward_ref_cnt = 0
         module.applied_pre_backward_ref_cnt += 1
-        if dist.get_rank() == 0:
-            print(f"After Forward: {ctx.module.__class__.__name__}")
+        # if dist.get_rank() == 0:
+        #     print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
 
     @staticmethod
     def backward(ctx, *args):
-        if dist.get_rank() == 0:
-            print(f"Before Backward: {ctx.module.__class__.__name__}")
+        # if dist.get_rank() == 0:
+        #     print(f"Before Backward: {ctx.module.__class__.__name__}")
         ctx.pre_backward_function(ctx.module)
         return (None, None) + args
 
@@ -612,6 +616,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                  aio_config=None):
 
         see_memory_usage("Stage 3 initialize beginning", force=False)
+
+        param_count = sum([p.ds_numel for p in module.parameters()])
+        print(f"Total number of parameters: {param_count}")
 
         if dist.get_rank() == 0:
             logger.info(f"initialized {__class__.__name__} with args: {locals()}")
@@ -692,6 +699,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             max_available_parameters_in_numel=int(max_live_parameters),
             allgather_stream=self.__allgather_stream,
             prefetch_nvme=self.params_in_nvme_and_cpu,
+            module=self.module
         )
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 
