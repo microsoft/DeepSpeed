@@ -84,9 +84,14 @@ def get_all_parameters(sub_module, recurse=False):
                            sub_module.ds_external_parameters())
 
 
+def is_builtin_type(obj):
+    # https://stackoverflow.com/a/17795199
+    return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
+
+
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
-    if type(outputs) is tuple:
+    if isinstance(outputs, (tuple, list)):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_to_tensors_only(module,
@@ -94,10 +99,23 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     backward_function,
                                                     output)
             touched_outputs.append(touched_output)
-        return tuple(touched_outputs)
+        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
+    elif isinstance(outputs, dict):
+        touched_outputs = {}
+        for key, output in outputs.items():
+            touched_output = _apply_to_tensors_only(module,
+                                                    functional,
+                                                    backward_function,
+                                                    output)
+            touched_outputs[key] = touched_output
+        return touched_outputs
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
+        if not is_builtin_type(outputs):
+            logger.warning(
+                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. The ZeRO-3 hooksdesigned to trigger before or after backward pass of the module relies on knowing the input and output tensors and therefore may not get triggered properly."
+            )
         return outputs
 
 
@@ -106,7 +124,7 @@ def _apply_forward_and_backward_to_tensors_only(module,
                                                 forward_function,
                                                 backward_function,
                                                 outputs):
-    if type(outputs) is tuple:
+    if isinstance(outputs, (tuple, list)):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_forward_and_backward_to_tensors_only(
@@ -114,8 +132,8 @@ def _apply_forward_and_backward_to_tensors_only(module,
                 forward_function,
                 backward_function,
                 output)
-            touched_outputs.append(touched_output)
-        return tuple(touched_outputs)
+        touched_outputs.append(touched_output)
+        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
     elif type(outputs) is torch.Tensor:
         forward_function(outputs)
         if outputs.requires_grad:
@@ -1403,7 +1421,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 persistent_params.append(param)
                 total_persistent_parameters += param.ds_numel
             if param.ds_id in [390, 305, 221]:
-                print(f"ds param persist={param.ds_persist}, ds_id={param.ds_id}, numel={param.ds_numel}")
+                print(
+                    f"ds param persist={param.ds_persist}, ds_id={param.ds_id}, numel={param.ds_numel}"
+                )
 
         print_rank_0(
             f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
@@ -2970,7 +2990,6 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             scaled_loss.backward()
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
-
         '''Partitioning Parameters that were not partitioned
         Usually if parameters of modules whose input parameters do not require
         grad computation do not trigger post call and will therefore will remain unpartitioned '''
