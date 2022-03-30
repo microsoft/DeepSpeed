@@ -22,6 +22,55 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             CLIP_GRAD,
                                             GROUPS_PADDING)
 
+import types
+
+from dataclasses import dataclass
+
+
+@dataclass
+class fragment_address:
+    numel: int
+    start: int
+
+
+@dataclass
+class tensor_fragment:
+    lp_fragment: torch.Tensor
+    lp_fragment_address: fragment_address
+    hp_fragment: torch.Tensor
+    hp_fragment_address: fragment_address
+    optim_fragment: {}
+
+    def update_hp(self):
+        self.hp_fragment.data.copy_(self.lp_fragment.data)
+
+    def update_lp(self):
+        self.lp_fragment.data.copy_(self.hp_fragment.data)
+
+    def get_optim_state_fragment(self, key):
+        if key in self.optim_fragment:
+            return self.optim_fragment[key]
+        else:
+            raise ValueError(f'{key} not found in optimizer state fragment')
+
+
+def get_full_hp_param(self, optim_state_key=None):
+    reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
+    if self._hp_mapping is not None:
+        lp_frag_address = self._hp_mapping.lp_fragment_address
+        reduce_fragment = torch.narrow(reduce_buffer,
+                                       0,
+                                       lp_frag_address.start,
+                                       lp_frag_address.numel)
+        if optim_state_key is None:
+            hp_fragment = self._hp_mapping.hp_fragment
+        else:
+            hp_fragment = self._hp_mapping.get_optim_state_fragment(optim_state_key)
+
+        reduce_fragment.data.copy_(hp_fragment.data)
+    torch.distributed.all_reduce(reduce_buffer, group=self._dp_group)
+    return reduce_buffer.reshape_as(self)
+
 
 class BF16_Optimizer:
     def __init__(self,
@@ -173,14 +222,21 @@ class BF16_Optimizer:
             self._link_hp_params(self.bf16_groups[i],
                                  self.fp32_groups_flat_partition[i],
                                  partition_id * partition_size,
-                                 partition_size)
+                                 partition_size,
+                                 self.real_dp_process_group[i])
 
-    def _init_lp_to_hp_mapping(self, lp_param_list, partition_start, partition_size):
+    def _init_lp_to_hp_mapping(self,
+                               lp_param_list,
+                               partition_start,
+                               partition_size,
+                               dp_group):
         current_offset = 0
         param_and_offset_list = []
         partition_end = partition_start + partition_size
         for lp_param in lp_param_list:
             lp_param._hp_mapping = None
+            lp_param._dp_group = dp_group
+            lp_param.get_full_hp_param = types.MethodType(get_full_hp_param, lp_param)
             # lp_param overlaps with partition if both are true
             # 1) current_offset < partition_end,
             # 2) current_offset + lp_param.numel() >= partition_start
@@ -191,91 +247,17 @@ class BF16_Optimizer:
 
         return param_and_offset_list
 
-
-#    def _link_hp_params_0(self,
-#                        lp_param_list,
-#                        flat_hp_partition,
-#                        partition_start,
-#                        partition_size):
-#
-#        from dataclasses import dataclass
-#        @dataclass
-#        class fragment_address:
-#            numel: int
-#            start: int
-#            end: int
-#
-#        current_offset = 0
-#        partition_end = partition_start + partition_size
-#        for lp_param in lp_param_list:
-#            # lp_param does not overlap with partition if either is true
-#            # 1) current_offset >= partition_end, i.e belongs to later partition
-#            # 2) current_offset + lp_param.numel() < partition_start, i.e., belongs to earlier partition
-#            lp_param_end = current_offset + lp_param.numel()
-#            if (current_offset >= partition_end) or (lp_param_end < partition_start):
-#                lp_param._hp_param = None
-#                continue
-#
-#            lp_fragment_start = max(current_offset, partition_start)
-#            lp_fragment_end = min(lp_param_end, partition_end)
-#            lp_fragment_elem = lp_fragment_end - lp_fragment_start
-#
-#            hp_fragment_start = lp_fragment_start - partition_start
-#            hp_frag_address = fragment_address(
-#                numel=lp_fragment_elem,
-#                start=hp_fragment_start,
-#                end=lp_fragment_end
-#            )
-#            lp_param._hp_frag_address = hp_frag_address
-#            lp_param._hp_fragment = flat_hp_partition.narrow(0, hp_narrow_offset, lp_fragment_elem)
-#
-#            if current_offset >= partition_start:
-#                lp_param._lp_frag_start = 0
-#            else:
-#                lp_param._hp_copy_offset = partition_start - current_offset
-#
-#            lp_param._lp_frag_address = fragment_address(
-#                numel=lp_fragment_elem,
-#                start=
-#            )
-#            current_offset += lp_param.numel()
-
     def _link_hp_params(self,
                         lp_param_list,
                         flat_hp_partition,
                         partition_start,
-                        partition_size):
+                        partition_size,
+                        dp_group):
         local_lp_param_and_offset = self._init_lp_to_hp_mapping(
             lp_param_list,
             partition_start,
-            partition_size)
-
-        from dataclasses import dataclass
-
-        @dataclass
-        class fragment_address:
-            numel: int
-            start: int
-
-        @dataclass
-        class tensor_fragment:
-            lp_fragment: torch.Tensor
-            lp_fragment_address: fragment_address
-            hp_fragment: torch.Tensor
-            hp_fragment_address: fragment_address
-            optim_fragment: {}
-
-            def update_hp(self):
-                self.hp_fragment.data.copy_(self.lp_fragment.data)
-
-            def update_lp(self):
-                self.lp_fragment.data.copy_(self.hp_fragment.data)
-
-            def get_optim_state(self, key):
-                if key in self.optim_fragment:
-                    return self.optim_fragment[key]
-                else:
-                    raise ValueError(f'{key} not found in optimizer state fragment')
+            partition_size,
+            dp_group)
 
         hp_end = partition_start + partition_size
         for lp_param, lp_start in local_lp_param_and_offset:
