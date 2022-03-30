@@ -1,6 +1,7 @@
 ---
 title: "Installation Details"
 date: 2020-10-28
+tags: getting-started
 ---
 
 The quickest way to get started with DeepSpeed is via pip, this will install
@@ -64,7 +65,11 @@ Available `DS_BUILD` options include:
 * `DS_BUILD_TRANSFORMER_INFERENCE` builds the transformer-inference op
 * `DS_BUILD_STOCHASTIC_TRANSFORMER` builds the stochastic transformer op
 * `DS_BUILD_UTILS` builds various optimized utilities
+<<<<<<< HEAD
 * `DS_BUILD_AIO` builds asynchronous (NVMe) I/O op 
+=======
+* `DS_BUILD_AIO` builds the asynchcronous I/O op
+>>>>>>> b47e25bf95250a863edb2c466200c697e15178fd
 
 To speed up the build-all process, you can parallelize the compilation process with:
 

@@ -197,8 +197,11 @@ def replace_transformer_layer(orig_layer_impl,
             assert num_attention_heads % mp_size == 0,\
                 "To run the model parallel across the GPUs, the attention_heads require to be divisible by the world_size!" +\
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
-        from deepspeed.moe.utils import has_moe_layers
-        moe, num_experts = has_moe_layers(child)
+        from deepspeed.moe.layer import MoE
+        moe = False
+        if isinstance(child.mlp, MoE):
+            num_experts = child.mlp.num_experts
+            moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
         if not moe or moe_type == 'standard':
@@ -292,8 +295,9 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module = transformer_inference.DeepSpeedMoEInference(
                         transformer_config,
                         mp_group=mp_group,
-                        ep_group=ep_group[num_experts],
-                        expert_mp_group=expert_mp_group[num_experts],
+                        ep_group=None if ep_group is None else ep_group[num_experts],
+                        expert_mp_group=None
+                        if expert_mp_group is None else expert_mp_group[num_experts],
                         quantize_scales=quantization_scales[layer_id],
                         quantize_groups=quantize_groups,
                         merge_count=merge_count,
@@ -325,8 +329,9 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module = transformer_inference.DeepSpeedMoEInference(
                         transformer_config,
                         mp_group=mp_group,
-                        ep_group=ep_group[num_experts],
-                        expert_mp_group=expert_mp_group[num_experts],
+                        ep_group=None if ep_group is None else ep_group[num_experts],
+                        expert_mp_group=None
+                        if expert_mp_group is None else expert_mp_group[num_experts],
                     )
 
                 else:

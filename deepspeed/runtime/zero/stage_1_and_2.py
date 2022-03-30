@@ -266,7 +266,10 @@ class DeepSpeedZeroOptimizer(object):
 
             # push this group to list before modify
             # TODO: Explore simplification that avoids the extra book-keeping by pushing the reordered group
-            self.bit16_groups.append(param_group['params'])
+            trainable_parameters = [
+                param for param in param_group['params'] if param.requires_grad
+            ]
+            self.bit16_groups.append(trainable_parameters)
 
             # Record padding required to align group to world size
             if partition_id == dist.get_world_size(
@@ -1244,7 +1247,8 @@ class DeepSpeedZeroOptimizer(object):
                     elif self.contiguous_gradients:
                         self.copy_grads_in_partition(param)
                 else:  # zero stage 1 - partition only optimizer state
-                    if self.contiguous_gradients:
+                    if self.contiguous_gradients and self.is_param_in_current_partition[
+                            param_id]:
                         self.copy_grads_in_partition(param)
 
         self.grads_in_ipg_bucket = []
@@ -1650,7 +1654,7 @@ class DeepSpeedZeroOptimizer(object):
 
             if dist.get_rank() == 0:
                 logger.info(
-                    "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                    "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                     "reducing to {}".format(dist.get_rank(),
                                             prev_scale,
                                             self.loss_scale))
@@ -1721,10 +1725,9 @@ class DeepSpeedZeroOptimizer(object):
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                bit16_param_groups = [
+                bit16_param_groups = [[
                     bit16_partitions[partition_id]
-                    for bit16_partitions in self.parallel_partitioned_bit16_groups
-                ]
+                ] for bit16_partitions in self.parallel_partitioned_bit16_groups]
                 self.optimizer.step(fp16_param_groups=bit16_param_groups)
             else:
                 self.optimizer.step()
@@ -2086,9 +2089,9 @@ class DeepSpeedZeroOptimizer(object):
 
     def get_ep_ranks(self, rank=0, group_name=None):
         from deepspeed.utils import groups
-        expert_parallel_size_ = groups.get_expert_parallel_world_size(group_name)
-        world_size = groups.get_data_parallel_world_size()
-        rank = groups.get_expert_parallel_rank(group_name)
+        expert_parallel_size_ = groups._get_expert_parallel_world_size(group_name)
+        world_size = groups._get_data_parallel_world_size()
+        rank = groups._get_expert_parallel_rank(group_name)
         ranks = range(rank, world_size, expert_parallel_size_)
         return list(ranks)
 
