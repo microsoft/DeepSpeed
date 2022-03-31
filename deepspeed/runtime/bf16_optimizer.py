@@ -432,8 +432,8 @@ class BF16_Optimizer:
         for flat_gradients in self.fp32_groups_gradients_flat:
             flat_gradients.zero_()
 
-        for group in self.fp32_groups_has_gradients:
-            group = [False] * len(group)
+        for i, group in enumerate(self.fp32_groups_gradients):
+            self.fp32_groups_has_gradients[i] = [False] * len(group)
 
     def clear_lp_grads(self):
         for group in self.bf16_groups:
