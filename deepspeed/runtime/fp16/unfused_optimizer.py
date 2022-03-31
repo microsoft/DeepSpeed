@@ -210,9 +210,10 @@ class FP16_UnfusedOptimizer(object):
             return self.cur_scale
 
     def _set_loss_scale(self, value):
-         self.cur_scale = value
+        self.cur_scale = value
 
     loss_scale = property(_get_loss_scale, _set_loss_scale)
+
     #cur_scale = property(_get_loss_scale, _set_loss_scale)
 
     def step(self, closure=None):

@@ -207,15 +207,13 @@ class PartitionedParameterCoordinator:
         param: Parameter
         step_id_last_used_at: int
 
-    def __init__(
-        self,
-        prefetch_bucket_sz: int,
-        max_reuse_distance_in_numel: int,
-        max_available_parameters_in_numel: int,
-        allgather_stream: Stream,
-        prefetch_nvme: bool = False,
-        module=None
-    ) -> None:
+    def __init__(self,
+                 prefetch_bucket_sz: int,
+                 max_reuse_distance_in_numel: int,
+                 max_available_parameters_in_numel: int,
+                 allgather_stream: Stream,
+                 prefetch_nvme: bool = False,
+                 module=None) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = __class__.__InflightParamRegistry()
         # keeps track of the number of submodules invoked so far.
@@ -699,8 +697,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             max_available_parameters_in_numel=int(max_live_parameters),
             allgather_stream=self.__allgather_stream,
             prefetch_nvme=self.params_in_nvme_and_cpu,
-            module=self.module
-        )
+            module=self.module)
         see_memory_usage("After Partitioned Parameter Coordinator", force=False)
 
         self.__n_caching_allocator_flushes = 0

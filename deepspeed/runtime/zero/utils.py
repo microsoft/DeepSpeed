@@ -42,7 +42,6 @@ try:
 except ImportError:
     pass
 
-
 _fairseq = None
 
 

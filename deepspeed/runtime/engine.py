@@ -460,7 +460,8 @@ class DeepSpeedEngine(Module):
             return getattr(_module, name)
         else:
             raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, name))
+                type(self).__name__,
+                name))
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled

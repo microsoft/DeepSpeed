@@ -469,7 +469,7 @@ class DeepSpeedZeroOptimizer(object):
             self.create_reduce_and_remove_grad_hooks()
 
         self.custom_loss_scaler = False
-        self.external_loss_scale = None 
+        self.external_loss_scale = None
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if self.dtype == torch.float or self.dtype == torch.bfloat16 or not dynamic_loss_scale:
@@ -1629,7 +1629,8 @@ class DeepSpeedZeroOptimizer(object):
             self.timers(name).stop()
 
     def set_lr(self, lr):
-        """Set the learning rate."""                                                                                                                  +        for param_group in self.optimizer.param_groups:
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
     def get_lr(self):
