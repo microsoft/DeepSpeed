@@ -90,7 +90,7 @@ class ReplaceWithTensorSlicing:
 
     def copy(self, dst, src):
         if src is None:
-            return src
+            return torch.nn.Parameter(src)
 
         src_shape = src.shape
         dst_shape = dst.shape
