@@ -209,8 +209,8 @@ class MegatronLayerPolicy(DSPolicy):
         if MegatronLayerPolicy._orig_layer_class is None:
             try:
                 import megatron
-                from megatron.model.transformer import ParallelTransformerLayer
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
+                from megatron.model.transformer import ParallelTransformerLayer1
+                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer1
             except ImportError:
                 MegatronLayerPolicy._orig_layer_class = None
 
@@ -219,6 +219,8 @@ class MegatronLayerPolicy(DSPolicy):
                 self.client_module.attention.num_attention_heads
 
     def attention(self):
+        print("coming to the wrong policy")
+        exit()
         if self.inference:
             if MegatronLayerPolicy.version == 0:
                 attention = self.client_module.attention
@@ -321,16 +323,16 @@ class GPTNEOXLayerPolicy(DSPolicy):
     def __init__(self, client_module, inference=True, megatron_v2=True):
         super().__init__(inference, megatron_v2=megatron_v2)
         self.client_module = client_module
-        if MegatronLayerPolicy._orig_layer_class is None:
+        if GPTNEOXLayerPolicy._orig_layer_class is None:
             try:
                 import megatron
                 from megatron.model.transformer import ParallelTransformerLayerPipe
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayerPipe
+                GPTNEOXLayerPolicy._orig_layer_class = ParallelTransformerLayerPipe
             except ImportError:
-                MegatronLayerPolicy._orig_layer_class = None
+                GPTNEOXLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        if MegatronLayerPolicy.version == 0:
+        if GPTNEOXLayerPolicy.version == 0:
             attention = self.client_module.attention
         else:
             attention = self.client_module.self_attention
@@ -339,7 +341,7 @@ class GPTNEOXLayerPolicy(DSPolicy):
                 self.client_module.attention.num_attention_heads
 
     def attention(self):
-        if MegatronLayerPolicy.version == 0:
+        if GPTNEOXLayerPolicy.version == 0:
             attention = self.client_module.attention
         else:
             attention = self.client_module.self_attention

@@ -2,7 +2,7 @@ import copy
 import torch
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
-from .replace_policy import HFBertLayerPolicy, MegatronLayerPolicy, HFGPT2LayerPolicy, HFGPTJLayerPolicy
+from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, HFGPTJLayerPolicy
 from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
@@ -53,7 +53,7 @@ class ReplaceWithTensorSlicing:
 
     def qkv_copy(self, dst, src):
         if src is None:
-            return src
+            return torch.nn.Parameter(src)
         src_shape = src.shape
         dst_shape = dst.shape
 
@@ -61,7 +61,7 @@ class ReplaceWithTensorSlicing:
 
         if (len(src_shape) == 2 and len(dst_shape) == 2):
             if src_shape[1] == dst_shape[1]:
-                return src
+                return torch.nn.Parameter(src)
 
             self.merge_assert(src_shape[1], dst_shape[1])
             qkv_size = dst_shape[1] // 3
@@ -75,7 +75,7 @@ class ReplaceWithTensorSlicing:
                 torch.cuda.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
-                return src
+                return torch.nn.Parameter(src)
 
             qkv_size = dst_shape[0] // 3
             qkv_split = [torch.split(src_s, qkv_size, dim=0) for src_s in src_split]
@@ -86,7 +86,7 @@ class ReplaceWithTensorSlicing:
             dst.data.copy_(bias_split[self.gpu_index].to(
                 torch.cuda.current_device()).contiguous())
 
-        return dst
+        return torch.nn.Parameter(dst)
 
     def copy(self, dst, src):
         if src is None:
@@ -98,7 +98,7 @@ class ReplaceWithTensorSlicing:
         if (len(src_shape) == 2 and len(dst_shape) == 2):
 
             if src_shape[0] == dst_shape[0] and src_shape[1] == dst_shape[1]:
-                return src
+                return torch.nn.Parameter(src)
 
             if src_shape[0] != dst_shape[0]:
                 self.merge_assert(src_shape[0], dst_shape[0])
@@ -111,13 +111,13 @@ class ReplaceWithTensorSlicing:
                 torch.cuda.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
-                return src
+                return torch.nn.Parameter(src)
 
             bias_split = torch.split(src.data, dst_shape[-1])
             dst.data.copy_(bias_split[self.gpu_index].to(
                 torch.cuda.current_device()).contiguous())
 
-        return dst
+        return torch.nn.Parameter(dst)
 
 
 def replace_transformer_layer(orig_layer_impl,
@@ -129,7 +129,7 @@ def replace_transformer_layer(orig_layer_impl,
                               hidden_size=-1,
                               num_attention_heads=-1,
                               mp_size=1,
-                              training_mp_size=1,
+                              training_mp_size=2,
                               mp_group=None,
                               ep_group=None,
                               expert_mp_group=None,
@@ -287,7 +287,8 @@ def replace_transformer_layer(orig_layer_impl,
                                                                'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
-                    training_mp_size=training_mp_size)
+                    training_mp_size=training_mp_size
+                    )
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -358,7 +359,7 @@ def replace_transformer_layer(orig_layer_impl,
 
             if megatron_v2:
                 new_module.config.rotate_half = True
-
+                new_module.config.rotate_every_two = False
                 def _transpose(x):
                     num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
                     attention_head_size = x.shape[-1] // num_attention_heads_per_partition

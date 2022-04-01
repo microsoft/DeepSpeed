@@ -271,8 +271,8 @@ void launch_bias_residual(T* input,
                           T* attn,
                           T* bias,
                           T* attn_bias,
-                          int hidden_dim,
                           int batch,
+                          int hidden_dim,
                           int mp_size,
                           cudaStream_t stream)
 {
@@ -303,7 +303,7 @@ __global__ void gptj_residual_add(float* input,
                                   float* attnbias,
                                   int total_count,
                                   int intermediate_size,
-                                  int mp_size)
+                                  float mp_size)
 {
     float4* input_cast = reinterpret_cast<float4*>(input);
     float4* output_cast = reinterpret_cast<float4*>(output);
@@ -335,7 +335,7 @@ __global__ void gptj_residual_add(__half* input,
                                   __half* attn_bias,
                                   int total_count,
                                   int intermediate_size,
-                                  int mp_size)
+                                  float mp_size)
 {
 #if __CUDA_ARCH__ >= 700
 
@@ -378,9 +378,9 @@ __global__ void gptj_residual_add(__half* input,
         float2 attn_high_bias = __half22float2(attnbias_half[1]);
 
         low_data.x =
-            low_data.x * mp_size + (low_out.x + low_res.x + (low_bias.x + attn_low_bias.x));
+            low_data.x  * mp_size + (low_out.x + low_res.x + (low_bias.x + attn_low_bias.x));
         low_data.y =
-            low_data.y * mp_size + (low_out.y + low_res.y + (low_bias.y + attn_low_bias.y));
+            low_data.y  * mp_size + (low_out.y + low_res.y + (low_bias.y + attn_low_bias.y));
         high_data.x =
             high_data.x * mp_size + (high_out.x + high_res.x + (high_bias.x + attn_high_bias.x));
         high_data.y =

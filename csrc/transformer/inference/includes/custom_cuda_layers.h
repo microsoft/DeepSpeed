@@ -48,11 +48,13 @@ void launch_bias_add(T* input, const T* bias, int hidden_size, int batch_size, c
 
 template <typename T>
 void launch_bias_residual(T* input,
-                          const T* residual,
-                          const T* bias,
-                          int size,
-                          int intermediate_size,
-                          bool add_bias,
+                          T* output,
+                          T* attn,
+                          T* bias,
+                          T* attn_bias,
+                          int batch,
+                          int hidden_dim,
+                          int mp_size,
                           cudaStream_t stream);
 
 template <typename T>
@@ -99,6 +101,7 @@ void launch_gptj_residual_add(T* input,
                               int head_size,
                               int mp_size,
                               cudaStream_t stream);
+
 template <typename T>
 void launch_apply_rotary_pos_emb(T* mixed_query,
                                  T* key_layer,

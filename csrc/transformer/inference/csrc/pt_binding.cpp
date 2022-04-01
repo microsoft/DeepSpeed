@@ -233,13 +233,13 @@ at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor&
     auto residual_cont = residual.contiguous();
 
     int bsz = input_cont.size(0) * input_cont.size(1);
-    launch_bias_residual((T*)input_cont.data_ptr(),
-                         (T*)residual_cont.data_ptr(),
-                         (T*)bias.data_ptr(),
-                         bsz,
-                         input_cont.size(2),
-                         (bias.size(0) > 1),
-                         Context::Instance().GetCurrentStream());
+    //launch_bias_residual((T*)input_cont.data_ptr(),
+    //                     (T*)residual_cont.data_ptr(),
+    //                     (T*)bias.data_ptr(),
+    //                     bsz,
+    //                     input_cont.size(2),
+    //                     (bias.size(0) > 1),
+    //                     Context::Instance().GetCurrentStream());
     return input_cont;
 }
 
@@ -630,18 +630,18 @@ std::vector<at::Tensor> ds_mlp_gemm_int8(at::Tensor& input,
 
     auto residual_add = (preLayerNorm ? at::empty_like(input_cont) : inp_norm);
     // computing the blocking across K dimension
-    launch_residual_layer_norm((T*)inp_norm.data_ptr(),
-                               (T*)residual_add.data_ptr(),
-                               (T*)input_cont.data_ptr(),
-                               (T*)residual.data_ptr(),
-                               (T*)input_bias.data_ptr(),
-                               (T*)gamma.data_ptr(),
-                               (T*)beta.data_ptr(),
-                               epsilon,
-                               bsz,
-                               input_cont.size(2),
-                               preLayerNorm,
-                               Context::Instance().GetCurrentStream());
+    //launch_residual_layer_norm((T*)inp_norm.data_ptr(),
+    //                           (T*)residual_add.data_ptr(),
+    //                           (T*)input_cont.data_ptr(),
+    //                           (T*)residual.data_ptr(),
+    //                           (T*)input_bias.data_ptr(),
+    //                           (T*)gamma.data_ptr(),
+    //                           (T*)beta.data_ptr(),
+    //                           epsilon,
+    //                           bsz,
+    //                           input_cont.size(2),
+    //                           preLayerNorm,
+    //                           Context::Instance().GetCurrentStream());
 
     quantized_gemm<T>(output, inp_norm, weight, q_scale, groups, 0);
     launch_bias_gelu((T*)output.data_ptr(),
@@ -725,7 +725,7 @@ void residual_add_bias(at::Tensor& output,
     //    Context::Instance().GetCurrentStream(), Context::Instance().GetCompEvent(2), 0);
     if (input.scalar_type() == at::kFloat)
         if (mlp_after_attn)
-            launch_bias_residual((float*)input_cont.data_ptr(),
+            launch_bias_residual((float*)input.data_ptr(),
                                  (float*)output.data_ptr(),
                                  (float*)attention_output.data_ptr(),
                                  (float*)output_b.data_ptr(),
@@ -745,7 +745,7 @@ void residual_add_bias(at::Tensor& output,
                                             mp_size,
                                             Context::Instance().GetCurrentStream());
     else if (mlp_after_attn)
-        launch_bias_residual((__half*)input_cont.data_ptr(),
+        launch_bias_residual((__half*)input.data_ptr(),
                              (__half*)output.data_ptr(),
                              (__half*)attention_output.data_ptr(),
                              (__half*)output_b.data_ptr(),
