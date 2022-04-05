@@ -675,7 +675,7 @@ def _upsample_flops_compute(input,
             return int(size), 0
     assert scale_factor is not None, "either size or scale_factor should be defined"
     flops = torch.numel(input)
-    if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
+    if isinstance(scale_factor, tuple):
         flops * int(_prod(scale_factor))
     else:
         flops * scale_factor**len(input)

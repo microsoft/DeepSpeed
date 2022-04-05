@@ -422,7 +422,7 @@ class Autotuner:
 
         stage = self.user_config.get(ZERO_OPTIMIZATION,
                                      {}).get(ZERO_OPTIMIZATION_STAGE,
-                                             "all")
+                                             0)
         user_zero_stages = [stage] if not isinstance(stage, list) else stage
         logger.info(f"User-defined zero stages are {stage}.")
 
