@@ -18,6 +18,9 @@ class CPUAdamBuilder(TorchCPUOpBuilder):
     def sources(self):
         return ['csrc/adam/cpu_adam.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
+    def libraries_args(self):
+        return ['curand']
+
     def include_paths(self):
         import torch
         if not self.is_rocm_pytorch():
