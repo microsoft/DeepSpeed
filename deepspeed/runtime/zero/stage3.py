@@ -363,24 +363,26 @@ class PartitionedParameterCoordinator:
                 )
 
             # kick off all gather for params in the next few submodules (prefetch)
-            max_params_to_prefetch = min(
-                self.__max_n_available_params - self.__n_available_params,
-                self.__prefetch_bucket_sz)
-            params_to_prefetch = set()
-            numel_prefetching = 0
-            while self.__param_queue and numel_prefetching < max_params_to_prefetch:
-                param_in_trace: __class__.__ParamInTrace = self.__param_queue.popleft()
-                self.__most_recent_step_id_param_fetched_for[
-                    param_in_trace.param] = param_in_trace.step_id_last_used_at
-                if param_in_trace.param not in params_to_prefetch:
-                    params_to_prefetch.add(param_in_trace.param)
-                    numel_prefetching += param_in_trace.param.ds_numel
-            for param in params_to_prefetch:
-                debug_rank0(f"-prefetch: {param.ds_summary()}")
-            self.__all_gather_params(params_to_prefetch)
+            if self.__prefetch_bucket_sz > 0:
+                max_params_to_prefetch = min(
+                    self.__max_n_available_params - self.__n_available_params,
+                    self.__prefetch_bucket_sz)
+                params_to_prefetch = set()
+                numel_prefetching = 0
+                while self.__param_queue and numel_prefetching < max_params_to_prefetch:
+                    param_in_trace: __class__.__ParamInTrace = self.__param_queue.popleft(
+                    )
+                    self.__most_recent_step_id_param_fetched_for[
+                        param_in_trace.param] = param_in_trace.step_id_last_used_at
+                    if param_in_trace.param not in params_to_prefetch:
+                        params_to_prefetch.add(param_in_trace.param)
+                        numel_prefetching += param_in_trace.param.ds_numel
+                for param in params_to_prefetch:
+                    debug_rank0(f"-prefetch: {param.ds_summary()}")
+                self.__all_gather_params(params_to_prefetch)
 
-            if self.__prefetch_nvme:
-                self.__prefetch_nvme_param_partitions()
+                if self.__prefetch_nvme:
+                    self.__prefetch_nvme_param_partitions()
 
         self.__step_id += 1
 
