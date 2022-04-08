@@ -363,7 +363,7 @@ class PartitionedParameterCoordinator:
                 )
 
             # kick off all gather for params in the next few submodules (prefetch)
-            if self.__prefetch_bucket_sz > 0:
+            if current_submodule.training and self.__prefetch_bucket_sz > 0:
                 max_params_to_prefetch = min(
                     self.__max_n_available_params - self.__n_available_params,
                     self.__prefetch_bucket_sz)
