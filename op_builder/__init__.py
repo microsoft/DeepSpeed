@@ -13,6 +13,7 @@ from .async_io import AsyncIOBuilder
 from .builder import get_default_compute_capabilities
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
+from .transformer_kernels import TransformerKernelsBuilder
 
 # TODO: infer this list instead of hard coded
 # List of all available ops
@@ -27,6 +28,7 @@ __op_builders__ = [
     AsyncIOBuilder(),
     UtilsBuilder(),
     QuantizerBuilder(),
-    InferenceBuilder()
+    InferenceBuilder(),
+    TransformerKernelsBuilder()
 ]
 ALL_OPS = {op.name: op for op in __op_builders__}

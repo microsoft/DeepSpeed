@@ -67,7 +67,7 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-from fairseq.optim.fairseq_optimizer import FairseqOptimizer
+#from fairseq.optim.fairseq_optimizer import FairseqOptimizer
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 

@@ -2,6 +2,7 @@
 #include "custom_cuda_layers.h"
 #include "general_kernels.h"
 
+#include <cuda_bf16.h>
 namespace cg = cooperative_groups;
 
 dim3 get_attn_softmax_grid(int batch_size, int heads, int sequence_length, int threads)
@@ -593,3 +594,746 @@ template void launch_attn_softmax_backward_v2<float>(float* out_grad,
                                                      int heads,
                                                      int seq_length,
                                                      cudaStream_t stream);
+
+
+                                                     
+__global__ 
+void softmax_dropout_kernel(
+    const int N,
+    const float ratio,
+    float* out,
+    float* Xdata,
+    const float* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+ // TODO: add the implementation for float
+}
+
+__global__ 
+void softmax_dropout_kernel(
+    const int seq_length,
+    const float ratio,
+    __nv_bfloat16* out,
+    __nv_bfloat16* Xdata,
+    const __nv_bfloat16* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+    unsigned warp_num = blockDim.x >> 5;
+
+    unsigned iteration_stride = WARP_SIZE;
+    unsigned block_width =  warp_num * seq_length;
+
+    unsigned iterations = (seq_length - 1) / iteration_stride + 1;
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+    unsigned wid = threadIdx.x >> 5;
+    unsigned lane = threadIdx.x & 0x1f; 
+
+    unsigned batch = blockIdx.x;
+    unsigned row =   blockIdx.y;
+
+    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
+    unsigned mask_offset = batch * seq_length;
+    
+    
+    float4 * out_cast = reinterpret_cast<float4 *>(out);
+    float4 * val_cast = reinterpret_cast<float4 *>(Xdata);
+    const float4 * attn_mask_cast;
+    if (attn_mask) attn_mask_cast = reinterpret_cast<const float4 *>(attn_mask);
+
+    val_cast += data_offset;
+    out_cast += data_offset;
+    if (attn_mask) attn_mask_cast += mask_offset;
+
+    float2 low_data[MAX_THREAD_ITERATIONS];
+    float2 high_data[MAX_THREAD_ITERATIONS];
+    float2 low_data1[MAX_THREAD_ITERATIONS];
+    float2 high_data1[MAX_THREAD_ITERATIONS];
+
+    const float scale = 1. / (1. - ratio);
+    __nv_bfloat162 h_scale = __float2bfloat162_rn(scale);
+    __nv_bfloat16 h_zero = __float2bfloat16(0.0);
+    
+    float max_val = minus_infinity;
+
+    for(int i = 0;i < iterations;i++)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float4 data = val_cast[data_id];
+            __nv_bfloat162 * data_arr = reinterpret_cast<__nv_bfloat162 *>(&data);
+            low_data[i] = __bfloat1622float2(data_arr[0]);
+            high_data[i] = __bfloat1622float2(data_arr[1]);
+            low_data1[i] = __bfloat1622float2(data_arr[2]);
+            high_data1[i] = __bfloat1622float2(data_arr[3]);
+        }
+        
+    }
+
+    for(int i = 0;i < iterations;i++)
+    {
+        //if (attn_mask)
+        //{
+        //    float2 mask = attn_mask_cast[data_id];
+        //    __nv_bfloat162 * mask_arr = reinterpret_cast<__nv_bfloat162 *>(&mask);
+        //    float2 low_mask = __bfloat1622float2(mask_arr[0]);
+        //    float2 high_mask = __bfloat1622float2(mask_arr[1]);
+        //    low_data[i].x += low_mask.x;
+        //    low_data[i].y += low_mask.y;
+        //    high_data[i].x += high_mask.x;
+        //    high_data[i].y += high_mask.y;
+        //}
+        float maxes[4];
+        maxes[0] = (low_data[i].x > low_data[i].y ? low_data[i].x : low_data[i].y);
+        maxes[1] = (high_data[i].x > high_data[i].y ? high_data[i].x : high_data[i].y);
+        maxes[2] = (low_data1[i].x > low_data1[i].y ? low_data1[i].x : low_data1[i].y);
+        maxes[3] = (high_data1[i].x > high_data1[i].y ? high_data1[i].x : high_data1[i].y);
+        maxes[0] = (maxes[0] > maxes[1] ? maxes[0] : maxes[1]);
+        maxes[1] = (maxes[2] > maxes[3] ? maxes[2] : maxes[3]);
+        max_val = (maxes[0] > max_val ? maxes[0] : max_val);
+        max_val = (maxes[1] > max_val ? maxes[1] : max_val);
+    }
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        auto temp = g.shfl_xor(max_val, i);
+        max_val = (temp > max_val ? temp : max_val);
+    }
+
+    float sum = 0;
+    for(int i = 0;i < iterations;i++)
+    {
+        low_data[i].x = __expf(low_data[i].x - max_val);
+        low_data[i].y = __expf(low_data[i].y - max_val);
+        high_data[i].x = __expf(high_data[i].x - max_val);
+        high_data[i].y = __expf(high_data[i].y - max_val);
+        low_data1[i].x = __expf(low_data1[i].x - max_val);
+        low_data1[i].y = __expf(low_data1[i].y - max_val);
+        high_data1[i].x = __expf(high_data1[i].x - max_val);
+        high_data1[i].y = __expf(high_data1[i].y - max_val);
+
+        sum += (low_data[i].x + low_data[i].y + 
+                    high_data[i].x + high_data[i].y);
+        sum += (low_data1[i].x + low_data1[i].y + 
+                    high_data1[i].x + high_data1[i].y);
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        sum += g.shfl_xor(sum, i);
+    }
+    sum += 1e-6;
+    
+    int idx = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x + (threadIdx.x << 1);
+
+    curandStatePhilox4_32_10_t state;
+    curand_init(seed.first, idx, seed.second, &state);
+
+    for(int i = 0;i < iterations;i++)
+    {   
+        low_data[i].x /= sum;
+        low_data[i].y /= sum;
+        high_data[i].x /= sum;
+        high_data[i].y /= sum;
+        low_data1[i].x /= sum;
+        low_data1[i].y /= sum;
+        high_data1[i].x /= sum;
+        high_data1[i].y /= sum;
+
+        float4 result_f;
+        __nv_bfloat162 *result_h = reinterpret_cast<__nv_bfloat162*>(&result_f);
+
+        result_h[0] = __float22bfloat162_rn (low_data[i]);
+        result_h[1] = __float22bfloat162_rn (high_data[i]);
+        result_h[2] = __float22bfloat162_rn (low_data1[i]);
+        result_h[3] = __float22bfloat162_rn (high_data1[i]);
+
+        unsigned data_id = i * iteration_stride + lane;
+            
+        float4 rand = curand_uniform4(&state); 
+        float4 rand1 = curand_uniform4(&state); 
+
+        result_h[0].x = (rand.x > ratio) ? result_h[0].x : h_zero;
+        result_h[0].y = (rand.y > ratio) ? result_h[0].y : h_zero;
+        result_h[1].x = (rand.z > ratio) ? result_h[1].x : h_zero;
+        result_h[1].y = (rand.w > ratio) ? result_h[1].y : h_zero;
+        result_h[2].x = (rand1.x > ratio) ? result_h[2].x : h_zero;
+        result_h[2].y = (rand1.y > ratio) ? result_h[2].y : h_zero;
+        result_h[3].x = (rand1.z > ratio) ? result_h[3].x : h_zero;
+        result_h[3].y = (rand1.w > ratio) ? result_h[3].y : h_zero;
+
+        result_h[0] = result_h[0] * h_scale; 
+        result_h[1] = result_h[1] * h_scale;  
+        result_h[2] = result_h[2] * h_scale; 
+        result_h[3] = result_h[3] * h_scale;  
+
+        out_cast[data_id] = result_f;
+    }
+}
+
+__global__ 
+void softmax_dropout_kernel(
+    const int seq_length,
+    const float ratio,
+    __half* out,
+    __half* Xdata,
+    const __half* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+    unsigned warp_num = blockDim.x >> 5;
+
+    unsigned iteration_stride = WARP_SIZE;
+    unsigned block_width =  warp_num * seq_length;
+
+    unsigned iterations = (seq_length - 1) / iteration_stride + 1;
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+    unsigned wid = threadIdx.x >> 5;
+    unsigned lane = threadIdx.x & 0x1f; 
+
+    unsigned batch = blockIdx.x;
+    unsigned row =   blockIdx.y;
+
+    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
+    unsigned mask_offset = batch * seq_length;
+    
+    
+    float2 * out_cast = reinterpret_cast<float2 *>(out);
+    float2 * val_cast = reinterpret_cast<float2 *>(Xdata);
+    const float2 * attn_mask_cast;
+    if (attn_mask) attn_mask_cast = reinterpret_cast<const float2 *>(attn_mask);
+
+    val_cast += data_offset;
+    out_cast += data_offset;
+    if (attn_mask) attn_mask_cast += mask_offset;
+
+    float2 low_data[MAX_THREAD_ITERATIONS];
+    float2 high_data[MAX_THREAD_ITERATIONS];
+
+    const float scale = 1. / (1. - ratio);
+    __half2 h_scale = __float2half2_rn(scale);
+    __half h_zero = __float2half(0.0);
+    
+    
+    //float minus_infinity = -1 * std::numeric_limits<float>::infinity();
+    float max_val = minus_infinity;
+
+    for(int i = 0;i < iterations;i++)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float2 data = val_cast[data_id];
+            __half2 * data_arr = reinterpret_cast<__half2 *>(&data);
+            
+            low_data[i] = __half22float2(data_arr[0]);
+            high_data[i] = __half22float2(data_arr[1]);
+
+            if (attn_mask)
+            {
+                float2 mask = attn_mask_cast[data_id];
+                __half2 * mask_arr = reinterpret_cast<__half2 *>(&mask);
+
+                float2 low_mask = __half22float2(mask_arr[0]);
+                float2 high_mask = __half22float2(mask_arr[1]);
+
+                low_data[i].x += low_mask.x;
+                low_data[i].y += low_mask.y;
+                high_data[i].x += high_mask.x;
+                high_data[i].y += high_mask.y;
+            }
+
+            max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
+            max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
+            max_val = (high_data[i].x > max_val ?high_data[i].x  : max_val);
+            max_val = (high_data[i].y > max_val ?high_data[i].y : max_val);
+        }
+        else{
+            low_data[i].x = minus_infinity;
+            low_data[i].y = minus_infinity;
+            high_data[i].x = minus_infinity;
+            high_data[i].y = minus_infinity;
+        }
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        auto temp = g.shfl_xor(max_val, i);
+        max_val = (temp > max_val ? temp : max_val);
+    }
+
+    float sum = 0;
+    for(int i = 0;i < iterations;i++)
+    {
+        low_data[i].x = __expf(low_data[i].x - max_val);
+        low_data[i].y = __expf(low_data[i].y - max_val);
+        high_data[i].x = __expf(high_data[i].x - max_val);
+        high_data[i].y = __expf(high_data[i].y - max_val);
+
+        sum += (low_data[i].x + low_data[i].y + 
+                    high_data[i].x + high_data[i].y);
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        sum += g.shfl_xor(sum, i);
+    }
+    sum += 1e-6;
+    
+    int idx = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x + threadIdx.x;
+
+    curandStatePhilox4_32_10_t state;
+    curand_init(seed.first, idx, seed.second, &state);
+
+    for(int i = 0;i < iterations;i++)
+    {   
+        low_data[i].x /= sum;
+        low_data[i].y /= sum;
+        high_data[i].x /= sum;
+        high_data[i].y /= sum;
+
+        float2 result_f;
+        __half2 *result_h = reinterpret_cast<__half2*>(&result_f);
+
+        result_h[0] = __float22half2_rn (low_data[i]);
+        result_h[1] = __float22half2_rn (high_data[i]);
+
+        unsigned data_id = i * iteration_stride + lane;
+            
+        float4 rand = curand_uniform4(&state); 
+
+        result_h[0].x = (rand.x > ratio) ? result_h[0].x : h_zero;
+        result_h[0].y = (rand.y > ratio) ? result_h[0].y : h_zero;
+        result_h[1].x = (rand.z > ratio) ? result_h[1].x : h_zero;
+        result_h[1].y = (rand.w > ratio) ? result_h[1].y : h_zero;
+
+        result_h[0] = result_h[0] * h_scale; 
+        result_h[1] = result_h[1] * h_scale;  
+
+        if(data_id < seq_length)
+            out_cast[data_id] = result_f;
+    }
+}
+
+
+template <typename T>
+void launch_softmax_dropout(T* out, 
+    T* vals, 
+    const T* attn_mask, 
+    int bsz, 
+    int heads, 
+    int seq_length,
+    int softmax_length, 
+    float ratio, 
+    cudaStream_t stream)
+{
+    dim3 grid_dim(bsz, (heads * seq_length) / 8);
+    dim3 block_dim(256); 
+    int total_count = bsz * heads * seq_length * softmax_length;
+    
+    uint64_t inc = (total_count-1) / (grid_dim.x * block_dim.x) + 1;
+    std::pair<uint64_t, uint64_t> seed = Context::Instance().IncrementOffset(inc, true);
+    softmax_dropout_kernel<<<grid_dim, block_dim, 0, stream>>>(
+                softmax_length / 8,
+                ratio,
+                out,
+                vals,
+                attn_mask,
+                seed);
+}
+
+template void launch_softmax_dropout(float* out, float* vals, const float* attn_mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);
+template void launch_softmax_dropout(__nv_bfloat16* out, __nv_bfloat16* vals, const __nv_bfloat16* attn_mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);
+template void launch_softmax_dropout(__half* out, __half* vals, const __half* attn_mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);
+
+
+__global__ 
+void dropout_softmax_grad_kernel(
+    const int N,
+    const float scale,
+    float* Xdata,
+    const float* input,
+    const float* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+    //TODO: Add float version
+}
+
+__global__ 
+void dropout_softmax_grad_kernel(
+    const int seq_length,
+    const float ratio,
+    __half* Xdata,
+    const __half* input,
+    const __half* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+    
+    unsigned warp_num = blockDim.x >> 5;
+
+    unsigned iteration_stride = WARP_SIZE;
+    unsigned block_width =  warp_num * seq_length;
+
+    unsigned iterations = (seq_length + iteration_stride - 1) / iteration_stride;
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+    unsigned wid = threadIdx.x >> 5;
+    unsigned lane = threadIdx.x & 0x1f; 
+
+    unsigned batch = blockIdx.x;
+    unsigned row = blockIdx.y;
+
+    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
+    unsigned mask_offset = batch * seq_length;
+
+    const float2 * val_cast = reinterpret_cast<const float2 *>(input);
+    float2 * grad_cast = reinterpret_cast<float2 *>(Xdata);
+    const float2 * attn_mask_cast;
+    if (attn_mask) attn_mask_cast = reinterpret_cast<const float2 *>(attn_mask);
+    
+    if (attn_mask) attn_mask_cast += mask_offset;
+
+    val_cast += data_offset;
+    grad_cast += data_offset;
+
+    float2 low_data[MAX_THREAD_ITERATIONS];
+    float2 high_data[MAX_THREAD_ITERATIONS];
+    float2 low_grad_data[MAX_THREAD_ITERATIONS];
+    float2 high_grad_data[MAX_THREAD_ITERATIONS];
+
+    const float scale = 1. / (1. - ratio);
+    __half2 h_scale = __float2half2_rn(scale);
+    __half h_zero = __float2half(0.0);
+    
+    int idx = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x + threadIdx.x;
+
+    curandStatePhilox4_32_10_t state;
+    curand_init(seed.first, idx, seed.second, &state);
+
+    //float minus_infinity = -1 * std::numeric_limits<float>::infinity();
+    float max_val = minus_infinity;
+
+    for(int i = 0;i < iterations;i++)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float2 data = val_cast[data_id];
+            
+            __half2 * data_arr = reinterpret_cast<__half2 *>(&data);
+
+            low_data[i] = __half22float2(data_arr[0]);
+            high_data[i] = __half22float2(data_arr[1]);
+
+            if (attn_mask)
+            {
+                float2 mask = attn_mask_cast[data_id];
+                __half2 * mask_arr = reinterpret_cast<__half2 *>(&mask);
+
+                float2 low_mask = __half22float2(mask_arr[0]);
+                float2 high_mask = __half22float2(mask_arr[1]);
+
+                low_data[i].x += low_mask.x;
+                low_data[i].y += low_mask.y;
+                high_data[i].x += high_mask.x;
+                high_data[i].y += high_mask.y;
+            }
+            max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
+            max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
+            max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
+            max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
+        }
+        else{
+            low_data[i].x = minus_infinity;
+            low_data[i].y = minus_infinity;
+            high_data[i].x = minus_infinity;
+            high_data[i].y = minus_infinity;
+        }
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        auto temp = g.shfl_xor(max_val, i);
+        max_val = (temp > max_val ? temp : max_val);
+    }
+
+    float sum = 0;
+    for(int i = 0;i < iterations;i++)
+    {
+        low_data[i].x = __expf(low_data[i].x - max_val);
+        low_data[i].y = __expf(low_data[i].y - max_val);
+        high_data[i].x = __expf(high_data[i].x - max_val);
+        high_data[i].y = __expf(high_data[i].y - max_val);
+
+        sum += (low_data[i].x + low_data[i].y + 
+                    high_data[i].x + high_data[i].y);
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        sum += g.shfl_xor(sum, i);
+    }
+    sum += 1e-6;
+
+    float sum1 = 0;
+
+    #pragma unroll
+    for (int i = 0; i < iterations; ++i)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float2 grad = grad_cast[data_id];
+
+            low_data[i].x /= sum;
+            low_data[i].y /= sum;
+            high_data[i].x /= sum;
+            high_data[i].y /= sum;
+
+            float4 rand = curand_uniform4(&state); 
+
+            __half2 * grad_arr = reinterpret_cast<__half2 *>(&grad);
+            float2 low_grad =  __half22float2(grad_arr[0]);
+            float2 high_grad = __half22float2(grad_arr[1]);
+
+            low_grad_data[i].x  = ((rand.x > ratio) ? low_grad.x  * scale : 0);
+            low_grad_data[i].y  = ((rand.y > ratio) ? low_grad.y  * scale : 0);
+            high_grad_data[i].x = ((rand.z > ratio) ? high_grad.x * scale : 0);
+            high_grad_data[i].y = ((rand.w > ratio) ? high_grad.y * scale : 0);
+
+            low_grad.x  = low_data[i].x  * low_grad_data[i].x ;
+            low_grad.y  = low_data[i].y  * low_grad_data[i].y ;
+            high_grad.x = high_data[i].x * high_grad_data[i].x; 
+            high_grad.y = high_data[i].y * high_grad_data[i].y; 
+
+            sum1 += (low_grad.x  +
+                    low_grad.y +
+                    high_grad.x +
+                    high_grad.y);
+        }
+    }
+
+    for (int i = 1; i < WARP_SIZE; i <<= 1)
+        sum1 += g.shfl_xor(sum1, i);
+
+    #pragma unroll
+    for (int i = 0; i < iterations; ++i)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        float2 result_f;
+        __half2 *result_h = reinterpret_cast<__half2*>(&result_f);
+        result_h[0].x = low_data[i].x  * (low_grad_data[i].x  - sum1);
+        result_h[0].y = low_data[i].y  * (low_grad_data[i].y  - sum1);
+        result_h[1].x = high_data[i].x * (high_grad_data[i].x - sum1);
+        result_h[1].y = high_data[i].y * (high_grad_data[i].y - sum1);
+
+        if(data_id < seq_length)
+            grad_cast[data_id] = result_f;
+    }
+}
+
+__global__ 
+void dropout_softmax_grad_kernel(
+    const int seq_length,
+    const float ratio,
+    __nv_bfloat16* Xdata,
+    const __nv_bfloat16* input,
+    const __nv_bfloat16* attn_mask,
+    std::pair<uint64_t, uint64_t> seed) 
+{
+    /*
+    unsigned warp_num = blockDim.x >> 5;
+
+    unsigned iteration_stride = WARP_SIZE;
+    unsigned block_width =  warp_num * seq_length;
+
+    unsigned iterations = (seq_length + iteration_stride - 1) / iteration_stride;
+
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
+
+    unsigned wid = threadIdx.x >> 5;
+    unsigned lane = threadIdx.x & 0x1f; 
+
+    unsigned batch = blockIdx.x;
+    unsigned row = blockIdx.y;
+
+    unsigned data_offset = batch * (gridDim.y * block_width) + row * block_width + wid * seq_length;
+    unsigned mask_offset = batch * seq_length;
+
+    const float2 * val_cast = reinterpret_cast<const float2 *>(input);
+    float2 * grad_cast = reinterpret_cast<float2 *>(Xdata);
+    const float2 * attn_mask_cast;
+    if (attn_mask) attn_mask_cast = reinterpret_cast<const float2 *>(attn_mask);
+    
+    if (attn_mask) attn_mask_cast += mask_offset;
+
+    val_cast += data_offset;
+    grad_cast += data_offset;
+
+    float2 low_data[MAX_THREAD_ITERATIONS];
+    float2 high_data[MAX_THREAD_ITERATIONS];
+    float2 low_grad_data[MAX_THREAD_ITERATIONS];
+    float2 high_grad_data[MAX_THREAD_ITERATIONS];
+
+    const float scale = 1. / (1. - ratio);
+    __nv_bfloat162 h_scale = __float2bfloat162_rn(scale);
+    __nv_bfloat16 h_zero = __float2bfloat16(0.0);
+    
+    int idx = (blockIdx.x * gridDim.y + blockIdx.y) * blockDim.x + threadIdx.x;
+
+    curandStatePhilox4_32_10_t state;
+    curand_init(seed.first, idx, seed.second, &state);
+
+    //float minus_infinity = -1 * std::numeric_limits<float>::infinity();
+    float max_val = minus_infinity;
+
+    for(int i = 0;i < iterations;i++)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float2 data = val_cast[data_id];
+            
+            __nv_bfloat162 * data_arr = reinterpret_cast<__nv_bfloat162 *>(&data);
+
+            low_data[i] = __bfloat1622float2(data_arr[0]);
+            high_data[i] = __bfloat1622float2(data_arr[1]);
+
+            if (attn_mask)
+            {
+                float2 mask = attn_mask_cast[data_id];
+                __nv_bfloat162 * mask_arr = reinterpret_cast<__nv_bfloat162 *>(&mask);
+
+                float2 low_mask = __bfloat1622float2(mask_arr[0]);
+                float2 high_mask = __bfloat1622float2(mask_arr[1]);
+
+                low_data[i].x += low_mask.x;
+                low_data[i].y += low_mask.y;
+                high_data[i].x += high_mask.x;
+                high_data[i].y += high_mask.y;
+            }
+            max_val = (low_data[i].x > max_val ? low_data[i].x : max_val);
+            max_val = (low_data[i].y > max_val ? low_data[i].y : max_val);
+            max_val = (high_data[i].x > max_val ? high_data[i].x : max_val);
+            max_val = (high_data[i].y > max_val ? high_data[i].y : max_val);
+        }
+        else{
+            low_data[i].x = minus_infinity;
+            low_data[i].y = minus_infinity;
+            high_data[i].x = minus_infinity;
+            high_data[i].y = minus_infinity;
+        }
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        auto temp = g.shfl_xor(max_val, i);
+        max_val = (temp > max_val ? temp : max_val);
+    }
+
+    float sum = 0;
+    for(int i = 0;i < iterations;i++)
+    {
+        low_data[i].x = __expf(low_data[i].x - max_val);
+        low_data[i].y = __expf(low_data[i].y - max_val);
+        high_data[i].x = __expf(high_data[i].x - max_val);
+        high_data[i].y = __expf(high_data[i].y - max_val);
+
+        sum += (low_data[i].x + low_data[i].y + 
+                    high_data[i].x + high_data[i].y);
+    }
+
+    for (int i = 1; i < WARP_SIZE; i *= 2) {
+        sum += g.shfl_xor(sum, i);
+    }
+    sum += 1e-6;
+
+    float sum1 = 0;
+
+    #pragma unroll
+    for (int i = 0; i < iterations; ++i)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        if(data_id < seq_length)
+        {
+            float2 grad = grad_cast[data_id];
+
+            low_data[i].x /= sum;
+            low_data[i].y /= sum;
+            high_data[i].x /= sum;
+            high_data[i].y /= sum;
+
+            float4 rand = curand_uniform4(&state); 
+
+            __nv_bfloat162 * grad_arr = reinterpret_cast<__nv_bfloat162 *>(&grad);
+            float2 low_grad =  __bfloat1622float2(grad_arr[0]);
+            float2 high_grad = __bfloat1622float2(grad_arr[1]);
+
+            low_grad_data[i].x  = ((rand.x > ratio) ? low_grad.x  * scale : 0);
+            low_grad_data[i].y  = ((rand.y > ratio) ? low_grad.y  * scale : 0);
+            high_grad_data[i].x = ((rand.z > ratio) ? high_grad.x * scale : 0);
+            high_grad_data[i].y = ((rand.w > ratio) ? high_grad.y * scale : 0);
+
+            low_grad.x  = low_data[i].x  * low_grad_data[i].x ;
+            low_grad.y  = low_data[i].y  * low_grad_data[i].y ;
+            high_grad.x = high_data[i].x * high_grad_data[i].x; 
+            high_grad.y = high_data[i].y * high_grad_data[i].y; 
+
+            sum1 += (low_grad.x  +
+                    low_grad.y +
+                    high_grad.x +
+                    high_grad.y);
+        }
+    }
+
+    for (int i = 1; i < WARP_SIZE; i <<= 1)
+        sum1 += g.shfl_xor(sum1, i);
+
+    #pragma unroll
+    for (int i = 0; i < iterations; ++i)
+    {
+        unsigned data_id = i * iteration_stride + lane;
+        float2 result_f;
+        __nv_bfloat162 *result_h = reinterpret_cast<__nv_bfloat162*>(&result_f);
+        result_h[0].x = __float2bfloat16(low_data[i].x  * (low_grad_data[i].x  - sum1));
+        result_h[0].y = __float2bfloat16(low_data[i].y  * (low_grad_data[i].y  - sum1));
+        result_h[1].x = __float2bfloat16(high_data[i].x * (high_grad_data[i].x - sum1));
+        result_h[1].y = __float2bfloat16(high_data[i].y * (high_grad_data[i].y - sum1));
+        if(data_id < seq_length)
+            grad_cast[data_id] = result_f;
+    }*/
+}
+
+template <typename T>
+void launch_softmax_dropout_grad(T* vals, 
+    const T* input, 
+    const T* mask, 
+    int bsz, 
+    int heads, 
+    int seq_length, 
+    int softmax_length, 
+    float ratio, 
+    cudaStream_t stream)
+{
+    dim3 grid_dim(bsz, (heads * seq_length) / 8);
+    dim3 block_dim(256); 
+
+    auto seed = Context::Instance().RestoreOffset();
+    dropout_softmax_grad_kernel<<<grid_dim, block_dim, 0, stream>>>(
+        softmax_length / 4,
+        ratio,
+        vals,
+        input,
+        mask,
+        seed);
+}
+
+template void launch_softmax_dropout_grad(float* vals, const float* input, const float* mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);
+template void launch_softmax_dropout_grad(__nv_bfloat16* vals, const __nv_bfloat16* input, const __nv_bfloat16* mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);
+template void launch_softmax_dropout_grad(__half* vals, const __half* input, const __half* mask, int bsz, int heads, int seq_length,
+    int softmax_length, float ratio, cudaStream_t stream);

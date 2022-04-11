@@ -10,6 +10,7 @@
 #include "curand.h"
 #include "gemm_test.h"
 
+#include <stack>
 #define WARP_SIZE 32
 
 #define CUDA_CHECK(callstr)                                                                    \
@@ -85,10 +86,18 @@ public:
 
     cublasHandle_t GetCublasHandle() { return _cublasHandle; }
 
-    std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc)
+    std::pair<uint64_t, uint64_t> IncrementOffset(uint64_t offset_inc, bool store_offset=false)
     {
         uint64_t offset = _curr_offset;
+        if (store_offset) _stack.push(offset);
         _curr_offset += offset_inc;
+        return std::pair<uint64_t, uint64_t>(_seed, offset);
+    }
+    
+    std::pair<uint64_t, uint64_t> RestoreOffset()
+    {
+        uint64_t offset = _stack.top();
+        _stack.pop();
         return std::pair<uint64_t, uint64_t>(_seed, offset);
     }
 
@@ -168,4 +177,5 @@ private:
     uint64_t _seed;
     uint64_t _curr_offset;
     std::vector<std::array<int, 3>> _gemm_algos;
+    std::stack<uint64_t> _stack;
 };
