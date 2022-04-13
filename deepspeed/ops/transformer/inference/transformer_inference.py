@@ -577,7 +577,7 @@ class DeepSpeedTransformerInference(nn.Module):
             builder = op_builder.InferenceBuilder()
             inference_cuda_module = builder.load()
 
-        print("DeepSpeed Transformer Inference config is ", self.config.__dict__)
+        #print("DeepSpeed Transformer Inference config is ", self.config.__dict__)
 
         self.attention = DeepSpeedSelfAttention(self.config,
                                                 mp_group,

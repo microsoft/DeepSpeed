@@ -218,6 +218,7 @@ def add_config_arguments(parser):
 
 
 def init_inference(model,
+                   path='',
                    triangular_masking=True,
                    mp_size=1,
                    mpu=None,
@@ -281,6 +282,7 @@ def init_inference(model,
         raise NotImplementedError("pipeline module support is not implemented yet")
     else:
         engine = InferenceEngine(model,
+                                 path,
                                  triangular_masking,
                                  mp_size,
                                  ep_size,

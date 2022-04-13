@@ -25,6 +25,7 @@ class InferenceEngine(Module):
 
     def __init__(self,
                  model,
+                 path='',
                  triangular_masking=True,
                  mp_size=1,
                  ep_size=1,
@@ -62,7 +63,11 @@ class InferenceEngine(Module):
         super().__init__()
 
         self.module = model
-
+        state_dict = \
+            torch.load(path[0], map_location='cpu')
+        for name in state_dict:
+            state_dict[name] = state_dict[name].half().cuda()
+        self.module._load_from_state_dict(state_dict, path[1], {}, True, [], [], [])
         self._get_model_config_generate()
 
         self.mp_world_size = mp_size

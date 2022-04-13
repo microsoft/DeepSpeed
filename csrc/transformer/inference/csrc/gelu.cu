@@ -3,6 +3,11 @@
 #define MAX_CAP 4
 #define MAX_SEQ 2048
 
+inline __device__ float gelu1(const float x)
+{
+    float val = 1.702f * x;
+    return x * __frcp_rn(1.0f + __expf(-val * 1.4426950408889634f));
+}
 inline __device__ float gelu(const float x)
 {
     const float sqrt_param = 0.79788456080286535587989211986876f;
