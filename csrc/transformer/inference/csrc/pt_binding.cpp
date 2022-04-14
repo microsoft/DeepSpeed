@@ -8,7 +8,7 @@
 
 std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 
-#define MAX_OUT_TOKES 10
+#define MAX_OUT_TOKES 1024
 
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
@@ -54,7 +54,7 @@ void allocate_workspace(size_t hidden_dim,
                         size_t batch_size,
                         size_t head_size = 128)
 {
-    size_t _workSpaceSize = (hidden_dim * batch_size * max_seq_len);
+    size_t _workSpaceSize = 16 * (hidden_dim * batch_size * max_seq_len);
     Context::Instance().GenWorkSpace(_workSpaceSize * sizeof(T));
 }
 
@@ -75,7 +75,7 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
         workspace = (T*)Context::Instance().GetWorkSpace();
     }
 
-    auto O = at::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
+    auto O = torch::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
     unsigned m = W.size(1);
     unsigned n = Q.size(1) * Q.size(2);
     unsigned k = Q.size(0);
@@ -117,9 +117,8 @@ void attention_unfused(at::Tensor& prev_key_cont,
                        .requires_grad(false);
     float alpha = norm_factor;
     float gemm_beta = 0.0;
-    auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
+    auto attn_score = torch::from_blob({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
-    cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 soft_len,
                                 seq_len,
@@ -158,12 +157,10 @@ void attention_unfused(at::Tensor& prev_key_cont,
 }
 
 template <typename T>
-std::vector<at::Tensor> ds_softmax_context(at::Tensor& query,
+std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            at::Tensor& prev_key,
-                                           at::Tensor& new_key,
                                            at::Tensor& attn_mask,
                                            at::Tensor& prev_value,
-                                           at::Tensor& new_value,
                                            int heads,
                                            float norm_factor,
                                            bool merging,
@@ -172,27 +169,34 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query,
                                            int window_size,
                                            bool no_masking)
 {
-    auto query_cont = query.contiguous();
-    auto prev_key_cont = prev_key.contiguous();
-    auto prev_value_cont = prev_value.contiguous();
 
     int new_size = (new_value.sizes().size() > 1 ? new_value.size(1) : 0);
 
-    // Attn_Score [ batch Head Sequence-length Softmax-length]
-
-    int bsz = query_cont.size(0);
-    int seq_len = query_cont.size(1);
+    int bsz = query_key_value.size(0);
+    int seq_len = query_key_value.size(1);
     int soft_len = prev_value.size(1);
 
+    launch_bias_add_transform_0213<T>(
+        (T*)query_key_value.data_ptr(), 
+        (workspace + torch.numel(query_key_value)), 
+        bsz, 
+        seq_len, 
+        query_key_value.szie(2) / 3, 
+        heads, 
+        Context::Instance().GetCurrentStream(), 
+        3,
+        norm_factor);
+    // Attn_Score [ batch Head Sequence-length Softmax-length]
+
     auto options = at::TensorOptions()
-                       .dtype(query_cont.options().dtype())
+                       .dtype(query_key_value.options().dtype())
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
 
     auto output =
         at::empty({prev_value.size(0), heads, seq_len, prev_value.size(2) / heads}, options);
-    attention_unfused<T>(prev_key_cont,
+    attention_unfused<T>(prev_key,
                          query_cont,
                          attn_mask,  //(no_masking ? nullptr : (T*)attn_mask.data_ptr()),
                          prev_value_cont,
@@ -213,41 +217,39 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query,
 template <typename T>
 at::Tensor ds_bias_gelu(at::Tensor& input, at::Tensor& bias)
 {
-    auto input_cont = input.contiguous();
 
-    int bsz = input_cont.size(0) * input_cont.size(1);
-    int intermediate_size = input_cont.size(2);
+    int bsz = input.size(0) * input.size(1);
+    int intermediate_size = input.size(2);
 
-    launch_bias_gelu((T*)input_cont.data_ptr(),
+    launch_bias_gelu((T*)input.data_ptr(),
                      (T*)bias.data_ptr(),
                      intermediate_size,
                      bsz,
                      Context::Instance().GetCurrentStream());
-    return input_cont;
+    return input;
 }
 
 template <typename T>
 at::Tensor ds_bias_residual(at::Tensor& input, at::Tensor& residual, at::Tensor& bias)
 {
-    auto input_cont = input.contiguous();
-    auto residual_cont = residual.contiguous();
-
-    int bsz = input_cont.size(0) * input_cont.size(1);
-    launch_bias_residual((T*)input_cont.data_ptr(),
-                         (T*)residual_cont.data_ptr(),
+    int bsz = input.size(0) * input.size(1);
+    launch_bias_residual((T*)input.data_ptr(),
+                         (T*)residual.data_ptr(),
                          (T*)bias.data_ptr(),
                          bsz,
-                         input_cont.size(2),
+                         input.size(2),
                          (bias.size(0) > 1),
                          Context::Instance().GetCurrentStream());
-    return input_cont;
+    return input;
 }
 
 template <typename T>
 at::Tensor ds_layernorm(at::Tensor& input_cont, at::Tensor& gamma, at::Tensor& betta, float epsilon)
 {
     int bsz = input_cont.size(0) * input_cont.size(1);
-    auto inp_norm = at::empty_like(input_cont);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    auto inp_norm = torch::from_blob(workspace + (3 * input_cont.size(0) * MAX_OUT_TOKES * input_cont.size(2)), 
+                    input_cont.sizes(), input_cont.options());
     launch_layer_norm((T*)inp_norm.data_ptr(),
                       (T*)input_cont.data_ptr(),
                       (T*)gamma.data_ptr(),
@@ -307,17 +309,18 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool add_bias)
 {
-    auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    if (!workspace) {
+        cublasSetStream(Context::Instance().GetCublasHandle(), stream);
+        allocate_workspace<T>(input.size(1), MAX_TOKEN_LENGTH, input.size(0));
+        workspace = (T*)Context::Instance().GetWorkSpace();
+    }
 
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    auto output = torch::from_blob(workspace + input.size(0) * Context::Instance().CurrentTokens() * input.size(2), 
+                                    {input.size(0), input.size(1), weight.size(1)}, input.options());
+    int bsz = input.size(0) * input.size(1);
     auto inp_norm =
-        qkv_unfused_cublas<T>(output, input_cont, weight, bias, gamma, beta, epsilon, add_bias);
+        qkv_unfused_cublas<T>(output, input, weight, bias, gamma, beta, epsilon, add_bias);
 
     return {output, inp_norm};
 }
@@ -402,30 +405,24 @@ at::Tensor ds_qkv_gemm_int8(at::Tensor& input,
 template <typename T>
 at::Tensor ds_linear_layer(at::Tensor& input, at::Tensor& weight, at::Tensor& bias)
 {
-    auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
 
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    auto output = torch::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, input.options());
+    int bsz = input.size(0) * input.size(1);
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
-    cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
 
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
                    CUBLAS_OP_N,
                    CUBLAS_OP_N,
                    weight.size(1),
                    bsz,
-                   input_cont.size(2),
+                   input.size(2),
                    &alpha,
                    &gemm_beta,
                    (T*)weight.data_ptr(),
-                   (T*)input_cont.data_ptr(),
+                   (T*)input.data_ptr(),
                    (T*)output.data_ptr(),
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 
@@ -467,29 +464,23 @@ at::Tensor ds_linear_layer_int8(at::Tensor& input,
 template <typename T>
 at::Tensor ds_vector_matmul(at::Tensor& input, at::Tensor& weight, bool async_op)
 {
-    auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
-
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    int bsz = input.size(0) * input.size(1);
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
-    cublasSetStream(Context::Instance().GetCublasHandle(),
-                    Context::Instance().GetCurrentStream(async_op));
+    
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+
+    auto output = torch::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, input.options());
     cublas_gemm_ex(Context::Instance().GetCublasHandle(),
                    CUBLAS_OP_N,
                    CUBLAS_OP_N,
                    weight.size(1),
                    bsz,
-                   input_cont.size(2),
+                   input.size(2),
                    &alpha,
                    &gemm_beta,
                    (T*)weight.data_ptr(),
-                   (T*)input_cont.data_ptr(),
+                   (T*)input.data_ptr(),
                    (T*)output.data_ptr(),
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
     return output;
@@ -529,7 +520,8 @@ void mlp_unfused_cublas(at::Tensor& output,
                         bool preLayerNorm)
 {
     int bsz = input.size(0) * input.size(1);
-    auto inp_norm = preLayerNorm ? at::empty_like(input) : residual_add;
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    auto inp_norm = preLayerNorm ? torch::from_blob(workspace + 2 * at::numel(input), input.sizes(), input.options) : residual_add;
 
     launch_residual_layer_norm((T*)inp_norm.data_ptr(),
                                (T*)residual_add.data_ptr(),
@@ -576,16 +568,11 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool preLayerNorm)
 {
-    auto input_cont = input.contiguous();
-    auto options = at::TensorOptions()
-                       .dtype(input_cont.options().dtype())
-                       .layout(at::kStrided)
-                       .device(at::kCUDA)
-                       .requires_grad(false);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
 
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-    auto residual_add = at::empty_like(input_cont);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    auto output = torch::from_blob(workspace + 4 * at::numel(input), {input.size(0), input.size(1), weight.size(1)}, input.options());
+    auto residual_add = torch::from_blob(workspace + at::numel(input), input.sizes(), input.options());
+    int bsz = input.size(0) * input.size(1);
 
     mlp_unfused_cublas<T>(output,
                           residual_add,

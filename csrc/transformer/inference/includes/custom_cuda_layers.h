@@ -17,6 +17,7 @@
 #include <cassert>
 #include <iostream>
 
+#define MAX_THREADS 1024
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
 #define SMs 80
