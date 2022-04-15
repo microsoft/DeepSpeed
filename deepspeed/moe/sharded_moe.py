@@ -271,9 +271,9 @@ def top1gating(logits: Tensor,
 def top2gating(logits: Tensor,
                capacity_factor: float,
                min_capacity: int) -> Tuple[Tensor,
-                                                Tensor,
-                                                Tensor,
-                                                Tensor]:
+                                           Tensor,
+                                           Tensor,
+                                           Tensor]:
     """Implements Top2Gating on logits."""
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
