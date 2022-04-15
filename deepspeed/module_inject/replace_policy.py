@@ -268,6 +268,68 @@ class MegatronLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
+
+class FairSeqLayerPolicy(DSPolicy):
+    _orig_layer_class = None
+    def __init__(self, client_module, inference=True):
+        super().__init__(inference)
+        self.client_module = client_module
+        # we use megatron version to differentiate between the old and new
+        # megatron-lm source code
+        try:
+            import fairseq
+            from fairseq.modules import TransformerDecoderLayer
+            FairSeqLayerPolicy._orig_layer_class = TransformerDecoderLayer
+        except ImportError:
+            FairSeqLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.self_attn.q_proj.weight.shape[1], \
+               self.client_module.self_attn.num_heads
+
+    def attention(self):
+        attention = self.client_module.self_attn
+        qw = attention.q_proj.weight
+        kw = attention.k_proj.weight
+        vw = attention.v_proj.weight
+        qb = attention.q_proj.bias
+        kb = attention.k_proj.bias
+        vb = attention.v_proj.bias
+
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0))
+        return self.linear_layer, \
+                qkvw, \
+                qkvb, \
+                attention.out_proj.weight, \
+                attention.out_proj.bias, \
+                self.scale_attention
+
+    def mlp(self):
+        moe = self.client_module.is_moe_layer
+
+        if moe:
+            moe_experts = self.client_module.moe_layer.experts
+            num_experts = len(moe_experts)
+            return self.linear_layer, \
+                [moe_experts[i].fc1.weight for i in range(num_experts)], \
+                [moe_experts[i].fc1.bias for i in range(num_experts)], \
+                [moe_experts[i].fc2.weight for i in range(num_experts)], \
+                [moe_experts[i].fc2.bias for i in range(num_experts)]
+        else:
+            return self.linear_layer, \
+                self.client_module.fc1.weight, \
+                self.client_module.fc1.bias, \
+                self.client_module.fc2.weight, \
+                self.client_module.fc2.bias
+
+    def layerNorm(self):
+        return self.client_module.self_attn_layer_norm.weight, \
+               self.client_module.self_attn_layer_norm.bias, \
+               self.client_module.final_layer_norm.weight, \
+               self.client_module.final_layer_norm.bias
+
+
 class HFGPT2LayerPolicy(DSPolicy):
     _orig_layer_class = None
 
@@ -313,4 +375,5 @@ replace_policies = [
     HFGPTJLayerPolicy,
     MegatronLayerPolicy,
     HFGPT2LayerPolicy,
+    FairSeqLayerPolicy,
 ]

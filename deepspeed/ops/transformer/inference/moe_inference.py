@@ -380,7 +380,11 @@ class DeepSpeedMoEInference(nn.Module):
                 encoder_hidden_states=None,
                 encoder_attention_mask=None,
                 use_cache=False,
-                output_attentions=False):
+                output_attentions=False,
+                self_attn_mask=None,
+                self_attn_padding_mask=None,
+                need_attn=False,
+                need_head_weights=False):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
         input_type = input.dtype
@@ -400,7 +404,7 @@ class DeepSpeedMoEInference(nn.Module):
                                               output_attentions,
                                               self.norm_w,
                                               self.norm_b)
-
+            context_output = attention_output[3]
             if get_present:
                 attention_output, p_key, p_value = attention_output[0:3]
                 presents = (p_key, p_value)
@@ -461,8 +465,8 @@ class DeepSpeedMoEInference(nn.Module):
 
         if get_present:
             output = (output, presents)
-
+        print(f"MoE {context_output.shape}")
         if self.config.return_tuple:
-            return output if type(output) is tuple else (output, )
+            return output if type(output) is tuple else (output, None, None, None)
         else:
             return output

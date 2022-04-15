@@ -608,7 +608,11 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_hidden_states=None,
                 encoder_attention_mask=None,
                 use_cache=False,
-                output_attentions=False):
+                output_attentions=False,
+                self_attn_mask=None,
+                self_attn_padding_mask=None,
+                need_attn=False,
+                need_head_weights=False):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
@@ -632,8 +636,8 @@ class DeepSpeedTransformerInference(nn.Module):
 
             if get_present:
                 presents = (attention_output[1], attention_output[2])
-            elif output_attentions:
-                context_output = attention_output[3]
+            #elif output_attentions:
+            context_output = attention_output[3]
 
             output = self.mlp(
                 attention_output[0]
@@ -659,7 +663,8 @@ class DeepSpeedTransformerInference(nn.Module):
         if get_present:
             output = (output, presents)
 
+        print(f"non-MoE {context_output.shape}")
         if self.config.return_tuple:
-            return output if type(output) is tuple else (output, )
+            return output if type(output) is tuple else (output, None, None, None)
         else:
             return output

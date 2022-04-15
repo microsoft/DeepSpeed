@@ -62,7 +62,6 @@ class InferenceEngine(Module):
         super().__init__()
 
         self.module = model
-
         self._get_model_config_generate()
 
         self.mp_world_size = mp_size
