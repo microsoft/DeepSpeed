@@ -45,7 +45,7 @@ def natural_keys(text):
     http://nedbatchelder.com/blog/200712/human_sorting.html
     (See Toothy's implementation in the comments)
     '''
-    return [ atoi(c) for c in re.split(r'(\d+)', text) ]
+    return [atoi(c) for c in re.split(r'(\d+)', text)]
 
 
 def get_model_state_file(checkpoint_dir, zero_stage):
@@ -66,7 +66,9 @@ def get_model_state_file(checkpoint_dir, zero_stage):
 
 def get_optim_files(checkpoint_dir):
     # XXX: need to test that this simple glob rule works for multi-node setup too
-    optim_files = sorted(glob.glob(os.path.join(checkpoint_dir, "*_optim_states.pt")), key=natural_keys)
+    optim_files = sorted(glob.glob(os.path.join(checkpoint_dir,
+                                                "*_optim_states.pt")),
+                         key=natural_keys)
 
     if len(optim_files) == 0:
         raise FileNotFoundError(
