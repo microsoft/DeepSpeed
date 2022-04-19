@@ -272,11 +272,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None))
-            
-            #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: norm input {qkv_out[1].norm()}')
-            #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: mixed_layer: {qkv_out[0].norm()}')
 
-            context_layer, key_layer, value_layer = compute_attention(qkv_out[0], input_mask)
+            context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
             #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: oooooo -> {output.norm()}')
 

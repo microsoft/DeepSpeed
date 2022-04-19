@@ -156,6 +156,10 @@ for op_name, builder in ALL_OPS.items():
         reqs = builder.python_requirements()
         install_requires += builder.python_requirements()
 
+    # if op is compatible but install is not enabled (JIT mode)
+    if is_rocm_pytorch and op_compatible and not op_enabled(op_name):
+        builder.hipify_extension()
+
     # If op install enabled, add builder to extensions
     if op_enabled(op_name) and op_compatible:
         assert torch_available, f"Unable to pre-compile {op_name}, please first install torch"
@@ -259,6 +263,10 @@ setup(name='deepspeed',
       author='DeepSpeed Team',
       author_email='deepspeed@microsoft.com',
       url='http://deepspeed.ai',
+      project_urls={
+          'Documentation': 'https://deepspeed.readthedocs.io',
+          'Source': 'https://github.com/microsoft/DeepSpeed',
+      },
       install_requires=install_requires,
       extras_require=extras_require,
       packages=find_packages(exclude=["docker",

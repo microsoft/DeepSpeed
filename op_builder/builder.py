@@ -30,9 +30,9 @@ except ImportError:
     print(
         f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
     )
-
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
+else:
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
 def installed_cuda_version():
@@ -80,6 +80,7 @@ cuda_minor_mismatch_ok = {
         "11.3",
         "11.4",
         "11.5",
+        "11.6",
     ],
 }
 
@@ -126,6 +127,9 @@ class OpBuilder(ABC):
         '''
         pass
 
+    def hipify_extension(self):
+        pass
+
     @staticmethod
     def assert_torch_info(torch_info):
         install_torch_version = torch_info['version']
@@ -162,12 +166,17 @@ class OpBuilder(ABC):
             return OpBuilder._is_rocm_pytorch
 
         _is_rocm_pytorch = False
-        if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
-            _is_rocm_pytorch = hasattr(torch.version,
-                                       'hip') and torch.version.hip is not None
-            if _is_rocm_pytorch:
-                from torch.utils.cpp_extension import ROCM_HOME
-                _is_rocm_pytorch = ROCM_HOME is not None
+        try:
+            import torch
+        except ImportError:
+            pass
+        else:
+            if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
+                _is_rocm_pytorch = hasattr(torch.version,
+                                           'hip') and torch.version.hip is not None
+                if _is_rocm_pytorch:
+                    from torch.utils.cpp_extension import ROCM_HOME
+                    _is_rocm_pytorch = ROCM_HOME is not None
         OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
         return OpBuilder._is_rocm_pytorch
 
@@ -567,8 +576,6 @@ class CUDAOpBuilder(OpBuilder):
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
         version_ge_1_1 = []
         if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
             version_ge_1_1 = ['-DVERSION_GE_1_1']
@@ -605,6 +612,21 @@ class CUDAOpBuilder(OpBuilder):
                 sources[i] = str(src.relative_to(curr_file))
             cuda_ext.sources = sources
         return cuda_ext
+
+    def hipify_extension(self):
+        if self.is_rocm_pytorch():
+            from torch.utils.hipify import hipify_python
+            hipify_python.hipify(
+                project_directory=os.getcwd(),
+                output_directory=os.getcwd(),
+                header_include_dirs=self.include_paths(),
+                includes=[os.path.join(os.getcwd(),
+                                       '*')],
+                extra_files=[os.path.abspath(s) for s in self.sources()],
+                show_detailed=True,
+                is_pytorch_extension=True,
+                hipify_extra_files_only=True,
+            )
 
     def cxx_args(self):
         if sys.platform == "win32":
