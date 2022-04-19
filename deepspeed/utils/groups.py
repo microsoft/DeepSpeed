@@ -167,13 +167,15 @@ def _get_expert_parallel_group_ranks(mpu, expert_parallel_size):
     Returns:
         Expert parallel group ranks and Expert data parallel group ranks list.
     """
-    all_dp_group_ranks = mpu.get_all_data_parallel_group_ranks()
-    dp_world_size = mpu.get_data_parallel_world_size()  
+    dp_groups = mpu.topology().get_axis_comm_lists("data")
+    tp_world_size = mpu.get_slice_parallel_world_size()
+    dp_world_size = mpu.get_data_parallel_world_size()
 
     expert_parallel_groups = []
     expert_data_parallel_groups = []
-    for pp_stage_dp_group_ranks in all_dp_group_ranks:
-        for dp_group_ranks in pp_stage_dp_group_ranks: 
+    # TODO: Poor readability, refactor me!
+    for i in range(0, len(dp_groups), tp_world_size):
+        for dp_group_ranks in dp_groups[i: i + tp_world_size]:
             # partition of expert parallel groups, e.g. [0,2,4,6], [8,10,12,14]
             part_ep_groups = []
             for i in range(0, dp_world_size, expert_parallel_size):
@@ -220,10 +222,11 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     _DATA_PARALLEL_GROUP = mpu.get_data_parallel_group()
     _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
 
+    group_name = f"ep_size_{expert_parallel_size_}"
+
     expert_parallel_size_ = min(expert_parallel_size_, dp_world_size)
     _ensure_divisibility(world_size, expert_parallel_size_)
 
-    group_name = f"ep_size_{expert_parallel_size_}"
 
     # Only create groups if they don't already exist
     # Need to check conditions outside the group creation loop because of the way torch.dist group creation works
