@@ -107,6 +107,15 @@ void launch_apply_rotary_pos_emb(T* mixed_query,
                                  unsigned num_heads,
                                  unsigned batch,
                                  cudaStream_t stream);
+template <typename T>
+void launch_apply_rotary_pos_emb1(T* query_key_value,
+                                 unsigned head_size,
+                                 unsigned seq_len,
+                                 unsigned rotary_dim,
+                                 unsigned offset,
+                                 unsigned num_heads,
+                                 unsigned batch,
+                                 cudaStream_t stream);
 
 template <typename T>
 void launch_moe_res_matmul(T* residual,
@@ -115,3 +124,25 @@ void launch_moe_res_matmul(T* residual,
                            int seq_len,
                            int hidden_dim,
                            cudaStream_t stream);
+template<typename T>
+void launch_transform_scale(T* vals,
+                                   T* query,
+                                   T* kv_cache,
+                                   int batch_size,
+                                   int seq_length,
+                                   unsigned cur_tokens,
+                                   size_t value_offset,
+                                   unsigned hidden_dim,
+                                   int heads,
+                                   cudaStream_t stream,
+                                   int trans_count,
+                                   float norm_factor);
+template <typename T>
+void launch_transform4d_0213(T* out,
+                             const T* in,
+                             unsigned batch_size,
+                             int heads,
+                             int seq_length,
+                             int hidden_dim,
+                             cudaStream_t stream,
+                             int trans_count);
