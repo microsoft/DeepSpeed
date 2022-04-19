@@ -1,5 +1,6 @@
 ---
 title: "Getting Started with DeepSpeed for Inferencing Transformer based Models"
+tags: inference
 ---
 
 DeepSpeed-Inference introduces several features to efficiently serve transformer-based PyTorch models. It supports model parallelism (MP) to fit large models that would otherwise not fit in GPU memory. Even for smaller models, MP can be used to reduce latency for inference. To further reduce latency and cost, we introduce inference-customized kernels. Finally, we propose a novel approach to quantize models, called MoQ, to both shrink the model and reduce the inference cost at production. For more details on the inference related optimizations in DeepSpeed, please refer to our [blog post](https://www.microsoft.com/en-us/research/blog/deepspeed-accelerating-large-scale-model-inference-and-training-via-system-optimizations-and-compression/).
@@ -110,7 +111,8 @@ generator = pipeline('text-generation', model='EleutherAI/gpt-neo-2.7B',
 generator.model = deepspeed.init_inference(generator.model,
                                            mp_size=world_size,
                                            dtype=torch.float,
-                                           replace_method='auto')
+                                           replace_method='auto',
+					   replace_with_kernel_inject=True)
 
 string = generator("DeepSpeed is", do_sample=True, min_length=50)
 if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:

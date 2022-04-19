@@ -30,6 +30,9 @@ except ImportError:
     print(
         f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
     )
+else:
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
 def installed_cuda_version():
@@ -77,6 +80,7 @@ cuda_minor_mismatch_ok = {
         "11.3",
         "11.4",
         "11.5",
+        "11.6",
     ],
 }
 
@@ -100,23 +104,10 @@ def assert_no_cuda_mismatch():
             "cuda/cpp extensions without a matching cuda version.")
 
 
-def assert_torch_info(torch_info):
-    install_torch_version = torch_info['version']
-    install_cuda_version = torch_info['cuda_version']
-
-    current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
-    current_torch_version = ".".join(torch.__version__.split('.')[:2])
-
-    if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
-        raise RuntimeError(
-            "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
-            "with a different version than what is being used at runtime. Please re-install "
-            f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
-            f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
-            f"torch={current_torch_version}, cuda={current_cuda_version}")
-
-
 class OpBuilder(ABC):
+    _rocm_version = None
+    _is_rocm_pytorch = None
+
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
@@ -135,6 +126,75 @@ class OpBuilder(ABC):
         Returns list of source files for your op, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
         '''
         pass
+
+    def hipify_extension(self):
+        pass
+
+    @staticmethod
+    def assert_torch_info(torch_info):
+        install_torch_version = torch_info['version']
+        install_cuda_version = torch_info['cuda_version']
+        install_hip_version = torch_info['hip_version']
+
+        if not OpBuilder.is_rocm_pytorch():
+            current_cuda_version = ".".join(torch.version.cuda.split('.')[:2])
+        else:
+            current_hip_version = ".".join(torch.version.hip.split('.')[:2])
+
+        current_torch_version = ".".join(torch.__version__.split('.')[:2])
+
+        if not OpBuilder.is_rocm_pytorch():
+            if install_cuda_version != current_cuda_version or install_torch_version != current_torch_version:
+                raise RuntimeError(
+                    "PyTorch and CUDA version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. Please re-install "
+                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                    f"torch={install_torch_version}, cuda={install_cuda_version}, runtime versions:"
+                    f"torch={current_torch_version}, cuda={current_cuda_version}")
+        else:
+            if install_hip_version != current_hip_version or install_torch_version != current_torch_version:
+                raise RuntimeError(
+                    "PyTorch and HIP version mismatch! DeepSpeed ops were compiled and installed "
+                    "with a different version than what is being used at runtime. Please re-install "
+                    f"DeepSpeed or switch torch versions. DeepSpeed install versions: "
+                    f"torch={install_torch_version}, hip={install_hip_version}, runtime versions:"
+                    f"torch={current_torch_version}, hip={current_hip_version}")
+
+    @staticmethod
+    def is_rocm_pytorch():
+        if OpBuilder._is_rocm_pytorch is not None:
+            return OpBuilder._is_rocm_pytorch
+
+        _is_rocm_pytorch = False
+        try:
+            import torch
+        except ImportError:
+            pass
+        else:
+            if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
+                _is_rocm_pytorch = hasattr(torch.version,
+                                           'hip') and torch.version.hip is not None
+                if _is_rocm_pytorch:
+                    from torch.utils.cpp_extension import ROCM_HOME
+                    _is_rocm_pytorch = ROCM_HOME is not None
+        OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
+        return OpBuilder._is_rocm_pytorch
+
+    @staticmethod
+    def installed_rocm_version():
+        if OpBuilder._rocm_version:
+            return OpBuilder._rocm_version
+
+        ROCM_MAJOR = '0'
+        ROCM_MINOR = '0'
+        if OpBuilder.is_rocm_pytorch():
+            from torch.utils.cpp_extension import ROCM_HOME
+            with open('/opt/rocm/.info/version-dev', 'r') as file:
+                ROCM_VERSION_DEV_RAW = file.read()
+            ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
+            ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
+        OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
+        return OpBuilder._rocm_version
 
     def include_paths(self):
         '''
@@ -396,7 +456,7 @@ class OpBuilder(ABC):
             # Ensure the op we're about to load was compiled with the same
             # torch/cuda versions we are currently using at runtime.
             if isinstance(self, CUDAOpBuilder):
-                assert_torch_info(torch_info)
+                self.assert_torch_info(torch_info)
 
             return importlib.import_module(self.absolute_name())
         else:
@@ -414,7 +474,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
             )
 
-        if isinstance(self, CUDAOpBuilder):
+        if isinstance(self, CUDAOpBuilder) and not self.is_rocm_pytorch():
             assert_no_cuda_mismatch()
 
         self.jit_mode = True
@@ -432,6 +492,16 @@ class OpBuilder(ABC):
         extra_include_paths = [
             self.deepspeed_src_path(path) for path in self.include_paths()
         ]
+
+        # Torch will try and apply whatever CCs are in the arch list at compile time,
+        # we have already set the intended targets ourselves we know that will be
+        # needed at runtime. This prevents CC collisions such as multiple __half
+        # implementations. Stash arch list to reset after build.
+        torch_arch_list = None
+        if "TORCH_CUDA_ARCH_LIST" in os.environ:
+            torch_arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST")
+            os.environ["TORCH_CUDA_ARCH_LIST"] = ""
+
         op_module = load(
             name=self.name,
             sources=self.strip_empty_entries(sources),
@@ -443,6 +513,11 @@ class OpBuilder(ABC):
         build_duration = time.time() - start_build
         if verbose:
             print(f"Time to load {self.name} op: {build_duration} seconds")
+
+        # Reset arch list so we are not silently removing it for other possible use cases
+        if torch_arch_list:
+            os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
+
         return op_module
 
 
@@ -501,8 +576,6 @@ class CUDAOpBuilder(OpBuilder):
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
         version_ge_1_1 = []
         if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
             version_ge_1_1 = ['-DVERSION_GE_1_1']
@@ -519,15 +592,41 @@ class CUDAOpBuilder(OpBuilder):
 
     def builder(self):
         from torch.utils.cpp_extension import CUDAExtension
-        assert_no_cuda_mismatch()
-        return CUDAExtension(name=self.absolute_name(),
-                             sources=self.strip_empty_entries(self.sources()),
-                             include_dirs=self.strip_empty_entries(self.include_paths()),
-                             libraries=self.strip_empty_entries(self.libraries_args()),
-                             extra_compile_args={
-                                 'cxx': self.strip_empty_entries(self.cxx_args()),
-                                 'nvcc': self.strip_empty_entries(self.nvcc_args())
-                             })
+        if not self.is_rocm_pytorch():
+            assert_no_cuda_mismatch()
+        cuda_ext = CUDAExtension(
+            name=self.absolute_name(),
+            sources=self.strip_empty_entries(self.sources()),
+            include_dirs=self.strip_empty_entries(self.include_paths()),
+            libraries=self.strip_empty_entries(self.libraries_args()),
+            extra_compile_args={
+                'cxx': self.strip_empty_entries(self.cxx_args()),
+                'nvcc': self.strip_empty_entries(self.nvcc_args())
+            })
+        if self.is_rocm_pytorch():
+            # hip converts paths to absolute, this converts back to relative
+            sources = cuda_ext.sources
+            curr_file = Path(__file__).parent.parent  # ds root
+            for i in range(len(sources)):
+                src = Path(sources[i])
+                sources[i] = str(src.relative_to(curr_file))
+            cuda_ext.sources = sources
+        return cuda_ext
+
+    def hipify_extension(self):
+        if self.is_rocm_pytorch():
+            from torch.utils.hipify import hipify_python
+            hipify_python.hipify(
+                project_directory=os.getcwd(),
+                output_directory=os.getcwd(),
+                header_include_dirs=self.include_paths(),
+                includes=[os.path.join(os.getcwd(),
+                                       '*')],
+                extra_files=[os.path.abspath(s) for s in self.sources()],
+                show_detailed=True,
+                is_pytorch_extension=True,
+                hipify_extra_files_only=True,
+            )
 
     def cxx_args(self):
         if sys.platform == "win32":
@@ -536,18 +635,29 @@ class CUDAOpBuilder(OpBuilder):
             return ['-O3', '-std=c++14', '-g', '-Wno-reorder']
 
     def nvcc_args(self):
-        cuda_major, _ = installed_cuda_version()
-        args = [
-            '-O3',
-            '--use_fast_math',
-            '-std=c++17'
-            if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
-            '-U__CUDA_NO_HALF_OPERATORS__',
-            '-U__CUDA_NO_HALF_CONVERSIONS__',
-            '-U__CUDA_NO_HALF2_OPERATORS__'
-        ]
-
-        return args + self.compute_capability_args()
+        args = ['-O3']
+        if self.is_rocm_pytorch():
+            ROCM_MAJOR, ROCM_MINOR = self.installed_rocm_version()
+            args += [
+                '-std=c++14',
+                '-U__HIP_NO_HALF_OPERATORS__',
+                '-U__HIP_NO_HALF_CONVERSIONS__',
+                '-U__HIP_NO_HALF2_OPERATORS__',
+                '-DROCM_VERSION_MAJOR=%s' % ROCM_MAJOR,
+                '-DROCM_VERSION_MINOR=%s' % ROCM_MINOR
+            ]
+        else:
+            cuda_major, _ = installed_cuda_version()
+            args += [
+                '--use_fast_math',
+                '-std=c++17'
+                if sys.platform == "win32" and cuda_major > 10 else '-std=c++14',
+                '-U__CUDA_NO_HALF_OPERATORS__',
+                '-U__CUDA_NO_HALF_CONVERSIONS__',
+                '-U__CUDA_NO_HALF2_OPERATORS__'
+            ]
+            args += self.compute_capability_args()
+        return args
 
     def libraries_args(self):
         if sys.platform == "win32":
@@ -558,11 +668,17 @@ class CUDAOpBuilder(OpBuilder):
 
 class TorchCPUOpBuilder(CUDAOpBuilder):
     def extra_ldflags(self):
-        return ['-lcurand']
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []
 
     def cxx_args(self):
         import torch
-        CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        if not self.is_rocm_pytorch():
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "lib64")
+        else:
+            CUDA_LIB64 = os.path.join(torch.utils.cpp_extension.ROCM_HOME, "lib")
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
 

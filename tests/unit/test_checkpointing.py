@@ -186,6 +186,8 @@ def checkpoint_correctness_verification(args,
 
     trained_model.save_checkpoint(save_folder, tag=save_tag)
 
+    dist.barrier()
+
     loaded_model = create_deepspeed_model(args=args,
                                           model=models[1],
                                           base_optimizer=base_optimizers[1])
@@ -938,8 +940,11 @@ def test_checkpoint_moe(tmpdir, ep_size):
 
     @distributed_test(world_size=[4])
     def _helper(args):
-        groups.initialize(ep_size=ep_size)
-        models = [SimpleMoEModel(hidden_dim=hidden_dim) for _ in range(2)]
+        models = [
+            SimpleMoEModel(hidden_dim=hidden_dim,
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
+        ]
         optimizers = [torch.optim.AdamW(params=model.parameters()) for model in models]
         checkpoint_correctness_verification(args,
                                             models=models,
@@ -995,14 +1000,14 @@ def test_checkpoint_moe_and_zero(tmpdir, ep_size, load_optim_states):
     def create_param_groups(model):
         # param group must have a random unique name (for now)
         # TODO: clean-up this requirement, the unique name should not be required here
-        return {'params': model.parameters(), 'name': 'random-unique-name'}
+        return {'params': [p for p in model.parameters()], 'name': 'random-unique-name'}
 
     @distributed_test(world_size=[4])
     def _helper(args):
-        groups.initialize(ep_size=ep_size)
         models = [
             SimpleMoEModel(hidden_dim=hidden_dim,
-                           num_experts=ep_size) for _ in range(2)
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
         ]
         params = [
             split_params_into_different_moe_groups_for_optimizer(
@@ -1291,3 +1296,133 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
             model.step()
 
     _go1(models)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_immediate_save_load(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+        }
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_immediate_save_load(args, model, tmpdir):
+
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.save_checkpoint(tmpdir)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
+
+    _test_immediate_save_load(args, model, tmpdir)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_load_immediate_save(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+        }
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_load_immediate_save(args, model, tmpdir):
+
+        # 1. pretrain a model and save it
+        dtype = torch.half
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=1,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=dtype)
+        for n, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            ds_model.backward(loss)
+            ds_model.step()
+        ds_model.save_checkpoint(tmpdir)
+
+        # 2. load and immediately save a model with a fresh ds engine
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
+        ds_model.save_checkpoint(tmpdir)
+
+    _test_load_immediate_save(args, model, tmpdir)
+
+
+@pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
+def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
+    config_dict = {
+        "train_batch_size": 4,
+        "optimizer": {
+            "type": 'Adam'
+        },
+        "fp16": {
+            "enabled": True,
+            "initial_scale_power": 8
+        },
+        "zero_optimization": {
+            "stage": zero_stage,
+            "stage3_gather_fp16_weights_on_model_save": True,
+        },
+        "gradient_accumulation_steps": 2,
+        "train_micro_batch_size_per_gpu": 1,
+        "train_batch_size": 2,
+    }
+    hidden_dim = 10
+    model = SimpleModel(hidden_dim)
+    args = args_from_dict(tmpdir, config_dict)
+
+    @distributed_test(world_size=[1])
+    def _test_save_before_accum_grad_is_done(args, model, tmpdir):
+
+        # This test reproduces a bug where one tries to retrieve a 16bit model before grad_accum
+        # cycle was completed.
+        # So we config grad_accum=2 and step only once and save_16bit_model
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=2,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=torch.half)
+
+        batch = next(iter(data_loader))
+        loss = ds_model(batch[0], batch[1])
+        ds_model.backward(loss)
+        ds_model.step()
+
+        # we stepped only once, and now save 16bit model before gradient_accumulation_steps=2 is complete
+        ds_model.save_16bit_model(tmpdir, "model.pt")
+
+        # let's test just as well that we can save the checkpoint too
+        ds_model.save_checkpoint(tmpdir)
+
+    _test_save_before_accum_grad_is_done(args, model, tmpdir)

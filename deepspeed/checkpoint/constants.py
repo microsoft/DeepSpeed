@@ -12,9 +12,9 @@ FP32_FLAT_GROUPS = 'fp32_flat_groups'
 BASE_OPTIMIZER_STATE = 'base_optimizer_state'
 SINGLE_PARTITION_OF_FP32_GROUPS = "single_partition_of_fp32_groups"
 GROUP_PADDINGS = 'group_paddings'
-
 PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
+CLIP_GRAD = 'clip_grad'
 
 #########################################
 # Module checkpoint keys

@@ -18,7 +18,8 @@ try:
     _amp_available = True
 except ImportError:
     _amp_available = False
-amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
+amp_available = pytest.mark.skipif(not _amp_available,
+                                   reason="apex/amp is not installed")
 
 
 def test_lamb_fp32_grad_clip(tmpdir):
@@ -225,9 +226,7 @@ def test_unfused_fp16_optimizer_gradnorm_for_moe(tmpdir, monkeypatch):
     @distributed_test(world_size=[2])
     def _test_unfused_fp16_optimizer(args, hidden_dim):
         # initialize MoE
-        groups.initialize_model_parallel(1)
-        groups.initialize_expert_parallel(2)
-        model = SimpleMoEModel(hidden_dim)
+        model = SimpleMoEModel(hidden_dim, ep_size=2)
         optimizer = torch.optim.AdamW(params=model.parameters())
         engine, optimizer, _, _ = deepspeed.initialize(args=args,
                                               model=model,
@@ -274,9 +273,7 @@ def test_fused_fp16_optimizer_gradnorm_for_moe(tmpdir, monkeypatch):
     @distributed_test(world_size=[2])
     def _test_fused_fp16_optimizer(args, hidden_dim):
         # initialize MoE
-        groups.initialize_model_parallel(1)
-        groups.initialize_expert_parallel(2)
-        model = SimpleMoEModel(hidden_dim)
+        model = SimpleMoEModel(hidden_dim, ep_size=2)
         # optimizer = torch.optim.AdamW(params=model.parameters())
         optimizer = FusedAdam(params=model.parameters())
         engine, optimizer, _, _ = deepspeed.initialize(args=args,
@@ -331,9 +328,7 @@ def test_lamb_optimizer_gradnorm_for_moe(tmpdir, monkeypatch, fused_lamb_legacy:
     @distributed_test(world_size=[2])
     def _test_lamb_legacy_optimizer_step(args, hidden_dim, fused_lamb_legacy):
         # initialize MoE
-        groups.initialize_model_parallel(1)
-        groups.initialize_expert_parallel(2)
-        model = SimpleMoEModel(hidden_dim)
+        model = SimpleMoEModel(hidden_dim, ep_size=2)
         engine, optimizer, _, _ = deepspeed.initialize(args=args,
                                                model=model,
                                                model_parameters=model.parameters(),

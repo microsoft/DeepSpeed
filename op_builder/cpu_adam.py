@@ -2,8 +2,6 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 """
 import os
-import sys
-import subprocess
 from .builder import TorchCPUOpBuilder
 
 
@@ -20,7 +18,24 @@ class CPUAdamBuilder(TorchCPUOpBuilder):
     def sources(self):
         return ['csrc/adam/cpu_adam.cpp', 'csrc/common/custom_cuda_kernel.cu']
 
+    def libraries_args(self):
+        args = super().libraries_args()
+        args += ['curand']
+        return args
+
     def include_paths(self):
         import torch
-        CUDA_INCLUDE = os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")
-        return ['csrc/includes', CUDA_INCLUDE]
+        if not self.is_rocm_pytorch():
+            CUDA_INCLUDE = [os.path.join(torch.utils.cpp_extension.CUDA_HOME, "include")]
+        else:
+            CUDA_INCLUDE = [
+                os.path.join(torch.utils.cpp_extension.ROCM_HOME,
+                             "include"),
+                os.path.join(torch.utils.cpp_extension.ROCM_HOME,
+                             "include",
+                             "rocrand"),
+                os.path.join(torch.utils.cpp_extension.ROCM_HOME,
+                             "include",
+                             "hiprand"),
+            ]
+        return ['csrc/includes'] + CUDA_INCLUDE

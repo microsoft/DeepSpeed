@@ -3,7 +3,11 @@ Copyright 2020 The Microsoft DeepSpeed Team
 """
 import warnings
 from .builder import OpBuilder
-from packaging import version as pkg_version
+
+try:
+    from packaging import version as pkg_version
+except ImportError:
+    pkg_version = None
 
 
 class SparseAttnBuilder(OpBuilder):
@@ -27,6 +31,10 @@ class SparseAttnBuilder(OpBuilder):
         #required_commands = ['llvm-config|llvm-config-9', 'cmake']
         #command_status = list(map(self.command_exists, required_commands))
         #deps_compatible = all(command_status)
+
+        if self.is_rocm_pytorch():
+            self.warning(f'{self.NAME} is not compatible with ROCM')
+            return False
 
         try:
             import torch
@@ -62,8 +70,14 @@ class SparseAttnBuilder(OpBuilder):
                 f"please install triton==1.0.0 if you want to use sparse attention")
             return False
 
-        installed_triton = pkg_version.parse(triton.__version__)
-        if installed_triton != pkg_version.parse("1.0.0"):
+        if pkg_version:
+            installed_triton = pkg_version.parse(triton.__version__)
+            triton_mismatch = installed_triton != pkg_version.parse("1.0.0")
+        else:
+            installed_triton = triton.__version__
+            triton_mismatch = installed_triton != "1.0.0"
+
+        if triton_mismatch:
             self.warning(
                 f"using untested triton version ({installed_triton}), only 1.0.0 is known to be compatible"
             )
