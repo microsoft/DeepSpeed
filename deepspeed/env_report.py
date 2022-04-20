@@ -97,7 +97,7 @@ def debug_report():
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
         ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, " + (f"hip {torch_info['hip_version'}" if torch.version.hip else f"cuda {torch_info['cuda_version']}")
+         f"torch {torch_info['version']}, " + (f"hip {torch_info['hip_version']}" if torch.version.hip else f"cuda {torch_info['cuda_version']}")
          ),
     ]
     print("DeepSpeed general environment info:")
