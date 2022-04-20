@@ -281,26 +281,23 @@ def init_inference(model,
         __git_branch__),
              ranks=[0])
 
-    if isinstance(model, PipelineModule):
-        raise NotImplementedError("pipeline module support is not implemented yet")
-    else:
-        engine = InferenceEngine(model,
-                                 triangular_masking,
-                                 mp_size,
-                                 training_mp_size,
-                                 ep_size,
-                                 mpu,
-                                 ep_group,
-                                 expert_mp_group,
-                                 checkpoint,
-                                 dtype,
-                                 injection_policy,
-                                 return_tuple,
-                                 replace_method,
-                                 quantization_setting,
-                                 replace_with_kernel_inject,
-                                 moe,
-                                 moe_experts,
-                                 moe_type)
+    engine = InferenceEngine(model,
+                             triangular_masking,
+                             mp_size,
+                             training_mp_size,
+                             ep_size,
+                             mpu,
+                             ep_group,
+                             expert_mp_group,
+                             checkpoint,
+                             dtype,
+                             injection_policy,
+                             return_tuple,
+                             replace_method,
+                             quantization_setting,
+                             replace_with_kernel_inject,
+                             moe,
+                             moe_experts,
+                             moe_type)
 
     return engine

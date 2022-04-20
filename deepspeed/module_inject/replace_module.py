@@ -723,6 +723,9 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
     return replaced_module
 
 
+from ..pipe import PipelineModule
+
+
 def _replace_module(model, policies, layer_id=0):
     """ Traverse model's children recursively and apply any transformations in ``policies``.
     Arguments:
@@ -733,12 +736,14 @@ def _replace_module(model, policies, layer_id=0):
     """
     for name, child in model.named_children():
         if child.__class__ in policies:
-            setattr(
-                model,
-                name,
-                policies[child.__class__][0](child,
-                                             policies[child.__class__][-1],
-                                             layer_id))
+            replaced_module = policies[child.__class__][0](child,
+                                                           policies[child.__class__][-1],
+                                                           layer_id)
+            setattr(model, name, replaced_module)
+            if isinstance(model, PipelineModule):
+                assert hasattr(model, 'forward_funcs'),\
+                    "we require pipe-module to have the list of fwd_functions"
+                model.forward_funcs[model.fwd_map[name]] = replaced_module
             layer_id += 1
         else:
             _, layer_id = _replace_module(child, policies, layer_id=layer_id)

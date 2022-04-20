@@ -30,7 +30,8 @@ from deepspeed.utils.debug import debug_param2name_id_shape, debug_param2name_id
 from deepspeed.utils.logging import logger
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
-from ..config import DeepSpeedConfig
+# TODO: resolve multiple imports (circular import) issue to fix this import
+#from ..config import DeepSpeedConfig
 
 param_count = 0
 partitioned_param_data_shape = [0]
