@@ -246,6 +246,9 @@ def init_inference(model,
         mp_size: Optional: Desired model parallel size, default is 1 meaning no
             model parallelism.
 
+        training_mp_size: Optional: if loading a checkpoint this is the mp size that it was trained with, 
+            it may be different than what the mp size that you want to use during inference.
+
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
 
