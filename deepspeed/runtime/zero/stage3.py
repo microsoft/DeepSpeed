@@ -363,7 +363,7 @@ class PartitionedParameterCoordinator:
                 )
 
             # kick off all gather for params in the next few submodules (prefetch)
-            if current_submodule.training and self.__prefetch_bucket_sz > 0:
+            if self.__prefetch_bucket_sz > 0:
                 max_params_to_prefetch = min(
                     self.__max_n_available_params - self.__n_available_params,
                     self.__prefetch_bucket_sz)
@@ -2541,7 +2541,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         if torch.distributed.get_rank() == 0:
             logger.info(
-                "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
                                         prev_scale,
                                         self.loss_scale))
