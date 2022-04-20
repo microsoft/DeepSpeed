@@ -287,8 +287,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                                'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
-                    training_mp_size=training_mp_size
-                    )
+                    training_mp_size=training_mp_size)
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -360,6 +359,7 @@ def replace_transformer_layer(orig_layer_impl,
             if megatron_v2:
                 new_module.config.rotate_half = True
                 new_module.config.rotate_every_two = False
+
                 def _transpose(x):
                     num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
                     attention_head_size = x.shape[-1] // num_attention_heads_per_partition

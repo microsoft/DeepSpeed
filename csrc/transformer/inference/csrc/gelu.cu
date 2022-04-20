@@ -378,9 +378,9 @@ __global__ void gptj_residual_add(__half* input,
         float2 attn_high_bias = __half22float2(attnbias_half[1]);
 
         low_data.x =
-            low_data.x  * mp_size + (low_out.x + low_res.x + (low_bias.x + attn_low_bias.x));
+            low_data.x * mp_size + (low_out.x + low_res.x + (low_bias.x + attn_low_bias.x));
         low_data.y =
-            low_data.y  * mp_size + (low_out.y + low_res.y + (low_bias.y + attn_low_bias.y));
+            low_data.y * mp_size + (low_out.y + low_res.y + (low_bias.y + attn_low_bias.y));
         high_data.x =
             high_data.x * mp_size + (high_out.x + high_res.x + (high_bias.x + attn_high_bias.x));
         high_data.y =

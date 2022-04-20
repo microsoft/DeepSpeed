@@ -23,6 +23,7 @@ class TransformerConfig():
         self.heads = heads
         self.num_hidden_layers = num_hidden_layers
 
+
 class DeepSpeedInferenceConfig(TransformerConfig):
     """Initialize the DeepSpeed Transformer Config.
         Arguments:
@@ -107,6 +108,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         with open(json_file, "r", encoding='utf-8') as reader:
             text = reader.read()
         return cls.from_dict(json.loads(text))
+
 
 class DeepSpeedSelfAttentionFunction(Function):
     @staticmethod
@@ -402,6 +404,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         return output
 
+
 class DeepSpeedMLPFunction(Function):
     @staticmethod
     def forward(ctx,
@@ -424,7 +427,7 @@ class DeepSpeedMLPFunction(Function):
                 fused_gemm_gelu,
                 vector_matmul_func,
                 bias_residual_func):
-        
+
         if config.q_int8:
             (intermediate,
              residual_add) = inference_cuda_module.mlp_gemm_int8(
