@@ -222,8 +222,6 @@ class MegatronLayerPolicy(DSPolicy):
                 self.client_module.attention.num_attention_heads
 
     def attention(self):
-        print("coming to the wrong policy")
-        exit()
         if self.inference:
             if MegatronLayerPolicy.version == 0:
                 attention = self.client_module.attention

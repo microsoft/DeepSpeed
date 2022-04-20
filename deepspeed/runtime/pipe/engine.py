@@ -1339,9 +1339,6 @@ class PipelineEngine(DeepSpeedEngine):
             state_dict (str, None): unused
             strict (bool, optional): Strict state loading. Defaults to True.
         """
-        print(
-            f"**************** calling load form PIPE Engine {state_dict} **********************"
-        )
 
         if (state_dict is not None) and (not isinstance(state_dict, str)):
             super().load_module_state_dict(state_dict, strict)
