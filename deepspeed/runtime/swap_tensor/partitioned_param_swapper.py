@@ -297,8 +297,9 @@ class AsyncPartitionedParameterSwapper(object):
 
         if swap_in_buffers is None:
             if len(self.available_buffer_ids) < len(swap_in_paths):
+                ids = [p.ds_id for p in params]
                 print_rank_0(
-                    f'Not enough swap in buffers {len(self.available_buffer_ids)} for params {len(swap_in_paths)}',
+                    f'Not enough swap in buffers {len(self.available_buffer_ids)} for {len(swap_in_paths)} params, ids = {ids}',
                     force=True)
                 print_rank_0(
                     f'Num inflight: params {len(self.inflight_params)}, buffers {len(self.inflight_swap_in_buffers)}, numel = {self.inflight_numel}',
