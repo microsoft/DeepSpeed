@@ -110,17 +110,13 @@ class PartitionedParameterCoordinator:
     Bookkeeping operations used to track where we are in the forward/backward pass
     """
 
-    def record_trace(self, sub_module: Module, forward_pass) -> None:
+    def record_trace(self, sub_module: Module) -> None:
         """adds sub module to trace"""
         if self.trace_complete:
             raise RuntimeError(
                 "attempted to record trace when trace was already complete")
 
         self.__submodule_order.append(sub_module)
-        ids = [p.ds_id for p in iter_params(sub_module)]
-        print_rank_0(
-            f'record_trace{forward_pass}: step_id={self.__step_id}, mod_id={sub_module.id} p_ids = {ids}',
-            force=True)
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,

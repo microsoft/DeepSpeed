@@ -1208,7 +1208,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         param_coordinator = self._get_param_coordinator(sub_module.training)
         if not param_coordinator.trace_complete:
-            param_coordinator.record_trace(sub_module, True)
+            param_coordinator.record_trace(sub_module)
 
         param_coordinator.release_sub_module(sub_module)
 
@@ -1220,7 +1220,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
     def pre_sub_module_backward_function(self, sub_module):
         param_coordinator = self._get_param_coordinator(sub_module.training)
         if not param_coordinator.trace_complete:
-            param_coordinator.record_trace(sub_module, False)
+            param_coordinator.record_trace(sub_module)
         param_coordinator.fetch_sub_module(sub_module)
 
     @torch.no_grad()
