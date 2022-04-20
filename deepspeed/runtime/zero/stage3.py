@@ -1043,7 +1043,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         def _end_of_forward_hook(module, *args):
 
             if not torch._C.is_grad_enabled():
-                self._get_param_coordinator(False).reset_step()
+                self._get_param_coordinator(training=False).reset_step()
 
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
@@ -1195,7 +1195,8 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
 
-        self._get_param_coordinator(sub_module.training).fetch_sub_module(sub_module)
+        self._get_param_coordinator(
+            training=sub_module.training).fetch_sub_module(sub_module)
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
             force=False)
@@ -1206,7 +1207,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             f"After sub module function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        param_coordinator = self._get_param_coordinator(sub_module.training)
+        param_coordinator = self._get_param_coordinator(training=sub_module.training)
         if not param_coordinator.trace_complete:
             param_coordinator.record_trace(sub_module)
 
@@ -1218,7 +1219,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
-        param_coordinator = self._get_param_coordinator(sub_module.training)
+        param_coordinator = self._get_param_coordinator(training=sub_module.training)
         if not param_coordinator.trace_complete:
             param_coordinator.record_trace(sub_module)
         param_coordinator.fetch_sub_module(sub_module)
@@ -1229,7 +1230,8 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
             force=False)
 
-        self._get_param_coordinator(sub_module.training).release_sub_module(sub_module)
+        self._get_param_coordinator(
+            training=sub_module.training).release_sub_module(sub_module)
 
         see_memory_usage(
             f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",
@@ -2077,7 +2079,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         see_memory_usage(f"In step before checking overflow", force=False)
 
         print_rank_0("Finished Tracing at Beginning of Step")
-        self._get_param_coordinator(True).hierarchy = 0
+        self._get_param_coordinator(training=True).hierarchy = 0
 
         print_rank_0("Finished Tracing at Beginning of Step")
 
@@ -2469,7 +2471,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
-        self._get_param_coordinator(True).reset_step()
+        self._get_param_coordinator(training=True).reset_step()
 
         if self.swap_optimizer:
             self.optimizer_swapper.post_backward()
@@ -2501,7 +2503,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         """Partitioning Parameters that were not partitioned usually if parameters
         of modules whose input parameters do not require grad computation do not
         trigger post call and will therefore will remain unpartitioned"""
-        self._get_param_coordinator(self.module.training).release_and_reset_all(
+        self._get_param_coordinator(training=self.module.training).release_and_reset_all(
             self.module)
         for param in iter_params(self.module, recurse=True):
             if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
