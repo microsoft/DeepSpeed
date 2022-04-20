@@ -212,8 +212,8 @@ class MegatronLayerPolicy(DSPolicy):
         if MegatronLayerPolicy._orig_layer_class is None:
             try:
                 import megatron
-                from megatron.model.transformer import ParallelTransformerLayer1
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer1
+                from megatron.model.transformer import ParallelTransformerLayer
+                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
             except ImportError:
                 MegatronLayerPolicy._orig_layer_class = None
 
