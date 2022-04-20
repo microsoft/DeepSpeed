@@ -200,7 +200,7 @@ def replace_transformer_layer(orig_layer_impl,
                 "This is because the attention computation is partitioned evenly among the parallel GPUs."
         from deepspeed.moe.layer import MoE
         moe = False
-        if isinstance(child.mlp, MoE):
+        if hasattr(child, 'mlp') and isinstance(child.mlp, MoE):
             num_experts = child.mlp.num_experts
             moe = True
 
@@ -287,8 +287,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                                'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
-                    training_mp_size=training_mp_size
-                    )
+                    training_mp_size=training_mp_size)
 
             if quantize and quantize_settings is not None:
                 (quantization_scales,
@@ -360,6 +359,7 @@ def replace_transformer_layer(orig_layer_impl,
             if megatron_v2:
                 new_module.config.rotate_half = True
                 new_module.config.rotate_every_two = False
+
                 def _transpose(x):
                     num_attention_heads_per_partition = transformer_config.heads // transformer_config.mp_size
                     attention_head_size = x.shape[-1] // num_attention_heads_per_partition
@@ -710,7 +710,10 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
         for plcy in replace_policies:
             # instantiate a throw-away policy in order to populate the _orig_layer_class
             _ = plcy(None)
-            if plcy._orig_layer_class is not None:
+            if isinstance(plcy._orig_layer_class, list):
+                for orig_layer_class in plcy._orig_layer_class:
+                    policy.update({orig_layer_class: (replace_fn, plcy)})
+            elif plcy._orig_layer_class is not None:
                 policy.update({plcy._orig_layer_class: (replace_fn, plcy)})
     assert len(policy.items()) > 0,\
         "No default policy found! Please specify your policy injection_policy (like {BertLayer:HFBEertLayerPolicy})." +\

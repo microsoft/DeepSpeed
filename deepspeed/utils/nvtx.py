@@ -7,8 +7,6 @@ def instrument_w_nvtx(func):
     if hasattr(torch.cuda.nvtx, "range"):
 
         def wrapped_fn(*args, **kwargs):
-            #import pdb;pdb.set_trace()
-            print(args)
             with torch.cuda.nvtx.range(func.__qualname__):
                 return func(*args, **kwargs)
 

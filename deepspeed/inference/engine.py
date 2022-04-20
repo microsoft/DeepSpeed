@@ -17,6 +17,8 @@ from ..moe.layer import MoE
 import torch.distributed as dist
 import deepspeed.utils.groups as groups
 
+DS_INFERENCE_ENABLED = False
+
 
 class InferenceEngine(Module):
     inference_mp_group = None
@@ -59,6 +61,8 @@ class InferenceEngine(Module):
             replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
             the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
         """
+        global DS_INFERENCE_ENABLED
+        DS_INFERENCE_ENABLED = True
 
         super().__init__()
 

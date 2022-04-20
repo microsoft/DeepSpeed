@@ -56,7 +56,10 @@ class HFBertLayerPolicy(DSPolicy):
         if HFBertLayerPolicy._orig_layer_class is None:
             try:
                 import transformers
-                HFBertLayerPolicy._orig_layer_class = transformers.models.bert.modeling_bert.BertLayer
+                HFBertLayerPolicy._orig_layer_class = [
+                    transformers.models.bert.modeling_bert.BertLayer,
+                    transformers.models.roberta.modeling_roberta.RobertaLayer
+                ]
             except:
                 HFBertLayerPolicy._orig_layer_class = None
 
@@ -209,8 +212,8 @@ class MegatronLayerPolicy(DSPolicy):
         if MegatronLayerPolicy._orig_layer_class is None:
             try:
                 import megatron
-                from megatron.model.transformer import ParallelTransformerLayer1
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer1
+                from megatron.model.transformer import ParallelTransformerLayer
+                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
             except ImportError:
                 MegatronLayerPolicy._orig_layer_class = None
 
@@ -219,8 +222,6 @@ class MegatronLayerPolicy(DSPolicy):
                 self.client_module.attention.num_attention_heads
 
     def attention(self):
-        print("coming to the wrong policy")
-        exit()
         if self.inference:
             if MegatronLayerPolicy.version == 0:
                 attention = self.client_module.attention

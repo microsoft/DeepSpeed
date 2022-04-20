@@ -52,6 +52,7 @@ ADAM_OPTIMIZER = 'adam'
 ADAMW_OPTIMIZER = 'adamw'
 LAMB_OPTIMIZER = 'lamb'
 ONEBIT_ADAM_OPTIMIZER = 'onebitadam'
+ZERO_ONE_ADAM_OPTIMIZER = 'zerooneadam'
 ONEBIT_LAMB_OPTIMIZER = 'onebitlamb'
 DEEPSPEED_OPTIMIZERS = [
     ADAGRAD_OPTIMIZER,
@@ -60,6 +61,7 @@ DEEPSPEED_OPTIMIZERS = [
     LAMB_OPTIMIZER,
     ONEBIT_ADAM_OPTIMIZER,
     ONEBIT_LAMB_OPTIMIZER,
+    ZERO_ONE_ADAM_OPTIMIZER
 ]
 
 # extra optimizer parameters for adam/adamw
@@ -871,7 +873,7 @@ class DeepSpeedConfig(object):
 
         self._initialize_params(self._param_dict)
         self._configure_train_batch_size()
-#        self._do_sanity_check()
+        self._do_sanity_check()
 
     def _initialize_params(self, param_dict):
         self.train_batch_size = get_train_batch_size(param_dict)
@@ -899,7 +901,6 @@ class DeepSpeedConfig(object):
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
         assert not (self.fp16_enabled and self.bfloat16_enabled), 'bfloat16 and fp16 modes cannot be simultaneously enabled'
-        assert not (self.bfloat16_enabled and (self.zero_optimization_stage not in {1, 2, 3})), f'bfloat16 mode is only enabled for Zero 1,2,3 currently. got {self.zero_optimization_stage}'
         self.fp16_master_weights_and_gradients = get_fp16_master_weights_and_grads_enabled(
             param_dict)
         self.amp_enabled = get_amp_enabled(param_dict)
@@ -990,17 +991,15 @@ class DeepSpeedConfig(object):
             micro_batch > 0
         ), f"Micro batch size per gpu: {micro_batch} has to be greater than 0"
 
-        #assert (
-        #    grad_acc > 0
-        #), f"Gradient accumulation steps: {grad_acc} has to be greater than 0"
+        assert (
+            grad_acc > 0
+        ), f"Gradient accumulation steps: {grad_acc} has to be greater than 0"
 
-
-#
-#assert train_batch == micro_batch * grad_acc * self.world_size, (
-#    f"Check batch related parameters. train_batch_size is not equal "
-#    "to micro_batch_per_gpu * gradient_acc_step * world_size "
-#    f"{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}"
-#)
+        assert train_batch == micro_batch * grad_acc * self.world_size, (
+            f"Check batch related parameters. train_batch_size is not equal "
+            "to micro_batch_per_gpu * gradient_acc_step * world_size "
+            f"{train_batch} != {micro_batch} * {grad_acc} * {self.world_size}"
+        )
 
     def _set_batch_related_parameters(self):
 

@@ -419,6 +419,13 @@ class PipelineModule(nn.Module):
             weight = getattr(self.tied_modules[key], comm['weight_attr'])
             dist.all_reduce(weight.grad, group=comm['group'])
 
+    def get_tied_weights_and_groups(self):
+        weight_group_list = []
+        for key, comm in self.tied_comms.items():
+            weight = getattr(self.tied_modules[key], comm['weight_attr'])
+            weight_group_list.append((weight, comm['group']))
+        return weight_group_list
+
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
             dist.broadcast(
@@ -583,7 +590,6 @@ class PipelineModule(nn.Module):
                 continue
 
             # get all checkpoint files for the layer.
-            # import pdb;pdb.set_trace()
             model_ckpt_list = self.ckpt_layer_path_list(load_dir, idx)
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()

@@ -23,6 +23,7 @@ class TransformerConfig():
         self.heads = heads
         self.num_hidden_layers = num_hidden_layers
 
+
 class DeepSpeedInferenceConfig(TransformerConfig):
     """Initialize the DeepSpeed Transformer Config.
         Arguments:
@@ -107,6 +108,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         with open(json_file, "r", encoding='utf-8') as reader:
             text = reader.read()
         return cls.from_dict(json.loads(text))
+
 
 class DeepSpeedSelfAttentionFunction(Function):
     @staticmethod
@@ -272,11 +274,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    norm_b,
                                    config.epsilon,
                                    (attn_qkvb is not None))
-            
-            #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: norm input {qkv_out[1].norm()}')
-            #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: mixed_layer: {qkv_out[0].norm()}')
 
-            context_layer, key_layer, value_layer = compute_attention(qkv_out[0], input_mask)
+            context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
             #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: oooooo -> {output.norm()}')
 
@@ -405,6 +404,7 @@ class DeepSpeedSelfAttention(nn.Module):
 
         return output
 
+
 class DeepSpeedMLPFunction(Function):
     @staticmethod
     def forward(ctx,
@@ -427,7 +427,7 @@ class DeepSpeedMLPFunction(Function):
                 fused_gemm_gelu,
                 vector_matmul_func,
                 bias_residual_func):
-        
+
         if config.q_int8:
             (intermediate,
              residual_add) = inference_cuda_module.mlp_gemm_int8(
