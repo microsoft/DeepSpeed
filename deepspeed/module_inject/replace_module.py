@@ -265,7 +265,7 @@ def replace_transformer_layer(orig_layer_impl,
                     mlp_type=moe_type)
             else:
                 rotary_dim = config.rotary_dim if hasattr(config, 'rotary_dim') else child.attention.rotary_ndims \
-                                            if hasattr(child.attention,'rotary_ndims') else -1
+                                            if hasattr(child, 'attention') and hasattr(child.attention,'rotary_ndims') else -1
                 transformer_config = transformer_inference.DeepSpeedInferenceConfig(
                     hidden_size=hidden_size,
                     heads=num_attention_heads,
