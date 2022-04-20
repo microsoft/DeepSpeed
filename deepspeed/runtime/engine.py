@@ -706,7 +706,7 @@ class DeepSpeedEngine(Module):
         return self._config.loss_scale
 
     def gradient_accumulation_steps(self):
-        return 1  #self._config.gradient_accumulation_steps
+        return self._config.gradient_accumulation_steps
 
     @property
     def communication_data_type(self):

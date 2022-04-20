@@ -12,7 +12,6 @@ def debug_extract_module_and_param_names(model):
     global module_names
     global param_names
     # XXX: can probably make a map of param2module and vice-versa
-
     module_names = {module: name for name, module in model.named_modules()}
     param_names = {param: name for name, param in model.named_parameters()}
 
