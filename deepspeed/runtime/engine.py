@@ -2476,6 +2476,8 @@ class DeepSpeedEngine(Module):
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
                 old_moe_load = True
+            if checkpoint['module'] is None:
+                checkpoint['module'] = {}
             DeepSpeedEngine.load_moe_state_dict(load_dir,
                                                 tag,
                                                 state_dict=checkpoint['module'],
@@ -2484,8 +2486,11 @@ class DeepSpeedEngine(Module):
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
 
-        self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+        if is_pipe_parallel:
+            self.load_module_state_dict(state_dict=checkpoint['module'], strict=False)
+        else:
+            self.load_module_state_dict(state_dict=checkpoint['module'],
+                                        strict=load_module_strict)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
@@ -2839,7 +2844,9 @@ class DeepSpeedEngine(Module):
             fd.flush()
 
         # get non-moe parameters
-        model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
+        model_state_dict = self.module_state_dict()
+        if model_state_dict is not None:
+            model_state_dict = self._get_non_moe_state_dict(model_state_dict)
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
