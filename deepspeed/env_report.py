@@ -83,7 +83,7 @@ def debug_report():
     hip_version = None
     if hasattr(torch.version, 'hip'):
         hip_version = torch.version.hip
-    
+
     report = [
         ("torch install path",
          torch.__path__),
