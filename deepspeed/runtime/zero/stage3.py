@@ -1187,8 +1187,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         global FWD_MODULE_STACK
         FWD_MODULE_STACK.append(sub_module)
 
-        self._get_param_coordinator(
-            training=sub_module.training).fetch_sub_module(sub_module)
+        param_coordinator = self._get_param_coordinator(training=sub_module.training)
+        param_coordinator.trace_prologue(sub_module)
+        if param_coordinator.is_record_trace():
+            param_coordinator.record_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module)
+
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
             force=False)
@@ -1200,9 +1204,8 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             force=False)
 
         param_coordinator = self._get_param_coordinator(training=sub_module.training)
-        if not param_coordinator.trace_complete:
-            param_coordinator.record_trace(sub_module)
-
+        if param_coordinator.is_record_trace():
+            param_coordinator.record_parameters(sub_module)
         param_coordinator.release_sub_module(sub_module)
 
         see_memory_usage(
@@ -1212,8 +1215,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
     @torch.no_grad()
     def pre_sub_module_backward_function(self, sub_module):
         param_coordinator = self._get_param_coordinator(training=sub_module.training)
-        if not param_coordinator.trace_complete:
-            param_coordinator.record_trace(sub_module)
+        param_coordinator.trace_prologue(sub_module)
+        if param_coordinator.is_record_trace():
+            param_coordinator.record_module(sub_module)
+            param_coordinator.record_parameters(sub_module)
         param_coordinator.fetch_sub_module(sub_module)
 
     @torch.no_grad()
