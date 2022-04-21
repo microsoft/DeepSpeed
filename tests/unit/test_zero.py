@@ -1331,8 +1331,7 @@ def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
-            
-            param_groups = optimizer.optimizer.param_groups
+
             step_counts = []
             if zero_stage == 3:
                 for sub_group_id, _ in enumerate(optimizer.fp16_groups):
@@ -1346,7 +1345,6 @@ def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
                         state = optimizer.optimizer.state[param]
                         step_counts.append(state['step'])
                 assert all(step == step_counts[0] for step in step_counts)
-
 
     _test_zero_adam_optimizer_step_count_loop(model=model, hidden_dim=hidden_dim)
 
