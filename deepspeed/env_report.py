@@ -80,6 +80,10 @@ def nvcc_version():
 def debug_report():
     max_dots = 33
 
+    hip_version = None
+    if hasattr(torch.version, 'hip'):
+        hip_version = torch.version.hip
+    
     report = [
         ("torch install path",
          torch.__path__),
@@ -88,9 +92,9 @@ def debug_report():
         ("torch cuda version",
          torch.version.cuda),
         ("torch hip version",
-         torch.version.hip),
+         hip_version),
         ("nvcc version",
-         (None if torch.version.hip else nvcc_version())),
+         (None if hip_version else nvcc_version())),
         ("deepspeed install path",
          deepspeed.__path__),
         ("deepspeed info",
@@ -99,7 +103,7 @@ def debug_report():
         ("deepspeed wheel compiled w.",
          f"torch {torch_info['version']}, " +
          (f"hip {torch_info['hip_version']}"
-          if torch.version.hip else f"cuda {torch_info['cuda_version']}")),
+          if hip_version else f"cuda {torch_info['cuda_version']}")),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:
