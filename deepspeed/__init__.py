@@ -234,7 +234,8 @@ def init_inference(model,
                    ep_size=1,
                    moe=False,
                    moe_experts=1,
-                   moe_type='standard'):
+                   moe_type='standard',
+                   args=None):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -298,6 +299,7 @@ def init_inference(model,
                              replace_with_kernel_inject,
                              moe,
                              moe_experts,
-                             moe_type)
+                             moe_type,
+                             args)
 
     return engine

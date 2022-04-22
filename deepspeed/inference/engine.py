@@ -43,7 +43,8 @@ class InferenceEngine(Module):
                  replace_with_kernel_inject=False,
                  moe=False,
                  moe_experts=1,
-                 moe_type='standard'):
+                 moe_type='standard',
+                 config=None):
         """
         Args:
             model: torch.nn.Module
@@ -68,7 +69,7 @@ class InferenceEngine(Module):
 
         self.module = model
 
-        self._get_model_config_generate()
+        self._get_model_config_generate(config)
 
         self.mp_world_size = mp_size
         self.checkpoint = checkpoint
@@ -133,8 +134,8 @@ class InferenceEngine(Module):
         else:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
 
-    def _get_model_config_generate(self):
-        self.config = getattr(self.module, 'config', None)
+    def _get_model_config_generate(self, config):
+        self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
 
     def _create_model_parallel_group(self):

@@ -271,9 +271,12 @@ def replace_transformer_layer(orig_layer_impl,
                     heads=num_attention_heads,
                     layer_norm_eps=config.layer_norm_eps if hasattr(
                         config,
-                        'layer_norm_eps') else (config.layer_norm_epsilon if hasattr(
-                            config,
-                            'layer_norm_epsilon') else 1.0e-5),
+                        'layer_norm_eps') else
+                    (config.layer_norm_epsilon
+                     if hasattr(config,
+                                'layer_norm_epsilon') else config.layernorm_epsilon
+                     if hasattr(config,
+                                'layernorm_epsilon') else 1.0e-12),
                     fp16=fp16,
                     pre_layer_norm=preln,
                     mp_size=mp_size,

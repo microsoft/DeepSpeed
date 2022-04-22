@@ -14,6 +14,9 @@ class StochasticTransformerBuilder(TransformerBuilder):
     def absolute_name(self):
         return f'deepspeed.ops.transformer.{self.NAME}_op'
 
+    def extra_ldflags(self):
+        return ['-lcurand']
+
     def nvcc_args(self):
         args = super().nvcc_args()
         args.append('-D__STOCHASTIC_MODE__')
