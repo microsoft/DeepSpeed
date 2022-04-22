@@ -72,6 +72,13 @@ class DeepSpeedDataLoader(object):
         self.data = None
         self.dataloader_drop_last = dataloader_drop_last
 
+        if self.batch_size is not None:
+            from math import ceil
+            if self.dataloader_drop_last:
+                self.len = self.len // self.batch_size
+            else:
+                self.len = ceil(self.len / self.batch_size)
+
     def __iter__(self):
         self._create_dataloader()
         return self
@@ -100,8 +107,6 @@ class DeepSpeedDataLoader(object):
                                          collate_fn=self.collate_fn,
                                          num_workers=self.num_local_io_workers,
                                          drop_last=self.dataloader_drop_last)
-        self.len = len(self.dataloader)
-
         self.data = (x for x in self.dataloader)
 
         return self.dataloader
