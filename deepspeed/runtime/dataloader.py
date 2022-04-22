@@ -68,7 +68,7 @@ class DeepSpeedDataLoader(object):
         self.device_count = device_count
         self.batch_size = batch_size
         self.pin_memory = pin_memory
-        self.len = len(self.data_sampler)
+        self.len = int(len(self.data_sampler) / batch_size)
         self.data = None
         self.dataloader_drop_last = dataloader_drop_last
 
