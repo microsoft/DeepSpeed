@@ -115,14 +115,16 @@ class InferenceEngine(Module):
                                              replace_with_kernel_inject,
                                              moe,
                                              moe_experts,
-                                             moe_type)
+                                             moe_type,
+                                             training_mp_size)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
                 replace_with_kernel_inject=replace_with_kernel_inject,
                 moe=moe,
                 moe_experts=moe_experts,
-                moe_type=moe_type)
+                moe_type=moe_type,
+                training_mp_size=training_mp_size)
 
         device = torch.cuda.current_device()
         logger.info(f"Place model to device: {device}")
@@ -227,7 +229,8 @@ class InferenceEngine(Module):
                                 replace_with_kernel_inject=False,
                                 moe=False,
                                 moe_experts=1,
-                                moe_type='standard'):
+                                moe_type='standard',
+                                training_mp_size=1):
 
         replace_transformer_layer(client_module,
                                   self.module,
@@ -249,7 +252,8 @@ class InferenceEngine(Module):
                                   replace_with_kernel_inject=replace_with_kernel_inject,
                                   moe=moe,
                                   moe_experts=moe_experts,
-                                  moe_type=moe_type)
+                                  moe_type=moe_type,
+                                  training_mp_size=training_mp_size)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
