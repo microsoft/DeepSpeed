@@ -86,6 +86,14 @@ except ImportError:
     pass
 
 
+try:
+    from fairseq.optim.fairseq_optimizer import FairseqOptimizer
+    FAIRSEQ_INSTALLED = True
+except ImportError:
+    FAIRSEQ_INSTALLED = False
+
+
+
 def split_half_float_double_sparse(tensors):
     supported_types = [
         "torch.cuda.HalfTensor",
@@ -415,6 +423,22 @@ class DeepSpeedEngine(Module):
             float: norm
         """
         return self._global_grad_norm
+
+    def __getattr__(self, name):
+        """
+        Pass through attributes defined in the model if they are not overriden by ds-engine.
+        """
+        _module = {}
+        if "module" in self.__dict__:
+            _module = self.__dict__['module']
+
+        if name in dir(self):
+            return getattr(self, name)
+        elif name in dir(_module):
+            return getattr(_module, name)
+        else:
+            raise AttributeError("'{}' object has no attribute '{}'".format(
+                type(self).__name__, name))
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -893,9 +917,18 @@ class DeepSpeedEngine(Module):
                            optimizer_name,
                            None) is not None)
 
+    def _supported_optims(self):
+        expected_optim_types = [Optimizer]
+        if FAIRSEQ_INSTALLED:
+            # fairseq optims are not torch.optim objects
+            expected_optim_types.append(FairseqOptimizer)
+        return expected_optim_types
+
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
-        assert isinstance(self.client_optimizer, (type(None), Optimizer, Callable)), \
+        expected_optim_types = self._supported_optims()
+        expected_optim_types += [type(None), Callable]
+        assert isinstance(self.client_optimizer, tuple(expected_optim_types)), \
             f'Client Optimizer is of unexpected type {type(self.client_optimizer)}'
 
         if not self.client_optimizer:
@@ -950,6 +983,7 @@ class DeepSpeedEngine(Module):
 
     def _configure_distributed_model(self, model):
         self.module = model
+        self.__dict__['module'] = model
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
@@ -1034,7 +1068,7 @@ class DeepSpeedEngine(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         if client_optimizer is not None:
-            if isinstance(client_optimizer, Optimizer):
+            if isinstance(client_optimizer, tuple(self._supported_optims())):
                 client_optimizer.param_groups[:] = [
                     pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
                 ]

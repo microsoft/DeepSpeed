@@ -73,9 +73,14 @@ def move_to_cpu(tensor_list):
         tensor.data = tensor.data.cpu()
 
 
+def is_builtin_type(obj):
+    # https://stackoverflow.com/a/17795199
+    return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
+
+
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
-    if type(outputs) is tuple:
+    if isinstance(outputs, (tuple, list)):
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_to_tensors_only(module,
@@ -83,11 +88,27 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     backward_function,
                                                     output)
             touched_outputs.append(touched_output)
-        return tuple(touched_outputs)
+        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
+    elif isinstance(outputs, dict):
+        touched_outputs = {}
+        for key, output in outputs.items():
+            touched_output = _apply_to_tensors_only(module,
+                                                    functional,
+                                                    backward_function,
+                                                    output)
+            touched_outputs[key] = touched_output
+        return touched_outputs
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
+        if not is_builtin_type(outputs):
+            logger.warning(
+                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
+                "The ZeRO-3 hooksdesigned to trigger before or after backward pass of the module relies on knowing the input and output "
+                "tensors and therefore may not get triggered properly."
+            )
         return outputs
+
 
 
 #for each tensor in outputs run the forward_function and register backward_function as hook
@@ -274,6 +295,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
 
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
+
         self.optimizer_swapper = None
         self.swap_optimizer = False
 
@@ -284,6 +308,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.offload_param_pin_memory = False
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
+        self.global_step_id = 0
 
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -555,6 +580,15 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=False)
+
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
 
     # TODO. factor out to a utility outside of stage3
     @staticmethod
@@ -1043,7 +1077,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         def _end_of_forward_hook(module, *args):
 
             if not torch._C.is_grad_enabled():
-                self._get_param_coordinator(training=False).reset_step()
+                self._get_param_coordinator(training=False).reset_step(self.global_step_id)
 
         #likely one of them should be enough but just to be safe
         self._register_hooks_recursively(self.module)
@@ -2278,6 +2312,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         else:
             self._partitioned_params_swap_out(sub_group_id)
 
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
     @instrument_w_nvtx
     def step(self, closure=None):
         """
@@ -2341,6 +2383,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                     "that all ranks flush their caches at the same time",
                     alloc_retries - self.__n_caching_allocator_flushes)
             self.__n_caching_allocator_flushes = alloc_retries
+        self.global_step_id += 1
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
         # Dump gradient norms for debugging
@@ -2472,7 +2515,11 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage(f"Before backward", force=False)
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         self._get_param_coordinator(training=True).reset_step()
 
@@ -2539,7 +2586,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value

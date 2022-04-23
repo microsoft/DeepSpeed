@@ -122,7 +122,7 @@ class PartitionedParameterCoordinator:
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=self.__step_id))
 
-    def reset_step(self) -> None:
+    def reset_step(self, global_step_id=0) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
         if self.__inflight_param_registry:
             raise RuntimeError(
@@ -142,6 +142,10 @@ class PartitionedParameterCoordinator:
             self.trace_complete = True
             print_rank_0(f"completed trace: {[m.id for m in self.__submodule_order]}",
                          force=False)
+            self.__submodule_order = []
+            self.__param_order = []
+            if global_step_id > 3:
+                self.trace_complete = True
 
         self.__param_queue = collections.deque(self.__param_order)  # reset fetch queue
         self.__most_recent_step_id_param_fetched_for = collections.defaultdict(
