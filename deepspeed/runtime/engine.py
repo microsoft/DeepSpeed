@@ -85,6 +85,12 @@ except ImportError:
     APEX_INSTALLED = False
     pass
 
+try:
+    from fairseq.optim.fairseq_optimizer import FairseqOptimizer
+    FAIRSEQ_INSTALLED = True
+except ImportError:
+    FAIRSEQ_INSTALLED = False
+
 
 def split_half_float_double_sparse(tensors):
     supported_types = [
@@ -415,6 +421,23 @@ class DeepSpeedEngine(Module):
             float: norm
         """
         return self._global_grad_norm
+
+    def __getattr__(self, name):
+        """
+        Pass through attributes defined in the model if they are not overridden by ds-engine.
+        """
+        _module = {}
+        if "module" in self.__dict__:
+            _module = self.__dict__['module']
+
+        if name in dir(self):
+            return getattr(self, name)
+        elif name in dir(_module):
+            return getattr(_module, name)
+        else:
+            raise AttributeError("'{}' object has no attribute '{}'".format(
+                type(self).__name__,
+                name))
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -893,9 +916,18 @@ class DeepSpeedEngine(Module):
                            optimizer_name,
                            None) is not None)
 
+    def _supported_optims(self):
+        expected_optim_types = [Optimizer]
+        if FAIRSEQ_INSTALLED:
+            # fairseq optims are not torch.optim objects
+            expected_optim_types.append(FairseqOptimizer)
+        return expected_optim_types
+
     # Validate configuration based on command line arguments
     def _do_sanity_check(self):
-        assert isinstance(self.client_optimizer, (type(None), Optimizer, Callable)), \
+        expected_optim_types = self._supported_optims()
+        expected_optim_types += [type(None), Callable]
+        assert isinstance(self.client_optimizer, tuple(expected_optim_types)), \
             f'Client Optimizer is of unexpected type {type(self.client_optimizer)}'
 
         if not self.client_optimizer:
@@ -949,7 +981,7 @@ class DeepSpeedEngine(Module):
             )
 
     def _configure_distributed_model(self, model):
-        self.module = model
+        self.__dict__['module'] = model
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,
@@ -1034,7 +1066,7 @@ class DeepSpeedEngine(Module):
     # Configure optimizer
     def _configure_optimizer(self, client_optimizer, model_parameters):
         if client_optimizer is not None:
-            if isinstance(client_optimizer, Optimizer):
+            if isinstance(client_optimizer, tuple(self._supported_optims())):
                 client_optimizer.param_groups[:] = [
                     pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
                 ]
@@ -2321,8 +2353,11 @@ class DeepSpeedEngine(Module):
                         state_dict.update(expert_state_dict)
                     moe_layer_id += 1
 
-    def load_module_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+    def load_module_state_dict(self, state_dict, strict=True, model_f=None):
+        if model_f:
+            model_f(src=state_dict, dst=self.module)
+        else:
+            self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_zero_ckpt_prefix(self, dp_rank, bf16_mode):
         return f'{"bf16_" if bf16_mode else ""}zero_pp_rank_{dp_rank}'
@@ -2417,7 +2452,8 @@ class DeepSpeedEngine(Module):
                         load_module_strict=True,
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
-                        load_module_only=False):
+                        load_module_only=False,
+                        model_f=None):
         """Load training checkpoint
 
         Arguments:
@@ -2461,7 +2497,8 @@ class DeepSpeedEngine(Module):
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
-                                                         load_module_only=load_module_only)
+                                                         load_module_only=load_module_only,
+                                                         model_f=model_f)
 
         load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
         if load_zero_checkpoint and load_path is not None:
@@ -2483,7 +2520,8 @@ class DeepSpeedEngine(Module):
                          load_module_strict=True,
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True,
-                         load_module_only=False):
+                         load_module_only=False,
+                         model_f=None):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 
@@ -2518,7 +2556,8 @@ class DeepSpeedEngine(Module):
                                                 num_experts=self.num_experts)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict)
+                                    strict=load_module_strict,
+                                    model_f=model_f)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 

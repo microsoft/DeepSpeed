@@ -144,6 +144,7 @@ class PartitionedParameterCoordinator:
         if self.is_complete_trace():
             # sub_module must match expectation else invalidate trace cache
             if sub_module != self.__submodule_order[self.__step_id]:
+                print("****invalidating trace!")
                 self._invalidate_trace()
 
     def record_module(self, sub_module: Module) -> None:
@@ -265,7 +266,8 @@ class PartitionedParameterCoordinator:
                     param_in_trace.param] = param_in_trace.step_id_last_used_at
                 discarded_from_prefetch_queue.add(param_in_trace.param)
             if discarded_from_prefetch_queue != params_not_already_fetched:
-                raise RuntimeError(
+                # raise RuntimeError(
+                debug_rank0(
                     f"tracing error at step {self.__step_id}: \n"
                     f"module id: {current_submodule.id}, training: {current_submodule.training}\n"
                     f"expected the next {len(params_not_already_fetched)} parameters in the "

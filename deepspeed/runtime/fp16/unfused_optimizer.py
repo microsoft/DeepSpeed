@@ -84,6 +84,9 @@ class FP16_UnfusedOptimizer(object):
             self.cur_iter = 0
             self.cur_scale = static_loss_scale
 
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
+
         self.verbose = verbose
 
         self.clip_grad = clip_grad
@@ -182,6 +185,23 @@ class FP16_UnfusedOptimizer(object):
 
         return self.overflow
 
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
+
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -260,9 +280,13 @@ class FP16_UnfusedOptimizer(object):
         2. scaled_loss = fp32_loss*loss_scale
         3. scaled_loss.backward(), which accumulates scaled gradients into the ``.grad`` attributes of the model's fp16 leaves
         """
-        scaled_loss = (loss.float()) * self.cur_scale
-
-        scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            # logger.info(f'effective loss scale: {self.external_loss_scale}')
+            scaled_loss.backward()
+        else:
+            scaled_loss = (loss.float()) * self.cur_scale
+            scaled_loss.backward(create_graph=create_graph, retain_graph=retain_graph)
 
     def _update_scale(self, skip):
         if self.dynamic_loss_scale:
@@ -312,6 +336,18 @@ class FP16_UnfusedOptimizer(object):
         self.optimizer.param_groups = value
 
     param_groups = property(_get_param_groups, _set_param_groups)
+
+    # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
+    def _get_loss_scale(self):
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.cur_scale
+
+    def _set_loss_scale(self, value):
+        self.loss_scaler.cur_scale = value
+
+    loss_scale = property(_get_loss_scale, _set_loss_scale)
 
     def state_dict(self):
         """
