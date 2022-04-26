@@ -88,9 +88,9 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     backward_function,
                                                     output)
             touched_outputs.append(touched_output)
-        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
+        return outputs.__class__(touched_outputs)
     elif isinstance(outputs, dict):
-        touched_outputs = {}
+        touched_outputs = outputs.__class__()
         for key, output in outputs.items():
             touched_output = _apply_to_tensors_only(module,
                                                     functional,
@@ -103,7 +103,9 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
     else:
         if not is_builtin_type(outputs):
             logger.warning(
-                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. The ZeRO-3 hooksdesigned to trigger before or after backward pass of the module relies on knowing the input and output tensors and therefore may not get triggered properly."
+                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
+                 "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
+                 "output tensors and therefore may not get triggered properly."
             )
         return outputs
 
