@@ -72,12 +72,12 @@ def move_to_cpu(tensor_list):
     for tensor in tensor_list:
         tensor.data = tensor.data.cpu()
 
-        
+
 def is_builtin_type(obj):
     # https://stackoverflow.com/a/17795199
     return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
 
-  
+
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
     if isinstance(outputs, (tuple, list)):
