@@ -144,7 +144,6 @@ class PartitionedParameterCoordinator:
         if self.is_complete_trace():
             # sub_module must match expectation else invalidate trace cache
             if sub_module != self.__submodule_order[self.__step_id]:
-                print("****invalidating trace!")
                 self._invalidate_trace()
 
     def record_module(self, sub_module: Module) -> None:

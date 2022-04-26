@@ -282,7 +282,6 @@ class FP16_UnfusedOptimizer(object):
         """
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
-            # logger.info(f'effective loss scale: {self.external_loss_scale}')
             scaled_loss.backward()
         else:
             scaled_loss = (loss.float()) * self.cur_scale
