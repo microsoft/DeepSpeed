@@ -699,7 +699,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OFFLOAD_NVME_DEVICE:
-            self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config)
+            self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config, self.dtype)
         else:
             self.param_swapper = None
 
@@ -747,7 +747,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             force=False)
 
         global param_count
-        for param in module.parameters(recurse=False):
+        for name, param in module.named_parameters(recurse=False):
             param_count += param.numel()
             if not is_zero_param(param):
                 self._convert_to_deepspeed_param(param)
@@ -759,7 +759,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     torch.distributed.broadcast(param, 0, self.ds_process_group)
                 else:
                     if torch.distributed.get_rank() == 0:
-                        logger.warn(f"param in {module.__class__.__name__} "
+                        logger.warn(f"param `{name}` in {module.__class__.__name__} "
                                     f"not on GPU so was not broadcasted from rank 0")
 
                 param.partition()
@@ -877,7 +877,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 instrument_w_nvtx(torch.cat)(
                     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                     out=partitions[self.rank])
-
                 handle = torch_allgather_fn(partitions[self.rank],
                                             flat_tensor,
                                             self.ds_process_group)
