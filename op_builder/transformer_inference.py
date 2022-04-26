@@ -26,7 +26,7 @@ class InferenceBuilder(CUDAOpBuilder):
         if not self.is_rocm_pytorch():
             return ['-lcurand']
         else:
-            []
+            return []
 
     def include_paths(self):
         return ['csrc/transformer/inference/includes']

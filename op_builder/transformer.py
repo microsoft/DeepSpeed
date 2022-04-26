@@ -19,7 +19,7 @@ class TransformerBuilder(CUDAOpBuilder):
         if not self.is_rocm_pytorch():
             return ['-lcurand']
         else:
-            []
+            return []
 
     def sources(self):
         return [
