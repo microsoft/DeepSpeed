@@ -104,9 +104,8 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         if not is_builtin_type(outputs):
             logger.warning(
                 f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                 "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
-                 "output tensors and therefore may not get triggered properly."
-            )
+                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
+                "output tensors and therefore may not get triggered properly.")
         return outputs
 
 
