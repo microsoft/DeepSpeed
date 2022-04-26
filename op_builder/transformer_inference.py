@@ -23,7 +23,10 @@ class InferenceBuilder(CUDAOpBuilder):
         ]
 
     def extra_ldflags(self):
-        return ['-lcurand']
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            []
 
     def include_paths(self):
         return ['csrc/transformer/inference/includes']

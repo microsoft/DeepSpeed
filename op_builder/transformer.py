@@ -16,7 +16,10 @@ class TransformerBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.transformer.{self.NAME}_op'
 
     def extra_ldflags(self):
-        return ['-lcurand']
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            []
 
     def sources(self):
         return [
