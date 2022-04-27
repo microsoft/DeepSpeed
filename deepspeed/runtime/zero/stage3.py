@@ -88,24 +88,24 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                     backward_function,
                                                     output)
             touched_outputs.append(touched_output)
-        return tuple(touched_outputs) if isinstance(outputs, tuple) else touched_outputs
+        return outputs.__class__(touched_outputs)
     elif isinstance(outputs, dict):
-        touched_outputs = {}
-        for key, output in outputs.items():
-            touched_output = _apply_to_tensors_only(module,
-                                                    functional,
-                                                    backward_function,
-                                                    output)
-            touched_outputs[key] = touched_output
-        return touched_outputs
+        # apply inplace to avoid recreating dict inherited objects
+        for key in outputs.keys():
+            outputs[key] = _apply_to_tensors_only(module,
+                                                  functional,
+                                                  backward_function,
+                                                  outputs[key])
+        return outputs
+
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
             logger.warning(
                 f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and output "
-                "tensors and therefore may not get triggered properly.")
+                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
+                "output tensors and therefore may not get triggered properly.")
         return outputs
 
 
