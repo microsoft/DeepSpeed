@@ -16,6 +16,7 @@ from deepspeed.utils.logging import logger
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
+from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 
 
 def debug_rank0(message: str) -> None:
@@ -147,10 +148,10 @@ class PartitionedParameterCoordinator:
             # sub_module must match expectation else invalidate trace cache
             if sub_module != self.__submodule_order[self.__step_id]:
                 expected_module_id = self.__submodule_order[self.__step_id].id
-                print_rank_0(
+                debug_rank0(
                     f"Invalidate trace cache @ step {self.__step_id}: "
-                    f"expected module {expected_module_id}, but got module {sub_module.id}",
-                    force=True)
+                    f"expected module {expected_module_id}, but got module {sub_module.id}"
+                )
                 self._invalidate_trace()
 
     def record_module(self, sub_module: Module) -> None:
@@ -209,7 +210,13 @@ class PartitionedParameterCoordinator:
         self.__step_id = 0
         self.__n_available_params = 0
 
-    def _dump_params(self, tag, mod_id, p_ids, step_id=None):
+    def _dump_params(self, tag, sub_module, params, step_id=None):
+        if step_id is None:
+            step_id = self.__step_id
+        param_names = [debug_param2name_id(p) for p in params]
+        print(f'{tag} mod = {debug_module2name_id(sub_module)} p_names = {param_names}')
+
+    def _dump_param_ids(self, tag, mod_id, p_ids, step_id=None):
         if step_id is None:
             step_id = self.__step_id
         print(f'{tag} mod = {mod_id}, step = {step_id}, p_ids = {p_ids}')
@@ -320,8 +327,9 @@ class PartitionedParameterCoordinator:
                         # Avoid duplicates
                         do_prefetch = False
 
-                    self.__most_recent_step_id_param_fetched_for[
-                        param_in_trace.param] = param_in_trace.step_id_last_used_at
+                    self.__most_recent_step_id_param_fetched_for[param_in_trace.param] = \
+                        max(self.__most_recent_step_id_param_fetched_for[param_in_trace.param],
+                            param_in_trace.step_id_last_used_at)
 
                     if do_prefetch:
                         params_to_prefetch.add(param_in_trace.param)
