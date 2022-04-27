@@ -274,8 +274,6 @@ class FairSeqLayerPolicy(DSPolicy):
     def __init__(self, client_module, inference=True):
         super().__init__(inference)
         self.client_module = client_module
-        # we use megatron version to differentiate between the old and new
-        # megatron-lm source code
         try:
             import fairseq
             from fairseq.modules import TransformerDecoderLayer

@@ -663,7 +663,7 @@ class DeepSpeedTransformerInference(nn.Module):
         if get_present:
             output = (output, presents)
 
-        print(f"non-MoE {context_output.shape}")
+        #print(f"non-MoE {context_output.shape}")
         if self.config.return_tuple:
             return output if type(output) is tuple else (output, None, None, None)
         else:
