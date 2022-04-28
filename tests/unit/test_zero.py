@@ -1347,4 +1347,3 @@ def test_zero_adam_optimizer_step_count(tmpdir, zero_stage):
                 assert all(step == step_counts[0] for step in step_counts)
 
     _test_zero_adam_optimizer_step_count_loop(model=model, hidden_dim=hidden_dim)
-
