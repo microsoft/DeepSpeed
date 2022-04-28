@@ -2352,6 +2352,7 @@ class DeepSpeedEngine(Module):
 
     @staticmethod
     def _get_expert_ckpt_name(checkpoints_path, layer_id, expert_id, tag, mpu=None):
+        pp_rank = 0 if mpu is None else mpu.get_pipe_parallel_rank()
         mp_rank = 0 if mpu is None else mpu.get_model_parallel_rank()
         if layer_id <= -1:
             # Used to support old checkpoint loading
@@ -2364,7 +2365,7 @@ class DeepSpeedEngine(Module):
             ckpt_name = os.path.join(
                 checkpoints_path,
                 '' if tag is None else str(tag),
-                f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
+                f'pp{pp_rank:02d}_moe_layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
             )
         return ckpt_name
 
