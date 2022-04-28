@@ -46,6 +46,7 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Unit tests
         run: |
+          if [[ -d /tmp/pytest-of-$USER ]]; then rm -rf /tmp/pytest-of-$USER; fi
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
           TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -x -n 4 -m 'not sequential' unit/
