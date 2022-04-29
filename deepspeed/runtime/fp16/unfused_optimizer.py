@@ -9,13 +9,14 @@ from deepspeed.moe.utils import split_params_grads_into_shared_and_expert_params
 import torch
 from torch._utils import _flatten_dense_tensors
 
+from deepspeed.runtime import DeepSpeedOptimizer
 from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
 
 
-class FP16_UnfusedOptimizer(object):
+class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
     """
     FP16 Optimizer without weight fusion to support LAMB optimizer
 

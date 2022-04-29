@@ -8,6 +8,7 @@ This file is adapted from FP16_Optimizer in NVIDIA/apex
 import torch
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
+from deepspeed.runtime import DeepSpeedOptimizer
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import groups, logger, log_dist
@@ -15,7 +16,7 @@ from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
 import torch.distributed as dist
 
 
-class FP16_Optimizer(object):
+class FP16_Optimizer(DeepSpeedOptimizer):
     """
    FP16 Optimizer for training fp16 models. Handles loss scaling.
 

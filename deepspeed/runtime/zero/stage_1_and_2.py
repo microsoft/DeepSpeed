@@ -8,6 +8,7 @@ import torch.distributed as dist
 from torch._six import inf
 from packaging import version as pkg_version
 
+from deepspeed.runtime import ZeROOptimizer
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
                                      get_global_norm,
@@ -88,7 +89,7 @@ def _get_padded_tensor(src_tensor, size):
     return padded_tensor
 
 
-class DeepSpeedZeroOptimizer(object):
+class DeepSpeedZeroOptimizer(ZeROOptimizer):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
