@@ -357,12 +357,12 @@ class PipelineEngine(DeepSpeedEngine):
 
         if self.global_steps % self.steps_per_print() == 0:
             if self.global_rank == 0:
-                elapsed = self.timers('train_batch').elapsed(reset=True)
-                iter_time = elapsed / self.steps_per_print()
-                tput = self.train_batch_size() / iter_time
+                elapsed_msec = self.timers('train_batch').elapsed(reset=True)
+                iter_time_sec = elapsed_msec / self.steps_per_print() / 1e3
+                tput = self.train_batch_size() / iter_time_sec
                 print(f'steps: {self.global_steps} '
                       f'loss: {self.agg_train_loss:0.4f} '
-                      f'iter time (s): {iter_time:0.3f} '
+                      f'iter time (s): {iter_time_sec:0.3f} '
                       f'samples/sec: {tput:0.3f}')
 
         # Tensorboard
