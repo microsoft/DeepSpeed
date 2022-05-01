@@ -609,7 +609,7 @@ class DeepSpeedZeroOptimizer(object):
 
         if not self.overlap_comm:
             for i, group in enumerate(self.bit16_groups):
-                if self.is_moe_param_group[i]:
+                if self.has_moe_layers and self.is_moe_param_group[i]:
                     assert not self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 1 must be set to False for MoE. Other code paths are not tested with MoE"
                     for _, expert_dp_group in self.expert_dp_process_group.items():
                         assert expert_dp_group.size() == 1, "Expert data parallelism is not supported. Don't understand what scenarios we need to do this?"
