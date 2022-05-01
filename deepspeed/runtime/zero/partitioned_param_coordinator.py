@@ -295,8 +295,8 @@ class PartitionedParameterCoordinator:
                     f"tracing error at step {self.__step_id}: \n"
                     f"module id: {current_submodule.id}, training: {current_submodule.training}\n"
                     f"expected the next {len(params_not_already_fetched)} parameters in the "
-                    f"parameter fetch queue to be {tuple(p.ds_summary() for p in params_not_already_fetched)} \n"
-                    f"but got \n {tuple(p.ds_summary() for p in discarded_from_prefetch_queue)}."
+                    f"parameter fetch queue to be {tuple(p.ds_summary(use_debug_name=True) for p in params_not_already_fetched)} \n"
+                    f"but got \n {tuple(p.ds_summary(use_debug_name=True) for p in discarded_from_prefetch_queue)}."
                 )
 
             def _is_currently_on_nvme(param):
