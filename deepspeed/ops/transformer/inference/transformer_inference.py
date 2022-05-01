@@ -600,7 +600,6 @@ class DeepSpeedTransformerInference(nn.Module):
 
         self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
-        self.layer_past = None
 
     def forward(self,
                 input,
@@ -618,7 +617,6 @@ class DeepSpeedTransformerInference(nn.Module):
                 output_attentions=False):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
-        layer_past = layer_past if layer_past is not None else self.layer_past
 
         attn_mask = None
         if isinstance(input, tuple):
@@ -643,7 +641,6 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b)
             presents = (key, value)
-            self.layer_past = presents
 
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
