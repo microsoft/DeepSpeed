@@ -3,10 +3,11 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import pickle
-import typing
-
+from . import p2p_util
+from .p2p_util import Type
 import torch
 import torch.distributed as dist
+import typing
 
 # To query whether we have send/recv support
 from packaging.version import Version
@@ -14,15 +15,12 @@ from deepspeed.git_version_info import torch_info
 
 _groups = None
 _grid = None
-
 _async = []
-
 
 def can_send_recv() -> bool:
     torch_version = Version(torch_info['version'])
     sendrecv_min = Version('1.8')
     return torch_version >= sendrecv_min
-
 
 #initializes adjacent process groups
 #run this only after torch.distributed.init_process_group() has been called
@@ -47,7 +45,6 @@ def _is_valid_send_recv(src_stage, dest_stage):
 
 def send(tensor, dest_stage, async_op=False):
     global _groups
-    assert async_op == False, "Doesn't support async_op true"
     src_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
@@ -57,7 +54,6 @@ def send(tensor, dest_stage, async_op=False):
         op = dist.isend(tensor, dest_rank)
         _async.append(op)
     else:
-
         if can_send_recv():
             return dist.send(tensor, dest_rank)
         else:
@@ -94,6 +90,116 @@ def wait():
 
     torch.cuda.synchronize()
 
+def new_send_obj(msg: typing.Any, dest: int, async_op=False):
+    """send an python object to dest. the object could be tuples, lists,
+       dictionaries and tensors."""
+
+    # metadata: [msg_len, msg_type, max_dim]
+    metadata = torch.empty((3), dtype=torch.long, device="cuda")
+    metadata[0]=len(msg)
+    tensors = []
+
+    if isinstance(msg, tuple):
+        metadata[1] = Type.TUPLE.value
+        tensors = list(msg)
+    elif isinstance(msg, list):
+        metadata[1] = Type.LIST.value
+        tensors = msg
+    elif torch.is_tensor(msg):
+        metadata[0] = 1
+        metadata[1] = Type.TENSOR.value
+        tensors[0] = msg
+    else:
+        raise Exception("Currently, send_obj only supports tuple, list and tensor type.")
+
+    #assume each tensor has the same number of dims. This can be revisited later.
+    max_dim = max([tensor.dim() for tensor in tensors])
+    metadata[2] = max_dim
+
+    stage_id = _grid.get_stage_id()
+    if async_op:
+        #send metadata
+        promises = []
+        promises.append(send(metadata, dest, True))
+        #element_type_shape: [dtype, dim, shape, padding...]
+        #if _grid.get_global_rank() % 8 == 0:
+        #    ic(stage_id, metadata, "async send")
+
+        for tensor in tensors:
+            element_type_shape = torch.empty((max_dim+2), dtype=torch.long, device="cuda")
+            element_type_shape[0] = p2p_util.encode_element_type(tensor)
+            element_type_shape[1] = tensor.dim()
+            for i in range(tensor.dim()):
+                element_type_shape[i+2] = tensor.size(i)
+
+            promises.append(send(element_type_shape, dest, True))
+            promises.append(send(tensor, dest, True))
+            #if _grid.get_global_rank() % 8 == 0:
+            #    ic(stage_id, element_type_shape, tensor.shape, "async send")
+
+        return promises
+    else:
+        dist.send(metadata, dest)
+        for tensor in tensors:
+            element_type_shape = torch.empty((max_dim+2), dtype=torch.long, device="cuda")
+            element_type_shape[0] = p2p_util.encode_element_type(tensor)
+            element_type_shape[1] = tensor.dim()
+            for i in range(tensor.dim()):
+                element_type_shape[i+2] = tensor.size(i)
+
+            dist.send(element_type_shape, dest)
+            dist.send(tensor, dest)
+
+def new_recv_obj(sender: int, async_op=False) -> typing.Any:
+    metadata = torch.empty((3), dtype=torch.long, device="cuda")
+    msg = []
+
+    stage_id = _grid.get_stage_id()
+
+    if async_op:
+        irecv(metadata, sender, is_async=False)
+        msg_len = metadata[0]
+        msg_type = metadata[1]
+        max_dim = metadata[2]
+        for i in range(msg_len):
+            element_type_shape = torch.empty((max_dim + 2), dtype=torch.long, device="cuda")
+            irecv(element_type_shape, sender, is_async=False)
+            element_type = p2p_util.decode_element_type(element_type_shape[0].item())
+            dim = element_type_shape[1].item()
+            shape = element_type_shape[2:dim+2].tolist()
+            data = torch.empty(shape, dtype=element_type, device="cuda")
+            irecv(data, sender, is_async=False)
+            msg.append(data)
+        if msg_type == Type.TENSOR.value:
+            return msg[0]
+        elif msg_type == Type.TUPLE.value:
+            return tuple(msg)
+        elif msg_type == Type.LIST.value:
+            return msg
+        else:
+            raise Exception ('Message type is not supported:', msg_type)
+    else:
+        dist.recv(metadata, sender)
+        msg_len = metadata[0]
+        msg_type = metadata[1]
+        max_dim = metadata[2]
+        for i in range(msg_len):
+            element_type_shape = torch.empty((max_dim + 2), dtype=torch.long, device="cuda")
+            dist.recv(element_type_shape, sender)
+            element_type = p2p_util.decode_element_type(element_type_shape[0].item())
+            dim = element_type_shape[1].item()
+            shape = element_type_shape[2:dim+2].tolist()
+            data = torch.empty(shape, dtype=element_type, device="cuda")
+            dist.recv(data, sender)
+            msg.append(data)
+        if msg_type == Type.TENSOR.value:
+            return msg[0]
+        elif msg_type == Type.TUPLE.value:
+            return tuple(msg)
+        elif msg_type == Type.LIST.value:
+            return msg
+        else:
+            raise Exception ('Message type is not supported:', msg_type)
 
 def send_obj(msg: typing.Any, dest: int):
     """Send an arbitrary python object to ``dest``.
