@@ -17,10 +17,12 @@ _groups = None
 _grid = None
 _async = []
 
+
 def can_send_recv() -> bool:
     torch_version = Version(torch_info['version'])
     sendrecv_min = Version('1.8')
     return torch_version >= sendrecv_min
+
 
 #initializes adjacent process groups
 #run this only after torch.distributed.init_process_group() has been called
@@ -90,13 +92,14 @@ def wait():
 
     torch.cuda.synchronize()
 
+
 def new_send_obj(msg: typing.Any, dest: int, async_op=False):
     """send an python object to dest. the object could be tuples, lists,
        dictionaries and tensors."""
 
     # metadata: [msg_len, msg_type, max_dim]
     metadata = torch.empty((3), dtype=torch.long, device="cuda")
-    metadata[0]=len(msg)
+    metadata[0] = len(msg)
     tensors = []
 
     if isinstance(msg, tuple):
@@ -126,11 +129,13 @@ def new_send_obj(msg: typing.Any, dest: int, async_op=False):
         #    ic(stage_id, metadata, "async send")
 
         for tensor in tensors:
-            element_type_shape = torch.empty((max_dim+2), dtype=torch.long, device="cuda")
+            element_type_shape = torch.empty((max_dim + 2),
+                                             dtype=torch.long,
+                                             device="cuda")
             element_type_shape[0] = p2p_util.encode_element_type(tensor)
             element_type_shape[1] = tensor.dim()
             for i in range(tensor.dim()):
-                element_type_shape[i+2] = tensor.size(i)
+                element_type_shape[i + 2] = tensor.size(i)
 
             promises.append(send(element_type_shape, dest, True))
             promises.append(send(tensor, dest, True))
@@ -141,14 +146,17 @@ def new_send_obj(msg: typing.Any, dest: int, async_op=False):
     else:
         dist.send(metadata, dest)
         for tensor in tensors:
-            element_type_shape = torch.empty((max_dim+2), dtype=torch.long, device="cuda")
+            element_type_shape = torch.empty((max_dim + 2),
+                                             dtype=torch.long,
+                                             device="cuda")
             element_type_shape[0] = p2p_util.encode_element_type(tensor)
             element_type_shape[1] = tensor.dim()
             for i in range(tensor.dim()):
-                element_type_shape[i+2] = tensor.size(i)
+                element_type_shape[i + 2] = tensor.size(i)
 
             dist.send(element_type_shape, dest)
             dist.send(tensor, dest)
+
 
 def new_recv_obj(sender: int, async_op=False) -> typing.Any:
     metadata = torch.empty((3), dtype=torch.long, device="cuda")
@@ -162,11 +170,13 @@ def new_recv_obj(sender: int, async_op=False) -> typing.Any:
         msg_type = metadata[1]
         max_dim = metadata[2]
         for i in range(msg_len):
-            element_type_shape = torch.empty((max_dim + 2), dtype=torch.long, device="cuda")
+            element_type_shape = torch.empty((max_dim + 2),
+                                             dtype=torch.long,
+                                             device="cuda")
             irecv(element_type_shape, sender, is_async=False)
             element_type = p2p_util.decode_element_type(element_type_shape[0].item())
             dim = element_type_shape[1].item()
-            shape = element_type_shape[2:dim+2].tolist()
+            shape = element_type_shape[2:dim + 2].tolist()
             data = torch.empty(shape, dtype=element_type, device="cuda")
             irecv(data, sender, is_async=False)
             msg.append(data)
@@ -177,18 +187,20 @@ def new_recv_obj(sender: int, async_op=False) -> typing.Any:
         elif msg_type == Type.LIST.value:
             return msg
         else:
-            raise Exception ('Message type is not supported:', msg_type)
+            raise Exception('Message type is not supported:', msg_type)
     else:
         dist.recv(metadata, sender)
         msg_len = metadata[0]
         msg_type = metadata[1]
         max_dim = metadata[2]
         for i in range(msg_len):
-            element_type_shape = torch.empty((max_dim + 2), dtype=torch.long, device="cuda")
+            element_type_shape = torch.empty((max_dim + 2),
+                                             dtype=torch.long,
+                                             device="cuda")
             dist.recv(element_type_shape, sender)
             element_type = p2p_util.decode_element_type(element_type_shape[0].item())
             dim = element_type_shape[1].item()
-            shape = element_type_shape[2:dim+2].tolist()
+            shape = element_type_shape[2:dim + 2].tolist()
             data = torch.empty(shape, dtype=element_type, device="cuda")
             dist.recv(data, sender)
             msg.append(data)
@@ -199,7 +211,8 @@ def new_recv_obj(sender: int, async_op=False) -> typing.Any:
         elif msg_type == Type.LIST.value:
             return msg
         else:
-            raise Exception ('Message type is not supported:', msg_type)
+            raise Exception('Message type is not supported:', msg_type)
+
 
 def send_obj(msg: typing.Any, dest: int):
     """Send an arbitrary python object to ``dest``.

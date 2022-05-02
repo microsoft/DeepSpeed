@@ -2,11 +2,13 @@ from enum import Enum
 import torch
 import typing
 
+
 class Type(Enum):
     TUPLE = 1
     LIST = 2
     DICT = 3
     TENSOR = 4
+
 
 class Data_Type(Enum):
     FLOAT = 1
@@ -24,7 +26,8 @@ class Data_Type(Enum):
     INT64 = 13
     BOOL = 14
 
-def encode_type(object : typing.Any):
+
+def encode_type(object: typing.Any):
     if isinstance(object, tuple):
         return Type.TUPLE
     elif isinstance(object, list):
@@ -34,9 +37,10 @@ def encode_type(object : typing.Any):
     elif isinstance(object, torch.Tensor):
         return Type.TENSOR
     else:
-        raise Exception("Type is not supported for encoding: ", type(object))    
+        raise Exception("Type is not supported for encoding: ", type(object))
 
-def encode_element_type(tensor : torch.Tensor) -> int:
+
+def encode_element_type(tensor: torch.Tensor) -> int:
     if tensor.dtype == torch.float32 or tensor.dtype == torch.float:
         return Data_Type.FLOAT.value
     elif tensor.dtype == torch.float16:
@@ -69,8 +73,8 @@ def encode_element_type(tensor : torch.Tensor) -> int:
         raise Exception("Tensor element type is not supported: ", tensor.dtype)
 
 
-def decode_element_type(type : int):
-    if type == 1: 
+def decode_element_type(type: int):
+    if type == 1:
         return torch.float
     elif type == 2:
         return torch.float16
@@ -100,4 +104,3 @@ def decode_element_type(type : int):
         return torch.bool
     else:
         raise Exception("Invalid type id: ", type)
-
