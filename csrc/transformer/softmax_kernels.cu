@@ -1144,7 +1144,7 @@ void dropout_softmax_grad_kernel(
     const __nv_bfloat16* attn_mask,
     std::pair<uint64_t, uint64_t> seed) 
 {
-    /*
+    
     unsigned warp_num = blockDim.x >> 5;
 
     unsigned iteration_stride = WARP_SIZE;
@@ -1304,7 +1304,7 @@ void dropout_softmax_grad_kernel(
         result_h[1].y = __float2bfloat16(high_data[i].y * (high_grad_data[i].y - sum1));
         if(data_id < seq_length)
             grad_cast[data_id] = result_f;
-    }*/
+    }
 }
 
 template <typename T>

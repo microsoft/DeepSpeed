@@ -21,5 +21,8 @@ class TransformerKernelsBuilder(CUDAOpBuilder):
             'csrc/transformer/softmax_kernels.cu',
         ]
 
+    def extra_ldflags(self):
+        return ['-lcurand']
+        
     def include_paths(self):
         return ['csrc/includes']
