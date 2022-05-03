@@ -175,6 +175,12 @@ class PartitionedParameterCoordinator:
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=step_id))
 
+    def construct_parameter_trace_from_module_trace(self):
+        """use module trace to construct parameter trace"""
+        self.__param_order = []
+        for sub_module in self.__submodule_order:
+            self.record_parameters(sub_module)
+
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
         if self.__inflight_param_registry:
@@ -192,6 +198,7 @@ class PartitionedParameterCoordinator:
 
             if self.is_record_trace():
                 # Successfully recorded a trace
+                self.construct_parameter_trace_from_module_trace()
                 self.__submodule_order = tuple(self.__submodule_order)  # freeze
                 self.__param_order = tuple(self.__param_order)  # freeze
                 self.__trace_mode = ZeRoTraceMode.COMPLETE
@@ -214,7 +221,9 @@ class PartitionedParameterCoordinator:
         if step_id is None:
             step_id = self.__step_id
         param_names = [debug_param2name_id(p) for p in params]
-        print(f'{tag} mod = {debug_module2name_id(sub_module)} p_names = {param_names}')
+        print(
+            f'{tag} step = {step_id} mod = {debug_module2name_id(sub_module)} p_names = {param_names}'
+        )
 
     def _dump_param_ids(self, tag, mod_id, p_ids, step_id=None):
         if step_id is None:
