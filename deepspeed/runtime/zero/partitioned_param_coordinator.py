@@ -148,9 +148,10 @@ class PartitionedParameterCoordinator:
             # sub_module must match expectation else invalidate trace cache
             if sub_module != self.__submodule_order[self.__step_id]:
                 expected_module_id = self.__submodule_order[self.__step_id].id
-                debug_rank0(
+                print_rank_0(
                     f"Invalidate trace cache @ step {self.__step_id}: "
-                    f"expected module {expected_module_id}, but got module {sub_module.id}"
+                    f"expected module {expected_module_id}, but got module {sub_module.id}",
+                    force=True
                 )
                 self._invalidate_trace()
 
@@ -162,6 +163,7 @@ class PartitionedParameterCoordinator:
 
         self.__submodule_order.append(sub_module)
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
+        print(f'record_module step = {self.__step_id} {debug_module2name_id(sub_module)}')
 
     def record_parameters(self, sub_module: Module) -> None:
         """adds sub module to trace"""
@@ -170,10 +172,19 @@ class PartitionedParameterCoordinator:
                 f"attempted to record trace when status = {self.__trace_mode}")
 
         step_id = self.__step_id_module_fetched_for[sub_module.id].popleft()
+        print(f'record_params step = {step_id} mod = {debug_module2name_id(sub_module)} {[debug_param2name_id(p) for p in iter_params(sub_module)]}')
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,
                                          step_id_last_used_at=step_id))
+
+
+    def construct_parameter_trace_from_module_trace(self):
+        """use module trace to construct parameter trace"""
+        self.__param_order = []
+        for sub_module in self.__submodule_order:
+            self.record_parameters(sub_module)
+
 
     def reset_step(self) -> None:
         """indicate that we have completed one fwd+bwd for the model"""
@@ -192,12 +203,13 @@ class PartitionedParameterCoordinator:
 
             if self.is_record_trace():
                 # Successfully recorded a trace
+                self.construct_parameter_trace_from_module_trace()
                 self.__submodule_order = tuple(self.__submodule_order)  # freeze
                 self.__param_order = tuple(self.__param_order)  # freeze
                 self.__trace_mode = ZeRoTraceMode.COMPLETE
                 print_rank_0(
                     f"completed record trace: {[m.id for m in self.__submodule_order]}",
-                    force=False)
+                    force=True)
             else:
                 # Enable trace recording for next forward/backward pass
                 self.__trace_mode = ZeRoTraceMode.RECORD
@@ -214,7 +226,7 @@ class PartitionedParameterCoordinator:
         if step_id is None:
             step_id = self.__step_id
         param_names = [debug_param2name_id(p) for p in params]
-        print(f'{tag} mod = {debug_module2name_id(sub_module)} p_names = {param_names}')
+        print(f'{tag} step = {step_id} mod = {debug_module2name_id(sub_module)} p_names = {param_names}')
 
     def _dump_param_ids(self, tag, mod_id, p_ids, step_id=None):
         if step_id is None:
@@ -246,6 +258,7 @@ class PartitionedParameterCoordinator:
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
+        self._dump_params('params_to_fetch', current_submodule, params_to_fetch)
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -291,8 +304,7 @@ class PartitionedParameterCoordinator:
                 discarded_from_prefetch_queue.add(param_in_trace.param)
 
             if discarded_from_prefetch_queue != params_not_already_fetched:
-                # raise RuntimeError(
-                debug_rank0(
+                raise RuntimeError(
                     f"tracing error at step {self.__step_id}: \n"
                     f"module id: {current_submodule.id}, training: {current_submodule.training}\n"
                     f"expected the next {len(params_not_already_fetched)} parameters in the "
@@ -338,6 +350,7 @@ class PartitionedParameterCoordinator:
 
                 for param in params_to_prefetch:
                     debug_rank0(f"-prefetch: {param.ds_summary()}")
+                self._dump_params('params_to_prefetch', current_submodule, params_to_prefetch)
                 self.__all_gather_params(params_to_prefetch)
 
                 if self.__prefetch_nvme:
