@@ -206,11 +206,14 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention = policy.attention()
-        if not moe or moe_type == 'standard':
+        if not moe:
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
+        elif moe_type == 'standard':
+            mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b, wg, k = policy.mlp()
         else:
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b, \
-                _res_h4h_w, _res_h4h_b, _res_4hh_w, _res_4hh_b, _res_coef = policy.mlp(moe_type)
+                _res_h4h_w, _res_h4h_b, _res_4hh_w, _res_4hh_b, \
+                _res_coef, wg, k = policy.mlp(moe_type)
 
         attn_nw, attn_nb, input_nw, input_nb = policy.layerNorm()
         if quantize:
@@ -390,6 +393,8 @@ def replace_transformer_layer(orig_layer_impl,
                     mpl_block[ep_index].output_b.data = _4hh_b[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
+                new_module.moe_gate.wg = wg 
+                new_module.moe_gate.k = k
                 new_module.attn_nw.data = attn_nw.to(torch.cuda.current_device())
                 new_module.attn_nb.data = attn_nb.to(torch.cuda.current_device())
                 if moe_type == 'residual':

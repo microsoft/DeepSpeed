@@ -232,6 +232,7 @@ class MegatronLayerPolicy(DSPolicy):
         moe, _ = has_moe_layers(self.client_module)
 
         if moe:
+            moe_layer = self.client_module.mlp.deepspeed_moe
             moe_experts = self.client_module.mlp.deepspeed_moe.experts.deepspeed_experts if moe_type == 'standard' else \
                             self.client_module.mlp.moe.deepspeed_moe.experts.deepspeed_experts
             num_experts = len(moe_experts)
@@ -240,7 +241,10 @@ class MegatronLayerPolicy(DSPolicy):
                     [moe_experts[i].dense_h_to_4h.weight for i in range(num_experts)], \
                     [moe_experts[i].dense_h_to_4h.bias for i in range(num_experts)], \
                     [moe_experts[i].dense_4h_to_h.weight for i in range(num_experts)], \
-                    [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)]
+                    [moe_experts[i].dense_4h_to_h.bias for i in range(num_experts)], \
+                    moe_layer.gate.wg, \
+                    moe_layer.gate.k
+
             else:
 
                 return self.linear_layer, \
@@ -252,7 +256,9 @@ class MegatronLayerPolicy(DSPolicy):
                     self.client_module.mlp.mlp.dense_h_to_4h.bias, \
                     self.client_module.mlp.mlp.dense_4h_to_h.weight, \
                     self.client_module.mlp.mlp.dense_4h_to_h.bias, \
-                    self.client_module.mlp.coefficient.weight
+                    self.client_module.mlp.coefficient.weight,  \
+                    moe_layer.gate.wg, \
+                    moe_layer.gate.k
 
         else:
             return self.linear_layer, \
@@ -277,7 +283,9 @@ class FairSeqLayerPolicy(DSPolicy):
         try:
             import fairseq
             from fairseq.modules import TransformerDecoderLayer
+            from fairseq.modules.moe import Top2Gate
             FairSeqLayerPolicy._orig_layer_class = TransformerDecoderLayer
+            FairSeqLayerPolicy._gate_class = Top2Gate
         except ImportError:
             FairSeqLayerPolicy._orig_layer_class = None
 
@@ -307,13 +315,18 @@ class FairSeqLayerPolicy(DSPolicy):
         moe = self.client_module.is_moe_layer
 
         if moe:
-            moe_experts = self.client_module.moe_layer.experts
+            moe_layer = self.client_module.moe_layer
+            wg = moe_layer.gate.wg
+            k = 2 if isinstance(moe_layer.gate, FairSeqLayerPolicy._gate_class) else 1 
+            moe_experts = moe_layer.experts
             num_experts = len(moe_experts)
             return self.linear_layer, \
                 [moe_experts[i].fc1.weight for i in range(num_experts)], \
                 [moe_experts[i].fc1.bias for i in range(num_experts)], \
                 [moe_experts[i].fc2.weight for i in range(num_experts)], \
-                [moe_experts[i].fc2.bias for i in range(num_experts)]
+                [moe_experts[i].fc2.bias for i in range(num_experts)], \
+                wg, \
+                k
         else:
             return self.linear_layer, \
                 self.client_module.fc1.weight, \
