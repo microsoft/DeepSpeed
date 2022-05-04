@@ -283,7 +283,7 @@ class FairSeqLayerPolicy(DSPolicy):
         try:
             import fairseq
             from fairseq.modules import TransformerDecoderLayer
-            from fairseq.modules.moe import Top2Gate
+            from fairseq.modules.moe.top2gate import Top2Gate
             FairSeqLayerPolicy._orig_layer_class = TransformerDecoderLayer
             FairSeqLayerPolicy._gate_class = Top2Gate
         except ImportError:
