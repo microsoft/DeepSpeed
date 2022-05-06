@@ -85,12 +85,6 @@ except ImportError:
     APEX_INSTALLED = False
     pass
 
-try:
-    from fairseq.optim.fairseq_optimizer import FairseqOptimizer
-    FAIRSEQ_INSTALLED = True
-except ImportError:
-    FAIRSEQ_INSTALLED = False
-
 
 def split_half_float_double_sparse(tensors):
     supported_types = [
@@ -171,7 +165,7 @@ class EngineTimers(object):
             ]
 
 
-class DeepSpeedEngine(object):
+class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
     def __init__(
         self,
@@ -431,15 +425,13 @@ class DeepSpeedEngine(object):
         _module = {}
         if "module" in self.__dict__:
             _module = self.__dict__['module']
-
         if name in dir(self):
             return getattr(self, name)
         elif name in dir(_module):
             return getattr(_module, name)
         else:
-            raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__,
-                name))
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def checkpoint_tag_validation_enabled(self):
         return self._config.checkpoint_tag_validation_enabled
@@ -919,8 +911,14 @@ class DeepSpeedEngine(object):
                            None) is not None)
 
     def _supported_optims(self):
+        FairseqOptimizer = None
+        try:
+            from fairseq.optim.fairseq_optimizer import FairseqOptimizer
+        except ImportError:
+            pass
+
         expected_optim_types = [Optimizer]
-        if FAIRSEQ_INSTALLED:
+        if FairseqOptimizer:
             # fairseq optims are not torch.optim objects
             expected_optim_types.append(FairseqOptimizer)
         return expected_optim_types
@@ -983,7 +981,12 @@ class DeepSpeedEngine(object):
             )
 
     def _configure_distributed_model(self, model):
+        # register client model in _modules so that nn.module methods work correctly
+        modules = self.__dict__.get('_modules')
+        modules['module'] = model
+        # register module attribute in engine but avoid getattr
         self.__dict__['module'] = model
+
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
                 [hasattr(param,

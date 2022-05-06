@@ -1912,7 +1912,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if self.custom_loss_scaler:
             scaled_loss = self.external_loss_scale * loss
-            # logger.info(f'effective loss scale: {self.external_loss_scale}')
             scaled_loss.backward()
         else:
             self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
