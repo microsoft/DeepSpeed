@@ -171,7 +171,7 @@ class EngineTimers(object):
             ]
 
 
-class DeepSpeedEngine(Module):
+class DeepSpeedEngine(object):
     r"""DeepSpeed engine for training."""
     def __init__(
         self,
@@ -1624,6 +1624,8 @@ class DeepSpeedEngine(Module):
         else:
             see_memory_usage("Engine after forward", force=self.memory_breakdown())
         return loss
+
+    __call__ = forward
 
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
