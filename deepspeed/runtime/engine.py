@@ -980,12 +980,15 @@ class DeepSpeedEngine(Module):
                 f"{[(n, p.dtype) for n, p in model.named_parameters() if p.dtype != dtype]}"
             )
 
-    def _configure_distributed_model(self, model):
+    def _set_client_model(self, model):
         # register client model in _modules so that nn.module methods work correctly
         modules = self.__dict__.get('_modules')
         modules['module'] = model
         # register module attribute in engine but avoid getattr
         self.__dict__['module'] = model
+
+    def _configure_distributed_model(self, model):
+        self._set_client_model(model)
 
         if self.fp16_enabled():
             if self.zero_optimization_partition_weights() and any(
@@ -1126,9 +1129,10 @@ class DeepSpeedEngine(Module):
                 # If apex/amp is available it will be imported above
                 raise RuntimeError(
                     "Unable to import apex/amp, please make sure it is installed")
-            self.module, self.optimizer = amp.initialize(
+            model, self.optimizer = amp.initialize(
                 self.module, basic_optimizer, **amp_params
             )
+            self._set_client_model(model)
             self._broadcast_model()
             # TODO: maybe need to broadcast experts differently?
         elif self.fp16_enabled():
