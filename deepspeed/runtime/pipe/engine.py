@@ -488,21 +488,6 @@ class PipelineEngine(DeepSpeedEngine):
         super().set_train_batch_size(train_batch_size)
         self.micro_batches = self.gradient_accumulation_steps()
 
-    def __getattr__(self, name):
-        """
-        Pass through attributes defined in the model if they are not overridden by ds-engine.
-        """
-        _module = {}
-        if "module" in self.__dict__:
-            _module = self.__dict__['module']
-        if name in dir(self):
-            return getattr(self, name)
-        elif name in dir(_module):
-            return getattr(_module, name)
-        else:
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'")
-
     def is_first_stage(self):
         """True if this process is in the first stage in the pipeline."""
         return self.stage_id == 0
@@ -705,9 +690,9 @@ class PipelineEngine(DeepSpeedEngine):
 
         # Optionally compute loss on the last device
         if self.is_last_stage():
-            if self._compute_loss and self.loss_model is not None:
+            if self._compute_loss and self.module.loss_fn is not None:
                 labels = self.pipe_buffers['labels'][buffer_id]
-                self.loss = self.loss_model(outputs, labels)
+                self.loss = self.module.loss_fn(outputs, labels)
             else:
                 # Some models just return loss from forward()
                 self.loss = outputs
