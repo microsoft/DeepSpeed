@@ -1628,8 +1628,6 @@ class DeepSpeedEngine(Module):
             see_memory_usage("Engine after forward", force=self.memory_breakdown())
         return loss
 
-    __call__ = forward
-
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
         moe_time = 0.0
