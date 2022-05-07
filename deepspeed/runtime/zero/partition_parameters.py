@@ -1615,7 +1615,7 @@ class GatheredParameters:
         if not enabled:
             return
 
-        if not (isinstance(params, list) or isinstance(params, tuple):
+        if not (isinstance(params, list) or isinstance(params, tuple)):
             params = [params]
 
         # enable if at least one is zero-param, otherwise a noop
