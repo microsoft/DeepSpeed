@@ -2,6 +2,7 @@ import torch
 import pytest
 
 import deepspeed
+from deepspeed.runtime.pipe.topology import PipeModelDataParallelTopology
 
 from .common import distributed_test
 from .simple_model import SimplePRMoEModel, args_from_dict, SimpleMoEModel, sequence_dataloader, MoEModelPipe
@@ -66,51 +67,6 @@ def test_moe(tmpdir, ep_size, use_residual):
               use_residual=use_residual)
 
 
-@pytest.mark.parametrize("ep_size",
-                         [
-                             (2,
-                              ),
-                         ])
-def test_moe_pipeline_parallel(tmpdir, ep_size):
-    if not required_torch_version():
-        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
-
-    config_dict = {
-        "train_batch_size": 8,
-        "steps_per_print": 1,
-        "fp16": {
-            "enabled": True
-        }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 16
-
-    @distributed_test(world_size=[4])
-    def _test_moe(args, hidden_dim, ep_size):
-        # E+D -- ep_size = 2
-        # E only -- ep_size = 4
-        model = MoEModelPipe(input_dim=hidden_dim,
-                             hidden_dim=hidden_dim,
-                             ep_size=ep_size)
-        optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              optimizer=optimizer,
-                                              dist_init_required=False)
-        #dist_init_required=False -- parameterize to True/False?
-
-        data_loader = sequence_dataloader(model=model,
-                                          total_samples=50,
-                                          hidden_dim=hidden_dim,
-                                          device=model.device)
-
-        model.set_dataloader(data_loader)
-        for _, batch in enumerate(data_loader):
-            model.train_batch()
-
-    _test_moe(args=args, hidden_dim=hidden_dim, ep_size=ep_size)
-
-
 @pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])
 def test_pr_moe(tmpdir, ep_size, use_residual):
     if not required_torch_version():
@@ -152,3 +108,52 @@ def test_pr_moe(tmpdir, ep_size, use_residual):
               hidden_dim=hidden_dim,
               ep_size=ep_size,
               use_residual=use_residual)
+
+
+def test_moe_pipeline_parallel(tmpdir):
+    if not required_torch_version():
+        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+    config_dict = {
+        "train_batch_size": 8,
+        "steps_per_print": 1,
+        "fp16": {
+            "enabled": True
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 16
+
+    @distributed_test(world_size=[4])
+    def _test_moe(args, hidden_dim):
+        pp_world_size = 2
+        tp_world_size = 1
+        dp_world_size = 2
+        ep_size = 2
+
+        topo = PipeModelDataParallelTopology(num_pp=pp_world_size,
+                                             num_mp=tp_world_size,
+                                             num_dp=dp_world_size)
+        model = MoEModelPipe(input_dim=hidden_dim,
+                             hidden_dim=hidden_dim,
+                             ep_size=ep_size,
+                             topology=topo)
+        optimizer = torch.optim.AdamW(params=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer,
+                                              dist_init_required=False)
+        #dist_init_required=False -- parameterize to True/False?
+
+        num_steps = 3
+        total_samples = num_steps * model.micro_batch_size * model.micro_batches
+        data_loader = sequence_dataloader(model=model,
+                                          total_samples=total_samples,
+                                          hidden_dim=hidden_dim,
+                                          device=model.device)
+
+        model.set_dataloader(data_loader)
+        for _ in range(num_steps):
+            model.train_batch()
+
+    _test_moe(args=args, hidden_dim=hidden_dim)

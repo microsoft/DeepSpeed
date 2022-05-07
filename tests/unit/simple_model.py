@@ -59,35 +59,6 @@ class SimpleMoEModel(torch.nn.Module):
         return self.cross_entropy_loss(sentence_embed, y)
 
 
-class MoEModelPipe(PipelineModule):
-    def __init__(self,
-                 input_dim=128,
-                 hidden_dim=128,
-                 num_layers=4,
-                 num_experts=4,
-                 ep_size=1,
-                 use_residual=False):
-        super(SimpleMoEModel, self).__init__()
-
-        layers = [
-            LayerSpec(torch.nn.Linear,
-                      input_dim,
-                      hidden_dim),
-        ]
-        linear = torch.nn.Linear(input_dim, hidden_dim)
-        for _ in range(self.num_layers):
-            layers.append(
-                LayerSpec(MoE,
-                          hidden_size=hidden_dim,
-                          expert=linear,
-                          ep_size=ep_size,
-                          use_residual=use_residual,
-                          num_experts=num_experts,
-                          k=1))
-
-        super().__init__(layers=layers, loss_fn=torch.nn.CrossEntropyLoss(), **kwargs)
-
-
 class SimplePRMoEModel(torch.nn.Module):
     def __init__(self, hidden_dim, num_experts=2, ep_size=1, use_residual=False):
         super(SimplePRMoEModel, self).__init__()
@@ -116,6 +87,57 @@ class SimplePRMoEModel(torch.nn.Module):
         hidden_dim = hidden_dim + output
         sentence_embed = hidden_dim.mean(1)
         return self.cross_entropy_loss(sentence_embed, y)
+
+
+class MoEModelPipe(PipelineModule):
+    def __init__(self,
+                 input_dim=128,
+                 hidden_dim=128,
+                 num_layers=4,
+                 num_experts=4,
+                 ep_size=1,
+                 use_residual=False,
+                 **kwargs):
+        class MoELayerPipe(MoE):
+            def forward(self, inputs, **kwargs):
+                if torch.is_tensor(inputs):
+                    # Received output from Linear
+                    hidden_states = inputs
+                    output, moe_loss, _ = super().forward(hidden_states, **kwargs)
+                    return output, moe_loss
+                elif len(inputs) == 2:
+                    # Received output from MoELayerPipe
+                    hidden_states, acc_moe_loss = inputs
+                    output, moe_loss, _ = super().forward(hidden_states, **kwargs)
+                    return output, acc_moe_loss + moe_loss
+                else:
+                    raise RuntimeError('Received more inputs than understood.')
+
+        layers = [
+            LayerSpec(torch.nn.Linear,
+                      input_dim,
+                      hidden_dim),
+        ]
+        linear = torch.nn.Linear(input_dim, hidden_dim)
+        for _ in range(num_layers):
+            layers.append(
+                LayerSpec(MoELayerPipe,
+                          hidden_size=hidden_dim,
+                          expert=linear,
+                          ep_size=ep_size,
+                          use_residual=use_residual,
+                          num_experts=num_experts,
+                          k=1))
+        layers.append(lambda x: (x[0].mean(1), x[1]))
+
+        def CrossEntropy(output, target):
+            x, acc_moe_loss = output
+            loss = torch.nn.CrossEntropyLoss()(x, target)
+            moe_loss = acc_moe_loss * 0.01  # MoE auxiliary loss coefficient = 0.01
+
+            return loss + moe_loss
+
+        super().__init__(layers=layers, loss_fn=CrossEntropy, **kwargs)
 
 
 class UnusedParametersModel(SimpleModel):
