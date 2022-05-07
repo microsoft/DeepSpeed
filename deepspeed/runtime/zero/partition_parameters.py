@@ -11,6 +11,7 @@ from typing import Callable, Iterable
 from enum import Enum
 import functools
 import itertools
+import collections.abc
 from typing import List
 
 import torch
@@ -1615,7 +1616,7 @@ class GatheredParameters:
         if not enabled:
             return
 
-        if not isinstance(params, list):
+        if not isinstance(params, collections.abc.Iterable):
             params = [params]
 
         # enable if at least one is zero-param, otherwise a noop
