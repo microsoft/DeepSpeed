@@ -59,6 +59,35 @@ class SimpleMoEModel(torch.nn.Module):
         return self.cross_entropy_loss(sentence_embed, y)
 
 
+class MoEModelPipe(PipelineModule):
+    def __init__(self,
+                 input_dim=128,
+                 hidden_dim=128,
+                 num_layers=4,
+                 num_experts=4,
+                 ep_size=1,
+                 use_residual=False):
+        super(SimpleMoEModel, self).__init__()
+
+        layers = [
+            LayerSpec(torch.nn.Linear,
+                      input_dim,
+                      hidden_dim),
+        ]
+        linear = torch.nn.Linear(input_dim, hidden_dim)
+        for _ in range(self.num_layers):
+            layers.append(
+                LayerSpec(MoE,
+                          hidden_size=hidden_dim,
+                          expert=linear,
+                          ep_size=ep_size,
+                          use_residual=use_residual,
+                          num_experts=num_experts,
+                          k=1))
+
+        super().__init__(layers=layers, loss_fn=torch.nn.CrossEntropyLoss(), **kwargs)
+
+
 class SimplePRMoEModel(torch.nn.Module):
     def __init__(self, hidden_dim, num_experts=2, ep_size=1, use_residual=False):
         super(SimplePRMoEModel, self).__init__()

@@ -1,16 +1,10 @@
-import math
-from deepspeed.utils import groups
 import torch
-import torch.distributed as dist
-import deepspeed
-import argparse
 import pytest
-import json
-import os
-from deepspeed.ops.adam import FusedAdam
+
+import deepspeed
+
 from .common import distributed_test
-from deepspeed.ops.op_builder import CPUAdamBuilder
-from .simple_model import SimpleModel, SimplePRMoEModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
+from .simple_model import SimplePRMoEModel, args_from_dict, SimpleMoEModel, sequence_dataloader, MoEModelPipe
 from .util import required_torch_version
 
 try:
@@ -70,6 +64,51 @@ def test_moe(tmpdir, ep_size, use_residual):
               hidden_dim=hidden_dim,
               ep_size=ep_size,
               use_residual=use_residual)
+
+
+@pytest.mark.parametrize("ep_size",
+                         [
+                             (2,
+                              ),
+                         ])
+def test_moe_pipeline_parallel(tmpdir, ep_size):
+    if not required_torch_version():
+        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+    config_dict = {
+        "train_batch_size": 8,
+        "steps_per_print": 1,
+        "fp16": {
+            "enabled": True
+        }
+    }
+    args = args_from_dict(tmpdir, config_dict)
+    hidden_dim = 16
+
+    @distributed_test(world_size=[4])
+    def _test_moe(args, hidden_dim, ep_size):
+        # E+D -- ep_size = 2
+        # E only -- ep_size = 4
+        model = MoEModelPipe(input_dim=hidden_dim,
+                             hidden_dim=hidden_dim,
+                             ep_size=ep_size)
+        optimizer = torch.optim.AdamW(params=model.parameters())
+        model, _, _, _ = deepspeed.initialize(args=args,
+                                              model=model,
+                                              optimizer=optimizer,
+                                              dist_init_required=False)
+        #dist_init_required=False -- parameterize to True/False?
+
+        data_loader = sequence_dataloader(model=model,
+                                          total_samples=50,
+                                          hidden_dim=hidden_dim,
+                                          device=model.device)
+
+        model.set_dataloader(data_loader)
+        for _, batch in enumerate(data_loader):
+            model.train_batch()
+
+    _test_moe(args=args, hidden_dim=hidden_dim, ep_size=ep_size)
 
 
 @pytest.mark.parametrize("ep_size, use_residual", [(2, True), (2, False)])

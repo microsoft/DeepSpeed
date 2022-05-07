@@ -97,7 +97,8 @@ class MoE(torch.nn.Module):
             if groups.mpu is None:
                 groups._create_expert_and_data_parallel(self.ep_size)
             else:
-                groups._create_expert_data_and_model_parallel(self.ep_size,
+                groups._create_expert_data_and_model_parallel(self.expert_group_name,
+                                                              self.ep_size,
                                                               mpu=groups.mpu)
         # Set the group handle for the MOELayer (deepspeed_moe) object
         self.deepspeed_moe._set_ep_group(

@@ -2402,7 +2402,7 @@ class DeepSpeedEngine(Module):
             ckpt_name = os.path.join(
                 checkpoints_path,
                 '' if tag is None else str(tag),
-                f'pp{pp_rank:02d}_moe_layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
+                f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_pp{pp_rank:02d}_model_states.pt'
             )
         return ckpt_name
 
@@ -2515,8 +2515,6 @@ class DeepSpeedEngine(Module):
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
                 old_moe_load = True
-            if checkpoint['module'] is None:
-                checkpoint['module'] = {}
             DeepSpeedEngine.load_moe_state_dict(load_dir,
                                                 tag,
                                                 state_dict=checkpoint['module'],
@@ -2525,7 +2523,7 @@ class DeepSpeedEngine(Module):
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
 
-        if is_pipe_parallel:
+        if is_pipe_parallel and self.has_moe_layers:
             self.load_module_state_dict(state_dict=checkpoint['module'], strict=False)
         else:
             self.load_module_state_dict(state_dict=checkpoint['module'],
@@ -2898,6 +2896,8 @@ class DeepSpeedEngine(Module):
         model_state_dict = self.module_state_dict()
         if model_state_dict is not None:
             model_state_dict = self._get_non_moe_state_dict(model_state_dict)
+        else:
+            model_state_dict = {}
 
         if expp_rank == 0:
             # TODO: update num experts info,.. in checkpoint
