@@ -445,7 +445,7 @@ class PipelineEngine(DeepSpeedEngine):
         sched = schedule.InferenceSchedule(micro_batches=self.micro_batches,
                                            stages=self.num_stages,
                                            stage_id=self.stage_id)
-        
+
         # prevent dead-lock with multiple evals sequence
         dist.barrier()
 
