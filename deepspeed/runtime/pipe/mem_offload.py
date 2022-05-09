@@ -88,6 +88,16 @@ class CPUMemoryPool:
         return self.value_cpu_buffers[micro_batch_id][layer_id]
 
 
+class BlockKey:
+    def __init__(self, layer_id, block_id, micro_batch_id=0):
+        self.layer_id = layer_id
+        self.block_id = block_id
+        self.micro_batch_id = micro_batch_id
+
+    def hash(self):
+        return hash(f"{self.micro_batch_id}-{self.layer_id}-{self.block_id}")
+
+
 class LayerPastDataBase(ABC):
     @abstractclassmethod
     def get_data(self):
@@ -166,14 +176,6 @@ class HybridLayerPastData(LayerPastDataBase):
 class HybridLayerPastManager:
     gpu_memory_pool = None
 
-    class BlockKey:
-        def __init__(self, layer_id, block_id):
-            self.layer_id = layer_id
-            self.block_id = block_id
-
-        def hash(self):
-            return hash(f"{self.layer_id}-{self.block_id}")
-
     def __init__(self,
                  micro_batch_count,
                  layer_id_list,
@@ -203,8 +205,6 @@ class HybridLayerPastManager:
             self.blocks.append(block)
 
         assert len(self.blocks) >= len(self.boxes), f"not enough memory pool for prompt, {len(self.blocks)} < {len(self.boxes)}"
-        if self.is_rank0:
-            ic(block_shape, block_size, len(self.blocks), len(self.boxes))
 
         MicroBatchBoxList.micro_batch_locations = self._create_micro_batches_locations(
             self.batch_size,
@@ -218,7 +218,7 @@ class HybridLayerPastManager:
             micro_batch_count)
 
     def get_block(self, layer_id, block_id):
-        key = self.BlockKey(layer_id, block_id)
+        key = BlockKey(layer_id, block_id)
         b = self.boxes[key.hash()].data_block
         assert b is not None
         assert b.box.get_curr_box().layer_id == key.layer_id, f"box {b.box.get_curr_box().layer_id} has wrong layer id."
@@ -245,7 +245,7 @@ class HybridLayerPastManager:
         boxes = {}
         for block_id in range(2):
             for layer_id in layer_id_list:
-                key = self.BlockKey(layer_id, block_id)
+                key = BlockKey(layer_id, block_id)
                 boxes[key.hash()] = MicroBatchBoxList(layer_id,
                                                       block_id,
                                                       micro_batch_count)
@@ -288,8 +288,9 @@ class OffloadLayerPastData(LayerPastDataBase):
 
     def reset(self, box):
         # copy the current box data to cpu
-        if self.box is not None and self.box.curr_pos > 0:
-            self.copy_to_cpu()
+        if self.box is not None:
+            if self.box.curr_pos > 0:
+                self.copy_to_cpu()
             self.box.data_block = None
 
         self.box = box
@@ -384,22 +385,25 @@ class OffloadLayerPastManager:
                  rank,
                  gpu_memory_pool,
                  cpu_memory_pool):
-        self.boxes = []
-        self.curr_box_idx = 0
+        self.boxes = dict()
+        self.offload_boxes = []
         self.curr_offload_box_idx = 0
         if self.copy_stream is None:
             self.copy_stream = torch.cuda.Stream()
 
-        self.curr_micro_batch = None
+        self.curr_micro_batch_id = None
         self.rank = rank
         self.is_rank0 = (rank == 0)
         self.gpu_memory_pool = gpu_memory_pool
         self.cpu_memory_pool = cpu_memory_pool
 
-        for micro_batch_idx in range(micro_batch_count):
+        for micro_batch_id in range(micro_batch_count):
             for layer_id in layer_id_list:
                 for block_id in range(2):
-                    self.boxes.append(MicroBatchBox(micro_batch_idx, layer_id, block_id))
+                    key = BlockKey(layer_id, block_id, micro_batch_id)
+                    self.boxes[key.hash()] = MicroBatchBox(micro_batch_id,
+                                                           layer_id,
+                                                           block_id)
 
         self.blocks = []
         block_size = block_shape[0] * block_shape[1] * block_shape[2] * block_shape[3]
@@ -409,25 +413,21 @@ class OffloadLayerPastManager:
                 break
             block = OffloadLayerPastData(t.view(block_shape), self, self.copy_stream)
             self.blocks.append(block)
-
-        if self.is_rank0:
-            ic(block_shape, len(self.blocks), len(self.boxes))
+            if len(self.blocks) == len(self.boxes):
+                break
 
         self._schedule()
 
-    def get_block(self, layer_id, block_id):
-        key = [self.curr_micro_batch, layer_id, block_id]
-        b = self.boxes[self.curr_box_idx].data_block
+    def get_block(self, layer_id, block_id, micro_batch_id=None):
+        key = BlockKey(
+            layer_id,
+            block_id,
+            self.curr_micro_batch_id if micro_batch_id is None else micro_batch_id)
+        b = self.boxes[key.hash()].data_block
 
-        assert b is not None, f"box {self.curr_box_idx} has no data block attached."
-        assert b.box.micro_batch_id == key[0]
-        assert b.box.layer_id == key[1]
-        assert b.box.block_id == key[2]
-
-        if self.curr_box_idx == (len(self.boxes) - 1):
-            self.curr_box_idx = 0
-        else:
-            self.curr_box_idx += 1
+        assert b is not None
+        assert b.box.layer_id == layer_id
+        assert b.box.block_id == block_id
 
         b.wait_data_ready()
         return b
@@ -435,7 +435,7 @@ class OffloadLayerPastManager:
     def return_back(self, block):
         if block.box is None or block.box.can_offload:
             new_offload_box_idx = self._next_offload_box()
-            block.reset(self.boxes[new_offload_box_idx])
+            block.reset(self.offload_boxes[new_offload_box_idx])
 
     def get_cpu_buffer(self, box):
         return self.cpu_memory_pool.get_key_buffer(
@@ -445,30 +445,39 @@ class OffloadLayerPastManager:
             box.micro_batch_id,
             box.layer_id)
 
+    def set_curr_micro_batch_id(self, micro_batch_id):
+        self.curr_micro_batch_id = micro_batch_id
+
     def _schedule(self):
         if len(self.blocks) >= len(self.boxes):
             # We have enough memory blocks, no offload is needed.
-            for idx, box in enumerate(self.boxes):
+            for idx, (_, box) in enumerate(self.boxes.items()):
                 box.can_offload = False
                 self.blocks[idx].reset(box)
         else:
             offload_blocks = 2
             pin_ratio = (len(self.blocks) - offload_blocks) / len(self.boxes)
+            box_list = list(self.boxes.values())
             for idx, b in enumerate(self.blocks[:-offload_blocks]):
                 box_id = round(idx / pin_ratio)
-                self.boxes[box_id].can_offload = False
-                b.reset(self.boxes[box_id])
+                box_list[box_id].can_offload = False
+                b.reset(box_list[box_id])
+
+            for _, box in self.boxes.items():
+                if box.can_offload:
+                    self.offload_boxes.append(box)
 
             for i in range(offload_blocks):
                 self.return_back(self.blocks[-i - 1])
 
     def _next_offload_box(self):
         while True:
-            if self.boxes[self.curr_offload_box_idx].can_offload and self.boxes[
-                    self.curr_offload_box_idx].data_block is None:
+            if self.offload_boxes[
+                    self.curr_offload_box_idx].can_offload and self.offload_boxes[
+                        self.curr_offload_box_idx].data_block is None:
                 return self.curr_offload_box_idx
 
-            if self.curr_offload_box_idx == (len(self.boxes) - 1):
+            if self.curr_offload_box_idx == (len(self.offload_boxes) - 1):
                 self.curr_offload_box_idx = 0
             else:
                 self.curr_offload_box_idx += 1
