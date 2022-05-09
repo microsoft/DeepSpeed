@@ -448,7 +448,7 @@ class PipelineEngine(DeepSpeedEngine):
         
         # prevent dead-lock with multiple evals sequence
         dist.barrier()
-        
+
         with torch.no_grad():
             self._exec_schedule(sched)
 
