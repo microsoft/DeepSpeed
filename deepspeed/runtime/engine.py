@@ -2365,9 +2365,9 @@ class DeepSpeedEngine(Module):
                         state_dict.update(expert_state_dict)
                     moe_layer_id += 1
 
-    def load_module_state_dict(self, state_dict, strict=True, model_f=None):
-        if model_f:
-            model_f(src=state_dict, dst=self.module)
+    def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
+        if custom_load_fn:
+            custom_load_fn(src=state_dict, dst=self.module)
         else:
             self.module.load_state_dict(state_dict, strict=strict)
 
@@ -2465,7 +2465,7 @@ class DeepSpeedEngine(Module):
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
                         load_module_only=False,
-                        model_f=None):
+                        custom_load_fn=None):
         """Load training checkpoint
 
         Arguments:
@@ -2475,6 +2475,7 @@ class DeepSpeedEngine(Module):
             load_optimizer_states: Optional. Boolean to load the training optimizer states from Checkpoint. Ex. ADAM's momentum and variance
             load_lr_scheduler_states: Optional. Boolean to add the learning rate scheduler states from Checkpoint.
             load_module_only: Optional. Boolean to load only the model weights from the checkpoint. Ex. warmstarting.
+            custom_load_fn: Optional. Custom model load function.
         Returns:
             A tuple of ``load_path`` and ``client_state``.
 
@@ -2510,7 +2511,7 @@ class DeepSpeedEngine(Module):
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
                                                          load_module_only=load_module_only,
-                                                         model_f=model_f)
+                                                         custom_load_fn=custom_load_fn)
 
         load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
         if load_zero_checkpoint and load_path is not None:
@@ -2533,7 +2534,7 @@ class DeepSpeedEngine(Module):
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True,
                          load_module_only=False,
-                         model_f=None):
+                         custom_load_fn=None):
 
         from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 
@@ -2569,7 +2570,7 @@ class DeepSpeedEngine(Module):
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict,
-                                    model_f=model_f)
+                                    custom_load_fn=custom_load_fn)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
