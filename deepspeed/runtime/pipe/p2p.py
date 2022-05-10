@@ -66,7 +66,6 @@ def send(tensor, dest_stage, async_op=False):
 
 def recv(tensor, src_stage, async_op=False):
     global _groups
-    assert async_op == False, "Doesn't support async_op true"
     dest_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
@@ -165,7 +164,7 @@ def new_recv_obj(sender: int, async_op=False) -> typing.Any:
     stage_id = _grid.get_stage_id()
 
     if async_op:
-        irecv(metadata, sender, is_async=False)
+        recv(metadata, sender, is_async=False)
         msg_len = metadata[0]
         msg_type = metadata[1]
         max_dim = metadata[2]
@@ -173,12 +172,12 @@ def new_recv_obj(sender: int, async_op=False) -> typing.Any:
             element_type_shape = torch.empty((max_dim + 2),
                                              dtype=torch.long,
                                              device="cuda")
-            irecv(element_type_shape, sender, is_async=False)
+            recv(element_type_shape, sender, is_async=False)
             element_type = p2p_util.decode_element_type(element_type_shape[0].item())
             dim = element_type_shape[1].item()
             shape = element_type_shape[2:dim + 2].tolist()
             data = torch.empty(shape, dtype=element_type, device="cuda")
-            irecv(data, sender, is_async=False)
+            recv(data, sender, is_async=False)
             msg.append(data)
         if msg_type == Type.TENSOR.value:
             return msg[0]
