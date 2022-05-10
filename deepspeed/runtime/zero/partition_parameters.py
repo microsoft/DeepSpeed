@@ -27,7 +27,14 @@ import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.utils import init_distributed, instrument_w_nvtx, logger
-from deepspeed.utils.debug import debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
+from deepspeed.utils.debug import (debug_param2name_id_shape,
+                                   debug_param2name_id_shape_device,
+                                   debug_module2name,
+                                   debug_param2name,
+                                   debug_param2name_id,
+                                   debug_param2name_id_shape_status,
+                                   printflock,
+                                   log_rank_file)
 from deepspeed.utils.logging import logger
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
@@ -937,9 +944,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             param.all_gather()
             return param._orig_item()
 
-        def ds_summary(slf: torch.Tensor) -> dict:
+        def ds_summary(slf: torch.Tensor, use_debug_name: bool = False) -> dict:
             return {
-                "id": slf.ds_id,
+                "id": debug_param2name_id(slf) if use_debug_name else slf.ds_id,
                 "status": slf.ds_status.name,
                 "numel": slf.numel(),
                 "ds_numel": slf.ds_numel,
@@ -1526,7 +1533,7 @@ class GatheredParameters:
         again upon exit.
 
         Args:
-            params (``torch.nn.Parameter``): A single parameter or a list of parameters to collect.
+            params (``torch.nn.Parameter``): A single parameter, a list, or a tuple of parameters to collect.
                 It's assumed that all parameters are zero params.
             modifier_rank (int, optional): If specified, this rank's parameter will be
                 broadcasted on exit from the context. This argument is required if ``params`` are
@@ -1536,7 +1543,7 @@ class GatheredParameters:
                 registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
-        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
+        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g., ``modifier_rank=0``)
         if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
@@ -1600,15 +1607,15 @@ class GatheredParameters:
 
                 load(model, prefix="")
 
-        If this approach is not used, then the full model will first get copied to each GPU. For models
-        bigger than the memory of a single gpu this method is required.
+        If this approach is not used, then the full model will first be copied to each GPU. For models
+        bigger than the memory of a single GPU, this method is required.
         """
 
         self.enabled = enabled
         if not enabled:
             return
 
-        if not isinstance(params, list):
+        if not (isinstance(params, list) or isinstance(params, tuple)):
             params = [params]
 
         # enable if at least one is zero-param, otherwise a noop
