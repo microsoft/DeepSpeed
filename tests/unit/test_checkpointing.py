@@ -8,6 +8,7 @@ from deepspeed.runtime.zero.stage1 import FP16_DeepSpeedZeroOptimizer_Stage1
 from deepspeed.utils import groups
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+import deepspeed.comm as dist
 
 from deepspeed.runtime.pipe.topology import *
 PipeTopo = PipeDataParallelTopology
@@ -888,10 +889,10 @@ def test_checkpoint_unique_tag(tmpdir, valid_mode):
         if valid_mode == "FAIL":
             with pytest.raises(AssertionError):
                 model.save_checkpoint(save_dir=tmpdir,
-                                      tag=f"tag-{torch.distributed.get_rank()}")
+                                      tag=f"tag-{dist.get_rank()}")
         else:
             model.save_checkpoint(save_dir=tmpdir,
-                                  tag=f"tag-{torch.distributed.get_rank()}")
+                                  tag=f"tag-{dist.get_rank()}")
 
     _helper(args=args, model=model, hidden_dim=hidden_dim)
 

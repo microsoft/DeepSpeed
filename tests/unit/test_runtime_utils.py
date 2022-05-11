@@ -43,7 +43,7 @@ def test_clip_grad_norm_():
         world_size = dist.get_world_size()
         gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
 
-        torch.distributed.all_gather(gathered_norm, norm)
+        dist.all_gather(gathered_norm, norm)
 
         assert gathered_norm[0] == gathered_norm[1], "norm at rank 0 does not match the norm at rank 1"
 

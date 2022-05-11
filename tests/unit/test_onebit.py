@@ -880,7 +880,7 @@ def test_compressed_allreduce_basic(tmpdir):
             rank = dist.get_rank()
             server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
             torch.cuda.synchronize()
-            torch.distributed.barrier()
+            dist.barrier()
             return a_server_compressed, worker_error, server_error
 
         tensor_size = 300 * 2**20
