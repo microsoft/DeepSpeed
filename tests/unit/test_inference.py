@@ -1,11 +1,13 @@
 import os
 import torch
+import pytest
 import deepspeed
 from transformers import pipeline
 from .common import distributed_test
 
 
-def test_gpt2_inject():
+@pytest.mark.parametrize("dtype", [(torch.float), (torch.half)])
+def test_gpt2_inject(dtype):
     @distributed_test(world_size=[1])
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
@@ -15,7 +17,7 @@ def test_gpt2_inject():
         generator.model = deepspeed.init_inference(
             generator.model,
             mp_size=world_size,
-            dtype=torch.float,
+            dtype=dtype,
             replace_method="auto",
             replace_with_kernel_inject=True,
         )
