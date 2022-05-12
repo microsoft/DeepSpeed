@@ -53,7 +53,7 @@ class ReplaceWithTensorSlicing:
 
     def qkv_copy(self, dst, src):
         if src is None:
-            return torch.nn.Parameter(src)
+            return src
         src_shape = src.shape
         dst_shape = dst.shape
 
@@ -90,7 +90,7 @@ class ReplaceWithTensorSlicing:
 
     def copy(self, dst, src):
         if src is None:
-            return torch.nn.Parameter(src)
+            return src
 
         src_shape = src.shape
         dst_shape = dst.shape
@@ -391,8 +391,8 @@ def replace_transformer_layer(orig_layer_impl,
                 qkvw = torch.nn.Parameter(_transpose(qkvw).contiguous())
                 qkvb = torch.nn.Parameter(_transpose(qkvb).contiguous())
 
-            dense_b = dense_b * (transformer_config.training_mp_size /
-                                 transformer_config.mp_size)
+            dense_b = dense_b if dense_b is None else dense_b * (
+                transformer_config.training_mp_size / transformer_config.mp_size)
             _4hh_b = _4hh_b * (transformer_config.training_mp_size /
                                transformer_config.mp_size)
 
