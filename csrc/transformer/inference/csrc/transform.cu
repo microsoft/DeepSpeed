@@ -1,23 +1,22 @@
-#include "custom_cuda_layers.h"
 #include <cuda_profiler_api.h>
+#include "custom_cuda_layers.h"
 namespace cg = cooperative_groups;
-
 
 // Bias add
 
 __global__ void bias_add_transform_0213(float* output,
-                                                float* k_cache,
-                                                float* v_cache,
-                                               const float* vals,
-                                               const float* bias,
-                                               int hidden_dim,
-                                               int seq_length,
-                                               unsigned seq_offset,
-                                               int heads,
-                                               int rotary_dim,
-                                               bool rotate_half,
-                                               bool rotate_every_two,
-                                               int head_ext)
+                                        float* k_cache,
+                                        float* v_cache,
+                                        const float* vals,
+                                        const float* bias,
+                                        int hidden_dim,
+                                        int seq_length,
+                                        unsigned seq_offset,
+                                        int heads,
+                                        int rotary_dim,
+                                        bool rotate_half,
+                                        bool rotate_every_two,
+                                        int head_ext)
 {
     int d0_stride = hidden_dim * seq_length;
     int d1_stride = hidden_dim;
@@ -25,7 +24,7 @@ __global__ void bias_add_transform_0213(float* output,
 
     int d0_out_stride = d0_stride;
     int d1_out_stride = d2_stride;
-    //int d2_out_stride = d2_stride * seq_length;
+    // int d2_out_stride = d2_stride * seq_length;
 
     int d0 = blockIdx.x;                                                  // Batch
     int d1 = blockIdx.y;                                                  // Sequence ID (0-127)
@@ -33,11 +32,11 @@ __global__ void bias_add_transform_0213(float* output,
     int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head (0-11)
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
 
-
     int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
 
     const float4* vals_vec = reinterpret_cast<const float4*>(vals);
-    float4* output_vec = reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
+    float4* output_vec =
+        reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
 
     vals_vec += (d0 * d0_stride * (gridDim.z / head_ext));
     vals_vec += (d1 * d1_stride * (gridDim.z / head_ext));
@@ -52,11 +51,11 @@ __global__ void bias_add_transform_0213(float* output,
     float4 inputs = vals_vec[d3];
     int lane = d3 & 0x1f;
     if (cnt < 2 && rotary_dim > 0 && d3 < rotary_dim) {
-        float4 q = vals_vec[d3]; 
+        float4 q = vals_vec[d3];
         __half2* q_h = reinterpret_cast<__half2*>(&q);
-        if (rotate_every_two){
-            #pragma unroll
-            for (int o = 0;o < 4;o++){
+        if (rotate_every_two) {
+#pragma unroll
+            for (int o = 0; o < 4; o++) {
                 float inv_freq = (float)(((d3 << 2) + o) * 2) / (float)(rotary_dim << 3);
                 inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
                 float q_data[2];
@@ -67,28 +66,27 @@ __global__ void bias_add_transform_0213(float* output,
             }
         }
         output_vec[d3] = q;
-    }
-    else
+    } else
         output_vec[d3] = inputs;
 }
 
 #define ATTN_H 3
 #define MAX_SEQ_LINE 10
 
-__global__ void bias_add_transform_0213(__half* output, //q
-                                                __half* k_cache,
-                                                __half* v_cache,
-                                                const __half* vals, //qkv
-                                                const __half* bias,
-                                                int hidden_dim,
-                                                int seq_length,
-                                                unsigned seq_offset,
-                                                int all_tokens,
-                                                int heads,
-                                                int rotary_dim,
-                                                bool rotate_half,
-                                                bool rotate_every_two,
-                                                int head_ext)
+__global__ void bias_add_transform_0213(__half* output,  // q
+                                        __half* k_cache,
+                                        __half* v_cache,
+                                        const __half* vals,  // qkv
+                                        const __half* bias,
+                                        int hidden_dim,
+                                        int seq_length,
+                                        unsigned seq_offset,
+                                        int all_tokens,
+                                        int heads,
+                                        int rotary_dim,
+                                        bool rotate_half,
+                                        bool rotate_every_two,
+                                        int head_ext)
 {
 #if __CUDA_ARCH__ >= 700
 
@@ -98,21 +96,21 @@ __global__ void bias_add_transform_0213(__half* output, //q
     int d2_stride = hidden_dim / heads;
 
     int d0 = blockIdx.x;                                                  // Batch
-    int d1 = blockIdx.y;                                                   // Sequence ID (0-127)
-    int cnt = blockIdx.z / head_ext;                                        // Hidden count
-    int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);      // Head (0-11)
+    int d1 = blockIdx.y;                                                  // Sequence ID (0-127)
+    int cnt = blockIdx.z / head_ext;                                      // Hidden count
+    int d2 = threadIdx.y + (blockIdx.z % head_ext) * (heads / head_ext);  // Head (0-11)
     int d3 = threadIdx.x;                                                 // Values (groups of 4)
-
 
     int d2_out_stride = d2_stride * (cnt == 0 ? seq_length : MAX_OUT_TOKES);
     float4 vals_arr;
     float4 output_arr;
-    
+
     __half2* vals_half = reinterpret_cast<__half2*>(&vals_arr);
     __half2* output_half = reinterpret_cast<__half2*>(&output_arr);
 
     const float4* vals_vec = reinterpret_cast<const float4*>(vals);
-    float4* output_vec = reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
+    float4* output_vec =
+        reinterpret_cast<float4*>(cnt == 0 ? output : (cnt == 1 ? k_cache : v_cache));
 
     vals_vec += (d0 * d0_stride * (gridDim.z / head_ext));
     vals_vec += (d1 * d1_stride * (gridDim.z / head_ext));
@@ -127,29 +125,28 @@ __global__ void bias_add_transform_0213(__half* output, //q
 
     int lane = d3 & 0x1f;
     if (cnt < 2 && rotary_dim > 0 && d3 < rotary_dim) {
-        float4 q = vals_vec[d3]; 
+        float4 q = vals_vec[d3];
         float* q_h = reinterpret_cast<float*>(&q);
-        if (rotate_every_two){
-            #pragma unroll
-            for (int o = 0;o < 4;o++){
+        if (rotate_every_two) {
+#pragma unroll
+            for (int o = 0; o < 4; o++) {
                 float inv_freq = (float)(((d3 << 2) + o) * 2) / (float)(rotary_dim << 3);
                 inv_freq = 1.0 / powf(10000.0, inv_freq) * (float)seq_id;
                 q_h[o] = (__half)(-1.0 * q_h[o] * sinf(inv_freq) + q_h[o] * cosf(inv_freq));
             }
         }
         output_vec[d3] = q;
-    }
-    else 
+    } else
         output_vec[d3] = vals_vec[d3];
 
 #endif
 }
 
-
 // [B S C*H] - > C * [B A S N]
 template <>
 void launch_bias_add_transform_0213<float>(float* output,
-                                            float* k_cache, float* v_cache,
+                                           float* k_cache,
+                                           float* v_cache,
                                            const float* vals,
                                            const float* bias,
                                            int batch_size,
@@ -170,16 +167,24 @@ void launch_bias_add_transform_0213<float>(float* output,
     dim3 block_dim(hidden_dim / heads, (heads / head_ext));
     dim3 grid_dim(batch_size, seq_length, (trans_count * head_ext));
 
-    bias_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(
-        output, k_cache, v_cache, vals, bias, hidden_dim, seq_length, seq_offset, heads, 
-        rotary_dim >> 2,
-        rotate_half,
-        rotate_every_two, head_ext);
+    bias_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(output,
+                                                                k_cache,
+                                                                v_cache,
+                                                                vals,
+                                                                bias,
+                                                                hidden_dim,
+                                                                seq_length,
+                                                                seq_offset,
+                                                                heads,
+                                                                rotary_dim >> 2,
+                                                                rotate_half,
+                                                                rotate_every_two,
+                                                                head_ext);
 }
 template <typename T>
 void launch_bias_add_transform_0213(T* outputs,
-                                     T* vals,
-                                     T* vals1,
+                                    T* vals,
+                                    T* vals1,
                                     const T* vals2,
                                     const T* bias,
                                     int batch_size,
@@ -195,7 +200,7 @@ void launch_bias_add_transform_0213(T* outputs,
                                     int trans_count);
 template <>
 void launch_bias_add_transform_0213<__half>(__half* output,
-                                            __half* k_cache, 
+                                            __half* k_cache,
                                             __half* v_cache,
                                             const __half* vals,
                                             const __half* bias,
@@ -212,19 +217,24 @@ void launch_bias_add_transform_0213<__half>(__half* output,
                                             int trans_count)
 {
     hidden_dim >>= 3;
-    int head_ext = 1;// (hidden_dim - 1) / MAX_THREADS + 1;
+    int head_ext = 1;  // (hidden_dim - 1) / MAX_THREADS + 1;
     dim3 block_dim(hidden_dim / heads, (heads / head_ext));
     dim3 grid_dim(1, seq_length, (trans_count * head_ext));
-    bias_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(
-        output, k_cache, v_cache, vals, bias, hidden_dim, seq_length, seq_offset,
-        all_tokens, heads, 
-        rotary_dim >> 3,
-        rotate_half,
-        rotate_every_two,
-        head_ext);
+    bias_add_transform_0213<<<grid_dim, block_dim, 0, stream>>>(output,
+                                                                k_cache,
+                                                                v_cache,
+                                                                vals,
+                                                                bias,
+                                                                hidden_dim,
+                                                                seq_length,
+                                                                seq_offset,
+                                                                all_tokens,
+                                                                heads,
+                                                                rotary_dim >> 3,
+                                                                rotate_half,
+                                                                rotate_every_two,
+                                                                head_ext);
 }
-
-
 
 // Bias add
 template <typename T>
@@ -408,7 +418,6 @@ __global__ void bias_add_transform_0213_v2(__half* output,
 #endif
 }
 
-
 template <typename T>
 __global__ void transform4d_0213(T* out,
                                  const T* in,
@@ -570,6 +579,6 @@ void launch_transform4d_0213<__half>(__half* out,
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
     dim3 grid_dims(batch_size, trans_count, (seq_length * head_ext));
     dim3 block_dims(hidden_dim / heads, (heads / head_ext));
-    transform4d_0213<__half><<<grid_dims, block_dims, 0, stream>>>(
-        out, in, heads, seq_length, hidden_dim, head_ext);
+    transform4d_0213<__half>
+        <<<grid_dims, block_dims, 0, stream>>>(out, in, heads, seq_length, hidden_dim, head_ext);
 }
