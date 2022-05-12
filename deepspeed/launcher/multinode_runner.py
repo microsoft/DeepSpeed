@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 import warnings
-from shlex import quote
+from shlex import quote, split
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -137,7 +137,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl_tcp_if_include',
             'eth0',
-        ] + self.args.launcher_args.split(' ')
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
