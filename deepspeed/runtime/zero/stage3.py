@@ -359,7 +359,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.setup_zero_stage3_hooks()
         print_rank_0(
             f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
-            force=True)
+            force=False)
 
         #resetting ds_tensor just in case parameters have been changed after initialization
         #example .half() or .to()
@@ -541,7 +541,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         print_rank_0(
             f'Deleted module hooks: forward = {num_forward_hooks}, backward = {num_backward_hooks}',
-            force=True)
+            force=False)
 
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
