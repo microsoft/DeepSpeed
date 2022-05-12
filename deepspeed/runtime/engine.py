@@ -158,6 +158,7 @@ class DeepSpeedEngine(Module):
         global dist
         #if self.use_ds_comm:
         import deepspeed.comm as dist
+        from deepspeed.comm.utils import ReduceOp
         #else:
         #import deepspeed.comm as dist
 
@@ -636,7 +637,7 @@ class DeepSpeedEngine(Module):
             dp_rank == 0) or self.zero_optimization_partition_weights()
 
         if self.zero_optimization():
-            param_rank = torch.distributed.get_rank(
+            param_rank = dist.get_rank(
                 group=self.optimizer.dp_process_group)
 
             # Only the first parameter parallel process needs to store the
@@ -1971,7 +1972,7 @@ class DeepSpeedEngine(Module):
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
-        pp_rank = torch.distributed.get_rank(group=self.optimizer.dp_process_group)
+        pp_rank = dist.get_rank(group=self.optimizer.dp_process_group)
         return self._get_rank_zero_ckpt_name(checkpoints_path, tag, mp_rank, pp_rank)
 
     def _get_ckpt_name(self, checkpoints_path, tag, mp_placeholder=None):
@@ -1983,7 +1984,7 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization_partition_weights():
             filename = 'zero_pp_rank_{}'.format(
-                torch.distributed.get_rank(group=self.optimizer.dp_process_group))
+                dist.get_rank(group=self.optimizer.dp_process_group))
             ckpt_name = os.path.join(
                 checkpoints_path,
                 str(tag),
@@ -2256,8 +2257,8 @@ class DeepSpeedEngine(Module):
             bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
             max_bhash = bhash.clone()
             min_bhash = bhash.clone()
-            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
-            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            dist.all_reduce(max_bhash, op=ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=ReduceOp.MIN)
             valid = all(min_bhash == bhash) and all(max_bhash == bhash)
             msg = f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across " \
                 "all ranks. Including rank unique information in checkpoint tag could cause issues when " \
@@ -2595,7 +2596,7 @@ class DeepSpeedEngine(Module):
         if not self.zero_optimization_partition_weights():
             raise ValueError("this function requires ZeRO-3 mode")
 
-        state_dict = OrderedDict() if torch.distributed.get_rank() == 0 else None
+        state_dict = OrderedDict() if dist.get_rank() == 0 else None
         shared_params = {}
 
         def get_layer_state_dict(module, prefix=""):
@@ -2605,7 +2606,7 @@ class DeepSpeedEngine(Module):
             with deepspeed.zero.GatheredParameters(list(
                     module.parameters(recurse=False)),
                                                    modifier_rank=0):
-                if torch.distributed.get_rank() == 0:
+                if dist.get_rank() == 0:
                     # handle params
                     for name, param in module.named_parameters(recurse=False):
                         if param is None:
@@ -2669,7 +2670,7 @@ class DeepSpeedEngine(Module):
         else:
             state_dict = self.module.state_dict()
 
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)
