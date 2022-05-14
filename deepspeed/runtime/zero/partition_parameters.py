@@ -20,17 +20,24 @@ from torch.distributed.distributed_c10d import _get_global_rank, group
 from torch.nn import Module
 from torch.nn import Parameter
 
-from .linear import LinearModuleForZeroStage3, LinearFunctionForZeroStage3
+from .linear import LinearModuleForZeroStage3, zero3_linear_wrap
 from .offload_constants import *
 
+import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
 from deepspeed.utils import init_distributed, instrument_w_nvtx, logger
-from deepspeed.utils.debug import debug_param2name_id_shape, debug_param2name_id_shape_device, debug_module2name, debug_param2name, debug_param2name_id_shape_status, printflock, log_rank_file
+from deepspeed.utils.debug import (debug_param2name_id_shape,
+                                   debug_param2name_id_shape_device,
+                                   debug_module2name,
+                                   debug_param2name,
+                                   debug_param2name_id,
+                                   debug_param2name_id_shape_status,
+                                   printflock,
+                                   log_rank_file)
 from deepspeed.utils.logging import logger
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
-from ..config import DeepSpeedConfig
 
 param_count = 0
 partitioned_param_data_shape = [0]
@@ -423,7 +430,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                 "nn.functional.linear has been overridden with a more memory efficient version. This will persist unless manually reset.",
                 force=False)
             self.linear_bk = torch.nn.functional.linear
-            torch.nn.functional.linear = LinearFunctionForZeroStage3.apply
+            torch.nn.functional.linear = zero3_linear_wrap
 
     def __exit__(self, exc_type, exc_value, traceback):
         if not self.enabled:
@@ -663,8 +670,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 f'zero.Init: the `config` argument is deprecated. Please use `config_dict_or_path` instead.'
             )
 
-        _ds_config = DeepSpeedConfig(config_dict_or_path,
-                                     mpu) if config_dict_or_path is not None else None
+        _ds_config = deepspeed.runtime.config.DeepSpeedConfig(
+            config_dict_or_path,
+            mpu) if config_dict_or_path is not None else None
         super().__init__(enabled=enabled,
                          mem_efficient_linear=mem_efficient_linear,
                          ds_config=_ds_config,
@@ -699,7 +707,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OFFLOAD_NVME_DEVICE:
-            self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config)
+            self.param_swapper = AsyncPartitionedParameterSwapper(_ds_config, self.dtype)
         else:
             self.param_swapper = None
 
@@ -747,7 +755,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             force=False)
 
         global param_count
-        for param in module.parameters(recurse=False):
+        for name, param in module.named_parameters(recurse=False):
             param_count += param.numel()
             if not is_zero_param(param):
                 self._convert_to_deepspeed_param(param)
@@ -759,7 +767,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     torch.distributed.broadcast(param, 0, self.ds_process_group)
                 else:
                     if torch.distributed.get_rank() == 0:
-                        logger.warn(f"param in {module.__class__.__name__} "
+                        logger.warn(f"param `{name}` in {module.__class__.__name__} "
                                     f"not on GPU so was not broadcasted from rank 0")
 
                 param.partition()
@@ -877,7 +885,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 instrument_w_nvtx(torch.cat)(
                     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                     out=partitions[self.rank])
-
                 handle = torch_allgather_fn(partitions[self.rank],
                                             flat_tensor,
                                             self.ds_process_group)
@@ -937,9 +944,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             param.all_gather()
             return param._orig_item()
 
-        def ds_summary(slf: torch.Tensor) -> dict:
+        def ds_summary(slf: torch.Tensor, use_debug_name: bool = False) -> dict:
             return {
-                "id": slf.ds_id,
+                "id": debug_param2name_id(slf) if use_debug_name else slf.ds_id,
                 "status": slf.ds_status.name,
                 "numel": slf.numel(),
                 "ds_numel": slf.ds_numel,
@@ -1526,7 +1533,7 @@ class GatheredParameters:
         again upon exit.
 
         Args:
-            params (``torch.nn.Parameter``): A single parameter or a list of parameters to collect.
+            params (``torch.nn.Parameter``): A single parameter, a list, or a tuple of parameters to collect.
                 It's assumed that all parameters are zero params.
             modifier_rank (int, optional): If specified, this rank's parameter will be
                 broadcasted on exit from the context. This argument is required if ``params`` are
@@ -1536,7 +1543,7 @@ class GatheredParameters:
                 registered as external parameters of ``fwd_module``. See :meth:`deepspeed.zero.register_external_parameter`.
             enabled (bool, optional): If ``False``, this context is a no-op. Defaults to ``True``.
 
-        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g. ``modifier_rank=0``)
+        Important: Make sure to use ``modifier_rank`` that is not ``None`` (e.g., ``modifier_rank=0``)
         if you need the GPU memory allocated by gather to be released upon exit from the context manager.
 
         Examples
@@ -1600,15 +1607,15 @@ class GatheredParameters:
 
                 load(model, prefix="")
 
-        If this approach is not used, then the full model will first get copied to each GPU. For models
-        bigger than the memory of a single gpu this method is required.
+        If this approach is not used, then the full model will first be copied to each GPU. For models
+        bigger than the memory of a single GPU, this method is required.
         """
 
         self.enabled = enabled
         if not enabled:
             return
 
-        if not isinstance(params, list):
+        if not (isinstance(params, list) or isinstance(params, tuple)):
             params = [params]
 
         # enable if at least one is zero-param, otherwise a noop
