@@ -450,6 +450,10 @@ class BigBirdSparsityConfig(SparsityConfig):
         self.num_random_blocks = num_random_blocks
         self.num_sliding_window_blocks = num_sliding_window_blocks
         self.num_global_blocks = num_global_blocks
+
+        if (attention != 'unidirectional' and attention != 'bidirectional'):
+            raise NotImplementedError(
+                'only \"uni/bi-directional\" attentions are supported for now!')
         self.attention = attention
 
     def set_random_layout(self, h, layout):
