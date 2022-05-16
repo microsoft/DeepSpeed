@@ -1,4 +1,3 @@
-from email.mime import base
 import os
 from deepspeed.checkpoint.constants import (MODEL_FILE_PREFIX,
                                             MODEL_FILE_SUFFIX,
