@@ -28,6 +28,7 @@ from .utils import log_dist
 from .utils.distributed import init_distributed
 
 from .runtime import zero
+from .runtime import DeepSpeedOptimizer, ZeROOptimizer
 
 from .pipe import PipelineModule
 
@@ -235,7 +236,8 @@ def init_inference(model,
                    moe=False,
                    moe_experts=1,
                    moe_type='standard',
-                   args=None):
+                   args=None,
+                   enable_cuda_graph=False):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -300,6 +302,7 @@ def init_inference(model,
                              moe,
                              moe_experts,
                              moe_type,
-                             args)
+                             args,
+                             enable_cuda_graph)
 
     return engine

@@ -20,6 +20,7 @@ from torch._six import inf
 from torch.nn import Module
 from torch.nn.parameter import Parameter
 
+from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
@@ -97,6 +98,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                   backward_function,
                                                   outputs[key])
         return outputs
+
     elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
@@ -223,7 +225,7 @@ class PostBackwardFunction(torch.autograd.Function):
 INITIAL_MICRO_STEP_ID = -1
 
 
-class DeepSpeedZeroOptimizer_Stage3(object):
+class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
@@ -293,6 +295,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
 
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
+
         self.optimizer_swapper = None
         self.swap_optimizer = False
 
@@ -354,7 +359,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         self.persistent_parameters = self.persistent_parameters()
 
+        self.forward_hooks = []
+        self.backward_hooks = []
         self.setup_zero_stage3_hooks()
+        print_rank_0(
+            f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
+            force=False)
 
         #resetting ds_tensor just in case parameters have been changed after initialization
         #example .half() or .to()
@@ -521,6 +531,23 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
 
+    def destroy(self):
+        self._remove_module_hooks()
+
+    def _remove_module_hooks(self):
+        num_forward_hooks = len(self.forward_hooks)
+        num_backward_hooks = len(self.backward_hooks)
+
+        for hook in self.forward_hooks:
+            hook.remove()
+
+        for hook in self.backward_hooks:
+            hook.remove()
+
+        print_rank_0(
+            f'Deleted module hooks: forward = {num_forward_hooks}, backward = {num_backward_hooks}',
+            force=False)
+
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
         self._create_fp32_partitions()
@@ -565,6 +592,15 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                     offset,
                     param.ds_tensor.numel())
             offset += param.ds_tensor.numel()
+
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
 
     # TODO. factor out to a utility outside of stage3
     @staticmethod
@@ -1187,15 +1223,20 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                                           inputs)
 
         # Pre forward hook
-        module.register_forward_pre_hook(_pre_forward_module_hook)
+        self.forward_hooks.append(
+            module.register_forward_pre_hook(_pre_forward_module_hook))
+
         # Post forward hook
-        module.register_forward_hook(_post_forward_module_hook)
+        self.forward_hooks.append(
+            module.register_forward_hook(_post_forward_module_hook))
 
         # Pre backward hook
-        module.register_forward_hook(_pre_backward_module_hook)
+        self.backward_hooks.append(
+            module.register_forward_hook(_pre_backward_module_hook))
 
         # post backward hook
-        module.register_forward_pre_hook(_post_backward_module_hook)
+        self.backward_hooks.append(
+            module.register_forward_pre_hook(_post_backward_module_hook))
 
     @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
@@ -2286,6 +2327,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         else:
             self._partitioned_params_swap_out(sub_group_id)
 
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
     @instrument_w_nvtx
     def step(self, closure=None):
         """
@@ -2480,7 +2529,11 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage(f"Before backward", force=False)
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         self._get_param_coordinator(training=True).reset_step()
 
@@ -2547,7 +2600,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value
