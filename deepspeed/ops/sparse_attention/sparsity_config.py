@@ -681,8 +681,9 @@ class LocalSlidingWindowSparsityConfig(SparsityConfig):
 	     attention: optional: a string determining attention type. Attention can be `unidirectional`, such as autoregressive models, in which tokens attend only to tokens appear before them in the context. Considering that, the upper triangular of attention matrix is empty as above figure. Or it can be `bidirectional`, such as BERT, in which tokens can attend to any other tokens before or after them. Then, the upper triangular part of the attention matrix is mirror of the lower triangular in the above figure.
         """
 
-        super().__init__(num_heads, block, different_layout_per_head)
+        super().__init__(num_heads, block)
         self.num_sliding_window_blocks = num_sliding_window_blocks
+        self.attention = attention
 
     def set_sliding_window_layout(self, h, layout):
         """Sets sliding local attention layout used by the given head in the sparse attention.
@@ -703,7 +704,7 @@ class LocalSlidingWindowSparsityConfig(SparsityConfig):
         for row in range(0, num_blocks):
             start = max(0, row - w)
             end = min(row + w + 1,
-                      num_blocks) if self.attention_type == "bidirectional" else row + 1
+                      num_blocks) if self.attention == "bidirectional" else row + 1
             layout[h, row, start:end] = 1
         return layout
 
