@@ -15,6 +15,7 @@ GROUP_PADDINGS = 'group_paddings'
 PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
 CLIP_GRAD = 'clip_grad'
+PARAM_SLICE_MAPPINGS = 'param_slice_mappings'
 
 #########################################
 # Module checkpoint keys

@@ -129,6 +129,11 @@ class DeepSpeedCheckpoint(object):
                                                        dp_index=dp_index,
                                                        keys_to_ignore=[PARAM_SHAPES])
 
+    def get_zero_files(self, pp_index, tp_index, dp_index) -> list:
+        return self.zero_checkpoint.get_files_for_rank(pp_index=pp_index,
+                                                       tp_index=tp_index,
+                                                       dp_index=dp_index)
+
     def get_embedding_layer_id(self):
         return self.layer_keys[EMBEDDING_LAYER_INDEX]
 
@@ -151,6 +156,10 @@ class DeepSpeedCheckpoint(object):
         ]
         sd = self._merge_state_dicts(sd_list)
         return sd
+
+    def get_embedding_files(self, tp_index: int) -> list:
+        assert tp_index in self.tp_to_embedding_map.keys()
+        return self.tp_to_embedding_map[tp_index]
 
     def _get_checkpoint_value(self, key):
         if not key in self.global_state:
@@ -205,6 +214,10 @@ class DeepSpeedCheckpoint(object):
         sd = torch.load(self.tp_to_final_norm_map[tp_index][0],
                         map_location=torch.device('cpu'))
         return sd
+
+    def get_final_norm_files(self, tp_index: int) -> list:
+        assert tp_index in self.tp_to_final_norm_map.keys()
+        return self.tp_to_final_norm_map[tp_index]
 
     def _build_tp_other_layer_map(self, layer_index: int):
         assert layer_index < len(self.layer_files)

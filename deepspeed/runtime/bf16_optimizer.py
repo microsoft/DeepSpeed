@@ -1,3 +1,4 @@
+from typing import OrderedDict
 import torch
 import torch.distributed as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
@@ -20,7 +21,8 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             BASE_OPTIMIZER_STATE,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             CLIP_GRAD,
-                                            GROUP_PADDINGS)
+                                            GROUP_PADDINGS,
+                                            PARAM_SLICE_MAPPINGS)
 
 import types
 
@@ -53,6 +55,9 @@ class tensor_fragment:
         else:
             raise ValueError(f'{key} not found in optimizer state fragment')
 
+    def get_hp_fragment_address(self):
+        return self.hp_fragment_address
+
 
 def get_full_hp_param(self, optim_state_key=None):
     reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
@@ -75,6 +80,7 @@ def get_full_hp_param(self, optim_state_key=None):
 class BF16_Optimizer(ZeROOptimizer):
     def __init__(self,
                  init_optimizer,
+                 param_names,
                  mpu=None,
                  clip_grad=0.0,
                  norm_type=2,
@@ -85,6 +91,7 @@ class BF16_Optimizer(ZeROOptimizer):
         see_memory_usage('begin bf16_optimizer', force=True)
         self.timers = timers
         self.optimizer = init_optimizer
+        self.param_names = param_names
         self.using_real_optimizer = not isinstance(self.optimizer, DummyOptim)
 
         self.clip_grad = clip_grad
@@ -218,6 +225,17 @@ class BF16_Optimizer(ZeROOptimizer):
 
         # Need optimizer states initialized before linking lp to optimizer state
         self._link_all_hp_params()
+        self._param_slice_mappings = self._create_param_mapping()
+
+    def _create_param_mapping(self):
+        param_mapping = OrderedDict()
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for lp in self.bf16_groups[i]:
+                if lp._hp_mapping is not None:
+                    lp_name = self.param_names[lp]
+                    param_mapping[lp_name] = lp._hp_mapping.get_hp_fragment_address()
+
+        return param_mapping
 
     def _link_all_hp_params(self):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
@@ -455,6 +473,7 @@ class BF16_Optimizer(ZeROOptimizer):
         state_dict[GROUP_PADDINGS] = self.group_paddings
         state_dict[PARTITION_COUNT] = self.partition_count
         state_dict[DS_VERSION] = version
+        state_dict[PARAM_SLICE_MAPPINGS] = self._param_slice_mappings
 
         return state_dict
 
