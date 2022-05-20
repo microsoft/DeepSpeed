@@ -1,9 +1,6 @@
-from .reshape_utils import (get_files,
-                            get_files_with_prefix,
-                            ZERO_FILE_PREFIX,
-                            MP_RANK_FILE_PREFIX,
-                            LAYER_FILE_PREFIX,
-                            partition_data)
+from .reshape_utils import (get_files, get_files_with_prefix, partition_data)
+
+from .constants import (ZERO_FILE_PREFIX, MODEL_FILE_PREFIX, LAYER_FILE_PREFIX)
 
 from .reshape_meg_2d import (reshape_meg_2d_parallel, meg_2d_parallel_map)
 
@@ -74,7 +71,7 @@ class model_3d_desc(object):
 def get_model_3d_descriptor(dir):
     file_list = get_files(dir)
     tp_degree = len(get_files_with_prefix(file_list, f'{LAYER_FILE_PREFIX}01'))
-    pp_degree = len(get_files_with_prefix(file_list, MP_RANK_FILE_PREFIX)) // tp_degree
+    pp_degree = len(get_files_with_prefix(file_list, MODEL_FILE_PREFIX)) // tp_degree
     num_zero_files = len(get_files_with_prefix(file_list, ZERO_FILE_PREFIX))
     dp_degree = max(1, num_zero_files // (pp_degree * tp_degree))
     return model_3d_desc(pp_degree, tp_degree, dp_degree)

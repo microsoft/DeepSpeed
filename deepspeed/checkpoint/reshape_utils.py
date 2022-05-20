@@ -2,10 +2,6 @@ import os
 import torch
 from collections import OrderedDict
 
-ZERO_FILE_PREFIX = 'zero_pp_rank_'
-LAYER_FILE_PREFIX = 'layer_'
-MP_RANK_FILE_PREFIX = 'mp_rank_'
-
 
 def basic_folder_validation(dir):
     assert os.path.exists(dir), f'{dir} path does not exist'

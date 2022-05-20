@@ -2,15 +2,14 @@ import os
 from typing import Dict
 import torch
 
-from deepspeed.checkpoint.reshape_3d_utils import model_3d_desc
+from .reshape_3d_utils import model_3d_desc
 from .reshape_utils import (basic_folder_validation,
                             merge_state,
                             partition_data,
                             get_files,
-                            get_files_with_prefix,
-                            ZERO_FILE_PREFIX,
-                            LAYER_FILE_PREFIX,
-                            MP_RANK_FILE_PREFIX)
+                            get_files_with_prefix)
+
+from .constants import (ZERO_FILE_PREFIX, MODEL_FILE_PREFIX, LAYER_FILE_PREFIX)
 
 from .reshape_meg_2d import reshape_meg_2d_parallel, meg_2d_parallel_map
 from .zero_checkpoint import ZeROCheckpoint
@@ -43,7 +42,7 @@ class DeepSpeedCheckpoint(object):
         self.file_list = get_files(dir)
         self.zero_files = get_files_with_prefix(self.file_list, ZERO_FILE_PREFIX)
         self.layer_files = get_files_with_prefix(self.file_list, LAYER_FILE_PREFIX)
-        self.mp_rank_files = get_files_with_prefix(self.file_list, MP_RANK_FILE_PREFIX)
+        self.mp_rank_files = get_files_with_prefix(self.file_list, MODEL_FILE_PREFIX)
 
         self.layer_keys = self._get_layer_keys()
         self.layer_count = len(self.layer_keys)
@@ -290,7 +289,7 @@ class DeepSpeedCheckpoint(object):
         file_list = get_files(dir)
 
         for file_prefix in [
-                MP_RANK_FILE_PREFIX,
+                MODEL_FILE_PREFIX,
                 LAYER_FILE_PREFIX,
                 f'{LAYER_FILE_PREFIX}01'
         ]:
