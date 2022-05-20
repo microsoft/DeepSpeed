@@ -270,7 +270,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 attn_qkvb = None
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
-                                   qkv_bias,
+                                   (attn_qkvb if attn_qkvb is not None else norm_b),
                                    norm_w,
                                    norm_b,
                                    config.epsilon,
