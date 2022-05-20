@@ -267,6 +267,8 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
+                if isinstance(attn_qkvb, torch.Tensor) and attn_qkvb.numel() == 0:
+                    attn_qkvb = None
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
