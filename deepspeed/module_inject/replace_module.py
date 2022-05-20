@@ -391,10 +391,10 @@ def replace_transformer_layer(orig_layer_impl,
                 qkvw = torch.nn.Parameter(_transpose(qkvw).contiguous())
                 qkvb = torch.nn.Parameter(_transpose(qkvb).contiguous())
 
-            dense_b = dense_b * (transformer_config.training_mp_size /
-                                 transformer_config.mp_size)
-            _4hh_b = _4hh_b * (transformer_config.training_mp_size /
-                               transformer_config.mp_size)
+                dense_b = dense_b * (transformer_config.training_mp_size /
+                                     transformer_config.mp_size)
+                _4hh_b = _4hh_b * (transformer_config.training_mp_size /
+                                   transformer_config.mp_size)
 
             if mlp_linear_layer:
                 _h4h_w = [transpose(moe_w1.data)
