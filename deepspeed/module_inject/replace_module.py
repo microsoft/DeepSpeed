@@ -53,7 +53,7 @@ class ReplaceWithTensorSlicing:
 
     def qkv_copy(self, dst, src):
         if src is None:
-            return torch.nn.Parameter(src)
+            return None
         src_shape = src.shape
         dst_shape = dst.shape
 
