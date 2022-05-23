@@ -22,12 +22,12 @@ except ImportError:
 
 
 class CudaEventTimer(object):
-    def __init__(self, start_event: torch.cuda.Event, end_event: torch.cuda.Event):
+    def __init__(self, start_event: accel_runtime.Event, end_event: accel_runtime.Event):
         self.start_event = start_event
         self.end_event = end_event
 
     def get_elapsed_msec(self):
-        torch.cuda.current_stream().wait_event(self.end_event)
+        accel_runtime.current_stream().wait_event(self.end_event)
         self.end_event.synchronize()
         return self.start_event.elapsed_time(self.end_event)
 
@@ -46,14 +46,14 @@ class SynchronizedWallClockTimer:
         def start(self):
             """Start the timer."""
             assert not self.started_, f"{self.name_} timer has already been started"
-            self.start_event = torch.cuda.Event(enable_timing=True)
+            self.start_event = accel_runtime.Event(enable_timing=True)
             self.start_event.record()
             self.started_ = True
 
         def stop(self, reset=False, record=False):
             """Stop the timer."""
             assert self.started_, "timer is not started"
-            end_event = torch.cuda.Event(enable_timing=True)
+            end_event = accel_runtime.Event(enable_timing=True)
             end_event.record()
             self.event_timers.append(CudaEventTimer(self.start_event, end_event))
             self.start_event = None

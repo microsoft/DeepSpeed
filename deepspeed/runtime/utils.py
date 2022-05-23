@@ -906,7 +906,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(t.data.abs().max() for t in input_tensors)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -915,7 +915,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     else:
         total_norm = sum(
             [t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,

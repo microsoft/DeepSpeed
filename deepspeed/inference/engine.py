@@ -357,12 +357,12 @@ class InferenceEngine(Module):
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
-        cuda_stream = torch.cuda.Stream()
-        cuda_stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(cuda_stream):
+        cuda_stream = accel_runtime.Stream()
+        cuda_stream.wait_stream(accel_runtime.current_stream())
+        with accel_runtime.stream(cuda_stream):
             for i in range(3):
                 ret = self.module(*inputs, **kwargs)
-        torch.cuda.current_stream().wait_stream(cuda_stream)
+        accel_runtime.current_stream().wait_stream(cuda_stream)
 
         # create cuda_graph and assign static_inputs and static_outputs
         self._cuda_graphs = torch.cuda.CUDAGraph()

@@ -9,7 +9,15 @@ import collections
 from collections import OrderedDict, UserDict
 from typing import Deque, Dict, Iterable, Set, Tuple
 import torch
-from torch.cuda import Event, Stream
+import deepspeed
+import deepspeed.accelerator.runtime as accel_runtime
+if deepspeed.accelerator.literal_device() == 'cuda':
+    from torch.cuda import Event, Stream
+else:
+    assert deepspeed.accelerator.literal_device() == 'xpu'
+    import intel_extension_for_pytorch as ipex
+    from torch.xpu import Event, Stream
+
 from torch.nn import Module, Parameter
 
 from deepspeed.utils.logging import logger
@@ -262,7 +270,7 @@ class PartitionedParameterCoordinator:
             param.ds_active_sub_modules.add(current_submodule.id)
             debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
-                with torch.cuda.stream(self.__allgather_stream):
+                with accel_runtime.stream(self.__allgather_stream):
                     while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
                             0].query():
                         self.__ongoing_fetch_events.popleft()
@@ -272,12 +280,12 @@ class PartitionedParameterCoordinator:
 
                     self.__inflight_param_registry.pop(param).wait()
 
-                    event = Event()
+                    event = accel_runtime.Event()
                     event.record()
                     self.__ongoing_fetch_events.append(event)
 
             assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-        torch.cuda.current_stream().wait_stream(self.__allgather_stream)
+        accel_runtime.current_stream().wait_stream(self.__allgather_stream)
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
@@ -395,7 +403,7 @@ class PartitionedParameterCoordinator:
                 self.__n_available_params += param.ds_numel
 
         if partitioned_params:
-            with torch.cuda.stream(self.__allgather_stream):
+            with accel_runtime.stream(self.__allgather_stream):
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
 
             for param in partitioned_params:

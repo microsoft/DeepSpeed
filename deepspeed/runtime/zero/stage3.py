@@ -12,15 +12,15 @@ from collections import OrderedDict, UserDict
 import itertools
 from typing import Deque, Dict, Iterable, Set, Tuple
 import torch
+
 import deepspeed
+import deepspeed.accelerator.runtime as accel_runtime
 if deepspeed.accelerator.literal_device() == 'cuda':
-    Event = torch.cuda.Event
-    Stream = torch.cuda.Stream
+    from torch.cuda import Event, Stream
 else:
     assert deepspeed.accelerator.literal_device() == 'xpu'
     import intel_extension_for_pytorch as ipex
-    Event = torch.xpu.Event
-    Stream = torch.xpu.Stream
+    from torch.xpu import Event, Stream
 
 from torch.nn import Module, Parameter
 import torch.distributed as dist
@@ -582,7 +582,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self.__ipg_bucket_flat_buffer: Tensor = torch.empty(
                 self.reduce_bucket_size,
                 dtype=self.dtype,
-                device=torch.cuda.current_device())
+                device=accel_runtime.current_device())
 
         grad_partitions_flat_buffer = None
         self.__param_id_to_grad_partition: Dict[int, Tensor] = {}
