@@ -16,6 +16,7 @@ from ..moe.layer import MoE
 
 import torch.distributed as dist
 import deepspeed.utils.groups as groups
+from deepspeed.accelerator import runtime as accel_runtime
 
 DS_INFERENCE_ENABLED = False
 
@@ -128,7 +129,7 @@ class InferenceEngine(Module):
                 moe_type=moe_type,
                 training_mp_size=training_mp_size)
 
-        device = torch.cuda.current_device()
+        device = accel_runtime.current_device()
         logger.info(f"Place model to device: {device}")
         self.module.to(device)
 
@@ -148,7 +149,7 @@ class InferenceEngine(Module):
             init_distributed()
 
             local_rank = int(os.getenv('LOCAL_RANK', '0'))
-            torch.cuda.set_device(local_rank)
+            accel_runtime.set_device(local_rank)
 
             ranks = [i for i in range(self.mp_world_size)]
             self.mp_group = dist.new_group(ranks)
@@ -349,10 +350,10 @@ class InferenceEngine(Module):
     def _pre_forward_hook(self, module, *inputs, **kwargs):
         for input in inputs:
             if torch.is_tensor(input):
-                input = input.to(torch.cuda.current_device())
+                input = input.to(accel_runtime.current_device())
         for k in kwargs:
             if torch.is_tensor(kwargs[k]):
-                kwargs[k] = kwargs[k].to(torch.cuda.current_device())
+                kwargs[k] = kwargs[k].to(accel_runtime.current_device())
 
     def _create_cuda_graph(self, *inputs, **kwargs):
         # warmup to create the workspace and cublas handle
@@ -394,13 +395,13 @@ class InferenceEngine(Module):
             if self.mpu is None:
                 for input in inputs:
                     if torch.is_tensor(input):
-                        input = input.to(torch.cuda.current_device())
+                        input = input.to(accel_runtime.current_device())
                         if not input.is_contiguous():
                             input = input.contiguous()
                         dist.broadcast(input, 0)
                 for k in kwargs:
                     if torch.is_tensor(kwargs[k]):
-                        kwargs[k] = kwargs[k].to(torch.cuda.current_device())
+                        kwargs[k] = kwargs[k].to(accel_runtime.current_device())
                         if not kwargs[k].is_contiguous():
                             kwargs[k] = kwargs[k].contiguous()
                         dist.broadcast(kwargs[k], 0)

@@ -1,5 +1,6 @@
 import torch
 from deepspeed.ops.adam import DeepSpeedCPUAdam
+from deepspeed.accelerator import literal_device
 import time
 
 device = 'cpu'
@@ -7,7 +8,7 @@ model_size = 1 * 1024**3
 param = torch.nn.Parameter(torch.ones(model_size, device=device))
 param_fp16 = torch.nn.Parameter(torch.ones(model_size,
                                            dtype=torch.half,
-                                           device='cuda:0'))
+                                           device=literal_device(0)))
 
 optimizer = DeepSpeedCPUAdam([param])
 #torch.set_num_threads(128)

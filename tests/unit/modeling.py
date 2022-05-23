@@ -46,6 +46,7 @@ import time
 #from numba import cuda
 
 #from deepspeed_cuda import DeepSpeedSoftmaxConfig, DeepSpeedSoftmax
+from deepspeed.accelerator import runtime as accel_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -757,12 +758,12 @@ class BertLMPredictionHead(nn.Module):
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)
-        torch.cuda.nvtx.range_push(
+        accel_runtime.range_push(
             "decoder input.size() = {}, weight.size() = {}".format(
                 hidden_states.size(),
                 self.decoder.weight.size()))
         hidden_states = self.decoder(hidden_states) + self.bias
-        torch.cuda.nvtx.range_pop()
+        accel_runtime.range_pop()
         return hidden_states
 
 
@@ -892,7 +893,7 @@ class BertPreTrainedModel(nn.Module):
             weights_path = os.path.join(serialization_dir, WEIGHTS_NAME)
             state_dict = torch.load(
                 weights_path,
-                map_location='cpu' if not torch.cuda.is_available() else None)
+                map_location='cpu' if not accel_runtime.is_available() else None)
         if tempdir:
             # Clean up temp dir
             shutil.rmtree(tempdir)

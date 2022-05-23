@@ -8,6 +8,7 @@ from deepspeed.runtime.pipe.topology import ProcessTopology as Topo
 from deepspeed.runtime.pipe.topology import _prime_factors
 
 from .common import distributed_test
+from deepspeed.accelerator import literal_device
 
 
 def test_topology_2d():
@@ -171,13 +172,13 @@ def test_grid_pipe_data():
         grid.get_stage_id() == grid.get_pipe_parallel_world_size() - 1)
 
     # Test collectives along the pipeline parallel process groups
-    rank_tensor = torch.LongTensor(data=[rank]).cuda()
+    rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
     dist.all_reduce(rank_tensor, group=grid.get_pipe_parallel_group())
     pipe_group = grid.pp_group
     assert torch.all(rank_tensor == sum(pipe_group))
 
     # Test collectives along the data parallel process groups
-    rank_tensor = torch.LongTensor(data=[rank]).cuda()
+    rank_tensor = torch.LongTensor(data=[rank]).to(literal_device())
     dist.all_reduce(rank_tensor, group=grid.get_data_parallel_group())
     data_group = grid.dp_group
     assert torch.all(rank_tensor == sum(data_group))

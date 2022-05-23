@@ -9,6 +9,8 @@ from deepspeed.runtime.comm.mpi import MpiBackend
 
 # Configure wall clock timer
 from deepspeed.utils.timer import SynchronizedWallClockTimer
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 
 from statistics import mean
 
@@ -22,7 +24,7 @@ deepspeed.init_distributed(dist_backend='nccl')
 # Change cuda_aware to True to test out CUDA-Aware MPI communication
 backend = MpiBackend(cuda_aware=False)
 
-device = torch.device('cuda', rank % torch.cuda.device_count())
+device = torch.device(literal_device(), rank % accel_runtime.device_count())
 
 tensor_size = 300 * 2**20
 server_size = int(tensor_size / size)
@@ -42,7 +44,7 @@ server_error = torch.zeros(right_server_size, device=device)
 warmup = 10
 iters = 10
 
-local_rank = rank % torch.cuda.device_count()
+local_rank = rank % accel_runtime.device_count()
 
 # Warmup
 for i in range(warmup):

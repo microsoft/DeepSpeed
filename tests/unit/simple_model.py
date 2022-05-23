@@ -5,6 +5,7 @@ import torch
 
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.moe.layer import MoE
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class SimpleModel(torch.nn.Module):
@@ -263,7 +264,7 @@ def create_deepspeed_args():
     args.deepspeed = True
     if torch.distributed.is_initialized():
         # We assume up to one full node executing unit tests
-        assert torch.distributed.get_world_size() <= torch.cuda.device_count()
+        assert torch.distributed.get_world_size() <= accel_runtime.device_count()
         args.local_rank = torch.distributed.get_rank()
     return args
 

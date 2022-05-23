@@ -3,6 +3,7 @@ import torch
 import deepspeed
 import deepspeed.ops.transformer as transformer_inference
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, HFGPTJLayerPolicy
+from deepspeed.accelerator import runtime as accel_runtime
 from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
@@ -72,7 +73,7 @@ class ReplaceWithTensorSlicing:
                           axis=1) for i in range(len(qkv_split[0]))
             ]
             dst.data.copy_(weight_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+                accel_runtime.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.Parameter(src)
@@ -84,7 +85,7 @@ class ReplaceWithTensorSlicing:
                           axis=0) for i in range(len(qkv_split[0]))
             ]
             dst.data.copy_(bias_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+                accel_runtime.current_device()).contiguous())
 
         return torch.nn.Parameter(dst)
 
@@ -108,14 +109,14 @@ class ReplaceWithTensorSlicing:
                 weight_split = torch.split(src.data, dst_shape[1], dim=1)
 
             dst.data.copy_(weight_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+                accel_runtime.current_device()).contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.Parameter(src)
 
             bias_split = torch.split(src.data, dst_shape[-1])
             dst.data.copy_(bias_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+                accel_runtime.current_device()).contiguous())
 
         return torch.nn.Parameter(dst)
 
@@ -421,28 +422,28 @@ def replace_transformer_layer(orig_layer_impl,
                 for ep_index in range(local_ep_size):
                     mpl_block[ep_index].inter_w.data = _h4h_w[
                         gpu_index * local_ep_size + ep_index].to(
-                            torch.cuda.current_device())
+                            accel_runtime.current_device())
                     mpl_block[ep_index].inter_b.data = _h4h_b[
                         gpu_index * local_ep_size + ep_index].to(
-                            torch.cuda.current_device())
+                            accel_runtime.current_device())
                     mpl_block[ep_index].output_w.data = _4hh_w[
                         gpu_index * local_ep_size + ep_index].to(
-                            torch.cuda.current_device())
+                            accel_runtime.current_device())
                     mpl_block[ep_index].output_b.data = _4hh_b[
                         gpu_index * local_ep_size + ep_index].to(
-                            torch.cuda.current_device())
-                new_module.attn_nw.data = attn_nw.to(torch.cuda.current_device())
-                new_module.attn_nb.data = attn_nb.to(torch.cuda.current_device())
+                            accel_runtime.current_device())
+                new_module.attn_nw.data = attn_nw.to(accel_runtime.current_device())
+                new_module.attn_nb.data = attn_nb.to(accel_runtime.current_device())
                 if moe_type == 'residual':
                     new_module.res_mlp.inter_w.data = _res_h4h_w.to(
-                        torch.cuda.current_device())
+                        accel_runtime.current_device())
                     new_module.res_mlp.inter_b.data = _res_h4h_b.to(
-                        torch.cuda.current_device())
+                        accel_runtime.current_device())
                     new_module.res_mlp.output_w.data = _res_4hh_w.to(
-                        torch.cuda.current_device())
+                        accel_runtime.current_device())
                     new_module.res_mlp.output_b.data = _res_4hh_b.to(
-                        torch.cuda.current_device())
-                    new_module.res_coef.data = _res_coef.to(torch.cuda.current_device())
+                        accel_runtime.current_device())
+                    new_module.res_coef.data = _res_coef.to(accel_runtime.current_device())
             else:
                 mpl_block.inter_w.data = mp_replace.copy(mpl_block.inter_w, _h4h_w)
                 mpl_block.inter_b.data = mp_replace.copy(mpl_block.inter_b, _h4h_b)
@@ -451,13 +452,13 @@ def replace_transformer_layer(orig_layer_impl,
                 if attn_nw is None:
                     new_module.mlp.attn_nw = attn_nw
                 else:
-                    new_module.mlp.attn_nw.data = attn_nw.to(torch.cuda.current_device())
+                    new_module.mlp.attn_nw.data = attn_nw.to(accel_runtime.current_device())
                 if attn_nb is None:
                     new_module.mlp.attn_nb = attn_nb
                 else:
-                    new_module.mlp.attn_nb.data = attn_nb.to(torch.cuda.current_device())
-            new_module.norm_w.data = input_nw.to(torch.cuda.current_device())
-            new_module.norm_b.data = input_nb.to(torch.cuda.current_device())
+                    new_module.mlp.attn_nb.data = attn_nb.to(accel_runtime.current_device())
+            new_module.norm_w.data = input_nw.to(accel_runtime.current_device())
+            new_module.norm_b.data = input_nb.to(accel_runtime.current_device())
         else:
             transformer_config = deepspeed.DeepSpeedTransformerConfig(
                 batch_size=micro_batch_size,
@@ -514,9 +515,9 @@ def replace_transformer_layer(orig_layer_impl,
                         child.weight.data.shape[-1],
                         child.weight.data.shape[-2])
                 data = mp_replace.copy(new_weight,
-                                       child.weight.data).to(torch.cuda.current_device())
+                                       child.weight.data).to(accel_runtime.current_device())
                 return LinearAllreduce(data, child.bias if child.bias is None else \
-                            child.bias.to(torch.cuda.current_device()), mp_group)
+                            child.bias.to(accel_runtime.current_device()), mp_group)
             else:
                 new_weight = torch.empty(
                     (child.weight.shape[0] //
@@ -538,8 +539,8 @@ def replace_transformer_layer(orig_layer_impl,
                                        dtype=torch.half if fp16 else torch.float)
                 bias_data = None if child.bias is None else mp_replace.copy(
                     new_bias,
-                    child.bias.data).to(torch.cuda.current_device())
-                return LinearLayer(data.to(torch.cuda.current_device()), bias_data)
+                    child.bias.data).to(accel_runtime.current_device())
+                return LinearLayer(data.to(accel_runtime.current_device()), bias_data)
 
         def _slice_embedding(child, name, conv_linear_layer):
             mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)

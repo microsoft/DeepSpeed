@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 
 from .common import distributed_test
+from deepspeed.accelerator import literal_device
 
 import pytest
 
@@ -31,8 +32,8 @@ def test_dist_args(number, color):
 
 @distributed_test(world_size=[1, 2, 4])
 def test_dist_allreduce():
-    x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
+    x = torch.ones(1, 3).to(literal_device()) * (dist.get_rank() + 1)
     sum_of_ranks = (dist.get_world_size() * (dist.get_world_size() + 1)) // 2
-    result = torch.ones(1, 3).cuda() * sum_of_ranks
+    result = torch.ones(1, 3).to(literal_device()) * sum_of_ranks
     dist.all_reduce(x)
     assert torch.all(x == result)

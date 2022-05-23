@@ -6,6 +6,8 @@ import random
 import copy
 from torch import nn
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 from .modeling import BertConfig, BertLayerNorm, BertEncoder as BertEncoderPostln
 from .modelingpreln import BertEncoder as BertEncoderPreln
 
@@ -81,7 +83,7 @@ def zero_grad(variables):
         variable.grad.zero_()
 
 
-device = torch.device("cuda")
+device = torch.device(literal_device())
 kwargs_fp32 = {'dtype': torch.float, 'device': device, 'requires_grad': True}
 kwargs_fp16 = {'dtype': torch.half, 'device': device, 'requires_grad': True}
 
@@ -207,8 +209,8 @@ def create_models(ds_config):
         bert_encoder.half()
         ds_encoder.half()
 
-    bert_encoder.cuda()
-    ds_encoder.cuda()
+    bert_encoder.to(literal_device())
+    ds_encoder.to(literal_device())
 
     return bert_encoder, ds_encoder
 
@@ -281,9 +283,8 @@ def test_backward(batch_size,
                   is_preln,
                   use_fp16,
                   atol):
-    # Only run fp16 test cases on devices with 7+ capability.
-    major, _ = torch.cuda.get_device_capability()
-    if major < 7 and (use_fp16 is True or is_preln is False):
+    # Only run fp16 test cases on devices with FP16 capability.
+    if not accel_runtime.is_fp16_supported() and use_fp16 is True:
         return
 
     ds_config = DeepSpeedTransformerConfig()
@@ -317,11 +318,9 @@ def test_backward(batch_size,
 #                             is_preln,
 #                             use_fp16,
 #                             atol):
-#    # Only run fp16 test cases on devices with 7+ capability.
-#    major, _ = torch.cuda.get_device_capability()
-#    if major < 7 and (use_fp16 is True or is_preln is False):
+#    # Only run fp16 test cases on devices with FP16 capability.
+#    if not accel_runtime.is_fp16_supported() and use_fp16 is True:
 #        return
-#
 #    ds_config = DeepSpeedTransformerConfig()
 #    ds_config.layer_id = None
 #    ds_config.batch_size = batch_size

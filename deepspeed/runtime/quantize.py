@@ -3,6 +3,7 @@ import math
 from deepspeed.utils import log_dist
 from deepspeed.utils import logger
 from deepspeed.ops.quantizer import ds_quantizer
+from deepspeed.accelerator import runtime as accel_runtime
 
 # number of 2-dimensional parameters in a layer
 # this is set for transformer-based models
@@ -84,7 +85,7 @@ class Quantizer(object):
 
     def sr_quantize(self, input_flat, input_g, scale):
         # Random number generator (Uniform)
-        p = torch.cuda.FloatTensor(input_flat.size(),
+        p = accel_runtime.FloatTensor(input_flat.size(),
                                    device=input_flat.device).uniform_()
         p = torch.split(p, p.size(0) // self.q_groups)
         add_s = torch.zeros_like(input_flat)

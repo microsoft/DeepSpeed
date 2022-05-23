@@ -8,6 +8,8 @@ import os
 
 from deepspeed.runtime.comm.nccl import NcclBackend
 from deepspeed.utils.timer import SynchronizedWallClockTimer
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 from statistics import mean
 
 timers = SynchronizedWallClockTimer()
@@ -19,8 +21,8 @@ args = parser.parse_args()
 deepspeed.init_distributed(dist_backend='nccl')
 args.local_rank = int(os.environ['LOCAL_RANK'])
 
-torch.cuda.set_device(args.local_rank)
-device = torch.device("cuda", args.local_rank)
+accel_runtime.set_device(args.local_rank)
+device = torch.device(literal_device(), args.local_rank)
 
 size = dist.get_world_size()
 rank = dist.get_rank()

@@ -10,6 +10,7 @@ import os
 from deepspeed.ops.adam import FusedAdam
 from .common import distributed_test
 from deepspeed.ops.op_builder import CPUAdamBuilder
+from deepspeed.accelerator import runtime as accel_runtime
 from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args, SimpleMoEModel, sequence_dataloader
 from .util import required_torch_version
 
@@ -215,7 +216,7 @@ def test_unfused_fp16_optimizer_gradnorm_for_moe(tmpdir, monkeypatch):
     hidden_dim = 10
 
     def mock_unscale_and_clip_grads(total_norm, apply_scale=True):
-        torch_norm_tensor = torch.cuda.FloatTensor([total_norm])
+        torch_norm_tensor = accel_runtime.FloatTensor([total_norm])
         all_gather_results = [
             torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
         ]
@@ -262,7 +263,7 @@ def test_fused_fp16_optimizer_gradnorm_for_moe(tmpdir, monkeypatch):
     hidden_dim = 10
 
     def mock_unscale_and_clip_grads(grads_groups_flat, total_norm, apply_scale=True):
-        torch_norm_tensor = torch.cuda.FloatTensor([total_norm])
+        torch_norm_tensor = accel_runtime.FloatTensor([total_norm])
         all_gather_results = [
             torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
         ]
@@ -317,7 +318,7 @@ def test_lamb_optimizer_gradnorm_for_moe(tmpdir, monkeypatch, fused_lamb_legacy:
     hidden_dim = 10
 
     def mock_unscale_and_clip_grads(total_norm, apply_scale=True):
-        torch_norm_tensor = torch.cuda.FloatTensor([total_norm])
+        torch_norm_tensor = accel_runtime.FloatTensor([total_norm])
         all_gather_results = [
             torch.zeros_like(torch_norm_tensor) for _ in range(dist.get_world_size())
         ]
