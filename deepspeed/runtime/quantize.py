@@ -86,7 +86,7 @@ class Quantizer(object):
     def sr_quantize(self, input_flat, input_g, scale):
         # Random number generator (Uniform)
         p = accel_runtime.FloatTensor(input_flat.size(),
-                                   device=input_flat.device).uniform_()
+                                      device=input_flat.device).uniform_()
         p = torch.split(p, p.size(0) // self.q_groups)
         add_s = torch.zeros_like(input_flat)
         add_s = torch.split(add_s, add_s.size(0) // self.q_groups)

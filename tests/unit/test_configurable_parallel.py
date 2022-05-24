@@ -78,7 +78,9 @@ class TestConfigurableMP:
             model = self.get_deepspeed_model(model, tmpdir)
 
             model.eval()
-            baseline = model(inputs[0].to(literal_device()), inputs[1].to(literal_device()), inputs[2].to(literal_device()))
+            baseline = model(inputs[0].to(literal_device()),
+                             inputs[1].to(literal_device()),
+                             inputs[2].to(literal_device()))
 
             tag = 'mp_1'
             state_dict = {}
@@ -112,7 +114,9 @@ class TestConfigurableMP:
 
             model.eval()
 
-            baseline = model(inputs[0].to(literal_device()), inputs[1].to(literal_device()), inputs[2].to(literal_device()))
+            baseline = model(inputs[0].to(literal_device()),
+                             inputs[1].to(literal_device()),
+                             inputs[2].to(literal_device()))
 
             tag = 'mp_2'
             state_dict = {}
@@ -124,7 +128,9 @@ class TestConfigurableMP:
                                   load_optimizer_states=False,
                                   load_lr_scheduler_states=False)
 
-            test = model(inputs[0].to(literal_device()), inputs[1].to(literal_device()), inputs[2].to(literal_device()))
+            test = model(inputs[0].to(literal_device()),
+                         inputs[1].to(literal_device()),
+                         inputs[2].to(literal_device()))
             assert torch.allclose(baseline, test, rtol=1.0, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
 
         inputs = self.get_inputs()
@@ -149,7 +155,9 @@ class TestConfigurableMP:
             model.eval()
 
             with torch.no_grad():
-                baseline = model(inputs[0].to(literal_device()), inputs[1].to(literal_device()), inputs[2].to(literal_device()))
+                baseline = model(inputs[0].to(literal_device()),
+                                 inputs[1].to(literal_device()),
+                                 inputs[2].to(literal_device()))
                 if dist.get_rank() == 0:
                     output.put(baseline.cpu())
 
@@ -178,7 +186,9 @@ class TestConfigurableMP:
                                       tag=tag,
                                       load_optimizer_states=False,
                                       load_lr_scheduler_states=False)
-                test = model(inputs[0].to(literal_device()), inputs[1].to(literal_device()), inputs[2].to(literal_device()))
+                test = model(inputs[0].to(literal_device()),
+                             inputs[1].to(literal_device()),
+                             inputs[2].to(literal_device()))
                 if dist.get_rank() == 0:
                     output.put(test.cpu())
             quit_event.wait()

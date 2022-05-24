@@ -3,6 +3,7 @@ import torch
 import deepspeed
 import deepspeed.accelerator as accel
 
+
 class OneLayerNet(torch.nn.Module):
     def __init__(self, D_in, D_out):
         """
@@ -22,6 +23,7 @@ class OneLayerNet(torch.nn.Module):
         y_pred = self.linear1(h_relu)
         return y_pred
 
+
 def test_literal_device():
     model = OneLayerNet(128, 128)
 
@@ -36,8 +38,8 @@ def test_literal_device():
         deepspeed.init_distributed('ccl')
     deepspeed.initialize(model=model, config='ds_config.json')
     string = accel.literal_device()  #'xpu' or 'cuda'
-    string0 = accel.literal_device(0) #'xpu:0' or 'cuda:0'
-    string1 = accel.literal_device(1) #'xpu:1' or 'cuda:1'
+    string0 = accel.literal_device(0)  #'xpu:0' or 'cuda:0'
+    string1 = accel.literal_device(1)  #'xpu:1' or 'cuda:1'
     assert string == 'xpu' or string == 'cuda'
     assert string0 == 'xpu:0' or string0 == 'cuda:0'
     assert string1 == 'xpu:1' or string1 == 'cuda:1'

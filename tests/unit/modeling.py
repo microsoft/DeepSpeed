@@ -758,10 +758,9 @@ class BertLMPredictionHead(nn.Module):
 
     def forward(self, hidden_states):
         hidden_states = self.transform(hidden_states)
-        accel_runtime.range_push(
-            "decoder input.size() = {}, weight.size() = {}".format(
-                hidden_states.size(),
-                self.decoder.weight.size()))
+        accel_runtime.range_push("decoder input.size() = {}, weight.size() = {}".format(
+            hidden_states.size(),
+            self.decoder.weight.size()))
         hidden_states = self.decoder(hidden_states) + self.bias
         accel_runtime.range_pop()
         return hidden_states

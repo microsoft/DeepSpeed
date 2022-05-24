@@ -43,7 +43,9 @@ y = model(tens)
 
 see_memory_usage("After forward")
 
-model.weight.data = torch.zeros(1, dtype=torch.half, device=torch.device(literal_device()))
+model.weight.data = torch.zeros(1,
+                                dtype=torch.half,
+                                device=torch.device(literal_device()))
 
 see_memory_usage("After weight zero")
 

@@ -1,6 +1,7 @@
 import torch
 global device_type
 
+
 # TODO detect device on host and check whether device type is the same with device_string
 # TODO set device_type to None if no GPU device installed on host
 def set_device_type(device_string):
@@ -12,6 +13,7 @@ def set_device_type(device_string):
         print("Warning: unrecognized device type, default to 'cuda' device")
         device_type = 'cuda'
 
+
 # TODO throw exception when device_type == None
 def literal_device(ordinal=None):
     global device_type
@@ -21,9 +23,12 @@ def literal_device(ordinal=None):
     else:
         return "{}:{}".format(device_type, ordinal)
 
+
 '''
 Check whether the tensor is on the designated device type
 '''
+
+
 def on_accel_device(tensor):
     global device_type
 
@@ -32,6 +37,7 @@ def on_accel_device(tensor):
         return True
     else:
         return False
+
 
 # because xpu may not be imported, catch all possible errors
 try:

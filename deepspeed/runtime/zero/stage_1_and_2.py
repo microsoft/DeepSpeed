@@ -322,8 +322,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.flatten_dense_tensors_aligned(
                     self.round_robin_bit16_groups[i],
                     self.nccl_start_alignment_factor *
-                    dist.get_world_size(group=self.real_dp_process_group[i])).to(literal_device(
-                        accel_runtime.current_device())))
+                    dist.get_world_size(group=self.real_dp_process_group[i])).to(
+                        literal_device(accel_runtime.current_device())))
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
 
@@ -689,12 +689,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         device=accel_runtime.current_device(),
                         return_tensor_list=True)
                 else:
-                    avg_new = self.get_flat_partition(self.params_in_partition[i],
-                                                      self.first_offset[i],
-                                                      self.partition_size[i],
-                                                      dtype=self.dtype,
-                                                      device=accel_runtime.current_device(),
-                                                      return_tensor_list=True)
+                    avg_new = self.get_flat_partition(
+                        self.params_in_partition[i],
+                        self.first_offset[i],
+                        self.partition_size[i],
+                        dtype=self.dtype,
+                        device=accel_runtime.current_device(),
+                        return_tensor_list=True)
 
                     for accumulated_grad, new_avg_grad in zip(self.averaged_gradients[i], avg_new):
                         accumulated_grad.add_(new_avg_grad)

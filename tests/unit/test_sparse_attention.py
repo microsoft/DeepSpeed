@@ -266,6 +266,7 @@ def _skip_on_cuda_compatability():
         assert deepspeed.accelerator.literal_device() == 'xpu'
         return
 
+
 @pytest.mark.parametrize("block", [16, 32])
 @pytest.mark.parametrize("width", [256, 576])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])

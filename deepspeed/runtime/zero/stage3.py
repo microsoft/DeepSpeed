@@ -2033,7 +2033,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             grad_norms = []
             for g, p in zip(gradients, params):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
-                    grad_norms.append(g.to(literal_device, non_blocking=True).double().norm(2))
+                    grad_norms.append(
+                        g.to(literal_device,
+                             non_blocking=True).double().norm(2))
 
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.sum(torch.pow(torch.stack(grad_norms), 2))
@@ -2173,7 +2175,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         # release all the gradient since we have already created a necessary copy in dp_grad_partition
         self.zero_grad()
 
-        for grad in filter(lambda g: on_accel_device(g), self.averaged_gradients[sub_group_id]):
+        for grad in filter(lambda g: on_accel_device(g),
+                           self.averaged_gradients[sub_group_id]):
             grad.record_stream(accel_runtime.current_stream())
 
         self.averaged_gradients[sub_group_id] = None

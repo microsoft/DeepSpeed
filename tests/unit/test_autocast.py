@@ -23,10 +23,12 @@ def test_missing_amp_autocast(tmpdir, half_op):
     hidden_dim = 4
     if half_op:
         input = torch.randn(hidden_dim).to(literal_device()).half()
-        ds_linear = LinearModuleForZeroStage3(hidden_dim, hidden_dim).to(literal_device()).half()
+        ds_linear = LinearModuleForZeroStage3(hidden_dim,
+                                              hidden_dim).to(literal_device()).half()
     else:
         input = torch.randn(hidden_dim).to(literal_device())
-        ds_linear = LinearModuleForZeroStage3(hidden_dim, hidden_dim).to(literal_device())
+        ds_linear = LinearModuleForZeroStage3(hidden_dim,
+                                              hidden_dim).to(literal_device())
 
     output = ds_linear(input)
     assert output.dtype == ds_linear.weight.dtype
@@ -40,10 +42,12 @@ def test_disable_autocast_linear(tmpdir, half_op):
     hidden_dim = 4
     if half_op:
         input = torch.randn(hidden_dim).to(literal_device()).half()
-        ds_linear = LinearModuleForZeroStage3(hidden_dim, hidden_dim).to(literal_device()).half()
+        ds_linear = LinearModuleForZeroStage3(hidden_dim,
+                                              hidden_dim).to(literal_device()).half()
     else:
         input = torch.randn(hidden_dim).to(literal_device())
-        ds_linear = LinearModuleForZeroStage3(hidden_dim, hidden_dim).to(literal_device())
+        ds_linear = LinearModuleForZeroStage3(hidden_dim,
+                                              hidden_dim).to(literal_device())
 
     with torch.cuda.amp.autocast(False):
         output = ds_linear(input)

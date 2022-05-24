@@ -27,7 +27,8 @@ def bf16_required_version_check():
     if (TORCH_MAJOR > 1 or
         (TORCH_MAJOR == 1 and TORCH_MINOR >= 10)) and (CUDA_MAJOR >= 11) and (
             NCCL_MAJOR > 2 or
-            (NCCL_MAJOR == 2 and NCCL_MINOR >= 10)) and accel_runtime.is_bf16_supported():
+            (NCCL_MAJOR == 2
+             and NCCL_MINOR >= 10)) and accel_runtime.is_bf16_supported():
         return True
     else:
         return False

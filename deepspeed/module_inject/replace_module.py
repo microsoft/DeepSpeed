@@ -443,7 +443,8 @@ def replace_transformer_layer(orig_layer_impl,
                         accel_runtime.current_device())
                     new_module.res_mlp.output_b.data = _res_4hh_b.to(
                         accel_runtime.current_device())
-                    new_module.res_coef.data = _res_coef.to(accel_runtime.current_device())
+                    new_module.res_coef.data = _res_coef.to(
+                        accel_runtime.current_device())
             else:
                 mpl_block.inter_w.data = mp_replace.copy(mpl_block.inter_w, _h4h_w)
                 mpl_block.inter_b.data = mp_replace.copy(mpl_block.inter_b, _h4h_b)
@@ -452,11 +453,13 @@ def replace_transformer_layer(orig_layer_impl,
                 if attn_nw is None:
                     new_module.mlp.attn_nw = attn_nw
                 else:
-                    new_module.mlp.attn_nw.data = attn_nw.to(accel_runtime.current_device())
+                    new_module.mlp.attn_nw.data = attn_nw.to(
+                        accel_runtime.current_device())
                 if attn_nb is None:
                     new_module.mlp.attn_nb = attn_nb
                 else:
-                    new_module.mlp.attn_nb.data = attn_nb.to(accel_runtime.current_device())
+                    new_module.mlp.attn_nb.data = attn_nb.to(
+                        accel_runtime.current_device())
             new_module.norm_w.data = input_nw.to(accel_runtime.current_device())
             new_module.norm_b.data = input_nb.to(accel_runtime.current_device())
         else:
@@ -515,7 +518,8 @@ def replace_transformer_layer(orig_layer_impl,
                         child.weight.data.shape[-1],
                         child.weight.data.shape[-2])
                 data = mp_replace.copy(new_weight,
-                                       child.weight.data).to(accel_runtime.current_device())
+                                       child.weight.data).to(
+                                           accel_runtime.current_device())
                 return LinearAllreduce(data, child.bias if child.bias is None else \
                             child.bias.to(accel_runtime.current_device()), mp_group)
             else:
