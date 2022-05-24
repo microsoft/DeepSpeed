@@ -273,7 +273,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-                #import pdb;pdb.set_trace()
+
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
@@ -285,9 +285,8 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
-            #print(f'[{torch.distributed.get_rank()}] {config.layer_id}: oooooo -> {output.norm()}')
 
-            return output, key_layer, value_layer, context_layer, qkv_out[-1] # attn_out, present_key, present_value, context_output, inp_norm
+            return output, key_layer, value_layer, context_layer, qkv_out[-1]
 
         def selfAttention_int8():
             if not config.pre_layer_norm:
