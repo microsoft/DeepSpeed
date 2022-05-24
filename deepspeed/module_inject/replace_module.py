@@ -351,7 +351,7 @@ def replace_transformer_layer(orig_layer_impl,
             # linear layer is created with [input, output] shape
             # transpose it here to reduce inference cost!
             def transpose(data):
-                data.view(-1).copy_(data.transpose(-1, -2).contiguous().view(-1))
+                data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
                 data = data.reshape(data.shape[-1], data.shape[-2])
                 return data
 
