@@ -1,5 +1,11 @@
+"""
+Copyright 2022 The Microsoft DeepSpeed Team
+"""
+
 from typing import OrderedDict
+from scipy.fft import dst
 import torch
+import os
 import torch.distributed as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -22,7 +28,8 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             CLIP_GRAD,
                                             GROUP_PADDINGS,
-                                            PARAM_SLICE_MAPPINGS)
+                                            PARAM_SLICE_MAPPINGS,
+                                            FP32_WEIGHT_KEY)
 
 import types
 
@@ -58,6 +65,9 @@ class tensor_fragment:
     def get_hp_fragment_address(self):
         return self.hp_fragment_address
 
+    def get_optim_state_keys(self):
+        return list(self.optim_fragment.keys())
+
 
 def get_full_hp_param(self, optim_state_key=None):
     reduce_buffer = torch.zeros_like(self, dtype=torch.float32).flatten()
@@ -75,6 +85,35 @@ def get_full_hp_param(self, optim_state_key=None):
         reduce_fragment.data.copy_(hp_fragment.data)
     torch.distributed.all_reduce(reduce_buffer, group=self._dp_group)
     return reduce_buffer.reshape_as(self)
+
+
+def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
+    hp_mapping = self._hp_mapping
+    optim_state_keys = hp_mapping.get_optim_state_keys()
+    hp_keys = [FP32_WEIGHT_KEY] + optim_state_keys
+    checkpoint_files = {key: os.path.join(folder, f"{key}.pt") for key in hp_keys}
+
+    for file in checkpoint_files.values():
+        assert os.path.isfile(file), f'{file} is not a valid file'
+
+    for key in hp_keys:
+        ckpt_file = checkpoint_files[key]
+        full_hp_param = torch.load(ckpt_file)
+        full_param_numel = full_hp_param.numel()
+        tp_slice_numel = self.numel()
+        assert full_param_numel == tp_world_size * tp_slice_numel, \
+            f'Loading {ckpt_file} full param numel {full_param_numel} != tensor slice numel {tp_slice_numel} * tp_world_size {tp_world_size}'
+        tp_start_offset = tp_rank * tp_slice_numel
+        dst_tensor = hp_mapping.hp_fragment if key == FP32_WEIGHT_KEY else hp_mapping.get_optim_state_fragment(
+            key)
+        assert dst_tensor.numel() == tp_slice_numel, \
+            f'Load checkpoint {key} dst_tensor numel {dst_tensor.numel()} != src numel {tp_slice_numel}'
+
+        tp_hp_slice = torch.narrow(full_hp_param.view(dst_tensor.shape),
+                                   0,
+                                   tp_start_offset,
+                                   tp_slice_numel)
+        dst_tensor.data.copy_(tp_hp_slice.data)
 
 
 class BF16_Optimizer(ZeROOptimizer):
@@ -262,6 +301,9 @@ class BF16_Optimizer(ZeROOptimizer):
             lp_param._hp_mapping = None
             lp_param._dp_group = dp_group
             lp_param.get_full_hp_param = types.MethodType(get_full_hp_param, lp_param)
+            lp_param.load_hp_checkpoint_state = types.MethodType(
+                load_hp_checkpoint_state,
+                lp_param)
             # lp_param overlaps with partition if both are true
             # 1) current_offset < partition_end,
             # 2) current_offset + lp_param.numel() >= partition_start
@@ -489,8 +531,23 @@ class BF16_Optimizer(ZeROOptimizer):
 
     def load_state_dict(self,
                         state_dict_list,
+                        checkpoint_folder,
                         load_optimizer_states=True,
                         load_from_fp32_weights=False):
+        if checkpoint_folder:
+            self._load_universal_checkpoint(checkpoint_folder,
+                                            load_optimizer_states,
+                                            load_from_fp32_weights)
+        else:
+            self._load_legacy_checkpoint(state_dict_list,
+                                         load_optimizer_states,
+                                         load_from_fp32_weights)
+
+    def _load_legacy_checkpoint(self,
+                                state_dict_list,
+                                load_optimizer_states=True,
+                                load_from_fp32_weights=False):
+
         dp_rank = dist.get_rank(group=self.dp_process_group)
         current_rank_sd = state_dict_list[dp_rank]
 
@@ -511,10 +568,29 @@ class BF16_Optimizer(ZeROOptimizer):
         if load_optimizer_states:
             self._link_all_hp_params()
 
+    def _load_universal_checkpoint(self,
+                                   checkpoint_folder,
+                                   load_optimizer_states,
+                                   load_from_fp32_weights):
+        self._load_hp_checkpoint_state(checkpoint_folder)
+
     @property
     def param_groups(self):
         """Forward the wrapped optimizer's parameters."""
         return self.optimizer.param_groups
+
+    def _load_hp_checkpoint_state(self, checkpoint_dir):
+        tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
+        tp_world_size = self.mpu.get_model_parallel_world_size()
+
+        for i, _ in enumerate(self.optimizer.param_groups):
+            for lp in self.bf16_groups[i]:
+                if lp._hp_mapping is not None:
+                    lp.load_hp_checkpoint_state(
+                        os.path.join(checkpoint_dir,
+                                     self.param_names[lp]),
+                        tp_rank,
+                        tp_world_size)
 
 
 def _get_padded_tensor(src_tensor, size):

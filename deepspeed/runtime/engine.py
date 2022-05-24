@@ -730,6 +730,9 @@ class DeepSpeedEngine(Module):
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
 
+    def load_universal_checkpoint(self):
+        return self._config.load_universal_checkpoint
+
     @property
     def communication_data_type(self):
         res = self._config.communication_data_type
@@ -2674,18 +2677,28 @@ class DeepSpeedEngine(Module):
         return load_path, client_state
 
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
-        zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
-        if zero_sd_list is None:
-            return False
+        if self.load_universal_checkpoint():
+            zero_sd_list = None
+            checkpoint_folder = f'{os.path.join(load_dir, tag)}_universal'
+        else:
+            checkpoint_folder = None
+            zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
+            if zero_sd_list is None:
+                return False
 
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
             load_optimizer_states=load_optimizer_states,
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
-        )
-        logger.info(
-            f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
-        )
+            checkpoint_folder=checkpoint_folder)
+        if self.load_universal_checkpoint():
+            logger.info(
+                f'loaded universal zero checpoints from {checkpoint_folder} for rank {self.global_rank}'
+            )
+        else:
+            logger.info(
+                f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
+            )
         return True
 
     def _get_mp_rank_zero_checkpoint_names(self,

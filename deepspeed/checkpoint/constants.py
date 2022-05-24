@@ -16,6 +16,7 @@ PARTITION_COUNT = 'partition_count'
 ZERO_STAGE = 'zero_stage'
 CLIP_GRAD = 'clip_grad'
 PARAM_SLICE_MAPPINGS = 'param_slice_mappings'
+FP32_WEIGHT_KEY = "fp32"
 
 #########################################
 # Module checkpoint keys
