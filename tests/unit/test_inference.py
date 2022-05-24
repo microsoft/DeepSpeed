@@ -5,8 +5,8 @@ import deepspeed
 from transformers import pipeline
 from .common import distributed_test
 
-pytest.skip("Skip for now, only passes on A100/A6000 for some reason",
-            allow_module_level=True)
+#pytest.skip("Skip for now, only passes on A100/A6000 for some reason",
+#            allow_module_level=True)
 
 
 @pytest.mark.parametrize("dtype", [(torch.float), (torch.half)])
