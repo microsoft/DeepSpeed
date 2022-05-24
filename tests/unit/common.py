@@ -5,6 +5,8 @@ import torch
 import torch.distributed as dist
 from torch.multiprocessing import Process
 
+import psutil
+
 import deepspeed
 
 import pytest
@@ -95,7 +97,12 @@ def distributed_test(world_size=2, backend='nccl'):
 
             set_cuda_visibile()
 
-            deepspeed.init_distributed(dist_backend=backend)
+            try:
+                deepspeed.init_distributed(dist_backend=backend)
+            except Exception as err:
+                print(f"open network conns:{psutil.net_connections()}")
+                print(f"port attempting to be used: {os.environ['MASTER_PORT']}")
+                raise err
 
             if torch.cuda.is_available():
                 torch.cuda.set_device(local_rank)
