@@ -4,13 +4,14 @@ import pytest
 import deepspeed
 from transformers import pipeline
 from .common import distributed_test
-
-#pytest.skip("Skip for now, only passes on A100/A6000 for some reason",
-#            allow_module_level=True)
+from packaging import version as pkg_version
 
 
 @pytest.mark.parametrize("dtype", [(torch.float), (torch.half)])
 def test_gpt2_inject(dtype):
+    if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
+        pytest.skip("DS inference injection doesn't work well on older torch versions")
+
     @distributed_test(world_size=[1])
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
