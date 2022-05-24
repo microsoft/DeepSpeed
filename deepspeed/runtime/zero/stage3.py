@@ -2034,7 +2034,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             for g, p in zip(gradients, params):
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     grad_norms.append(
-                        g.to(literal_device,
+                        g.to(literal_device(),
                              non_blocking=True).double().norm(2))
 
             # Sum across all model parallel GPUs.
