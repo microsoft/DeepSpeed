@@ -253,7 +253,11 @@ class DeepSpeedCheckpoint(object):
     def _build_transformer_file_map(self):
         transformer_layer_keys = self.layer_keys[1:-1]
         file_map = {}
+        # XXX: this is not guaranteed
         layers_per_pp = len(transformer_layer_keys) // self.pp_degree
+        if layers_per_pp == 0:
+            layers_per_pp = 1
+        #print(f"{transformer_layer_keys} {layers_per_pp}")
         for key_index, layer_key in enumerate(transformer_layer_keys):
             pp_index = key_index // layers_per_pp
             layer_files = get_files_with_prefix(self.layer_files, layer_key)
@@ -270,7 +274,9 @@ class DeepSpeedCheckpoint(object):
         assert len(self.mp_rank_files) % self.tp_degree == 0
         assert len(self.zero_files) % (self.pp_degree * self.tp_degree) == 0
         assert len(self.layer_keys) > 2
-        assert (len(self.layer_keys) - 2) % self.pp_degree == 0
+        # XXX: fix me - isn't always the case
+        # only true with  --pp-partition-method 'type:transformer|embedding' \
+        # assert (len(self.layer_keys) - 2) % self.pp_degree == 0
 
     def validate_files(self):
         for file in self.file_list:

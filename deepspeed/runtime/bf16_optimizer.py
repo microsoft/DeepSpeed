@@ -3,7 +3,6 @@ Copyright 2022 The Microsoft DeepSpeed Team
 """
 
 from typing import OrderedDict
-from scipy.fft import dst
 import torch
 import os
 import torch.distributed as dist
@@ -267,12 +266,15 @@ class BF16_Optimizer(ZeROOptimizer):
         self._param_slice_mappings = self._create_param_mapping()
 
     def _create_param_mapping(self):
-        param_mapping = OrderedDict()
+        param_mapping = []
         for i, _ in enumerate(self.optimizer.param_groups):
+            param_mapping_per_group = OrderedDict()
             for lp in self.bf16_groups[i]:
                 if lp._hp_mapping is not None:
                     lp_name = self.param_names[lp]
-                    param_mapping[lp_name] = lp._hp_mapping.get_hp_fragment_address()
+                    param_mapping_per_group[
+                        lp_name] = lp._hp_mapping.get_hp_fragment_address()
+            param_mapping.append(param_mapping_per_group)
 
         return param_mapping
 
