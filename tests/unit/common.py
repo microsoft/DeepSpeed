@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 from torch.multiprocessing import Process
 
+import subprocess
 import psutil
 
 import deepspeed
@@ -43,7 +44,6 @@ def set_cuda_visibile():
         xdist_worker_id = 0
     if cuda_visible is None:
         # CUDA_VISIBLE_DEVICES is not set, discover it from nvidia-smi instead
-        import subprocess
         is_rocm_pytorch = hasattr(torch.version, 'hip') and torch.version.hip is not None
         if is_rocm_pytorch:
             rocm_smi = subprocess.check_output(['rocm-smi', '--showid'])
