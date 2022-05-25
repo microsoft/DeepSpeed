@@ -102,6 +102,10 @@ def distributed_test(world_size=2, backend='nccl'):
             except Exception as err:
                 print(f"open network conns:{psutil.net_connections()}")
                 print(f"port attempting to be used: {os.environ['MASTER_PORT']}")
+                result = subprocess.check_output(['ps', 'aux'])
+                print(result.decode())
+                result = subprocess.check_output(['netstat', '-l'])
+                print(result.decode())
                 raise err
 
             if torch.cuda.is_available():
