@@ -2,6 +2,7 @@ import os
 import torch
 import pytest
 import deepspeed
+from collections import defaultdict
 from transformers import pipeline
 from .common import distributed_test
 from packaging import version as pkg_version
