@@ -73,20 +73,27 @@ def query(task, model):
     ),
 )
 @pytest.mark.parametrize("model_family", ("bert", "roberta", "gpt2", "gpt_neo", "gptj"))
-def test_model_task(task, model, query, dtype=torch.float):
-    local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    world_size = int(os.getenv("WORLD_SIZE", "1"))
-    generator = pipeline(task, model=model, device=local_rank)
+def test_model_task_inject(task, model, query, dtype=torch.float):
+    if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
+        pytest.skip("DS inference injection doesn't work well on older torch versions")
 
-    generator.model = deepspeed.init_inference(
-        generator.model,
-        mp_size=world_size,
-        dtype=dtype,
-        replace_method="auto",
-        replace_with_kernel_inject=True,
-    )
+    @distributed_test(world_size=[1])
+    def _go():
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        world_size = int(os.getenv("WORLD_SIZE", "1"))
+        generator = pipeline(task, model=model, device=local_rank)
 
-    response = generator(query)
+        generator.model = deepspeed.init_inference(
+            generator.model,
+            mp_size=world_size,
+            dtype=dtype,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+        )
+
+        response = generator(query)
+
+    _go()
 
 
 @pytest.mark.parametrize("dtype", [(torch.float), (torch.half)])
