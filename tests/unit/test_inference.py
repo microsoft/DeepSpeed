@@ -6,26 +6,31 @@ from transformers import pipeline
 from .common import distributed_test
 from packaging import version as pkg_version
 
+
 def pytest_configure():
     pytest.task_query_dict = {
-        "fill-mask": defaultdict(
+        "fill-mask":
+        defaultdict(
             lambda: "Hello I'm a [MASK] model.",
             {"roberta-base": "Hello I'm a <mask> model."},
         ),
-        "question-answering": defaultdict(
-            lambda: {
-                "question": "What is the greatest?",
-                "context": "DeepSpeed is the greatest",
-            }
-        ),
-        "text-classification": defaultdict(lambda: "DeepSpeed is the greatest"),
-        "token-classification": defaultdict(
-            lambda: "My name is jean-baptiste and I live in montreal."
-        ),
-        "text-generation": defaultdict(lambda: "DeepSpeed is the greatest"),
+        "question-answering":
+        defaultdict(lambda: {
+            "question": "What is the greatest?",
+            "context": "DeepSpeed is the greatest",
+        }),
+        "text-classification":
+        defaultdict(lambda: "DeepSpeed is the greatest"),
+        "token-classification":
+        defaultdict(lambda: "My name is jean-baptiste and I live in montreal."),
+        "text-generation":
+        defaultdict(lambda: "DeepSpeed is the greatest"),
     }
     pytest.task_model_dict = {
-        "fill-mask": {"bert": "bert-base-cased", "roberta": "roberta-base"},
+        "fill-mask": {
+            "bert": "bert-base-cased",
+            "roberta": "roberta-base"
+        },
         "question-answering": {
             "bert": "deepset/minilm-uncased-squad2",
             "roberta": "deepset/roberta-base-squad2",
