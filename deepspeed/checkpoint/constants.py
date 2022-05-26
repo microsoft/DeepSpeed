@@ -28,11 +28,11 @@ BUFFER_NAMES = 'buffer_names'
 # Checkpoint naming constants
 #########################################
 MODEL_FILE_PREFIX = 'mp_rank_'
-ZERO_FILE_PREFIX = 'zero_pp_rank_'
+ZERO_FILE_PREFIX = 'bf16_' + 'zero_pp_rank_'
 OPTIM_FILE_SUFFIX = '_optim_states.pt'
 MODEL_FILE_SUFFIX = '_model_states.pt'
 LAYER_FILE_PREFIX = 'layer_'
-BF16_ZERO_FILE_PREFIX = 'bf16_' + ZERO_FILE_PREFIX
+BF16_ZERO_FILE_PREFIX = ZERO_FILE_PREFIX
 
 #########################################
 # Checkpoint utility keys

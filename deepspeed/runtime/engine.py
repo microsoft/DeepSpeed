@@ -2576,10 +2576,10 @@ class DeepSpeedEngine(Module):
                                                 model=self.module,
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
-
-        self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict,
-                                    custom_load_fn=custom_load_fn)
+        if not self.load_universal_checkpoint():
+            self.load_module_state_dict(state_dict=checkpoint['module'],
+                                        strict=load_module_strict,
+                                        custom_load_fn=custom_load_fn)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
