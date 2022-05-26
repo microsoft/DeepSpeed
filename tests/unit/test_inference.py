@@ -7,49 +7,47 @@ from transformers import pipeline
 from .common import distributed_test
 from packaging import version as pkg_version
 
-
-def pytest_configure():
-    pytest.task_query_dict = {
-        "fill-mask":
-        defaultdict(
-            lambda: "Hello I'm a [MASK] model.",
-            {"roberta-base": "Hello I'm a <mask> model."},
-        ),
-        "question-answering":
-        defaultdict(lambda: {
-            "question": "What is the greatest?",
-            "context": "DeepSpeed is the greatest",
-        }),
-        "text-classification":
-        defaultdict(lambda: "DeepSpeed is the greatest"),
-        "token-classification":
-        defaultdict(lambda: "My name is jean-baptiste and I live in montreal."),
-        "text-generation":
-        defaultdict(lambda: "DeepSpeed is the greatest"),
-    }
-    pytest.task_model_dict = {
-        "fill-mask": {
-            "bert": "bert-base-cased",
-            "roberta": "roberta-base"
-        },
-        "question-answering": {
-            "bert": "deepset/minilm-uncased-squad2",
-            "roberta": "deepset/roberta-base-squad2",
-        },
-        "text-classification": {
-            "bert": "cross-encoder/ms-marco-MiniLM-L-12-v2",
-            "roberta": "j-hartmann/emotion-english-distilroberta-base",
-        },
-        "token-classification": {
-            "bert": "dslim/bert-base-NER",
-            "roberta": "Jean-Baptiste/roberta-large-ner-english",
-        },
-        "text-generation": {
-            "gpt2": "distilgpt2",
-            "gpt_neo": "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-            "gptj": "EleutherAI/gpt-j-6B",
-        },
-    }
+pytest.task_query_dict = {
+    "fill-mask":
+    defaultdict(
+        lambda: "Hello I'm a [MASK] model.",
+        {"roberta-base": "Hello I'm a <mask> model."},
+    ),
+    "question-answering":
+    defaultdict(lambda: {
+        "question": "What is the greatest?",
+        "context": "DeepSpeed is the greatest",
+    }),
+    "text-classification":
+    defaultdict(lambda: "DeepSpeed is the greatest"),
+    "token-classification":
+    defaultdict(lambda: "My name is jean-baptiste and I live in montreal."),
+    "text-generation":
+    defaultdict(lambda: "DeepSpeed is the greatest"),
+}
+pytest.task_model_dict = {
+    "fill-mask": {
+        "bert": "bert-base-cased",
+        "roberta": "roberta-base"
+    },
+    "question-answering": {
+        "bert": "deepset/minilm-uncased-squad2",
+        "roberta": "deepset/roberta-base-squad2",
+    },
+    "text-classification": {
+        "bert": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+        "roberta": "j-hartmann/emotion-english-distilroberta-base",
+    },
+    "token-classification": {
+        "bert": "dslim/bert-base-NER",
+        "roberta": "Jean-Baptiste/roberta-large-ner-english",
+    },
+    "text-generation": {
+        "gpt2": "distilgpt2",
+        "gpt_neo": "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
+        "gptj": "EleutherAI/gpt-j-6B",
+    },
+}
 
 
 @pytest.fixture
