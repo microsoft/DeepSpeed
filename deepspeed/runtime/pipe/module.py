@@ -9,7 +9,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from deepspeed.utils import logger
 from .. import utils as ds_utils
@@ -130,6 +130,8 @@ class PipelineModule(nn.Module):
         """
 
         super().__init__()
+        if not dist.is_initialized():
+            print(f"dist {dist.cdb} not it")
 
         if num_stages is None and topology is None:
             raise RuntimeError('must provide num_stages or topology')

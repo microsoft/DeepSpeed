@@ -6,36 +6,21 @@ from typing import List
 
 import torch
 from torch import Tensor
-import torch.distributed
+import deepspeed.comm as dist
+# TODO QUENTIN: Add process group class to comm
+#from deepspeed.comm import ProcessGroup
+#import torch.distributed
 from torch.distributed import ProcessGroup
 import torch.nn.functional
 
 from deepspeed.utils import instrument_w_nvtx
 from deepspeed.utils.logging import logger
 
-if hasattr(torch.distributed, "_reduce_scatter_base"):
 
-    def torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group):
-        instrument_w_nvtx(torch.distributed._reduce_scatter_base)(
-            output_tensor,
-            input_tensor,
-            group=group,
-        )
-else:
-    logger.warning(
-        "unable to find torch.distributed._reduce_scatter_base. will fall back to "
-        "torch.distributed.reduce_scatter which will result in suboptimal performance. "
-        "please consider upgrading your pytorch installation.")
-
-    def torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group):
-        input_tensor_lst = list(
-            torch.chunk(input_tensor,
-                        torch.distributed.get_world_size(group)))
-        instrument_w_nvtx(torch.distributed.reduce_scatter)(
-            output_tensor,
-            input_tensor_lst,
-            group=group,
-        )
+def torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+    return instrument_w_nvtx(dist.reduce_scatter_fn)(output_tensor,
+                                                     input_tensor,
+                                                     group=group)
 
 
 @instrument_w_nvtx
@@ -49,8 +34,8 @@ def reduce_scatter_coalesced(
 
     TODO. see if PyTorch team wants a c++ version of this for ProcessGroupNCCL
     """
-    this_rank = torch.distributed.get_rank(group)
-    world_sz = torch.distributed.get_world_size(group)
+    this_rank = dist.get_rank(group)
+    world_sz = dist.get_world_size(group)
 
     partition_lst_for_each_tensor = [None] * len(tensors)
     for tensor_idx, tensor in enumerate(tensors):

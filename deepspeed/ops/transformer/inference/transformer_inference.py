@@ -10,7 +10,7 @@ from torch.autograd import Function
 import time
 from ... import op_builder
 import torch.nn as nn
-import torch.distributed as dist
+import deepspeed.comm as dist
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 

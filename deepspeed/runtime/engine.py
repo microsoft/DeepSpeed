@@ -9,7 +9,6 @@ import math
 import torch
 import warnings
 import hashlib
-import torch.distributed as dist
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
 
@@ -49,7 +48,8 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
 from deepspeed.runtime.utils import get_grad_norm
-from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
+from deepspeed.utils import logger, log_dist, instrument_w_nvtx
+from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
@@ -69,6 +69,9 @@ from ..git_version_info import version
 
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
+
+# Set to torch.distributed or deepspeed.comm based inside DeepSpeedEngine init
+dist = None
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
@@ -212,6 +215,11 @@ class DeepSpeedEngine(Module):
         self.moe_layers = []
         self._step_applied = False
         self._global_grad_norm = None
+        # TODO: Use a new ds_config flag for it. Hardcode for now
+        self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
+
+        global dist
+        import deepspeed.comm as dist
         self._is_gradient_accumulation_boundary = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
@@ -224,16 +232,21 @@ class DeepSpeedEngine(Module):
         if self.config is None and config_params is not None:
             self.config = config_params
 
-        if dist_init_required is None:
-            dist_init_required = not dist.is_initialized()
-
-        if dist_init_required is False:
-            assert (
-                dist.is_initialized() is True
-            ), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
+        from deepspeed.comm import supported_torch_version
+        if supported_torch_version:
+            dist.init_distributed(dist_backend=self.dist_backend,
+                                  dist_init_required=dist_init_required)
         else:
-            # Initialize torch distributed if needed
-            init_distributed(dist_backend=self.dist_backend)
+            if dist_init_required is None:
+                dist_init_required = not dist.is_initialized()
+
+            if dist_init_required is False:
+                assert (
+                    dist.is_initialized() is True
+                ), "Torch distributed not initialized. Please set dist_init_required to True or initialize before calling deepspeed.initialize()"
+            else:
+                if not dist.is_initialized():
+                    dist.init_process_group(backend=self.dist_backend)
 
         self._do_args_sanity_check(args)
         self._configure_with_arguments(args, mpu)
@@ -804,8 +817,7 @@ class DeepSpeedEngine(Module):
             dp_rank == 0) or self.zero_optimization_partition_weights()
 
         if self.zero_optimization() or self.bfloat16_enabled():
-            param_rank = torch.distributed.get_rank(
-                group=self.optimizer.dp_process_group)
+            param_rank = dist.get_rank(group=self.optimizer.dp_process_group)
 
             # Only the first parameter parallel process needs to store the
             # optimizer state checkpoints for zero
@@ -1652,7 +1664,7 @@ class DeepSpeedEngine(Module):
 
         # if torch.distributed.get_rank() == 0:
         log_dist(
-            f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
+            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
             ranks=[0])
 
     @instrument_w_nvtx
@@ -2390,7 +2402,7 @@ class DeepSpeedEngine(Module):
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
-        pp_rank = torch.distributed.get_rank(group=self.optimizer.dp_process_group)
+        pp_rank = dist.get_rank(group=self.optimizer.dp_process_group)
         bf16_mode = self.bfloat16_enabled()
         return self._get_rank_zero_ckpt_name(checkpoints_path,
                                              tag,
@@ -2407,7 +2419,7 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization_partition_weights():
             filename = "zero_pp_rank_{}".format(
-                torch.distributed.get_rank(group=self.optimizer.dp_process_group))
+                dist.get_rank(group=self.optimizer.dp_process_group))
             ckpt_name = os.path.join(
                 checkpoints_path,
                 str(tag),
@@ -2776,8 +2788,8 @@ class DeepSpeedEngine(Module):
             bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
             max_bhash = bhash.clone()
             min_bhash = bhash.clone()
-            dist.all_reduce(max_bhash, op=torch.distributed.ReduceOp.MAX)
-            dist.all_reduce(min_bhash, op=torch.distributed.ReduceOp.MIN)
+            dist.all_reduce(max_bhash, op=dist.ReduceOp.MAX)
+            dist.all_reduce(min_bhash, op=dist.ReduceOp.MIN)
             valid = all(min_bhash == bhash) and all(max_bhash == bhash)
             msg = (
                 f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across "
@@ -2812,7 +2824,7 @@ class DeepSpeedEngine(Module):
 
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
-        torch.distributed.barrier()
+        dist.barrier()
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
@@ -2840,7 +2852,7 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        torch.distributed.barrier()
+        dist.barrier()
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
@@ -3130,7 +3142,7 @@ class DeepSpeedEngine(Module):
         if not self.zero_optimization_partition_weights():
             raise ValueError("this function requires ZeRO-3 mode")
 
-        state_dict = OrderedDict() if torch.distributed.get_rank() == 0 else None
+        state_dict = OrderedDict() if dist.get_rank() == 0 else None
         shared_params = {}
 
         def get_layer_state_dict(module, prefix=""):
@@ -3140,7 +3152,7 @@ class DeepSpeedEngine(Module):
             with deepspeed.zero.GatheredParameters(list(
                     module.parameters(recurse=False)),
                                                    modifier_rank=0):
-                if torch.distributed.get_rank() == 0:
+                if dist.get_rank() == 0:
                     # handle params
                     for name, param in module.named_parameters(recurse=False):
                         if param is None:
@@ -3219,7 +3231,7 @@ class DeepSpeedEngine(Module):
         else:
             state_dict = self.module.state_dict()
 
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
             torch.save(state_dict, path)

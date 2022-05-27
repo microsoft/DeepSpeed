@@ -24,8 +24,8 @@ from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .module_inject import replace_transformer_layer, revert_transformer_layer
 
-from .utils import log_dist
-from .utils.distributed import init_distributed
+from .utils import logger
+from .comm.comm import init_distributed
 
 from .runtime import zero
 from .runtime import DeepSpeedOptimizer, ZeROOptimizer
@@ -109,11 +109,11 @@ def initialize(args=None,
         * ``lr_scheduler``: Wrapped lr scheduler if user ``lr_scheduler`` is passed, or
           if ``lr_scheduler`` specified in JSON configuration. Otherwise ``None``.
     """
-    log_dist("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
+    logger.info("DeepSpeed info: version={}, git-hash={}, git-branch={}".format(
         __version__,
         __git_hash__,
-        __git_branch__),
-             ranks=[0])
+        __git_branch__))
+
     assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
