@@ -1,18 +1,20 @@
-''' DeepSpeed Communication Backend
+''' DeepSpeed Communication Backend.
 
-# DS Backends -- Direct C/Ops
- - NCCL -- future default
- - MPI -- extra performance
- - RCCL -- maybe for AMD
- - GLOO -- N/A -- use via torch
+In the future, directly use NCCL/MPI/Gloo/etc without requiring torch.distributed. Simply wrap torch.distributed for now.
 
-# via torch.distributed
- - T-NCCL -- default -- will work for AMD as well
- - T-GLOO -- choose for cpu/testing without GPUs
- - T-MPI -- works but not commonly used
+# Custom DS Backends -- Direct C/Ops
+ - NCCL -- [EXPERIMENTAL]
+ - MPI -- [EXPERIMENTAL]
+ - RCCL -- [EXPERIMENTAL]
+ - GLOO -- [EXPERIMENTAL]
+
+# DS backend wrapper for torch.distributed [DEFAULT]
+ - T-NCCL -- [DEFAULT]
+ - T-GLOO
+ - T-MPI
 '''
-''' DS Backend can be the base class
-     -- NcclBackend, MpiBackend, and TorchBackend are the main subclasses we expect for now
+''' Backend is the base class
+     -- NcclBackend, MpiBackend, and TorchBackend are the main subclasses. TorchBackend is the only officially supported backend for now.
 '''
 
 
