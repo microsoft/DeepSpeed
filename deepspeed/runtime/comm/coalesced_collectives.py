@@ -7,9 +7,7 @@ from typing import List
 import torch
 from torch import Tensor
 import deepspeed.comm as dist
-# TODO QUENTIN: Add process group class to comm
-#from deepspeed.comm import ProcessGroup
-#import torch.distributed
+# NOTE: Use torch.distributed's ProcessGroup class until we have our own.
 from torch.distributed import ProcessGroup
 import torch.nn.functional
 
@@ -17,7 +15,7 @@ from deepspeed.utils import instrument_w_nvtx
 from deepspeed.utils.logging import logger
 
 
-def torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+def _torch_reduce_scatter_fn(input_tensor: Tensor, output_tensor: Tensor, group):
     return instrument_w_nvtx(dist.reduce_scatter_fn)(output_tensor,
                                                      input_tensor,
                                                      group=group)
@@ -82,9 +80,9 @@ def reduce_scatter_coalesced(
         world_sz)
 
     # batched reduce-scatter call
-    torch_reduce_scatter_fn(tensor_partition_flat_buffer,
-                            tensor_partition_buffer_for_each_rank[this_rank],
-                            group)
+    _torch_reduce_scatter_fn(tensor_partition_flat_buffer,
+                             tensor_partition_buffer_for_each_rank[this_rank],
+                             group)
 
     # reverse procedure of the interleaving done previously, done on the
     # result of the batched reduce-scatter

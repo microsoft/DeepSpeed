@@ -89,9 +89,11 @@ import deepspeed.comm as dist
 # Based on https://github.com/pytorch/pytorch/pull/40762
 class _AllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: Any,
-                group: torch.distributed.ProcessGroup,
-                input: Tensor) -> Tensor:  # type: ignore
+    def forward(
+            ctx: Any,
+            # TODO: replace with DS process group
+            group: torch.distributed.ProcessGroup,
+            input: Tensor) -> Tensor:  # type: ignore
         ctx.group = group
         input = input.contiguous()
         output = torch.empty_like(input)

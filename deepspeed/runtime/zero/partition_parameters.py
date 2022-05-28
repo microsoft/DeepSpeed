@@ -43,7 +43,7 @@ param_count = 0
 partitioned_param_data_shape = [0]
 
 
-def dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
     return instrument_w_nvtx(dist.allgather_fn)(output_tensor,
                                                 input_tensor,
                                                 group=group,
@@ -831,7 +831,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
-                handle = dist_allgather_fn(
+                handle = _dist_allgather_fn(
                     param.ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
                     self.ds_process_group,
@@ -858,9 +858,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 instrument_w_nvtx(torch.cat)(
                     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                     out=partitions[self.rank])
-                handle = dist_allgather_fn(partitions[self.rank],
-                                           flat_tensor,
-                                           self.ds_process_group)
+                handle = _dist_allgather_fn(partitions[self.rank],
+                                            flat_tensor,
+                                            self.ds_process_group)
 
                 return AllGatherCoalescedHandle(
                     allgather_handle=handle,

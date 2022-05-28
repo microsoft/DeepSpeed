@@ -1,3 +1,5 @@
+#NOTE: This work is still experimental. Please do not run custom NCCL/MPI deepspeed comm backends until they are fully supported.
+
 import torch
 from .builder import CUDAOpBuilder
 

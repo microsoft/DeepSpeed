@@ -215,7 +215,6 @@ class DeepSpeedEngine(Module):
         self.moe_layers = []
         self._step_applied = False
         self._global_grad_norm = None
-        # TODO: Use a new ds_config flag for it. Hardcode for now
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         global dist
@@ -233,6 +232,7 @@ class DeepSpeedEngine(Module):
             self.config = config_params
 
         from deepspeed.comm import supported_torch_version
+        # This supported_torch_version check is for torch1.2 compatibility only
         if supported_torch_version:
             dist.init_distributed(dist_backend=self.dist_backend,
                                   dist_init_required=dist_init_required)
