@@ -2371,8 +2371,19 @@ class DeepSpeedEngine(Module):
                     moe_layer_id += 1
 
     def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
+        is_pipe_parallel = isinstance(self.module, PipelineModule)
+
         if custom_load_fn:
             custom_load_fn(src=state_dict, dst=self.module)
+        elif is_pipe_parallel and self.has_moe_layers:
+            # Load pipeline layers
+            self.load_module_state_dict(state_dict=None,
+                                        strict=False,
+                                        custom_load_fn=custom_load_fn)
+            # Load MoE layers
+            self.load_module_state_dict(state_dict=state_dict,
+                                        strict=False,
+                                        custom_load_fn=custom_load_fn)
         else:
             self.module.load_state_dict(state_dict, strict=strict)
 
@@ -2574,14 +2585,9 @@ class DeepSpeedEngine(Module):
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
 
-        if is_pipe_parallel and self.has_moe_layers:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=False,
-                                        custom_load_fn=custom_load_fn)
-        else:
-            self.load_module_state_dict(state_dict=checkpoint['module'],
-                                        strict=load_module_strict,
-                                        custom_load_fn=custom_load_fn)
+        self.load_module_state_dict(state_dict=checkpoint['module'],
+                                    strict=load_module_strict,
+                                    custom_load_fn=custom_load_fn)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
