@@ -71,9 +71,6 @@ mpi_backend = None
 # This should be set here so all rank/size information from the launcher can be propagated
 from deepspeed.comm.utils import *
 
-ds_world_rank = get_world_rank_from_launcher()
-ds_world_size = get_world_size_from_launcher()
-
 # For compatibility with torch distributed's init_process_group, we shall retain the signature from PyTorch code.
 # DeepSpeed NCCL/MPI backend may not need all these params as we will have our own implementation.
 # Please read full torch.distributed API docs from https://pytorch.org/docs/stable/distributed.html
@@ -93,7 +90,7 @@ def init_deepspeed_backend(ds_backend):
             else:
                 nccl_backend.initialize()
         else:
-            nccl_backend = NcclBackend(rank=ds_world_rank, size=ds_world_size)
+            nccl_backend = NcclBackend()
             cdb = nccl_backend
             use_ds_backend = True
     elif ds_backend == 'mpi':
@@ -394,8 +391,6 @@ def init_distributed(dist_backend="nccl",
         init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
     '''
     global cdb
-    global ds_world_rank
-    global ds_world_size
 
     if dist_init_required is None:
         dist_init_required = cdb is None or not cdb.is_initialized()
@@ -427,10 +422,10 @@ def init_distributed(dist_backend="nccl",
             assert isinstance(timeout, timedelta)
 
             if cdb is not None and cdb.is_initialized():
-                if ds_world_rank == 0:
+                if int(os.getenv('RANK', '0')) == 0:
                     utils.logger.info('Distributed backend already initialized')
             else:
-                if ds_world_rank == 0:
+                if int(os.getenv('RANK', '0')) == 0:
                     utils.logger.info('Initializing TorchBackend in DeepSpeed')
                 # Create a torch backend object, initialize torch distributed, and assign to cdb
                 cdb = TorchBackend(dist_backend, timeout, init_method)

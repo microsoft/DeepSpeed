@@ -72,5 +72,4 @@ def get_world_size_from_launcher():
     if size is None:
         size = 1
 
-    print(f"set world size to {size}")
     return int(size)
