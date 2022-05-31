@@ -72,7 +72,7 @@ def query(task, model):
         "text-generation",
     ),
 )
-@pytest.mark.parametrize("model_family", ("bert", "roberta", "gpt2", "gpt_neo", "gptj"))
+@pytest.mark.parametrize("model_family", ("bert", "roberta", "gpt2", "gpt_neo"))
 def test_model_task_inject(task, model, query, dtype=torch.float):
     if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
         pytest.skip("DS inference injection doesn't work well on older torch versions")
