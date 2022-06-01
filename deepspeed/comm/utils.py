@@ -88,3 +88,19 @@ def get_default_args(func):
         for k,
         v in signature.parameters.items() if v.default is not inspect.Parameter.empty
     }
+
+
+# We need this hacky function since torch doesn't consistently name or place the input tensor args
+def get_tensor_position(func):
+    sig_params = inspect.signature(func).parameters
+    arg = None
+    # most colls
+    if 'tensor' in sig_params:
+        arg = 'tensor'
+    # reduce scatter coll
+    elif 'input_list' in sig_params:
+        arg = 'input_list'
+    # all_to_all and torch multiGPU colls
+    elif 'input_tensor_list' in sig_params:
+        arg = 'input_tensor_list'
+    return list(sig_params).index(arg)

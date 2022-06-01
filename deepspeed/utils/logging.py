@@ -44,25 +44,25 @@ class LoggerFactory:
         return logger_
 
 
-def convert_size(size_bytes, is_bw=False):
+# Helper function to pretty-print message sizes
+def convert_size(size_bytes):
     if size_bytes == 0:
         return "0B"
-    if is_bw:
-        size_name = ("B/s",
-                     "KB/s",
-                     "MB/s",
-                     "GB/s",
-                     "TB/s",
-                     "PB/s",
-                     "EB/s",
-                     "ZB/s",
-                     "YB/s")
-    else:
-        size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
     i = int(math.floor(math.log(size_bytes, 1024)))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return "%s %s" % (s, size_name[i])
+
+
+# Helper function to calculate algbw and busbw.
+# See https://gist.github.com/jeffra/b5e80466b4c86be00ea3b6f130fb7a36 and https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
+def calc_bw(msg_size, lat):
+    import deepspeed.comm as dist
+    n = dist.get_world_size()
+    algbw = ((msg_size * 8 * 2) / lat) / 1e6
+    busbw = algbw * ((n - 1) / n)
+    return algbw, busbw
 
 
 class CommsLogger:
@@ -70,47 +70,55 @@ class CommsLogger:
         self.comms_dict = {}
         self.verbose = verbose
 
+    # Add log entry
     def append(self, record_name, latency, msg_size):
         import deepspeed.comm as dist
+        algbw, busbw = calc_bw(msg_size, latency)
         if record_name in self.comms_dict.keys():
+            # If this comm_op has already been logged with this message size, just add to existing record
             if msg_size in self.comms_dict[record_name].keys():
-                #print(self.comms_dict[record_name])
                 self.comms_dict[record_name][msg_size][0] += 1
-                self.comms_dict[record_name][msg_size][1] += latency
-                #self.comms_dict[record_name][msg_size][2] += msg_size / latency
+                self.comms_dict[record_name][msg_size][1].append(latency)
+                self.comms_dict[record_name][msg_size][2].append(algbw)
+                self.comms_dict[record_name][msg_size][3].append(busbw)
+            # If this is a new message size for this comm_op, add new record under existing comm_op
             else:
-                #self.comms_dict[record_name][msg_size] = [1, latency, msg_size/latency]
-                self.comms_dict[record_name][msg_size] = [1, latency]
+                self.comms_dict[record_name][msg_size] = [1, [latency], [algbw], [busbw]]
         else:
-            #self.comms_dict[record_name] = {msg_size: [1, latency, msg_size / latency]}
-            self.comms_dict[record_name] = {msg_size: [1, latency]}
+            # Create entirely new record
+            self.comms_dict[record_name] = {msg_size: [1, [latency], [algbw], [busbw]]}
+        # If verbose, print every comm op
+        # TODO: Add to tensorboard
         if self.verbose:
-            log_str = f"rank={dist.get_rank()} time (ms)" + " | {}: {:.2f}".format(
-                record_name,
+            n = dist.get_world_size()
+            log_str = f"rank={dist.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(
                 latency)
-            log_str += " | msg size " + convert_size(msg_size)
-            log_str += " | BW " + convert_size(round(msg_size / latency, 2), is_bw=True)
+            log_str += " | msg size: " + convert_size(msg_size)
+            log_str += " | algbw (Gbps): {:.2f} ".format(algbw)
+            log_str += " | busbw (Gbps): {:.2f} ".format(busbw)
             log_dist(log_str, [0])
 
+    # Print summary at end of iteration, epoch, or training
     def log_all(self):
-        print(self.comms_dict)
+        from deepspeed.utils.timer import trim_mean
+        print(
+            f"{'Comm. Op': <20}{'Message Size': <20}{'Count': <20}{'Total Latency(ms)': <20}{'Avg Latency(ms)': <20}{'tput_avg (Gbps)': <20}{'busbw_avg (Gbps)': <20}"
+        )
         for record_name in self.comms_dict.keys():
-            #print(record_name + ":")
-            print(
-                "Message Size\t\t\t\tCount\t\t\t\tTotal Latency(us)\t\t\t\tAvg Latency(us)\t\t\t\tAvg BW"
-            )
+            print(record_name)
             for msg_size, vals in self.comms_dict[record_name].items():
+                # vals[0] is the count for each msg size
                 count = vals[0]
-                total_lat = round(vals[1], 2)
-                avg_lat = round(total_lat / count, 2)
-                avg_bw = round((msg_size * count) / total_lat, 2)
-                #entry_str += str(msg_size) + '\t' * (len(msg_size))
-                #entry_str += "\t\t\t\t\t" + str(vals[0]) + "\t\t\t\t" + str(vals[1]) + "\t\t\t" + str(vals[2])
+                # vals[1] is a list of latency records for each msg size
+                total_lat = sum(vals[1])
+                # vals[2] and vals[3] are the lists of algbw and busbw, respectively
+                # Get rid of outliers when we print
+                avg_lat = trim_mean(vals[1], 0.1)
+                avg_algbw = trim_mean(vals[2], 0.1)
+                avg_busbw = trim_mean(vals[3], 0.1)
                 print(
-                    convert_size(msg_size) + "\t\t\t\t\t" + str(count) + "\t\t\t\t" +
-                    str(total_lat) + "\t\t\t" + str(avg_lat) + "\t\t\t" +
-                    convert_size(avg_bw,
-                                 is_bw=True))
+                    f"{' ': <20}{convert_size(msg_size): <20}{count: <20}{total_lat: <20.2f}{avg_lat: <20.2f}{avg_algbw: <20.2f}{avg_busbw: <20.2f}"
+                )
 
 
 logger = LoggerFactory.create_logger(name="DeepSpeed", level=logging.INFO)

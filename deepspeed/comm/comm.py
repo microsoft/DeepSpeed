@@ -89,12 +89,6 @@ from deepspeed.comm.utils import *
 # - Op profiling (e.g. profile a specific all_reduce op)
 prof_all = False
 prof_op = None
-comms_log_verbose = True
-
-
-def set_comms_log_verbose(setting):
-    global comms_log_verbose
-    comms_log_verbose = setting
 
 
 def start_profiling_comms():
@@ -120,25 +114,24 @@ def stop_profiling_comms():
 
 # Logging wrapper for timing ops
 def timed_op(func):
+    #TODO QUENTIN: move global prof options to config
     global prof_all
-    #TODO QUENTIN: move these to config
-    global comms_log_verbose
 
     def log_wrapper(*args, **kwargs):
         # Need func args and their defaults
         func_args = get_default_args(func)
         func_args.update(kwargs)
-        #print(args)
+        tensor_pos = get_tensor_position(func)
         # Get size of tensor to be communicated
-        #if 'tensor' in func_args.keys():
-        #    msg_size = func_args['tensor'].element_size() * func_args['tensor'].nelement()
-        ## Tensor-list collectives need summed
-        #elif 'tensor_list' in func_args.keys():
-        #    msg_size = sum(x.element_size() * x.nelement() for x in func_args['tensor_list'])
-        ## Set to zero for ops that don't send data (e.g. barrier)
-        #else:
-        #    msg_size = 0
-        msg_size = args[0].element_size() * args[0].nelement()
+        # set msg_size = 0 for barrier
+        msg_size = 0
+        # Sum of tensor sizes for list colls
+        if type(args[tensor_pos]) is list:
+            msg_size = sum(x.element_size() * x.nelement()
+                           for x in func_args['tensor_list'])
+        # msg_size = tensor size for most colls
+        else:
+            msg_size = args[tensor_pos].element_size() * args[tensor_pos].nelement()
         # Start the timer if arg is set or it's a default
         if func_args['prof'] or prof_all or func_args['log_name'] == prof_op:
             timers(func_args['log_name']).start()
@@ -150,16 +143,6 @@ def timed_op(func):
                 timers(func_args['log_name']).stop()
                 # need temp var since 'elapsed' resets events
                 time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
-                #if True:
-                #    log_str = f"rank={cdb.get_rank()} time (ms)" + " | {}: {:.2f}".format(
-                #             func_args['log_name'],
-                #             time_elapsed)
-                #    log_str += " | msg size {:.2f}".format(msg_size)
-                #    log_str += " | BW {:.2f}".format(msg_size/time_elapsed)
-                #    log_dist(log_str, [0])
-                #timers.log([func_args['log_name']], reset=False)
-                #timers(func_args['log_name']).stop()
-                #comms_logger.append(func_args['log_name'], timers(func_args['log_name']).elapsed(reset=False), msg_size)
                 comms_logger.append(func_args['log_name'], time_elapsed, msg_size)
 
     return log_wrapper
@@ -454,7 +437,7 @@ def reduce(tensor,
 
 @timed_op
 def reduce_scatter(output,
-                   tensor_list,
+                   input_list,
                    op=ReduceOp.SUM,
                    group=None,
                    async_op=False,
@@ -462,7 +445,7 @@ def reduce_scatter(output,
                    log_name='reduce_scatter'):
     global cdb
     return cdb.reduce_scatter(output=output,
-                              input_list=tensor_list,
+                              input_list=input_list,
                               op=op,
                               group=group,
                               async_op=async_op)
