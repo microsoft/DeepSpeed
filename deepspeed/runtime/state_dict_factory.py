@@ -47,7 +47,8 @@ class SDLoaderBase(ABC):
              quantize=False,
              quantize_bits=8,
              quantize_groups=64,
-             mlp_extra_grouping=True):
+             mlp_extra_grouping=True,
+             load_func=None):
         self.module_key = module_key
         num_ckpt = len(self.ckpt_list)
         idx = mp_rank * num_ckpt // mp_world_size
@@ -74,12 +75,14 @@ class SDLoaderBase(ABC):
             idx = 0
 
         load_path = self.ckpt_list[idx]
+        if load_func is None:
+            load_func = torch.load
 
         merge_count = 1
         if num_ckpt == mp_world_size:
             assert os.path.exists(load_path)
             #logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
-            sd = torch.load(load_path, map_location=lambda storage, loc: storage)
+            sd = load_func(load_path, map_location=lambda storage, loc: storage)
 
             if quantize:
                 quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,

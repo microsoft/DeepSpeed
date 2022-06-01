@@ -70,6 +70,14 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
+try:
+    import torch_nebula
+except ImportError:
+    logger.warning(
+        "Warning: cannot find the package of torch-nebula. Will use the legacy way for checkpoint management."
+    )
+    torch_nebula = None
+
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
 DeepSpeedOptimizerCallable = \
@@ -181,6 +189,10 @@ class DeepSpeedEngine(Module):
         config=None,
         config_params=None,
         dont_change_device=False,
+        enable_nebula=None,
+        disable_nebula_load=False,
+        nebula_load_path=None,
+        nebula_config_params=None,
     ):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -315,6 +327,10 @@ class DeepSpeedEngine(Module):
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
+        self.enable_nebula = enable_nebula and not torch_nebula is None
+        self.nebula_config_params = nebula_config_params
+        self.nebula_load_path = nebula_load_path
+        self.disable_nebula_load = disable_nebula_load
         self._configure_checkpointing(dist_init_required)
 
         if self.eigenvalue_enabled():
@@ -798,6 +814,9 @@ class DeepSpeedEngine(Module):
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
+        # Start nebula services and wait for ready.
+        if self.enable_nebula:
+            torch_nebula.init(**self.nebula_config_params)
 
         dp_rank = self.global_rank
         if self.mpu:
@@ -2304,7 +2323,8 @@ class DeepSpeedEngine(Module):
         dist.all_gather(tensor_list, value, group=dp_group)
         return tensor_list
 
-    def module_state_dict(self, destination=None, prefix="", keep_vars=False):
+    def module_state_dict(self, destination=None, prefix='', keep_vars=False, tag=None):
+        logger.info(f"get module state dict for {tag}")
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
@@ -2315,7 +2335,9 @@ class DeepSpeedEngine(Module):
                             old_moe_load,
                             model=None,
                             mpu=None,
-                            num_experts=1):
+                            num_experts=1,
+                            load_func=None,
+                            enable_nebula=False):
         if old_moe_load:
             expp_rank = groups._get_expert_data_parallel_rank(
                 groups._get_max_expert_size_name())
@@ -2325,12 +2347,13 @@ class DeepSpeedEngine(Module):
                     groups._get_max_expert_size_name())
             for local_expert_id in range(num_local_experts):
                 global_expert_id = expp_rank * num_local_experts + local_expert_id
-                expert_state_dict = torch.load(DeepSpeedEngine._get_expert_ckpt_name(
+                expert_state_dict = load_func(DeepSpeedEngine._get_expert_ckpt_name(
                     checkpoint_path,
                     -1, # -1 means ignore layer_id
                     global_expert_id,
                     tag,
-                    mpu),
+                    mpu,
+                    enable_nebula=enable_nebula),
                     map_location=torch.device('cpu'))
 
                 # Updating global -> local expert ids
@@ -2351,13 +2374,14 @@ class DeepSpeedEngine(Module):
                     # loop all local_experts
                     for local_expert_id in range(num_local_experts):
                         global_expert_id = expp_rank * num_local_experts + local_expert_id
-                        expert_state_dict = torch.load(
+                        expert_state_dict = load_func(
                             DeepSpeedEngine._get_expert_ckpt_name(
                                 checkpoint_path,
                                 moe_layer_id,
                                 global_expert_id,
                                 tag,
-                                mpu),
+                                mpu,
+                                enable_nebula=enable_nebula),
                             map_location=torch.device('cpu'))
                         # print(expert_state_dict.keys())
                         # Updating global -> local expert ids
@@ -2370,10 +2394,15 @@ class DeepSpeedEngine(Module):
                         state_dict.update(expert_state_dict)
                     moe_layer_id += 1
 
-    def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
+    def load_module_state_dict(self,
+                               state_dict,
+                               strict=True,
+                               custom_load_fn=None,
+                               tag=None):
         if custom_load_fn:
             custom_load_fn(src=state_dict, dst=self.module)
         else:
+            logger.info(f"load module state dict for {tag}")
             self.module.load_state_dict(state_dict, strict=strict)
 
     def _get_zero_ckpt_prefix(self, dp_rank, bf16_mode):
@@ -2386,12 +2415,11 @@ class DeepSpeedEngine(Module):
                                  dp_rank,
                                  bf16_mode):
         file_prefix = self._get_zero_ckpt_prefix(dp_rank, bf16_mode=bf16_mode)
-        zero_ckpt_name = os.path.join(
+        filename += f'{file_prefix}_mp_rank_{mp_rank:02d}_optim_states.pt'
+        return filename if self.enable_nebula else os.path.join(
             checkpoints_path,
             str(tag),
-            f"{file_prefix}_mp_rank_{mp_rank:02d}_optim_states.pt",
-        )
-        return zero_ckpt_name
+            filename)
 
     def _get_zero_ckpt_name(self, checkpoints_path, tag):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
@@ -2403,54 +2431,60 @@ class DeepSpeedEngine(Module):
                                              pp_rank,
                                              bf16_mode)
 
-    def _get_ckpt_name(self, checkpoints_path, tag, mp_placeholder=None):
+    def _get_ckpt_name(self,
+                       checkpoints_path,
+                       tag,
+                       mp_placeholder=None,
+                       disable_nebula_load=False):
+        enable_nebula_load = not disable_nebula_load and self.enable_nebula
+
         if mp_placeholder is not None:
             mp_rank_str = mp_placeholder
         else:
             mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
             mp_rank_str = f"{mp_rank:02d}"
 
+        filename = ""
         if self.zero_optimization_partition_weights():
-            filename = "zero_pp_rank_{}".format(
+            pp_rank = "zero_pp_rank_{}".format(
                 torch.distributed.get_rank(group=self.optimizer.dp_process_group))
-            ckpt_name = os.path.join(
-                checkpoints_path,
-                str(tag),
-                f"{filename}_mp_rank_{mp_rank_str}_model_states.pt",
-            )
+            filename = f"{pp_rank}_mp_rank_{mp_rank_str}_model_states.pt",
+
         else:
-            ckpt_name = os.path.join(
-                checkpoints_path,
-                str(tag),
-                "mp_rank_" + mp_rank_str + "_model_states.pt",
-            )
-        return ckpt_name
+            filename = "mp_rank_" + mp_rank_str + "_model_states.pt"
+        return filename if enable_nebula_load else os.path.join(
+            checkpoints_path,
+            str(tag),
+            filename)
 
     def _get_optimizer_ckpt_name(self, checkpoints_path, tag, expp_rank):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
-        ckpt_name = os.path.join(
+        filename = f'expp_rank_{expp_rank}_mp_rank_{mp_rank:02d}_optim_states.pt'
+        return filename if self.enable_nebula else os.path.join(
             checkpoints_path,
             str(tag),
-            f'expp_rank_{expp_rank}_mp_rank_{mp_rank:02d}_optim_states.pt')
-        return ckpt_name
+            filename)
 
     @staticmethod
-    def _get_expert_ckpt_name(checkpoints_path, layer_id, expert_id, tag, mpu=None):
+    def _get_expert_ckpt_name(checkpoints_path,
+                              layer_id,
+                              expert_id,
+                              tag,
+                              mpu=None,
+                              enable_nebula=False):
         mp_rank = 0 if mpu is None else mpu.get_model_parallel_rank()
+        filename = ''
+        tag = '' if tag is None else str(tag),
         if layer_id <= -1:
             # Used to support old checkpoint loading
-            ckpt_name = os.path.join(
-                checkpoints_path,
-                '' if tag is None else str(tag),
-                f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt')
+            filename = f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
         else:
             # Used to support new checkpoint loading
-            ckpt_name = os.path.join(
-                checkpoints_path,
-                '' if tag is None else str(tag),
-                f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
-            )
-        return ckpt_name
+            filename = f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
+        # TODO:static method to self
+        return filename if enable_nebula else os.path.join(checkpoints_path,
+                                                           str(tag),
+                                                           filename)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         # It is required that (checkpoints_path, tag) are consistent among all ranks.
@@ -2494,29 +2528,42 @@ class DeepSpeedEngine(Module):
         before ``load_checkpoint()``.
         """
 
-        if tag is None:
-            latest_path = os.path.join(load_dir, "latest")
-            if os.path.isfile(latest_path):
-                with open(latest_path, "r") as fd:
-                    tag = fd.read().strip()
-            else:
-                logger.warning(
-                    f"Unable to find latest file at {latest_path}, if trying to load latest "
-                    "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
-                )
+        latest_checkpoint = None
+        if self.enable_nebula:
+            latest_checkpoint = torch_nebula.get_latest_checkpoint(
+                persist_path=self.nebula_load_path)
+            if latest_checkpoint is None or (latest_checkpoint is not None
+                                             and latest_checkpoint.tag == ''):
+                logger.warning(f"Unable to find latest valid checkpoint from Nebula!")
                 return None, None
+            else:
+                tag = latest_checkpoint.tag
+        else:
+            if tag is None:
+                latest_path = os.path.join(load_dir, "latest")
+                if os.path.isfile(latest_path):
+                    with open(latest_path, "r") as fd:
+                        tag = fd.read().strip()
+                else:
+                    logger.warning(
+                        f"Unable to find latest file at {latest_path}, if trying to load latest "
+                        "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+                    )
+                    return None, None
 
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
-            self.optimizer.checkpoint_event_prologue()
+            self.optimizer.checkpoint_event_prologue()  # TODO
 
+        load_func = latest_checkpoint.load if latest_checkpoint is not None and self.enable_nebula else torch.load
         load_path, client_states = self._load_checkpoint(load_dir,
                                                          tag,
                                                          load_module_strict=load_module_strict,
                                                          load_optimizer_states=load_optimizer_states,
                                                          load_lr_scheduler_states=load_lr_scheduler_states,
                                                          load_module_only=load_module_only,
-                                                         custom_load_fn=custom_load_fn)
+                                                         custom_load_fn=custom_load_fn,
+                                                         load_func=load_func)
 
         load_zero_checkpoint = self.zero_optimization() or self.bfloat16_enabled()
         if load_zero_checkpoint and load_path is not None:
@@ -2539,19 +2586,22 @@ class DeepSpeedEngine(Module):
                          load_optimizer_states=True,
                          load_lr_scheduler_states=True,
                          load_module_only=False,
-                         custom_load_fn=None):
-
-        from deepspeed.runtime.state_dict_factory import SDLoaderFactory
-
-        ckpt_list = self._get_all_ckpt_names(load_dir, tag)
-        sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
-
+                         custom_load_fn=None,
+                         load_func=None):
         is_pipe_parallel = isinstance(self.module, PipelineModule)
+        if self.enable_nebula:
+            load_path = self._get_ckpt_name(load_dir, tag)
+            checkpoint = load_func(load_path, map_location=lambda storage, loc: storage)
+        else:
+            from deepspeed.runtime.state_dict_factory import SDLoaderFactory
 
-        mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
-        load_path, checkpoint, _ = sd_loader.load(
-            self.mp_world_size, mp_rank, is_pipe_parallel=is_pipe_parallel
-        )
+            ckpt_list = self._get_all_ckpt_names(load_dir, tag)
+            sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
+
+            mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
+            load_path, checkpoint, _ = sd_loader.load(
+                self.mp_world_size, mp_rank, is_pipe_parallel=is_pipe_parallel, load_func=load_func
+            )
 
         if checkpoint is None:
             return None, None
@@ -2571,10 +2621,13 @@ class DeepSpeedEngine(Module):
                                                 old_moe_load=old_moe_load,
                                                 model=self.module,
                                                 mpu=self.mpu,
-                                                num_experts=self.num_experts)
+                                                num_experts=self.num_experts,
+                                                load_func=load_func,
+                                                enable_nebula=self.enable_nebula)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict,
+                                    tag=tag,
                                     custom_load_fn=custom_load_fn)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
@@ -2588,8 +2641,8 @@ class DeepSpeedEngine(Module):
                 largest_group_name = groups._get_max_expert_size_name()
                 expp_rank = groups._get_expert_parallel_rank(largest_group_name)
                 optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
-                optim_checkpoint = torch.load(optim_load_path,
-                                              map_location=torch.device('cpu'))
+                optim_checkpoint = load_func(optim_load_path,
+                                             map_location=torch.device('cpu'))
             else:
                 optim_checkpoint = checkpoint
 
@@ -2690,7 +2743,7 @@ class DeepSpeedEngine(Module):
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
         )
         logger.info(
-            f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
+            f"{'Nebula' if self.enable_nebula else ''} loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
         )
         return True
 
@@ -2714,7 +2767,7 @@ class DeepSpeedEngine(Module):
     def _get_all_zero_checkpoint_names(self, load_dir, tag, bf16_mode):
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
         zero_ckpt_names = self._get_mp_rank_zero_checkpoint_names(
-            load_dir=load_dir,
+            load_dir='./' if self.enable_nebula else load_dir,
             tag=tag,
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
@@ -2740,27 +2793,30 @@ class DeepSpeedEngine(Module):
         return zero_ckpt_names
 
     def _get_all_zero_checkpoint_state_dicts(self, zero_ckpt_names):
+        ckpt = torch_nebula.get_latest_checkpoint(
+            persist_path=self.nebula_load_path) if self.enable_nebula else None
+        load_func = ckpt.load if ckpt is not None and self.enable_nebula else torch.load
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
             # Fully load state for current rank
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
-                _state = torch.load(ckpt_name, map_location='cpu')
+                _state = load_func(ckpt_name, map_location='cpu')
             else:
                 _state = {OPTIMIZER_STATE_DICT: None}
             zero_sd_list.append(_state)
 
         zero_optimizer_sd = [sd[OPTIMIZER_STATE_DICT] for sd in zero_sd_list]
         logger.info(
-            f"successfully read {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
+            f"{'[Nebula]' if self.enable_nebula else ''} successfully loaded {len(zero_optimizer_sd)} ZeRO state_dicts for rank {self.global_rank}"
         )
         return zero_optimizer_sd
 
     def _get_all_zero_checkpoints(self, load_dir, tag):
         for bf16_mode in [self.bfloat16_enabled(), not self.bfloat16_enabled()]:
             zero_ckpt_names = self._get_all_zero_checkpoint_names(
-                load_dir,
+                './' if self.enable_nebula else load_dir,
                 tag,
                 bf16_mode)
             if zero_ckpt_names is not None:
@@ -2844,6 +2900,11 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
 
+        # commit the nebula save
+        if self.enable_nebula:
+            checkpoint = torch_nebula.Checkpoint(tag, -2)
+            checkpoint.commit()
+
         # Save latest checkpoint tag
         torch.distributed.barrier()
         if save_latest and self.global_rank == 0:
@@ -2914,8 +2975,17 @@ class DeepSpeedEngine(Module):
                         moe_layer_id,
                         global_expert_id,
                         tag,
-                        self.mpu)
-                    torch.save(expert_state_dict, moe_save_path)
+                        self.mpu,
+                        enable_nebula=self.enable_nebula)
+
+                    logger.info(
+                        f"{'Nebula' if self.enable_nebula else ''} Saving model expert {global_expert_id} checkpoint: {moe_save_path}"
+                    )
+                    if self.enable_nebula:
+                        checkpoint = torch_nebula.Checkpoint(tag, -2)
+                        checkpoint.save(moe_save_path, expert_state_dict)
+                    else:
+                        torch.save(expert_state_dict, moe_save_path)
                 moe_layer_id += 1
 
         self._curr_ckpt_path = os.path.join(save_dir, tag)
@@ -2967,10 +3037,16 @@ class DeepSpeedEngine(Module):
                 self.num_experts
             }
             state.update(client_state)
-            logger.info(f'Saving model checkpoint: {save_path}')
-            with open(save_path, 'wb') as fd:
-                torch.save(state, fd)
-                fd.flush()
+            logger.info(
+                f"{'Nebula' if self.enable_nebula else ''} Saving model checkpoint: {save_path}"
+            )
+            if self.enable_nebula:
+                checkpoint = torch_nebula.Checkpoint(tag, -2)
+                checkpoint.save(save_path, state)
+            else:
+                with open(save_path, 'wb') as fd:
+                    torch.save(state, fd)
+                    fd.flush()
         self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
@@ -3004,7 +3080,7 @@ class DeepSpeedEngine(Module):
         # then instead just returns None.
         self._curr_ckpt_path = os.path.join(save_dir, tag)
         zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
-        state = dict(module=self.module_state_dict(),
+        state = dict(module=self.module_state_dict(tag=tag),
                      buffer_names=self._get_buffer_names(),
                      optimizer=self.optimizer.state_dict()
                      if self.optimizer and not zero_optimizer_state else None,
@@ -3022,8 +3098,15 @@ class DeepSpeedEngine(Module):
                      ds_version=version)
         state.update(client_state)
 
-        log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
-        torch.save(state, save_path)
+        log_dist(
+            message=
+            f"{'Nebula' if self.enable_nebula else ''} Saving model checkpoint: {save_path}",
+            ranks=[0])
+        if self.enable_nebula:
+            checkpoint = torch_nebula.Checkpoint(tag, -2)
+            checkpoint.save(save_path, state)
+        else:
+            torch.save(state, save_path)
         self._curr_save_path = None
 
     def _get_buffer_names(self):
@@ -3106,13 +3189,19 @@ class DeepSpeedEngine(Module):
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        ds_config=self.config,
                        ds_version=version)
-        with open(zero_checkpoint_name, 'wb') as fd:
-            torch.save(zero_sd, fd)
-            fd.flush()
+        if self.enable_nebula:
+            checkpoint = torch_nebula.Checkpoint(tag, -2)
+            checkpoint.save(zero_checkpoint_name, zero_sd)
+        else:
+            with open(zero_checkpoint_name, 'wb') as fd:
+                torch.save(zero_sd, fd)
+                fd.flush()
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
         ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
-        logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
+        logger.info(
+            f"{'Nebula' if self.enable_nebula else ''} zero checkpoint saved {zero_checkpoint_name}"
+        )
 
     def _zero3_consolidated_16bit_state_dict(self):
         """

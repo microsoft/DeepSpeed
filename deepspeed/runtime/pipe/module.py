@@ -1,3 +1,4 @@
+from faulthandler import disable
 import os
 import glob
 import enum
@@ -16,6 +17,14 @@ from .. import utils as ds_utils
 from ..activation_checkpointing import checkpointing
 from .topology import PipeDataParallelTopology, PipelineParallelGrid
 from deepspeed.runtime.state_dict_factory import SDLoaderFactory
+
+try:
+    import torch_nebula
+except ImportError:
+    logger.warning(
+        "Warning: cannot find the package of torch-nebula. Will use the legacy way for checkpoint management."
+    )
+    torch_nebula = None
 
 
 class PipelineError(Exception):
@@ -563,7 +572,7 @@ class PipelineModule(nn.Module):
         ckpt_files.sort()
         return ckpt_files
 
-    def save_state_dict(self, save_dir):
+    def save_state_dict(self, save_dir, tag=None, enable_nebula=False):
         if self._grid.data_parallel_id != 0:
             return
 
@@ -584,9 +593,19 @@ class PipelineModule(nn.Module):
                 {k: v.clone()
                  for k,
                  v in orig_state_dict.items()})
-            torch.save(final_state_dict, model_ckpt_path)
+            if enable_nebula and torch_nebula is not None:
+                checkpoint = torch_nebula.Checkpoint(tag, -2)
+                checkpoint.save(os.path.basename(model_ckpt_path), final_state_dict)
+            else:
+                torch.save(final_state_dict, model_ckpt_path)
 
-    def load_state_dir(self, load_dir, strict=True):
+    def load_state_dir(self,
+                       load_dir,
+                       strict=True,
+                       enable_nebula=False,
+                       tag=None,
+                       disable_nebula_load=False,
+                       nebula_load_path=None):
         for idx, layer in enumerate(self.forward_funcs):
             # Functions, etc. will not have state_dicts
             if not hasattr(layer, 'load_state_dict'):
@@ -594,13 +613,25 @@ class PipelineModule(nn.Module):
 
             # get all checkpoint files for the layer.
             model_ckpt_list = self.ckpt_layer_path_list(load_dir, idx)
-            mp_rank = self._grid.get_slice_parallel_rank()
-            mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0)
-            load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
+            if not disable_nebula_load and enable_nebula and torch_nebula is not None:
+                latest_checkpoint = torch_nebula.get_latest_checkpoint(
+                    persist_path=nebula_load_path)
+                for model_ckpt_path in model_ckpt_list:
+                    partition_name = os.path.basename(model_ckpt_path)
+                    assert (latest_checkpoint.tag == tag)
+                    checkpoint = latest_checkpoint.load(partition_name,
+                                                        map_location=lambda storage,
+                                                        loc: storage)
+                    layer.load_state_dict(checkpoint, strict=strict)
+            else:
+                mp_rank = self._grid.get_slice_parallel_rank()
+                mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            layer.load_state_dict(checkpoint)
+                sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0)
+                load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
+
+                layer.load_state_dict(checkpoint)
 
             # if self._grid.data_parallel_id == 0:
             #     logger.info(
