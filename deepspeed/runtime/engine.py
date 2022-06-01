@@ -356,6 +356,10 @@ class DeepSpeedEngine(Module):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
+    def destroy(self):
+        if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
+            self.optimizer.destroy()
+
     def _get_model_parameters(self):
         if self.autotuning_profile_model_info():
             self.autotuning_model_info = {}
@@ -2177,7 +2181,8 @@ class DeepSpeedEngine(Module):
 
             grad_data = param.grad.data
             if param_name in self.sparse_tensor_module_names or grad_data.is_sparse:
-                grad_data = SparseTensor(grad_data)
+                # Call param.grad without data to avoid problem with setting of updated grads
+                grad_data = SparseTensor(param.grad)
 
             if is_moe_param(param):
                 expert_grads[param.group_name].append(grad_data)
