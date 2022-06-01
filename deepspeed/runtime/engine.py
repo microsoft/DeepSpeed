@@ -2499,7 +2499,9 @@ class DeepSpeedEngine(Module):
         """
 
         if tag is None:
-            latest_path = os.path.join(load_dir, "latest")
+            latest_tag = "latest_universal" if self.load_universal_checkpoint(
+            ) else "latest"
+            latest_path = os.path.join(load_dir, latest_tag)
             if os.path.isfile(latest_path):
                 with open(latest_path, "r") as fd:
                     tag = fd.read().strip()
@@ -2679,7 +2681,7 @@ class DeepSpeedEngine(Module):
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
         if self.load_universal_checkpoint():
             zero_sd_list = None
-            checkpoint_folder = f'{os.path.join(load_dir, tag)}_universal'
+            checkpoint_folder = f'{os.path.join(load_dir, tag)}'
         else:
             checkpoint_folder = None
             zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)

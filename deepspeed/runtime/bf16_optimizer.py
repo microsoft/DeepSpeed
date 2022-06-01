@@ -144,7 +144,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
             # full_hp_param = target
             # print(f"After {full_hp_param.shape=}")
 
-            # In the absense of data passed from the user wrt new padded vocab specific to tp degree
+            # In the absence of data passed from the user wrt new padded vocab specific to tp degree
             # we can again derive that data by reverse engineering the target shapes like so:
             target = torch.zeros(self.shape[0] * tp_world_size, self.shape[1])
             # this relies on making sure the padding was stripped when the universal checkpoint was created
@@ -660,6 +660,7 @@ class BF16_Optimizer(ZeROOptimizer):
         return self.optimizer.param_groups
 
     def _load_hp_checkpoint_state(self, checkpoint_dir):
+        checkpoint_dir = os.path.join(checkpoint_dir, "zero")
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
         tp_world_size = self.mpu.get_slice_parallel_world_size()
         #            get_model_parallel_world_size()
