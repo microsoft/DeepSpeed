@@ -204,7 +204,7 @@ class PartitionedParameterCoordinator:
                 self.__trace_mode = ZeRoTraceMode.COMPLETE
                 print_rank_0(
                     f"completed record trace: {[m.id for m in self.__submodule_order]}",
-                    force=False)
+                    force=True)
             else:
                 # Enable trace recording for next forward/backward pass
                 self.__trace_mode = ZeRoTraceMode.RECORD
@@ -251,10 +251,12 @@ class PartitionedParameterCoordinator:
             }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
-
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
+        self._dump_param_ids('params_to_fetch',
+                             current_submodule.id,
+                             [p.ds_id for p in params_to_fetch])
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -346,6 +348,9 @@ class PartitionedParameterCoordinator:
 
                 for param in params_to_prefetch:
                     debug_rank0(f"-prefetch: {param.ds_summary()}")
+                self._dump_param_ids('params_to_prefetch',
+                                     current_submodule.id,
+                                     [p.ds_id for p in params_to_prefetch])
                 self.__all_gather_params(params_to_prefetch)
 
                 if self.__prefetch_nvme:
