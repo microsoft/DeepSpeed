@@ -41,15 +41,19 @@ def run(local_rank):
         if trial > 2:
             tputs.append(tput)
             busbws.append(busbw)
+        #dist.log_summary(['all'])
 
     local_avg = sum(tputs) / len(tputs)
     local_avg_bb = sum(busbws) / len(busbws)
     t = torch.tensor([local_avg / 1e9, local_avg_bb / 1e9], device='cuda')
-    dist.all_reduce(t)
+    dist.all_reduce(t, log_name='sum_allreduce')
+    #dist.log_summary(['all'])
+    #dist.all_reduce(t)
     tput_avg = t[0] / dist.get_world_size()
     busbw_avg = t[1] / dist.get_world_size()
     if dist.get_rank() == 0:
         print('tput_avg (Gbps):', tput_avg.item(), 'busbw_avg (Gbps):', busbw_avg.item())
+        dist.log_summary_new()
 
 
 def init_processes(fn, backend='nccl', use_deepspeed=False):
@@ -57,6 +61,8 @@ def init_processes(fn, backend='nccl', use_deepspeed=False):
     dist.init_distributed(backend)
     print(f'local rank = {dist.get_local_rank()}')
     torch.cuda.set_device(dist.get_local_rank())
+    dist.start_profiling_comms()
+    dist.set_comms_log_verbose(True)
     fn(dist.get_local_rank())
 
 

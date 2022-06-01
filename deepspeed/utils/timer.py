@@ -7,10 +7,12 @@ from deepspeed.elasticity.elasticity import compute_elastic_config
 import time
 import torch
 from numpy import mean
-from deepspeed.utils.logging import log_dist
-import deepspeed.comm as dist
+#from deepspeed.utils.logging import log_dist
+import deepspeed.utils.logging
+#import deepspeed.comm as dist
 
-from deepspeed.utils import logger
+#from deepspeed.utils import logger
+#import deepspeed.utils.logger
 
 try:
     import psutil
@@ -45,7 +47,7 @@ class SynchronizedWallClockTimer:
 
         def start(self):
             """Start the timer."""
-            assert not self.started_, f"{self.name} timer has already been started"
+            assert not self.started_, f"{self.name_} timer has already been started"
             self.start_event = torch.cuda.Event(enable_timing=True)
             self.start_event.record()
             self.started_ = True
@@ -93,6 +95,9 @@ class SynchronizedWallClockTimer:
     def __init__(self):
         self.timers = {}
 
+    def get_timers(self):
+        return self.timers
+
     def __call__(self, name):
         if name not in self.timers:
             self.timers[name] = self.Timer(name)
@@ -113,7 +118,7 @@ class SynchronizedWallClockTimer:
     def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
         """Log a group of timers."""
         assert normalizer > 0.0
-        string = f"rank={dist.get_rank()} time (ms)"
+        string = f"rank={deepspeed.comm.get_rank()} time (ms)"
         for name in names:
             if name in self.timers:
                 elapsed_time = (self.timers[name].elapsed(reset=reset) / normalizer)
@@ -142,6 +147,7 @@ class ThroughputTimer:
         monitor_memory=False,
         logging_fn=None,
     ):
+        from deepspeed.utils import logger
         self.start_time = 0
         self.end_time = 0
         self.started = False
@@ -232,6 +238,8 @@ def trim_mean(data, trim_percent):
     """
     assert trim_percent >= 0.0 and trim_percent <= 1.0
     n = len(data)
+    if len(data) == 0:
+        return 0
     data.sort()
     k = int(round(n * (trim_percent)))
     return mean(data[k:n - k])

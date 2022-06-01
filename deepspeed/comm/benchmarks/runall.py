@@ -1,12 +1,14 @@
 import torch
-from deepspeed.ops.comm import initialize_nccl
+#from deepspeed.ops.comm import initialize_nccl
 
 import time
 import argparse
 import os
+import deepspeed
+import deepspeed.comm as dist
 
 # dist is global and functions can set them to switch between deepspeed and torch
-dist = None
+#dist = None
 
 DEBUG = False
 
@@ -20,7 +22,7 @@ def collective_fn(collective, input, output, async_op):
     if collective == "alltoall":
         dist.all_to_all_single(output, input, async_op=async_op)
     elif collective == "allreduce":
-        dist.all_reduce(input, async_op=async_op)
+        dist.all_reduce(input, async_op=async_op, prof=False)
     else:
         print_rank_0(f"collective {collective} not supported yet")
         exit(0)
@@ -106,7 +108,7 @@ def test_correctness(input, output, args, collective):
 
 
 def init_distributed(backend):
-    global dist
+    #global dist
     import torch.distributed as dist
     import deepspeed
     deepspeed.init_distributed(dist_backend=backend)
@@ -115,16 +117,13 @@ def init_distributed(backend):
 
 
 def init_deepspeed_comm(backend):
-    import deepspeed
-    import os
     rank = os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK')
     size = os.environ.get('OMPI_COMM_WORLD_SIZE')
     ranks = [i for i in range(int(size))]
-    initialize_nccl()
-    global dist
-    import deepspeed.comm as dist
+    dist.init_distributed('nccl')
+    torch.cuda.set_device(rank)
     print(f"setting deepspeed backend to {backend}")
-    dist.set_backend(backend)
+    #dist.set_backend(backend)
     #comm = create_comm(ranks)
 
 

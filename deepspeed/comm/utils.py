@@ -1,6 +1,7 @@
 import os
 import enum
 import torch
+import inspect
 
 
 def older_torch():
@@ -64,6 +65,7 @@ def get_world_rank_from_launcher():
 def get_world_size_from_launcher():
     # DeepSpeed launcher will set it so get from there
     size = os.environ.get('WORLD_SIZE')
+    rank = os.environ.get('RANK')
 
     if size is None:
         size = os.environ.get('OMPI_COMM_WORLD_SIZE')
@@ -72,4 +74,17 @@ def get_world_size_from_launcher():
     if size is None:
         size = 1
 
+    if rank == 0:
+        print(f"set world size to {size}")
+
     return int(size)
+
+
+def get_default_args(func):
+    signature = inspect.signature(func)
+    #print(signature)
+    return {
+        k: v.default
+        for k,
+        v in signature.parameters.items() if v.default is not inspect.Parameter.empty
+    }
