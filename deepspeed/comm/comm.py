@@ -45,12 +45,7 @@ class ReduceOp(Enum):
     UNUSED = 8
 
 
-# TODO: Add ProcessGroup class
-#class ProcessGroup(object):
-#   def
-
 from deepspeed.comm.backend import Backend
-from deepspeed.comm.nccl import NcclBackend
 from deepspeed.comm.torch import TorchBackend
 
 import deepspeed.utils as utils
@@ -84,15 +79,7 @@ def init_deepspeed_backend(ds_backend):
     global use_ds_backend
 
     if ds_backend == 'nccl':
-        if nccl_backend is not None:
-            if nccl_backend.is_initialized():
-                cdb = nccl_backend
-            else:
-                nccl_backend.initialize()
-        else:
-            nccl_backend = NcclBackend()
-            cdb = nccl_backend
-            use_ds_backend = True
+        utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
     elif ds_backend == 'mpi':
         utils.logger.warn("MPI backend in DeepSpeed not yet implemented")
     elif ds_backend == 'gloo':
