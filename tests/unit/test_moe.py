@@ -187,6 +187,6 @@ def test_moe_pipeline_parallel(tmpdir):
         dp_group_ranks = model.mpu.topology().get_axis_comm_lists("data")
         assert dp_group_ranks == [[0, 1], [2, 3]]
         assert ep_group_ranks == [(0, 1), (2, 3)]
-        assert expert_dp_group_ranks == [(0), (1), (2), (3)]
+        assert expert_dp_group_ranks == [(0, ), (1, ), (2, ), (3, )]
 
     _test_moe(args=args, hidden_dim=hidden_dim)
