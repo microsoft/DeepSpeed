@@ -157,7 +157,7 @@ def _create_expert_and_data_parallel(ep_size):
                 _EXPERT_PARALLEL_GROUP[group_name] = group
 
 
-def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel_size_):
+def _get_expert_parallel_ranks(world_size, slice_parallel_size_, expert_parallel_size_):
     """Generate expert parallel and expert data parallel group ranks list.
 
         Example - E + M + D parallel
@@ -171,29 +171,51 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
 
     Args:
         world_size (int): Distributed world size.
-        model_parallel_size_ (int): Model parallel group size.
+        slice_parallel_size_ (int): Slice parallel group size.
         expert_parallel_size_ (int): Expert parallel group size.
 
     Returns:
         Expert parallel group ranks and Expert data parallel group ranks list.
     """
-    _ensure_divisibility(world_size, model_parallel_size_)
-    dp_world_size = world_size // model_parallel_size_
+    _ensure_divisibility(world_size, slice_parallel_size_)
+    dp_world_size = world_size // slice_parallel_size_
     _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     # Generate data parallel groups
     data_parallel_groups = []
-    dp_group_size = model_parallel_size_
+    dp_group_size = slice_parallel_size_
     for i in range(dp_group_size):
         data_parallel_groups.append(list(range(i, world_size, dp_group_size)))
 
+    return _get_expert_parallel_ranks_from_dp_groups(data_parallel_groups,
+                                                     dp_world_size,
+                                                     expert_parallel_size_)
+
+
+def _get_expert_parallel_ranks_from_dp_groups(data_parallel_groups,
+                                              dp_world_size,
+                                              expert_parallel_size):
+    """Get expert parallel group and expert data parallel group ranks list from data parallel groups.
+
+        e.g. data_parallel_groups = [[0,2,4,6,8,10,12,14], [1,3,5,7,9,11,13,15]]
+        expert_parallel_groups = [[0,2,4,6], [8,10,12,14],            [1,3,5,7], [9,11,13,15]]
+        expert_data_parallel_groups = [[0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[7,15]]
+
+    Args:
+        data_parallel_groups (List[List]): Data parallel groups. e.g. [[0,2,4,6,8,10,12,14], [1,3,5,7,9,11,13,15]]
+        dp_world_size (int): Data parallel world size.
+        expert_parallel_size (int): Expert parallel group size.
+
+    Returns:
+        Expert parallel group ranks and Expert data parallel group ranks list.
+    """
     expert_parallel_groups = []
     expert_data_parallel_groups = []
     for dp_ranks in data_parallel_groups:
         # partition of expert parallel groups, e.g. [0,2,4,6], [8,10,12,14]
         part_ep_groups = []
-        for i in range(0, dp_world_size, expert_parallel_size_):
-            part_ep_groups.append(dp_ranks[i:i + expert_parallel_size_])
+        for i in range(0, dp_world_size, expert_parallel_size):
+            part_ep_groups.append(dp_ranks[i:i + expert_parallel_size])
         expert_parallel_groups.extend(part_ep_groups)
 
         # zip part_ep_groups get expert data parallel ranks, e.g [0,8],[2,10],[4,12],[6,14]
@@ -221,14 +243,17 @@ def _create_expert_data_and_model_parallel(expert_group_name,
         expert_data_parallel_group = [0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[7,15]
     """
     assert torch.distributed.is_initialized(), "torch distributed is not initialized"
-    model_parallel_size_ = mpu.get_slice_parallel_world_size()
+    slice_parallel_size_ = mpu.get_slice_parallel_world_size()
 
     world_size = torch.distributed.get_world_size()
     rank = torch.distributed.get_rank()
     dp_world_size = mpu.get_data_parallel_world_size()
+    pp_world_size = mpu.get_pipe_parallel_world_size() if hasattr(
+        mpu,
+        "get_pipe_parallel_world_size") else 1
 
     log_dist(
-        f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
+        f"Creating deepspeed groups with model parallel size {slice_parallel_size_}, pipeline parallel size {pp_world_size}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
         [0])
 
     global _EXPERT_PARALLEL_GROUP, _EXPERT_DATA_PARALLEL_GROUP
@@ -239,8 +264,16 @@ def _create_expert_data_and_model_parallel(expert_group_name,
     # Only create groups if they don't already exist
     # Need to check conditions outside the group creation loop because of the way torch.dist group creation works
     if expert_group_name not in _EXPERT_DATA_PARALLEL_GROUP and expert_group_name not in _EXPERT_PARALLEL_GROUP:
-        expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks(
-            world_size, model_parallel_size_, expert_parallel_size_)
+        if pp_world_size > 1:
+            expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks_from_dp_groups(
+                data_parallel_groups=mpu.topology().get_axis_comm_lists("data"),
+                dp_world_size=mpu.get_data_parallel_world_size(),
+                expert_parallel_size=expert_parallel_size_,
+            )
+        else:
+            expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks(
+                world_size, slice_parallel_size_, expert_parallel_size_)
+
         for ranks in expert_parallel_groups:
             group = torch.distributed.new_group(ranks)
             if rank in list(ranks):

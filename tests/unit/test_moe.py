@@ -1,5 +1,6 @@
 import torch
 import pytest
+import torch.distributed as dist
 
 import deepspeed
 from deepspeed.runtime.pipe.topology import PipeModelDataParallelTopology
@@ -124,11 +125,11 @@ def test_moe_pipeline_parallel(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 16
 
-    @distributed_test(world_size=[4])
+    @distributed_test(world_size=[8])
     def _test_moe(args, hidden_dim):
         pp_world_size = 2
         tp_world_size = 1
-        dp_world_size = 2
+        dp_world_size = 4
         ep_size = 2
 
         topo = PipeModelDataParallelTopology(num_pp=pp_world_size,
@@ -143,7 +144,6 @@ def test_moe_pipeline_parallel(tmpdir):
                                               model=model,
                                               optimizer=optimizer,
                                               dist_init_required=False)
-        #dist_init_required=False -- parameterize to True/False?
 
         num_steps = 3
         total_samples = num_steps * model.micro_batch_size * model.micro_batches
@@ -155,5 +155,38 @@ def test_moe_pipeline_parallel(tmpdir):
         model.set_dataloader(data_loader)
         for _ in range(num_steps):
             model.train_batch()
+
+        # Verify expert parallel ranks
+        def get_expert_parallel_ranks():
+            from deepspeed.utils import groups
+            ep_group = list(groups._EXPERT_PARALLEL_GROUP.values())[0]
+            expert_dp_group = list(groups._EXPERT_DATA_PARALLEL_GROUP.values())[0]
+
+            # collect expert parallel group ranks
+            my_ep_group_ranks = [None] * ep_group.size()
+            dist.all_gather_object(my_ep_group_ranks, dist.get_rank(), group=ep_group)
+            my_expert_dp_group_ranks = [None] * expert_dp_group.size()
+            dist.all_gather_object(my_expert_dp_group_ranks,
+                                   dist.get_rank(),
+                                   group=expert_dp_group)
+
+            # gather all expert parallel group ranks
+            ep_group_ranks = [None] * dist.get_world_size()
+            dist.all_gather_object(ep_group_ranks, my_ep_group_ranks)
+            expert_dp_group_ranks = [None] * dist.get_world_size()
+            dist.all_gather_object(expert_dp_group_ranks, my_expert_dp_group_ranks)
+
+            # deduplicate
+            ep_group_ranks = sorted(list(set([tuple(item) for item in ep_group_ranks])))
+            expert_dp_group_ranks = sorted(
+                list(set([tuple(item) for item in expert_dp_group_ranks])))
+
+            return ep_group_ranks, expert_dp_group_ranks
+
+        ep_group_ranks, expert_dp_group_ranks = get_expert_parallel_ranks()
+        dp_group_ranks = model.mpu.topology().get_axis_comm_lists("data")
+        assert dp_group_ranks == [[0, 1, 2, 3], [4, 5, 6, 7]]
+        assert ep_group_ranks == [(0, 1), (2, 3), (4, 5), (6, 7)]
+        assert expert_dp_group_ranks == [(0, 2), (1, 3), (4, 6), (5, 7)]
 
     _test_moe(args=args, hidden_dim=hidden_dim)
