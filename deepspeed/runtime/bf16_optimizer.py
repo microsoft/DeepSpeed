@@ -12,6 +12,7 @@ from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
 from deepspeed.git_version_info import version
+from deepspeed.runtime.swap_tensor.partitioned_param_swapper import print_rank_0
 from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      clip_tensors_by_global_norm,
                                      DummyOptim,
@@ -154,6 +155,9 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
         full_param_numel = full_hp_param.numel()
         tp_slice_numel = self.numel()
+        if key == FP32_WEIGHT_KEY and 'word_embeddings.weight' in folder:
+            print_rank_0(f'{full_hp_param[:10]=}', force=True)
+
 
         assert full_param_numel == tp_world_size * tp_slice_numel, \
             f'Loading {ckpt_file} full param numel {full_param_numel} != tensor slice numel {tp_slice_numel} * tp_world_size {tp_world_size}'
@@ -503,11 +507,6 @@ class BF16_Optimizer(ZeROOptimizer):
 
         self.update_lp_params()
 
-        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
-                             dp_process_group=self.real_dp_process_group,
-                             start_alignment_factor=self.nccl_start_alignment_factor,
-                             allgather_bucket_size=self.allgather_bucket_size)
-
         self.clear_hp_grads()
         self.step_count += 1
 
@@ -574,6 +573,14 @@ class BF16_Optimizer(ZeROOptimizer):
         for i, (bf16_partitions, fp32_partition) in enumerate(zip(self.bf16_partitioned_groups, self.fp32_groups_flat_partition)):
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             bf16_partitions[partition_id].data.copy_(fp32_partition.data)
+            # print_rank_0(f'update_lp_params {i=} {partition_id=}', force=True)
+            # if i == 0:
+            #     print_rank_0(f'{fp32_partition[:10]=}', force=True)
+
+        all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
+                             dp_process_group=self.real_dp_process_group,
+                             start_alignment_factor=self.nccl_start_alignment_factor,
+                             allgather_bucket_size=self.allgather_bucket_size)
 
     def clear_hp_grads(self):
         for flat_gradients in self.fp32_groups_gradients_flat:
