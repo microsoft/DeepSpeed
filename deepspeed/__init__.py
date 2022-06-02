@@ -64,7 +64,7 @@ def initialize(args=None,
                enable_nebula=None,
                disable_nebula_load=False,
                nebula_load_path=None,
-               nebula_config_params=None):):
+               nebula_config_params=None):
     """Initialize the DeepSpeed Engine.
 
     Arguments:
