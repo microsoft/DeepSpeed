@@ -2124,7 +2124,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        checkpoint_folder=None):
         r"""Loading ZeRO checkpoint
 
         Arguments:
