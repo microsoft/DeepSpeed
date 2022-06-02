@@ -125,11 +125,11 @@ def test_moe_pipeline_parallel(tmpdir):
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 16
 
-    @distributed_test(world_size=[8])
+    @distributed_test(world_size=[4])
     def _test_moe(args, hidden_dim):
         pp_world_size = 2
         tp_world_size = 1
-        dp_world_size = 4
+        dp_world_size = 2
         ep_size = 2
 
         topo = PipeModelDataParallelTopology(num_pp=pp_world_size,
@@ -185,8 +185,8 @@ def test_moe_pipeline_parallel(tmpdir):
 
         ep_group_ranks, expert_dp_group_ranks = get_expert_parallel_ranks()
         dp_group_ranks = model.mpu.topology().get_axis_comm_lists("data")
-        assert dp_group_ranks == [[0, 1, 2, 3], [4, 5, 6, 7]]
-        assert ep_group_ranks == [(0, 1), (2, 3), (4, 5), (6, 7)]
-        assert expert_dp_group_ranks == [(0, 2), (1, 3), (4, 6), (5, 7)]
+        assert dp_group_ranks == [[0, 1], [2, 3]]
+        assert ep_group_ranks == [(0, 1), (2, 3)]
+        assert expert_dp_group_ranks == [(0), (1), (2), (3)]
 
     _test_moe(args=args, hidden_dim=hidden_dim)
