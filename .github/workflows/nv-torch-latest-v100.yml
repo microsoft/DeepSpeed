@@ -22,9 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: environment
+      - name: set pip
         run: |
           echo "PIP=$(which pip)" >> $GITHUB_ENV
+
+      - name: environment
+        run: |
           nvidia-smi
           which python
           python --version
