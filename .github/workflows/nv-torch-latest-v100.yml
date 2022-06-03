@@ -19,14 +19,12 @@ jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu113, v100]
 
-    env:
-      PIP: $(which pip)
-
     steps:
       - uses: actions/checkout@v2
 
       - name: environment
         run: |
+          echo "PIP=$(which pip)" >> $GITHUB_ENV
           nvidia-smi
           which python
           python --version
