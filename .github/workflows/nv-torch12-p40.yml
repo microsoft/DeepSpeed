@@ -34,7 +34,7 @@ jobs:
           which nvcc
           nvcc --version
           sudo ${{ env.PIP }} uninstall --yes torch torchvision
-          sudo ${{ env.PIP }} torch==1.2.0 torchvision==0.4.0
+          sudo ${{ env.PIP }} install torch==1.2.0 torchvision==0.4.0
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
