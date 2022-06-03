@@ -7,7 +7,7 @@ from deepspeed.elasticity.elasticity import compute_elastic_config
 import time
 import torch
 from numpy import mean
-#from deepspeed.utils.logging import log_dist
+from deepspeed.utils.logging import log_dist
 import deepspeed.utils.logging
 #import deepspeed.comm as dist
 

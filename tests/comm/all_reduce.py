@@ -25,6 +25,7 @@ def timed_allreduce(mat):
     n = dist.get_world_size()
     busbw = (size / duration) * (2 * (n - 1) / n) * 8
     #print("busbw: %f Gbps" % (busbw / 1e9))
+    #dist.log_summary_new()
     return tput, busbw
 
 

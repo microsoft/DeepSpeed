@@ -174,6 +174,8 @@ def log_summary(coll_names, ranks=None):
 
 
 def log_summary_new():
+    #global cdb
+    #cdb.barrier()
     comms_logger.log_all()
 
 
