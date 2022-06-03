@@ -17,7 +17,7 @@ The wheel will be located at: dist/*.whl
 import os
 import sys
 import shutil
-import subprocess
+#import subprocess
 import warnings
 from setuptools import setup, find_packages
 from setuptools.command import egg_info
@@ -118,13 +118,13 @@ if BUILD_OP_DEFAULT:
     assert torch_available, "Unable to pre-compile ops without torch installed. Please install torch before attempting to pre-compile ops."
 
 
-def command_exists(cmd):
-    if sys.platform == "win32":
-        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
-        return result.wait() == 1
-    else:
-        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
-        return result.wait() == 0
+#def command_exists(cmd):
+#    if sys.platform == "win32":
+#        result = subprocess.Popen(f'{cmd}', stdout=subprocess.PIPE, shell=True)
+#        return result.wait() == 1
+#    else:
+#        result = subprocess.Popen(f'type {cmd}', stdout=subprocess.PIPE, shell=True)
+#        return result.wait() == 0
 
 
 def op_envvar(op_name):
@@ -171,18 +171,18 @@ print(f'Install Ops={install_ops}')
 # Write out version/git info
 git_hash_cmd = "git rev-parse --short HEAD"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
-if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
-    try:
-        result = subprocess.check_output(git_hash_cmd, shell=True)
-        git_hash = result.decode('utf-8').strip()
-        result = subprocess.check_output(git_branch_cmd, shell=True)
-        git_branch = result.decode('utf-8').strip()
-    except subprocess.CalledProcessError:
-        git_hash = "unknown"
-        git_branch = "unknown"
-else:
-    git_hash = "unknown"
-    git_branch = "unknown"
+#if command_exists('git') and 'DS_BUILD_STRING' not in os.environ:
+#    try:
+#        result = subprocess.check_output(git_hash_cmd, shell=True)
+#        git_hash = result.decode('utf-8').strip()
+#        result = subprocess.check_output(git_branch_cmd, shell=True)
+#        git_branch = result.decode('utf-8').strip()
+#    except subprocess.CalledProcessError:
+#        git_hash = "unknown"
+#        git_branch = "unknown"
+#else:
+git_hash = "unknown"
+git_branch = "unknown"
 
 
 def create_dir_symlink(src, dest):
