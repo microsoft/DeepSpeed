@@ -111,7 +111,61 @@ def test_pr_moe(tmpdir, ep_size, use_residual):
               use_residual=use_residual)
 
 
-def test_moe_pipeline_parallel(tmpdir):
+@pytest.mark.parametrize(
+    "pp_world_size, tp_world_size, dp_world_size, ep_size, num_experts, dp_group_ranks_should_be, ep_group_ranks_should_be, expert_dp_group_ranks_should_be",
+    [
+        (2,
+         1,
+         2,
+         2,
+         8,
+         [[0,
+           1],
+          [2,
+           3]],
+         [(0,
+           1),
+          (2,
+           3)],
+         [(0,
+           ),
+          (1,
+           ),
+          (2,
+           ),
+          (3,
+           )]),
+        (2,
+         1,
+         2,
+         1,
+         8,
+         [[0,
+           1],
+          [2,
+           3]],
+         [(0,
+           ),
+          (1,
+           ),
+          (2,
+           ),
+          (3,
+           )],
+         [(0,
+           1),
+          (2,
+           3)]),
+    ])
+def test_moe_pipeline_parallel(tmpdir,
+                               pp_world_size,
+                               tp_world_size,
+                               dp_world_size,
+                               ep_size,
+                               num_experts,
+                               dp_group_ranks_should_be,
+                               ep_group_ranks_should_be,
+                               expert_dp_group_ranks_should_be):
     if not required_torch_version():
         pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
 
@@ -126,12 +180,16 @@ def test_moe_pipeline_parallel(tmpdir):
     hidden_dim = 16
 
     @distributed_test(world_size=[4])
-    def _test_moe(args, hidden_dim):
-        pp_world_size = 2
-        tp_world_size = 1
-        dp_world_size = 2
-        ep_size = 2
-
+    def _test_moe(args,
+                  hidden_dim,
+                  pp_world_size,
+                  tp_world_size,
+                  dp_world_size,
+                  ep_size,
+                  num_experts,
+                  dp_group_ranks_should_be,
+                  ep_group_ranks_should_be,
+                  expert_dp_group_ranks_should_be):
         topo = PipeModelDataParallelTopology(num_pp=pp_world_size,
                                              num_mp=tp_world_size,
                                              num_dp=dp_world_size)
@@ -185,8 +243,19 @@ def test_moe_pipeline_parallel(tmpdir):
 
         ep_group_ranks, expert_dp_group_ranks = get_expert_parallel_ranks()
         dp_group_ranks = model.mpu.topology().get_axis_comm_lists("data")
-        assert dp_group_ranks == [[0, 1], [2, 3]]
-        assert ep_group_ranks == [(0, 1), (2, 3)]
-        assert expert_dp_group_ranks == [(0, ), (1, ), (2, ), (3, )]
+        assert dp_group_ranks == dp_group_ranks_should_be
+        assert ep_group_ranks == ep_group_ranks_should_be
+        assert expert_dp_group_ranks == expert_dp_group_ranks_should_be
 
-    _test_moe(args=args, hidden_dim=hidden_dim)
+    _test_moe(
+        args=args,
+        hidden_dim=hidden_dim,
+        pp_world_size=pp_world_size,
+        tp_world_size=tp_world_size,
+        dp_world_size=dp_world_size,
+        ep_size=ep_size,
+        num_experts=num_experts,
+        dp_group_ranks_should_be=dp_group_ranks_should_be,
+        ep_group_ranks_should_be=ep_group_ranks_should_be,
+        expert_dp_group_ranks_should_be=expert_dp_group_ranks_should_be,
+    )
