@@ -12,6 +12,9 @@ jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu113, v100]
 
+    env:
+      PIP: $(which pip)
+
     steps:
       - uses: actions/checkout@v2
 
@@ -22,7 +25,8 @@ jobs:
           python --version
           which nvcc
           nvcc --version
-          pip install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cu113
+          sudo $PIP uninstall --yes torch torchvision
+          sudo $PIP install --pre torch torchvision --extra-index-url https://download.pytorch.org/whl/nightly/cu113
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -33,11 +37,13 @@ jobs:
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          pip install .
+          sudo $PIP uninstall --yes transformers
+          sudo $PIP install .
 
       - name: Install deepspeed
         run: |
-          pip install .[dev,1bit,autotuning,sparse_attn]
+          sudo $PIP uninstall --yes deepspeed
+          sudo $PIP install .[dev,1bit,autotuning,sparse_attn]
           ds_report
 
       - name: Unit tests

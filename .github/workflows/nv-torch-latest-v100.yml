@@ -19,6 +19,9 @@ jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu113, v100]
 
+    env:
+      PIP: $(which pip)
+
     steps:
       - uses: actions/checkout@v2
 
@@ -29,7 +32,6 @@ jobs:
           python --version
           which nvcc
           nvcc --version
-          PIP=$(which pip)
           sudo $PIP uninstall --yes torch torchvision
           sudo $PIP install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113
           python -c "import torch; print('torch:', torch.__version__, torch)"
@@ -42,13 +44,11 @@ jobs:
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          PIP=$(which pip)
           sudo $PIP uninstall --yes transformers
           sudo $PIP install .
 
       - name: Install deepspeed
         run: |
-          PIP=$(which pip)
           sudo $PIP uninstall --yes deepspeed
           sudo $PIP install .[dev,1bit,autotuning,sparse_attn]
           ds_report
