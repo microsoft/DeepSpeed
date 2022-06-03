@@ -280,6 +280,7 @@ setup(name='deepspeed',
           'bin/ds',
           'bin/ds_ssh',
           'bin/ds_report',
+          'bin/dsr',
           'bin/ds_elastic'
       ],
       classifiers=[
