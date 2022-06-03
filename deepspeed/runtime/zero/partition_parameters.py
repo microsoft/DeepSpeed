@@ -43,11 +43,12 @@ param_count = 0
 partitioned_param_data_shape = [0]
 
 
-def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group, log_name):
     return instrument_w_nvtx(dist.allgather_fn)(output_tensor,
                                                 input_tensor,
                                                 group=group,
-                                                async_op=True)
+                                                async_op=True,
+                                                log_name=log_name)
 
 
 def print_rank_0(message, debug=False, force=False):
@@ -317,7 +318,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     fn_to_apply(module_to_apply_fn_to)
 
                     for param in params_to_apply_fn_to:
-                        dist.broadcast(param.data, 0, group=param.ds_process_group)
+                        dist.broadcast(param.data,
+                                       0,
+                                       group=param.ds_process_group,
+                                       log_name='broadcast_post_init_method')
 
                     for param in params_to_apply_fn_to:
                         param.partition(has_been_updated=True)
@@ -737,7 +741,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 )
 
                 if param.is_cuda:
-                    dist.broadcast(param, 0, self.ds_process_group)
+                    dist.broadcast(param,
+                                   0,
+                                   self.ds_process_group,
+                                   log_name='broadcast_internal_post_init_method')
                 else:
                     if dist.get_rank() == 0:
                         logger.warn(f"param `{name}` in {module.__class__.__name__} "
@@ -835,7 +842,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     param.ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
                     self.ds_process_group,
-                )
+                    'all_gather_coalesced_lenparam_1')
                 param.data = param_buffer.narrow(0,
                                                  0,
                                                  param.ds_numel).view(param.ds_shape).to(
@@ -860,7 +867,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     out=partitions[self.rank])
                 handle = _dist_allgather_fn(partitions[self.rank],
                                             flat_tensor,
-                                            self.ds_process_group)
+                                            self.ds_process_group,
+                                            'all_gather_coalesced_lenparam_n')
 
                 return AllGatherCoalescedHandle(
                     allgather_handle=handle,
@@ -986,7 +994,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             swap_in_flight[0].nvme_swapper.synchronize_reads()
 
     @instrument_w_nvtx
-    def _all_gather(self, param_list, async_op=False, hierarchy=None):
+    def _all_gather(self,
+                    param_list,
+                    async_op=False,
+                    hierarchy=None,
+                    log_name='all_gather'):
 
         # fetches from nvme if the partition is not available and in nvme
         self._ensure_availability_of_partitioned_params(param_list)
@@ -1201,7 +1213,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             handle = dist.all_gather_base(flat_tensor,
                                           param.ds_tensor.cuda(),
                                           group=self.ds_process_group,
-                                          async_op=async_op)
+                                          async_op=async_op,
+                                          log_name='all_gather_base_param')
         else:
             partitions = []
             for i in range(self.world_size):
@@ -1216,7 +1229,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             handle = dist.all_gather(partitions,
                                      partitions[self.rank],
                                      group=self.ds_process_group,
-                                     async_op=async_op)
+                                     async_op=async_op,
+                                     log_name='all_gather_param')
 
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
         param.data = replicated_tensor.data
@@ -1257,7 +1271,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 h = dist.all_gather_base(allgather_params[param_idx],
                                          input_tensor,
                                          group=self.ds_process_group,
-                                         async_op=True)
+                                         async_op=True,
+                                         log_name='all_gather_base_params_coalesced')
             else:
                 output_list = []
                 for i in range(self.world_size):
@@ -1273,7 +1288,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 h = dist.all_gather(output_list,
                                     input_tensor,
                                     group=self.ds_process_group,
-                                    async_op=True)
+                                    async_op=True,
+                                    log_name='all_gather_params_coalesced')
             launch_handles.append(h)
 
         # Wait ensures the operation is enqueued, but not necessarily complete.
@@ -1322,7 +1338,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         dist.all_gather(partitions,
                         partitions[self.rank],
                         group=self.ds_process_group,
-                        async_op=False)
+                        async_op=False,
+                        log_name='all_gather_params')
         param_offset = 0
 
         for param in param_list:
@@ -1420,7 +1437,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         handle = dist.reduce_scatter(input_list[rank],
                                      input_list,
                                      group=self.ds_process_group,
-                                     async_op=True)
+                                     async_op=True,
+                                     log_name='reduce_scatter_gradients')
 
         return handle, input_list[rank]
 
@@ -1626,7 +1644,8 @@ class GatheredParameters:
             dist.broadcast(p,
                            self.src_rank,
                            group=p.ds_process_group,
-                           async_op=True) for p in self.params
+                           async_op=True,
+                           log_name='broadcast_gathered_params') for p in self.params
         ]
         for h in handles:
             h.wait()

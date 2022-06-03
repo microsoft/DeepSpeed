@@ -107,3 +107,8 @@ def get_tensor_position(func):
         return -1
     else:
         return list(sig_params).index(arg)
+
+
+#def get_msg_size_from_args(*args, **kwargs, func):
+#    if len(args) > 0:
+#        tensor_arg = args[get_tensor_position(func)]

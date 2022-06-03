@@ -118,9 +118,11 @@ def timed_op(func):
     global prof_all
 
     def log_wrapper(*args, **kwargs):
+        #print(args)
         # Need func args and their defaults
         func_args = get_default_args(func)
         func_args.update(kwargs)
+        #msg_size = get_msg_size_from_args(*args, **kwargs)
         if len(args) > 0:
             tensor_pos = get_tensor_position(func)
             tensor_arg = args[tensor_pos]
@@ -316,36 +318,6 @@ def reduce_scatter_base(output_tensor,
                                    group=group)
 
 
-def has_allgather_base():
-    global cdb
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    assert cdb.has_allgather_base is not None, 'has_allgather_base is not yet defined'
-    return cdb.has_allgather_base
-
-
-def allgather_fn(output_tensor: torch.Tensor,
-                 input_tensor: torch.Tensor,
-                 group,
-                 async_op):
-    global cdb
-    global has_warned_all_gather
-    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
-    if cdb.has_allgather_base:
-        return cdb.all_gather_base(output_tensor,
-                                   input_tensor,
-                                   group=group,
-                                   async_op=True)
-    else:
-        if not has_warned_all_gather:
-            logger.warning(
-                "unable to find torch.distributed._all_gather_base. will fall back to "
-                "torch.distributed.all_gather which will result in suboptimal performance. "
-                "please consider upgrading your pytorch installation.")
-            has_warned_all_gather = True
-        output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
-        return cdb.all_gather(output_tensors, input_tensor, group=group, async_op=True)
-
-
 @timed_op
 def all_gather_base(output_tensor,
                     tensor,
@@ -358,6 +330,42 @@ def all_gather_base(output_tensor,
                                input_tensor=tensor,
                                group=group,
                                async_op=async_op)
+
+
+def has_allgather_base():
+    global cdb
+    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    assert cdb.has_allgather_base is not None, 'has_allgather_base is not yet defined'
+    return cdb.has_allgather_base
+
+
+def allgather_fn(output_tensor: torch.Tensor,
+                 input_tensor: torch.Tensor,
+                 group,
+                 async_op,
+                 log_name):
+    global cdb
+    global has_warned_all_gather
+    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    if cdb.has_allgather_base:
+        return all_gather_base(output_tensor,
+                               input_tensor,
+                               group=group,
+                               async_op=True,
+                               log_name=log_name)
+    else:
+        if not has_warned_all_gather:
+            logger.warning(
+                "unable to find torch.distributed._all_gather_base. will fall back to "
+                "torch.distributed.all_gather which will result in suboptimal performance. "
+                "please consider upgrading your pytorch installation.")
+            has_warned_all_gather = True
+        output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
+        return all_gather(output_tensors,
+                          input_tensor,
+                          group=group,
+                          async_op=True,
+                          log_name=log_name)
 
 
 @timed_op
