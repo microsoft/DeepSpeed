@@ -245,7 +245,7 @@ def replace_transformer_layer(orig_layer_impl,
         mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        if inference:
+        if inference and policy_cls is not HFBertLayerPolicy:
             if moe:
                 ep_world_size = torch.distributed.get_world_size()
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
@@ -460,7 +460,7 @@ def replace_transformer_layer(orig_layer_impl,
             new_module.norm_b.data = input_nb.to(torch.cuda.current_device())
         else:
             transformer_config = deepspeed.DeepSpeedTransformerConfig(
-                batch_size=micro_batch_size,
+                batch_size=micro_batch_size if micro_batch_size > 0 else 1,
                 hidden_size=config.hidden_size,
                 heads=config.num_attention_heads,
                 attn_dropout_ratio=config.attention_probs_dropout_prob,
