@@ -121,3 +121,46 @@ def test_gpt2_inject(dtype):
         assert string_1 == string_2
 
     _go()
+
+
+@pytest.mark.parametrize("model",
+                         [
+                             "roberta-large",
+                             "roberta-base",
+                             "bert-large-uncased",
+                             "bert-base-cased",
+                             "bert-large-cased",
+                             "bert-large-cased",
+                             "bert-base-multilingual-uncased",
+                             "bert-base-multilingual-cased"
+                         ])
+def test_fill_mask(model):
+    if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
+        pytest.skip("DS inference injection doesn't work well on older torch versions")
+
+    if "roberta" in model:
+        query = "Hello I'm a <mask> model."
+    else:
+        query = "Hello I'm a [MASK] model."
+
+    @distributed_test(world_size=[1])
+    def _go(model, query):
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        pipe = pipeline('fill-mask', model=model, device=local_rank)
+
+        output = pipe(query)
+        baseline = set([res['token_str'] for res in output])
+
+        deepspeed.init_inference(
+            pipe.model,
+            mp_size=1,
+            dtype=torch.float,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+        )
+
+        output = pipe(query)
+        ds = set([res['token_str'] for res in output])
+        assert baseline == ds
+
+    _go(model, query)
