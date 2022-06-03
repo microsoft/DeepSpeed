@@ -103,4 +103,7 @@ def get_tensor_position(func):
     # all_to_all and torch multiGPU colls
     elif 'input_tensor_list' in sig_params:
         arg = 'input_tensor_list'
-    return list(sig_params).index(arg)
+    if arg is None:
+        return -1
+    else:
+        return list(sig_params).index(arg)

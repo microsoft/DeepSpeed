@@ -14,7 +14,7 @@ M = 4000
 def timed_allreduce(mat):
     torch.cuda.synchronize()
     pre = time.perf_counter()
-    dist.all_reduce(mat)
+    dist.all_reduce(tensor=mat)
     #print('ignore me', mat[0][0])  # required due to lazy evaluation
     torch.cuda.synchronize()
     duration = time.perf_counter() - pre
@@ -62,7 +62,7 @@ def init_processes(fn, backend='nccl', use_deepspeed=False):
     print(f'local rank = {dist.get_local_rank()}')
     torch.cuda.set_device(dist.get_local_rank())
     dist.start_profiling_comms()
-    dist.set_comms_log_verbose(True)
+    #dist.set_comms_log_verbose(True)
     fn(dist.get_local_rank())
 
 

@@ -87,7 +87,7 @@ from deepspeed.comm.utils import *
 # - Global profiling (profile all comms)
 # - Op-type profiling (e.g. profile all all_reduce comms)
 # - Op profiling (e.g. profile a specific all_reduce op)
-prof_all = False
+prof_all = True
 prof_op = None
 
 
@@ -121,17 +121,24 @@ def timed_op(func):
         # Need func args and their defaults
         func_args = get_default_args(func)
         func_args.update(kwargs)
-        tensor_pos = get_tensor_position(func)
+        if len(args) > 0:
+            tensor_pos = get_tensor_position(func)
+            tensor_arg = args[tensor_pos]
+        else:
+            if len(kwargs) > 0:
+                tensor_arg = func_args['tensor']
         # Get size of tensor to be communicated
         # set msg_size = 0 for barrier
-        msg_size = 0
-        # Sum of tensor sizes for list colls
-        if type(args[tensor_pos]) is list:
-            msg_size = sum(x.element_size() * x.nelement()
-                           for x in func_args['tensor_list'])
-        # msg_size = tensor size for most colls
+        if len(kwargs) == 0:
+            msg_size = 0
         else:
-            msg_size = args[tensor_pos].element_size() * args[tensor_pos].nelement()
+            # Sum of tensor sizes for list colls
+            if type(tensor_arg) is list:
+                msg_size = sum(x.element_size() * x.nelement()
+                               for x in func_args['tensor_list'])
+            # msg_size = tensor size for most colls
+            else:
+                msg_size = tensor_arg.element_size() * tensor_arg.nelement()
         # Start the timer if arg is set or it's a default
         if func_args['prof'] or prof_all or func_args['log_name'] == prof_op:
             timers(func_args['log_name']).start()
