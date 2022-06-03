@@ -123,6 +123,7 @@ def test_gpt2_inject(dtype):
     _go()
 
 
+@pytest.mark.parametrize("dtype", [torch.half, torch.float])
 @pytest.mark.parametrize("enable_cuda_graph", [True, False])
 @pytest.mark.parametrize("model",
                          [
@@ -135,7 +136,7 @@ def test_gpt2_inject(dtype):
                              "bert-base-multilingual-uncased",
                              "bert-base-multilingual-cased"
                          ])
-def test_fill_mask(enable_cuda_graph, model):
+def test_fill_mask(dtype, enable_cuda_graph, model):
     if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
         pytest.skip("DS inference injection doesn't work well on older torch versions")
 
@@ -149,12 +150,15 @@ def test_fill_mask(enable_cuda_graph, model):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         pipe = pipeline('fill-mask', model=model, device=local_rank)
 
+        if dtype == torch.half:
+            pipe.model.half()
+
         output = pipe(query)
         baseline = set([res['token_str'] for res in output])
 
         deepspeed.init_inference(pipe.model,
                                  mp_size=1,
-                                 dtype=torch.float,
+                                 dtype=dtype,
                                  replace_method="auto",
                                  replace_with_kernel_inject=True,
                                  enable_cuda_graph=enable_cuda_graph)
