@@ -151,8 +151,7 @@ class PartitionedParameterCoordinator:
                 print_rank_0(
                     f"Invalidate trace cache @ step {self.__step_id}: "
                     f"expected module {expected_module_id}, but got module {sub_module.id}",
-                    force=True
-                )
+                    force=True)
                 self._invalidate_trace()
 
     def record_module(self, sub_module: Module) -> None:
@@ -163,6 +162,9 @@ class PartitionedParameterCoordinator:
 
         self.__submodule_order.append(sub_module)
         self.__step_id_module_fetched_for[sub_module.id].append(self.__step_id)
+        print_rank_0(
+            f'record_module step = {self.__step_id} mod = {debug_module2name_id(sub_module)}',
+            force=True)
 
     def record_parameters(self, sub_module: Module) -> None:
         """adds sub module to trace"""
@@ -171,7 +173,10 @@ class PartitionedParameterCoordinator:
                 f"attempted to record trace when status = {self.__trace_mode}")
 
         step_id = self.__step_id_module_fetched_for[sub_module.id].popleft()
-        self._dump_param_ids('record_param', sub_module.id, [p.ds_id for p in iter_params(sub_module)], step_id)
+        self._dump_params('record_param',
+                          sub_module.id,
+                          [p.ds_id for p in iter_params(sub_module)],
+                          step_id)
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,
@@ -257,9 +262,9 @@ class PartitionedParameterCoordinator:
         # kick off all gather for params in the immediately required submodule
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
-        self._dump_param_ids('params_to_fetch',
-                             current_submodule.id,
-                             [p.ds_id for p in params_to_fetch])
+        self._dump_params('params_to_fetch',
+                          current_submodule.id,
+                          [p.ds_id for p in params_to_fetch])
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -351,9 +356,9 @@ class PartitionedParameterCoordinator:
 
                 for param in params_to_prefetch:
                     debug_rank0(f"-prefetch: {param.ds_summary()}")
-                self._dump_param_ids('params_to_prefetch',
-                                     current_submodule.id,
-                                     [p.ds_id for p in params_to_prefetch])
+                self._dump_params('params_to_prefetch',
+                                  current_submodule.id,
+                                  [p.ds_id for p in params_to_prefetch])
                 self.__all_gather_params(params_to_prefetch)
 
                 if self.__prefetch_nvme:
