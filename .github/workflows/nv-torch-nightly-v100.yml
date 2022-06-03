@@ -12,11 +12,12 @@ jobs:
   unit-tests:
     runs-on: [self-hosted, nvidia, cu113, v100]
 
-    env:
-      PIP: $(which pip)
-
     steps:
       - uses: actions/checkout@v2
+
+      - name: set pip
+        run: |
+          echo "PIP=$(which pip)" >> $GITHUB_ENV
 
       - name: environment
         run: |
@@ -25,8 +26,8 @@ jobs:
           python --version
           which nvcc
           nvcc --version
-          sudo $PIP uninstall --yes torch torchvision
-          sudo $PIP install --pre torch torchvision --extra-index-url https://download.pytorch.org/whl/nightly/cu113
+          sudo ${{ env.PIP }} uninstall --yes torch torchvision
+          sudo ${{ env.PIP }} install --pre torch torchvision --extra-index-url https://download.pytorch.org/whl/nightly/cu113
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
@@ -37,13 +38,13 @@ jobs:
           # if needed switch to the last known good SHA until transformers@master is fixed
           # git checkout 1cc453d33
           git rev-parse --short HEAD
-          sudo $PIP uninstall --yes transformers
-          sudo $PIP install .
+          sudo ${{ env.PIP }} uninstall --yes transformers
+          sudo ${{ env.PIP }} install .
 
       - name: Install deepspeed
         run: |
-          sudo $PIP uninstall --yes deepspeed
-          sudo $PIP install .[dev,1bit,autotuning,sparse_attn]
+          sudo ${{ env.PIP }} uninstall --yes deepspeed
+          sudo ${{ env.PIP }} install .[dev,1bit,autotuning,sparse_attn]
           ds_report
 
       - name: Unit tests
