@@ -308,6 +308,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.offload_param_pin_memory = False
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
+        self.timers = timers 
 
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -370,8 +371,6 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #example .half() or .to()
         #self.reset_ds_tensor()
         #---------------------------------------------#
-
-        self.timers = timers
 
         self.reduce_scatter = reduce_scatter
 
@@ -649,6 +648,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 _max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
                 prefetch_nvme=self.params_in_nvme_and_cpu,
+                timers=self.timers
             )
 
         return self.param_coordinators[training]
@@ -1250,7 +1250,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, True)
 
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
@@ -1275,7 +1275,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, False)
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
