@@ -148,9 +148,10 @@ class PartitionedParameterCoordinator:
             # sub_module must match expectation else invalidate trace cache
             if sub_module != self.__submodule_order[self.__step_id]:
                 expected_module_id = self.__submodule_order[self.__step_id].id
-                debug_rank0(
+                print_rank_0(
                     f"Invalidate trace cache @ step {self.__step_id}: "
-                    f"expected module {expected_module_id}, but got module {sub_module.id}"
+                    f"expected module {expected_module_id}, but got module {sub_module.id}",
+                    force=True
                 )
                 self._invalidate_trace()
 
@@ -170,6 +171,7 @@ class PartitionedParameterCoordinator:
                 f"attempted to record trace when status = {self.__trace_mode}")
 
         step_id = self.__step_id_module_fetched_for[sub_module.id].popleft()
+        self._dump_param_ids('record_param', sub_module.id, [p.ds_id for p in iter_params(sub_module)], step_id)
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
             self.__param_order.append(
                 __class__.__ParamInTrace(param=param,
