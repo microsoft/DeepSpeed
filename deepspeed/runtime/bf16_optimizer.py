@@ -132,7 +132,8 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         # weight is padding-free and we just need to add new padding depending on the target TP
         # degree
         tensor_to_pad = ckpt_dict.get('tensor_to_pad', False)
-        if tensor_to_pad:
+        # TODO: How to handle vocab paddings for TP reshapes
+        if False and tensor_to_pad:
             #        if "word_embeddings.weight" in folder:
 
             # print(f"Before {full_hp_param.shape=}")
