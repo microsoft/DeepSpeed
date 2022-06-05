@@ -624,6 +624,13 @@ def get_tensorboard_enabled(param_dict):
         return False
 
 
+def get_wandb_enabled(param_dict):
+    if WANDB in param_dict.keys():
+        return get_scalar_param(param_dict[WANDB], WANDB_ENABLED, WANDB_ENABLED_DEFAULT)
+    else:
+        return False
+
+
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):
         param_dict = param_dict[QUANTIZE_TRAINING]
@@ -742,6 +749,42 @@ def get_tensorboard_job_name(param_dict):
                                 TENSORBOARD_JOB_NAME_DEFAULT)
     else:
         return TENSORBOARD_JOB_NAME_DEFAULT
+
+
+def get_wandb_team(param_dict):
+    if get_wandb_enabled(param_dict):
+        return get_scalar_param(param_dict[WANDB],
+                                WANDB_TEAM_NAME,
+                                WANDB_TEAM_NAME_DEFAULT)
+    else:
+        return WANDB_TEAM_NAME_DEFAULT
+
+
+def get_wandb_project(param_dict):
+    if get_wandb_enabled(param_dict):
+        return get_scalar_param(param_dict[WANDB],
+                                WANDB_PROJECT_NAME,
+                                WANDB_PROJECT_NAME_DEFAULT)
+    else:
+        return WANDB_PROJECT_NAME_DEFAULT
+
+
+def get_wandb_group(param_dict):
+    if get_wandb_enabled(param_dict):
+        return get_scalar_param(param_dict[WANDB],
+                                WANDB_GROUP_NAME,
+                                WANDB_GROUP_NAME_DEFAULT)
+    else:
+        return WANDB_GROUP_NAME_DEFAULT
+
+
+def get_wandb_host(param_dict):
+    if get_wandb_enabled(param_dict):
+        return get_scalar_param(param_dict[WANDB],
+                                WANDB_HOST_NAME,
+                                WANDB_HOST_NAME_DEFAULT)
+    else:
+        return WANDB_HOST_NAME_DEFAULT
 
 
 def get_checkpoint_params(param_dict):
@@ -946,6 +989,11 @@ class DeepSpeedConfig(object):
         self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
         self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
         self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
+        self.wandb_enabled = get_wandb_enabled(param_dict)
+        self.wandb_group = get_wandb_group(param_dict)
+        self.wandb_team = get_wandb_team(param_dict)
+        self.wandb_project = get_wandb_project(param_dict)
+        self.wandb_host = get_wandb_host(param_dict)
 
         (
             self.eigenvalue_enabled,

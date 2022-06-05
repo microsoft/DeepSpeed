@@ -310,6 +310,42 @@ TENSORBOARD_JOB_NAME = "job_name"
 TENSORBOARD_JOB_NAME_DEFAULT = "DeepSpeedJobName"
 
 #########################################
+# Tensorboard
+#########################################
+# Tensorboard. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+WANDB_FORMAT = '''
+Wandb can be specified as:
+"wandb": {
+  "enabled": true,
+  "team_name": "deepspeed"
+  "project_name": "zero"
+  "group_name": "zero: stage 3",
+}
+'''
+WANDB = "wandb"
+
+# Wandb enable signal
+WANDB_ENABLED = "enabled"
+WANDB_ENABLED_DEFAULT = False
+
+# Wandb team
+WANDB_TEAM_NAME = "team_name"
+WANDB_TEAM_NAME_DEFAULT = None
+
+# Wandb project
+WANDB_PROJECT_NAME = "project_name"
+WANDB_PROJECT_NAME_DEFAULT = "deepspeed"
+
+# Wandb group
+WANDB_GROUP_NAME = "group_name"
+WANDB_GROUP_NAME_DEFAULT = None
+
+# Wandb host (for advanced users)
+WANB_HOST_NAME = "host_name"
+WANDB_HOST_NAME_DEFAULT = "https://api.wandb.ai"
+
+#########################################
 # Eigenvalue
 #########################################
 # Eigenvalue computation. By default, this feature is not enabled.

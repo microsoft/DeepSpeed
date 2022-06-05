@@ -52,6 +52,7 @@ from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
+from deepspeed.utils.monitor import TensorBoardMonitor
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
@@ -248,7 +249,11 @@ class DeepSpeedEngine(Module):
         self._set_distributed_vars(args)
 
         if self.tensorboard_enabled() and self.global_rank == 0:
-            self.summary_writer = self.get_summary_writer()
+            self.tb_monitor = TensorBoardMonitor(self._config)
+            self.summary_writer = self.tb_monitor.get_summary_writer()
+
+        if self.wandb_enabled() and self.global_rank == 0:
+            self.wandb_monitor = WandbMonitor(self._config)
 
         see_memory_usage(
             f"DeepSpeed Engine: Before configure distributed model",
@@ -488,53 +493,12 @@ class DeepSpeedEngine(Module):
     def curriculum_params(self):
         return self._config.curriculum_params
 
+    # TODO: Add wandb and csv
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
 
-    def tensorboard_output_path(self):
-        return self._config.tensorboard_output_path
-
-    def tensorboard_job_name(self):
-        return self._config.tensorboard_job_name
-
-    def get_summary_writer(
-            self,
-            name="DeepSpeedJobName",
-            base=os.path.join(os.path.expanduser("~"),
-                              "tensorboard"),
-    ):
-        if self.tensorboard_output_path():
-            base_dir = self.tensorboard_output_path()
-            job_name = self.tensorboard_job_name()
-            log_dir = os.path.join(base_dir, job_name)
-        else:
-            if self.tensorboard_job_name():
-                name = self.tensorboard_job_name()
-
-            # Infrastructure-specific job-id
-            if "DLWS_JOB_ID" in os.environ:
-                infra_job_id = os.environ["DLWS_JOB_ID"]
-            elif "DLTS_JOB_ID" in os.environ:
-                infra_job_id = os.environ["DLTS_JOB_ID"]
-            else:
-                infra_job_id = "unknown-job-id"
-
-            summary_writer_dir_name = os.path.join(infra_job_id, "logs")
-            log_dir = os.path.join(base, summary_writer_dir_name, name)
-
-        os.makedirs(log_dir, exist_ok=True)
-        try:
-            # torch.utils.tensorboard will fail if `tensorboard` is not available,
-            # see their docs for more details: https://pytorch.org/docs/1.8.0/tensorboard.html
-            import tensorboard
-        except ImportError:
-            print(
-                'If you want to use tensorboard logging please `pip install tensorboard`'
-            )
-            raise
-        from torch.utils.tensorboard import SummaryWriter
-
-        return SummaryWriter(log_dir=log_dir)
+    def wandb_enabled(self):
+        return self._config.wandb_enabled
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -1709,9 +1673,7 @@ class DeepSpeedEngine(Module):
                         loss.mean().item() * self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
-                    self.summary_writer.flush()
+                    self.tb_monitor.write_events(self.summary_events)
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1940,8 +1902,7 @@ class DeepSpeedEngine(Module):
                     self.summary_events = [(f"Train/Samples/lr",
                                             self.get_lr()[0],
                                             self.global_samples)]
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
+
                     if self.fp16_enabled() and hasattr(self.optimizer, "cur_scale"):
                         self.summary_events.append((
                             f"Train/Samples/loss_scale",
@@ -1953,16 +1914,13 @@ class DeepSpeedEngine(Module):
                             self.eigenvalue_gas_boundary_resolution()):
                         ev_values = self.block_eigenvalue.values()
                         for i in range(len(ev_values)):
-                            self.summary_writer.add_scalar(
+                            self.summary_events.append((
                                 f"Train/Eigenvalues/ModelBlockParam_{i}",
                                 self.ev_values[i][0],
                                 self.global_samples,
-                            )
-                            self.summary_writer.flush()
+                            ))
 
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
-                    self.summary_writer.flush()
+                    self.tb_monitor.write_events(self.summary_events)
 
         # Check flops profiling
         if flops_profiler_active:
@@ -2065,9 +2023,7 @@ class DeepSpeedEngine(Module):
                     self.global_samples,
                 ),
             ]
-            for event in self.summary_events:  # write_summary_events
-                self.summary_writer.add_scalar(event[0], event[1], event[2])
-            self.summary_writer.flush()
+            self.tb_monitor.write_events(self.summary_events)
 
     def _get_optimizer_param(self, param_name):
         result = []
