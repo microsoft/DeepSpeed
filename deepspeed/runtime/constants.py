@@ -342,7 +342,7 @@ WANDB_GROUP_NAME = "group_name"
 WANDB_GROUP_NAME_DEFAULT = None
 
 # Wandb host (for advanced users)
-WANB_HOST_NAME = "host_name"
+WANDB_HOST_NAME = "host_name"
 WANDB_HOST_NAME_DEFAULT = "https://api.wandb.ai"
 
 #########################################
