@@ -22,10 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: set pip
-        run: |
-          echo "PIP=$(which pip)" >> $GITHUB_ENV
-
       - name: environment
         run: |
           nvidia-smi
@@ -33,14 +29,14 @@ jobs:
           python --version
           which nvcc
           nvcc --version
-          sudo ${{ env.PIP }} uninstall --yes torch torchvision
-          sudo ${{ env.PIP }} install torch==1.8.2+cu111 torchvision==0.9.2+cu111 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
+          pip uninstall --yes torch torchvision
+          pip install torch==1.8.2+cu111 torchvision==0.9.2+cu111 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
       - name: Install deepspeed
         run: |
-          sudo ${{ env.PIP }} uninstall --yes deepspeed
-          sudo ${{ env.PIP }} install .[dev,autotuning]
+          pip uninstall --yes deepspeed
+          pip install .[dev,autotuning]
           ds_report
       - name: HF transformers tests
         run: |
@@ -51,7 +47,7 @@ jobs:
           # git checkout 1cc453d33
           git rev-parse --short HEAD
           # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
-          sudo ${{ env.PIP }} install .[testing]
+          pip install .[testing]
           # find reqs used in ds integration tests
           find examples/pytorch  -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec pip install -r {} \;
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
