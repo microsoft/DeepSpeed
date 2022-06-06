@@ -50,6 +50,17 @@ information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale)
 
 **_For further documentation, tutorials, and technical deep-dives please see [deepspeed.ai](https://www.deepspeed.ai/)!_**
 
+# Build Pipeline Status
+
+| Description | Status |
+| ----------- | ------ |
+| Core NVIDIA | [![nv-torch12-p40](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml) [![nv-torch18-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml) [![nv-torch-latest-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml) |
+| AMD MI100 | [![amd](https://github.com/microsoft/DeepSpeed/actions/workflows/amd.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/amd.yml) |
+| PyTorch Nightly | [![nv-torch-nightly-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-nightly-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-nightly-v100.yml) |
+| Integrations | [![nv-transformers-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml) [![nv-lightning-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml) |
+| Misc | [![Formatting](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml) [![pages-build-deployment](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment) |
+
+
 # Table of Contents
 | Section                                 | Description                                 |
 | --------------------------------------- | ------------------------------------------- |
