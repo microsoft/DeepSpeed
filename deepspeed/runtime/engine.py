@@ -52,7 +52,8 @@ from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
-from deepspeed.utils.monitor import TensorBoardMonitor, WandbMonitor
+#from deepspeed.utils.monitor import TensorBoardMonitor, WandbMonitor, csvMonitor
+from deepspeed.utils.monitor import Monitor
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
@@ -248,12 +249,17 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
-        if self.tensorboard_enabled() and self.global_rank == 0:
-            self.tb_monitor = TensorBoardMonitor(self._config)
-            self.tb_monitor.get_summary_writer()
-
-        if self.wandb_enabled() and self.global_rank == 0:
-            self.wandb_monitor = WandbMonitor(self._config)
+        #if self.tensorboard_enabled() and self.global_rank == 0:
+        #    self.tb_monitor = TensorBoardMonitor(self._config)
+        #    self.tb_monitor.get_summary_writer()
+        #
+        #if self.wandb_enabled() and self.global_rank == 0:
+        #    self.wandb_monitor = WandbMonitor(self._config)
+        #
+        #if self.csv_enabled() and self.global_rank == 0:
+        #    self.csv_monitor = csvMonitor(self._config)
+        if self.monitor_enabled() and self.global_rank == 0:
+            self.monitor = Monitor(self._config)
 
         see_memory_usage(
             f"DeepSpeed Engine: Before configure distributed model",
@@ -493,12 +499,20 @@ class DeepSpeedEngine(Module):
     def curriculum_params(self):
         return self._config.curriculum_params
 
-    # TODO: Add wandb and csv
-    def tensorboard_enabled(self):
-        return self._config.tensorboard_enabled
+    def monitor_enabled(self):
+        return self._config.tensorboard_enabled or self._config.wandb_enabled or self._config.csv_monitor_enabled
 
-    def wandb_enabled(self):
-        return self._config.wandb_enabled
+    # TODO: Add wandb and csv
+    #def tensorboard_enabled(self):
+    #    return self._config.tensorboard_enabled
+
+
+#
+#def wandb_enabled(self):
+#    return self._config.wandb_enabled
+#
+#def csv_enabled(self):
+#    return self._config.csv_monitor_enabled
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -1665,7 +1679,8 @@ class DeepSpeedEngine(Module):
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
-        if self.tensorboard_enabled() or self.wandb_enabled():
+        #if self.tensorboard_enabled() or self.wandb_enabled() or self.csv_enabled:
+        if self.monitor_enabled():
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
@@ -1673,10 +1688,13 @@ class DeepSpeedEngine(Module):
                         loss.mean().item() * self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
-                    if self.tensorboard_enabled():
-                        self.tb_monitor.write_events(self.summary_events)
-                    if self.wandb_enabled():
-                        self.wandb_monitor.write_events(self.summary_events)
+                    #if self.tensorboard_enabled():
+                    #    self.tb_monitor.write_events(self.summary_events)
+                    #if self.wandb_enabled():
+                    #    self.wandb_monitor.write_events(self.summary_events)
+                    #if self.csv_enabled():
+                    #    self.csv_monitor.write_events(self.summary_events)
+                    self.monitor.write_events(self.summary_events)
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1899,7 +1917,8 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.step_timers)
 
         # Log learning rate
-        if self.tensorboard_enabled() or self.wandb_enabled():
+        #if self.tensorboard_enabled() or self.wandb_enabled() or self.csv_enabled():
+        if self.monitor_enabled():
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(f"Train/Samples/lr",
@@ -1922,10 +1941,13 @@ class DeepSpeedEngine(Module):
                                 self.ev_values[i][0],
                                 self.global_samples,
                             ))
-                    if self.tensorboard_enabled():
-                        self.tb_monitor.write_events(self.summary_events)
-                    if self.wandb_enabled():
-                        self.wandb_monitor.write_events(self.summary_events)
+                    #if self.tensorboard_enabled():
+                    #    self.tb_monitor.write_events(self.summary_events)
+                    #if self.wandb_enabled():
+                    #    self.wandb_monitor.write_events(self.summary_events)
+                    #if self.csv_enabled():
+                    #    self.csv_monitor.write_events(self.summary_events)
+                    self.monitor.write_events(self.summary_events)
 
         # Check flops profiling
         if flops_profiler_active:
@@ -1953,8 +1975,8 @@ class DeepSpeedEngine(Module):
         if self.wall_clock_breakdown() or self.flops_profiler_enabled():
             # Log global timing and reset
             if self.is_gradient_accumulation_boundary():
-                if self.tensorboard_enabled():
-                    self._write_tensorboard()
+                if self.monitor_enabled():
+                    self._write_monitor()
 
                 if self.has_moe_layers:
                     fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
@@ -1997,7 +2019,7 @@ class DeepSpeedEngine(Module):
             atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
 
-    def _write_tensorboard(self):
+    def _write_monitor(self):
         if self.global_rank == 0:
             self.summary_events = [
                 (
@@ -2028,9 +2050,12 @@ class DeepSpeedEngine(Module):
                     self.global_samples,
                 ),
             ]
-            self.tb_monitor.write_events(self.summary_events)
-            if self.wandb_enabled():
-                self.wandb_monitor.write_events(self.summary_events)
+            #self.tb_monitor.write_events(self.summary_events)
+            #if self.wandb_enabled():
+            #    self.wandb_monitor.write_events(self.summary_events)
+            #if self.csv_enabled():
+            #    self.csv_monitor.write_events(self.summary_events)
+            self.monitor.write_events(self.summary_events)
 
     def _get_optimizer_param(self, param_name):
         result = []

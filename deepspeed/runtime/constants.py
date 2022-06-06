@@ -310,9 +310,9 @@ TENSORBOARD_JOB_NAME = "job_name"
 TENSORBOARD_JOB_NAME_DEFAULT = "DeepSpeedJobName"
 
 #########################################
-# Tensorboard
+# Wandb
 #########################################
-# Tensorboard. By default, this feature is not enabled.
+# Wandb. By default, this feature is not enabled.
 # Users can configure in ds_config.json as below example:
 WANDB_FORMAT = '''
 Wandb can be specified as:
@@ -344,6 +344,28 @@ WANDB_GROUP_NAME_DEFAULT = None
 # Wandb host (for advanced users)
 WANDB_HOST_NAME = "host_name"
 WANDB_HOST_NAME_DEFAULT = "https://api.wandb.ai"
+
+#########################################
+# csv monitor
+#########################################
+# Basic CSV monitor. By default, this feature is not enabled.
+# Users can configure in ds_config.json as below example:
+CSV_FORMAT = '''
+The basic csv monitor can be specified as:
+"csv_monitor": {
+  "enabled": true,
+  "output_path": "/home/myname/foo",
+}
+'''
+CSV_MONITOR = "csv_monitor"
+
+# csv monitor enable signal
+CSV_MONITOR_ENABLED = "enabled"
+CSV_MONITOR_ENABLED_DEFAULT = False
+
+# csv monitor output path
+CSV_MONITOR_OUTPUT_PATH = "output_path"
+CSV_MONITOR_OUTPUT_PATH_DEFAULT = ""
 
 #########################################
 # Eigenvalue

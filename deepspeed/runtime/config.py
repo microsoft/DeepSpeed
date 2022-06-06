@@ -624,6 +624,15 @@ def get_tensorboard_enabled(param_dict):
         return False
 
 
+def get_csv_monitor_enabled(param_dict):
+    if CSV_MONITOR in param_dict.keys():
+        return get_scalar_param(param_dict[CSV_MONITOR],
+                                CSV_MONITOR_ENABLED,
+                                CSV_MONITOR_ENABLED_DEFAULT)
+    else:
+        return False
+
+
 def get_wandb_enabled(param_dict):
     if WANDB in param_dict.keys():
         return get_scalar_param(param_dict[WANDB], WANDB_ENABLED, WANDB_ENABLED_DEFAULT)
@@ -785,6 +794,17 @@ def get_wandb_host(param_dict):
                                 WANDB_HOST_NAME_DEFAULT)
     else:
         return WANDB_HOST_NAME_DEFAULT
+
+
+def get_csv_monitor_output_path(param_dict):
+    if get_csv_monitor_enabled(param_dict):
+        return get_scalar_param(
+            param_dict[CSV_MONITOR],
+            CSV_MONITOR_OUTPUT_PATH,
+            CSV_MONITOR_OUTPUT_PATH_DEFAULT,
+        )
+    else:
+        return CSV_MONITOR_OUTPUT_PATH_DEFAULT
 
 
 def get_checkpoint_params(param_dict):
@@ -994,6 +1014,8 @@ class DeepSpeedConfig(object):
         self.wandb_team = get_wandb_team(param_dict)
         self.wandb_project = get_wandb_project(param_dict)
         self.wandb_host = get_wandb_host(param_dict)
+        self.csv_monitor_enabled = get_csv_monitor_enabled(param_dict)
+        self.csv_monitor_output_path = get_csv_monitor_output_path(param_dict)
 
         (
             self.eigenvalue_enabled,
