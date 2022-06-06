@@ -2007,13 +2007,21 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         state_dict['overflow'] = self.overflow
         state_dict[CLIP_GRAD] = self.clip_grad
 
-        state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
-        state_dict[
-            SINGLE_PARTITION_OF_FP32_GROUPS] = self.single_partition_of_fp32_groups
+        if self.elastic_checkpoint:
+            state_dict[BASE_OPTIMIZER_STATE] = self._get_base_optimizer_state()
+        else:
+            state_dict[BASE_OPTIMIZER_STATE] = self.optimizer.state_dict()
+
+        # Remove paddings for DP alignment to enable loading for other alignment values
+        fp32_groups_without_padding = self._get_groups_without_padding(
+            self.single_partition_of_fp32_groups)
+        state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
+
         state_dict[
             ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS if self.partition_gradients else ZERO_OPTIMIZATION_OPTIMIZER_STATES
         state_dict[GROUP_PADDINGS] = self.groups_padding
         state_dict[PARTITION_COUNT] = self.partition_count
+
         state_dict[DS_VERSION] = version
 
         return state_dict
