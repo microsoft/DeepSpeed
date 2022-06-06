@@ -156,8 +156,8 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
 
         full_param_numel = full_hp_param.numel()
         tp_slice_numel = self.numel()
-        if key == FP32_WEIGHT_KEY and 'word_embeddings.weight' in folder:
-            print_rank_0(f'{full_hp_param[:10]=}', force=True)
+        #        if key == FP32_WEIGHT_KEY and 'word_embeddings.weight' in folder:
+        #            print_rank_0(f'{full_hp_param[:10]=}', force=True)
 
 
         assert full_param_numel == tp_world_size * tp_slice_numel, \
@@ -165,8 +165,8 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         dst_tensor = hp_mapping.hp_fragment if key == FP32_WEIGHT_KEY else hp_mapping.get_optim_state_fragment(
             key)
 
-        print(f"{full_hp_param.shape=} {full_param_numel=} {folder=}")
-        print(f"{dst_tensor.shape=} {dst_tensor.numel()=}{folder=}")
+        #        print(f"{full_hp_param.shape=} {full_param_numel=} {folder=}")
+        #        print(f"{dst_tensor.shape=} {dst_tensor.numel()=}{folder=}")
 
         # since when we do many to 1 on tp we cat sometimes on dim=0 and other times on dim=1 we have to do exactly the same in reverse
 
@@ -192,9 +192,9 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         assert dst_tensor.numel() == lp_frag_address.numel, \
             f'Load checkpoint {key} dst_tensor numel {dst_tensor.numel()} != src numel {lp_frag_address.numel}'
 
-        print(f"{key} SHAPE: {tp_hp_slice.shape=}")
-        print(f"{key} SHAPE: {dst_tensor.shape=}")
-        print(f"{key} SHAPE: {tp_hp_fragment.shape=}")
+        #        print(f"{key} SHAPE: {tp_hp_slice.shape=}")
+        #        print(f"{key} SHAPE: {dst_tensor.shape=}")
+        #        print(f"{key} SHAPE: {tp_hp_fragment.shape=}")
         dst_tensor.data.copy_(tp_hp_fragment.data)
 
 
