@@ -110,7 +110,7 @@ class csvMonitor:
             else:
                 header = log_name
 
-            # sanitize commong naming conventions into filename
+            # sanitize common naming conventions into filename
             filename = log_name.replace('/', '_').replace(' ', '_')
             fname = self.csv_monitor_output_path + filename + '.csv'
 
