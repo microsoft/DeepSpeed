@@ -2702,7 +2702,7 @@ class DeepSpeedEngine(Module):
             checkpoint_folder=checkpoint_folder)
         if self.load_universal_checkpoint():
             logger.info(
-                f'loaded universal zero checpoints from {checkpoint_folder} for rank {self.global_rank}'
+                f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}'
             )
         else:
             logger.info(
