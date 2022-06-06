@@ -1192,10 +1192,6 @@ def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim)
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
-        if load_optim:
-            torch.save(model.optimizer.optimizer.state_dict(),
-                       os.path.join(tmpdir,
-                                    'opt-state-dict'))
         model.save_checkpoint(tmpdir)
 
         ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
@@ -1203,12 +1199,6 @@ def test_checkpoint_zero_elastic(tmpdir, elastic_save, elastic_load, load_optim)
                                               model=models[1],
                                               model_parameters=models[1].parameters())
         model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
-
-        if load_optim:
-            saved_sd = torch.load(os.path.join(tmpdir, 'opt-state-dict'))
-            curr_sd = model.optimizer.optimizer.state_dict()
-            assert curr_sd['param_groups'] == saved_sd['param_groups']
-
         data_loader = random_dataloader(model=model,
                                         total_samples=8,
                                         hidden_dim=hidden_dim,
@@ -1264,11 +1254,6 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
-
-        if load_optim:
-            torch.save(model.optimizer.optimizer.state_dict(),
-                       os.path.join(tmpdir,
-                                    'opt-state-dict'))
         model.save_checkpoint(tmpdir)
 
     _go2(models)
@@ -1279,21 +1264,11 @@ def test_checkpoint_zero_elastic_dp_change(tmpdir,
         model, _, _, _ = deepspeed.initialize(config=ds_config,
                                                   model=models[1],
                                                   model_parameters=models[1].parameters())
-        model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
-
         if load_optim:
-            saved_sd = torch.load(os.path.join(tmpdir, 'opt-state-dict'))
-            curr_sd = model.optimizer.optimizer.state_dict()
-            assert curr_sd['param_groups'] == saved_sd['param_groups']
-
-        data_loader = random_dataloader(model=model,
-                                        total_samples=8,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
+            with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
+                model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+        else:
+            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
 
     _go1(models)
 

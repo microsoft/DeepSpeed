@@ -671,12 +671,11 @@ class BF16_Optimizer(ZeROOptimizer):
         checkpoint_dir = os.path.join(checkpoint_dir, "zero")
         tp_rank = bwc_tensor_model_parallel_rank(mpu=self.mpu)
         tp_world_size = self.mpu.get_slice_parallel_world_size()
-        #            get_model_parallel_world_size()
 
         for i, _ in enumerate(self.optimizer.param_groups):
             for lp in self.bf16_groups[i]:
                 if lp._hp_mapping is not None:
-                    print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
+                    #print(f"Loading {self.param_names[lp]} {tp_rank=} {tp_world_size=}")
                     lp.load_hp_checkpoint_state(
                         os.path.join(checkpoint_dir,
                                      self.param_names[lp]),
