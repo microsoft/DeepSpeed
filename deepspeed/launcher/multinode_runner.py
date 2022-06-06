@@ -227,7 +227,7 @@ class MVAPICHRunner(MultiNodeRunner):
             f'{process_per_node}',
             '--hostfile',
             f'{MVAPICH_TMP_HOSTFILE}',
-        ]
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
