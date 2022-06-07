@@ -127,6 +127,12 @@ class TorchBackend(Backend):
     def recv(self, tensor, src=None, group=None, tag=0):
         return torch.distributed.recv(tensor=tensor, src=src, group=group, tag=tag)
 
+    def isend(self, tensor, dst, group=None, tag=0):
+        return torch.distributed.isend(tensor=tensor, dst=dst, group=group, tag=tag)
+
+    def irecv(self, tensor, src=None, group=None, tag=0):
+        return torch.distributed.irecv(tensor=tensor, src=src, group=group, tag=tag)
+
     def gather(self, tensor, gather_list=None, dst=0, group=None, async_op=False):
         return torch.distributed.gather(tensor=tensor,
                                         gather_list=gather_list,

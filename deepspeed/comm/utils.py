@@ -82,7 +82,6 @@ def get_world_size_from_launcher():
 
 def get_default_args(func):
     signature = inspect.signature(func)
-    #print(signature)
     return {
         k: v.default
         for k,
@@ -109,6 +108,42 @@ def get_tensor_position(func):
         return list(sig_params).index(arg)
 
 
-#def get_msg_size_from_args(*args, **kwargs, func):
-#    if len(args) > 0:
-#        tensor_arg = args[get_tensor_position(func)]
+def get_tensor_kwarg(func, kwargs):
+    func_args = get_default_args(func)
+    func_args.update(kwargs)
+    arg = None
+
+    if 'tensor' in func_args:
+        arg = func_args['tensor']
+    elif 'input_list' in func_args:
+        arg = func_args['input_list']
+    elif 'input_tensor_list' in func_args:
+        arg = func_args['input_tensor_list']
+    return arg
+
+
+def get_msg_size_from_args(func, *args, **kwargs):
+    # 3 cases:
+    #   - tensor arg is in args
+    #   - tensor arg is in kwargs
+    #   - tensor arg is not present (e.g. barrier)
+    tensor_arg_position = -1
+    tensor_arg = None
+    # check if tensor arg is in args
+    if len(args) > 0:
+        tensor_arg_position = get_tensor_position(func)
+        if tensor_arg_position > -1:
+            tensor_arg = args[get_tensor_position(func)]
+    # check if tensor arg is in kwargs
+    if tensor_arg is None and len(kwargs) > 0:
+        tensor_arg = get_tensor_kwarg(func, kwargs)
+    # if tensor arg is not present, no data is being transmitted
+    if tensor_arg is None:
+        return 0
+    else:
+        # Sum of tensor sizes for list colls such as torch's all_to_all
+        # NOTE: msg_size for list colls will not be the actual size transmitted by a given MPI/NCCL call within the coll op. Instead, it's the total amount of data transmitted.
+        if type(tensor_arg) is list:
+            return sum(x.element_size() * x.nelement() for x in func_args['tensor_list'])
+        else:
+            return tensor_arg.element_size() * tensor_arg.nelement()

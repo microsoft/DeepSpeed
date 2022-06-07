@@ -118,33 +118,11 @@ def timed_op(func):
     global prof_all
 
     def log_wrapper(*args, **kwargs):
-        #print(args)
         # Need func args and their defaults
         func_args = get_default_args(func)
         func_args.update(kwargs)
-        #msg_size = get_msg_size_from_args(*args, **kwargs)
-        if len(args) > 0:
-            tensor_pos = get_tensor_position(func)
-            tensor_arg = args[tensor_pos]
-        else:
-            if len(kwargs) > 0 and 'tensor' in func_args:
-                tensor_arg = func_args['tensor']
-            else:
-                tensor_arg = None
-        # Get size of tensor to be communicated
-        # set msg_size = 0 for barrier
-        if len(kwargs) == 0 or tensor_arg == None:
-            msg_size = 0
-        else:
-            # Sum of tensor sizes for list colls
-            if type(tensor_arg) is list:
-                msg_size = sum(x.element_size() * x.nelement()
-                               for x in func_args['tensor_list'])
-            # msg_size = tensor size for most colls
-            else:
-                msg_size = tensor_arg.element_size() * tensor_arg.nelement()
-        # Start the timer if arg is set or it's a default
         if func_args['prof'] or prof_all or func_args['log_name'] == prof_op:
+            msg_size = get_msg_size_from_args(func, *args, **kwargs)
             timers(func_args['log_name']).start()
         # Return the op, then stop the op's timer
         try:
@@ -390,6 +368,18 @@ def send(tensor, dst, group=None, tag=0, prof=False, log_name='send'):
 
 @timed_op
 def recv(tensor, src=None, group=None, tag=0, prof=False, log_name='recv'):
+    global cdb
+    return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
+
+
+@timed_op
+def isend(tensor, dst, group=None, tag=0, prof=False, log_name='isend'):
+    global cdb
+    return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
+
+
+@timed_op
+def irecv(tensor, src=None, group=None, tag=0, prof=False, log_name='irecv'):
     global cdb
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
