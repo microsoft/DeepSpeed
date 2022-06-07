@@ -2507,11 +2507,16 @@ class DeepSpeedEngine(Module):
                 with open(latest_path, "r") as fd:
                     tag = fd.read().strip()
             else:
-                logger.warning(
-                    f"Unable to find latest file at {latest_path}, if trying to load latest "
-                    "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
-                )
-                return None, None
+                if self.load_universal_checkpoint():
+                    raise ValueError(
+                        f'Invalid for universal checkpoint: {latest_path} does not exist'
+                    )
+                else:
+                    logger.warning(
+                        f"Unable to find latest file at {latest_path}, if trying to load latest "
+                        "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+                    )
+                    return None, None
 
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
@@ -2700,6 +2705,7 @@ class DeepSpeedEngine(Module):
             load_optimizer_states=load_optimizer_states,
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
             checkpoint_folder=checkpoint_folder)
+
         if self.load_universal_checkpoint():
             logger.info(
                 f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}'
