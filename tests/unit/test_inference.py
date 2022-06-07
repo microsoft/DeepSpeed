@@ -43,10 +43,10 @@ pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
     for task in pytest.test_tasks
 }
-'''
+"""
 These fixtures will iterate over all combinations of tasks and models, only
 returning valid combinations in valid_model_task
-'''
+"""
 
 
 @pytest.fixture(params=pytest.test_tasks)
@@ -67,10 +67,10 @@ def valid_model_task(model, task):
         pytest.skip(f"Not a valid model / task combination: {model} / {task}")
 
 
-'''
+"""
 These fixtures can be used to customize the query, inference args, and assert
 statement for each combination of model /task
-'''
+"""
 
 
 @pytest.fixture
@@ -112,18 +112,22 @@ def assert_fn(task, model):
     elif task == "question-answering":
         return lambda x, y: x["answer"] == y["answer"]
     elif task == "text-classification":
-        return lambda x, y: set(res["label"] for res in x) == set(res["label"] for res in y)
+        return lambda x, y: set(res["label"] for res in x) == set(
+            res["label"] for res in y
+        )
     elif task == "token-classification":
         return lambda x, y: set(ent["word"] for ent in x) == set(
             ent["word"] for ent in y
         )
     elif task == "text-generation":
-        return lambda x, y: x["generated_test"] == y["generated_test"]
+        return lambda x, y: set(res["generated_text"] for res in x) == set(
+            res["generated_text"] for res in y
+        )
     else:
         NotImplementedError(f'assert_fn for task "{task}" is not implemented')
 
 
-@pytest.mark.parametrize("enable_cuda_graph", [True, False])
+@pytest.mark.parametrize("enable_cuda_graph", [False, True])
 def test_model_task(valid_model_task, query, enable_cuda_graph, inf_kwargs, assert_fn):
     model, task = valid_model_task
 
