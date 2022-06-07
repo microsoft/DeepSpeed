@@ -177,7 +177,7 @@ def main():
         for process in processes:
             logger.info(f"Killing subprocess {process.pid}")
             try:
-                process.kill()
+                process.terminate()
             except Exception:
                 pass
         if last_return_code is not None:
