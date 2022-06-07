@@ -81,7 +81,7 @@ def test_model_task_inject(task, model, query, dtype=torch.float):
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
-        generator = pipeline(task, model=model, device=local_rank)
+        generator = pipeline(task, model=model, device=local_rank, framework="pt")
 
         generator.model = deepspeed.init_inference(
             generator.model,
@@ -105,7 +105,10 @@ def test_gpt2_inject(dtype):
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
         world_size = int(os.getenv("WORLD_SIZE", "1"))
-        generator = pipeline("text-generation", model="gpt2", device=local_rank)
+        generator = pipeline("text-generation",
+                             model="gpt2",
+                             device=local_rank,
+                             framework="pt")
 
         generator.model = deepspeed.init_inference(
             generator.model,
@@ -123,7 +126,6 @@ def test_gpt2_inject(dtype):
     _go()
 
 
-@pytest.mark.parametrize("dtype", [torch.half, torch.float])
 @pytest.mark.parametrize("enable_cuda_graph", [True, False])
 @pytest.mark.parametrize("model",
                          [
@@ -136,7 +138,7 @@ def test_gpt2_inject(dtype):
                              "bert-base-multilingual-uncased",
                              "bert-base-multilingual-cased"
                          ])
-def test_fill_mask(dtype, enable_cuda_graph, model):
+def test_fill_mask(enable_cuda_graph, model):
     if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
         pytest.skip("DS inference injection doesn't work well on older torch versions")
 
@@ -148,17 +150,14 @@ def test_fill_mask(dtype, enable_cuda_graph, model):
     @distributed_test(world_size=[1])
     def _go(model, query):
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        pipe = pipeline('fill-mask', model=model, device=local_rank)
-
-        if dtype == torch.half:
-            pipe.model.half()
+        pipe = pipeline('fill-mask', model=model, device=local_rank, framework="pt")
 
         output = pipe(query)
         baseline = set([res['token_str'] for res in output])
 
         deepspeed.init_inference(pipe.model,
                                  mp_size=1,
-                                 dtype=dtype,
+                                 dtype=torch.float,
                                  replace_method="auto",
                                  replace_with_kernel_inject=True,
                                  enable_cuda_graph=enable_cuda_graph)
@@ -166,5 +165,44 @@ def test_fill_mask(dtype, enable_cuda_graph, model):
         output = pipe(query)
         ds = set([res['token_str'] for res in output])
         assert baseline == ds
+
+    _go(model, query)
+
+
+@pytest.mark.parametrize("enable_cuda_graph", [True, False])
+@pytest.mark.parametrize("model",
+                         [
+                             "deepset/roberta-base-squad2",
+                             "bert-large-uncased-whole-word-masking-finetuned-squad",
+                             "distilbert-base-cased-distilled-squad"
+                         ])
+def test_question_answering(enable_cuda_graph, model):
+    if pkg_version.parse(torch.__version__) <= pkg_version.parse('1.2'):
+        pytest.skip("DS inference injection doesn't work well on older torch versions")
+
+    query = {
+        "question": "What's my name?",
+        "context": "My name is Clara and I live in Berkeley."
+    }
+
+    @distributed_test(world_size=[1])
+    def _go(model, query):
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        pipe = pipeline('question-answering',
+                        model=model,
+                        device=local_rank,
+                        framework="pt")
+
+        bs_output = pipe(query)
+
+        deepspeed.init_inference(pipe.model,
+                                 mp_size=1,
+                                 dtype=torch.float,
+                                 replace_method="auto",
+                                 replace_with_kernel_inject=True,
+                                 enable_cuda_graph=enable_cuda_graph)
+
+        ds_output = pipe(query)
+        assert bs_output["answer"] == ds_output["answer"]
 
     _go(model, query)
