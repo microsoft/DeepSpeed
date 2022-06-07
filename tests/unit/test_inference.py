@@ -40,7 +40,7 @@ pytest.test_tasks = [
     "text-generation",
 ]
 pytest.all_models = {
-    task: [m / modelId for m in _all_models if m.pipeline_tag == task]
+    task: [m.modelId for m in _all_models if m.pipeline_tag == task]
     for task in pytest.test_tasks
 }
 '''
