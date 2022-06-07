@@ -106,7 +106,7 @@ class CommsLogger:
         )
         for record_name in self.comms_dict.keys():
             print(record_name)
-            for msg_size, vals in self.comms_dict[record_name].items():
+            for msg_size, vals in sorted(self.comms_dict[record_name].items()):
                 # vals[0] is the count for each msg size
                 count = vals[0]
                 # vals[1] is a list of latency records for each msg size

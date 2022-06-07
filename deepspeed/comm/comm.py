@@ -127,11 +127,13 @@ def timed_op(func):
             tensor_pos = get_tensor_position(func)
             tensor_arg = args[tensor_pos]
         else:
-            if len(kwargs) > 0:
+            if len(kwargs) > 0 and 'tensor' in func_args:
                 tensor_arg = func_args['tensor']
+            else:
+                tensor_arg = None
         # Get size of tensor to be communicated
         # set msg_size = 0 for barrier
-        if len(kwargs) == 0:
+        if len(kwargs) == 0 or tensor_arg == None:
             msg_size = 0
         else:
             # Sum of tensor sizes for list colls
@@ -173,12 +175,6 @@ def log_summary(coll_names, ranks=None):
             coll,
             mean / 1000.0)
         log_dist(string, ranks=ranks or [0])
-
-
-def log_summary_new():
-    #global cdb
-    #cdb.barrier()
-    comms_logger.log_all()
 
 
 # For compatibility with torch distributed's init_process_group, we shall retain the signature from PyTorch code.
@@ -434,6 +430,14 @@ def scatter(tensor,
 def barrier(group=None, prof=False, log_name='barrier'):
     global cdb
     return cdb.barrier()
+
+
+def log_summary_new():
+    global cdb
+    barrier(log_name='log_summary_barrier')
+    if cdb.get_rank() == 0:
+        comms_logger.log_all()
+    barrier(log_name='log_summary_barrier')
 
 
 # Local enum for Reduction operators
