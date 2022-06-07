@@ -93,34 +93,24 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
     hp_keys = [FP32_WEIGHT_KEY] + optim_state_keys
     checkpoint_files = {key: os.path.join(folder, f"{key}.pt") for key in hp_keys}
 
-    # XXX: hack to fix
-    # need to codifying handling of non-parametric tensors
-    # we are still trying to load a param which is not trained and is created at run time
-    if "tied_modules.embed.position_embeddings" in folder:
-        return
-    # perhaps just check if the file exists and if not return? but this may mask a potential error
-    # and random weights will be used instead
-
     for file in checkpoint_files.values():
         assert os.path.isfile(file), f'{file} is not a valid file'
-
-    # need to deal with slices that were averaged. I thought of 2 ways:
-    # a. find a way for a client to pass a dict with patterns
-    # b. see below inside the loop
-    # XXX: the opposite of averaging here becomes an exact copy of the first slice
-    # implementation a.
-    # if any(re.search(pattern, folder) for pattern in WEIGHTS_TO_AVERAGE_PATTERNS):
-    #     tp_rank = 0
-    #     tp_world_size = 1
-    # the other approach is to assume that the saved data is correct and if full_hp_param.shape ==
-    # self.shape that means we automatically copy?
 
     for key in hp_keys:
         ckpt_file = checkpoint_files[key]
         ckpt_dict = torch.load(ckpt_file)
         full_hp_param = ckpt_dict['param']
 
-        # implementation b. (see notes outside of the loop)
+        # need to deal with slices that were averaged.
+        # the opposite of averaging here becomes an exact copy of the first slice
+        # I thought of 2 ways:
+        # implementation a. find a way for a client to pass a dict with patterns
+        # if any(re.search(pattern, folder) for pattern in WEIGHTS_TO_AVERAGE_PATTERNS):
+        #     tp_rank = 0
+        #     tp_world_size = 1
+        # the other approach is to assume that the saved data is correct and if full_hp_param.shape ==
+        # self.shape that means we automatically copy?
+        # implementation b.
         # this version requires no additional data passed from the client
         # if the shapes already match it must be slices that were averaged - so we just hack around those
         if full_hp_param.shape == self.shape:
@@ -134,20 +124,7 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         vocab_divisibility_padding_tensor = ckpt_dict.get(
             'vocab_divisibility_padding_tensor',
             None)
-        # TODO: Currently broken for tp reshaping, e.g. 2 -> 1
         if vocab_divisibility_padding_tensor is not None:
-            #        if "word_embeddings.weight" in folder:
-
-            # print(f"Before {full_hp_param.shape=}")
-            # XXX: simply reshape to the self.shape*tp_degree?
-            # or how do we bring the new padded vocab size here?
-            # pad_to = (50257+pad) * 512 # * tp_world_size # 50432
-            # pad_to = 50432
-            # target = torch.zeros(pad_to, full_hp_param.shape[1])
-            # target[:50257, :] = full_hp_param[:50257, :]
-            # full_hp_param = target
-            # print(f"After {full_hp_param.shape=}")
-
             # In the absence of data passed from the user wrt new padded vocab specific to tp degree
             # we can again derive that data by reverse engineering the target shapes like so:
             padded_target_vocab_size = self.shape[0] * tp_world_size
@@ -169,12 +146,6 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
                 # Need to shrink or keep the same
                 full_hp_param = full_hp_param[:padded_target_vocab_size, :]
 
-            # target = torch.zeros(self.shape[0] * tp_world_size, self.shape[1])
-            # # this relies on making sure the padding was stripped when the universal checkpoint was created
-            # target[:full_hp_param.shape[0], :] = full_hp_param[:full_hp_param.shape[0], :]
-            # full_hp_param = target
-            # print(f"After {full_hp_param.shape=}")
-
         full_param_numel = full_hp_param.numel()
         tp_slice_numel = self.numel()
         #        if key == FP32_WEIGHT_KEY and 'word_embeddings.weight' in folder:
@@ -190,22 +161,12 @@ def load_hp_checkpoint_state(self, folder, tp_rank, tp_world_size):
         #        print(f"{dst_tensor.shape=} {dst_tensor.numel()=}{folder=}")
 
         # since when we do many to 1 on tp we cat sometimes on dim=0 and other times on dim=1 we have to do exactly the same in reverse
-
-        # of course, we again need to somehow get the names which we don't have
-        #if "dense_4h_to_h.weight" in folder or "self_attention.dense.weight" in folder:
-        #    chunk_dim = 1
-        #else:
-        #    chunk_dim = 0
-
         chunk_dim = ckpt_dict.get('cat_dim', 0)
 
         # this performs the opposite of cat when merging TP slices
         tp_hp_slice = full_hp_param.chunk(tp_world_size, chunk_dim)[tp_rank]
         tp_hp_slice = tp_hp_slice.flatten()
 
-        # this deals with zero fragments when DP>1
-        # XXX: I'm not sure this is correct but the direction is right
-        # I'm not sure the shard should always start with 0
         lp_frag_address = hp_mapping.lp_fragment_address
         tp_hp_fragment = tp_hp_slice.narrow(0,
                                             lp_frag_address.start,
@@ -386,7 +347,6 @@ class BF16_Optimizer(ZeROOptimizer):
         dp_world_size = dist.get_world_size(group=self.dp_process_group)
         for i, param_group in enumerate(self.optimizer.param_groups):
             # Link bf16 and fp32 params in partition
-            # TODO: Make this configurable
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             partition_size = self.bf16_groups_flat[i].numel() // dp_world_size
             self._link_hp_params(self.bf16_groups[i],
