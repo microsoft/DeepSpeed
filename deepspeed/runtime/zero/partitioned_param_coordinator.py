@@ -263,7 +263,7 @@ class PartitionedParameterCoordinator:
         for param in params_to_fetch:
             debug_rank0(f"-fetch: {param.ds_summary()}")
         self._dump_params('params_to_fetch',
-                          current_submodule.id,
+                          current_submodule,
                           [p.ds_id for p in params_to_fetch])
         self.__all_gather_params(params_to_fetch)
 
