@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 import warnings
-from shlex import quote
+from shlex import quote, split
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -66,7 +66,7 @@ class PDSHRunner(MultiNodeRunner):
 
         # PDSH flags for max node fan out and specific hosts to launch on
         # See https://linux.die.net/man/1/pdsh for flag details
-        pdsh_cmd_args = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
+        pdsh_cmd_args = ['pdsh', '-S', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
 
         exports = ""
         for key, val in self.exports.items():
@@ -137,7 +137,7 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl_tcp_if_include',
             'eth0',
-        ]
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
@@ -227,7 +227,7 @@ class MVAPICHRunner(MultiNodeRunner):
             f'{process_per_node}',
             '--hostfile',
             f'{MVAPICH_TMP_HOSTFILE}',
-        ]
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
