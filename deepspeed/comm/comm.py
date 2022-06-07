@@ -248,6 +248,16 @@ def recv(tensor, src=None, group=None, tag=0):
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
 
+def isend(tensor, dst, group=None, tag=0):
+    global cdb
+    return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
+
+
+def irecv(tensor, src=None, group=None, tag=0):
+    global cdb
+    return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
+
+
 def gather(tensor, gather_list=None, dst=0, group=None, async_op=False):
     global cdb
     return cdb.gather(tensor=tensor,
