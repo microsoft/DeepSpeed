@@ -6,7 +6,7 @@ class csvMonitor(Monitor):
         super().__init__(monitor_config)
         import csv
         self.filenames = []
-        self.csv_monitor_output_path = monitor_config.csv_monitor_output_path
+        self.csv_monitor_output_path = monitor_config.csv_monitor.output_path
 
     def write_events(self, event_list):
         import csv

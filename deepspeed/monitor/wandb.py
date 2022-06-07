@@ -7,9 +7,9 @@ class WandbMonitor(Monitor):
         super().__init__(monitor_config)
         check_wandb_availability()
         import wandb
-        wandb.init(project=monitor_config.wandb_project,
-                   group=monitor_config.wandb_group,
-                   entity=monitor_config.wandb_team)
+        wandb.init(project=monitor_config.wandb.project,
+                   group=monitor_config.wandb.group,
+                   entity=monitor_config.wandb.team)
 
     def log(self, data, step=None, commit=None, sync=None):
         import wandb

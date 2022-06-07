@@ -8,11 +8,11 @@ class TensorBoardMonitor(Monitor):
         super().__init__(monitor_config)
         check_tb_availability()
         self.summary_writer = None
-        self.tensorboard_output_path = None
-        self.tensorboard_job_name = "DeepSpeedJobName"
+        #self.tensorboard_output_path = None
+        #self.tensorboard_job_name = "DeepSpeedJobName"
 
-        self.tensorboard_output_path = monitor_config.tensorboard_output_path
-        self.tensorboard_job_name = monitor_config.tensorboard_job_name
+        self.tensorboard_output_path = monitor_config.tensorboard.output_path
+        self.tensorboard_job_name = monitor_config.tensorboard.job_name
 
         self.get_summary_writer()
 
