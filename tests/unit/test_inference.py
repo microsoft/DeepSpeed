@@ -28,7 +28,11 @@ _roberta_models = [
     "j-hartmann/emotion-english-distilroberta-base",
     "Jean-Baptiste/roberta-large-ner-english",
 ]
-_gpt_models = ["distilgpt2", "Norod78/hebrew-bad_wiki-gpt_neo-tiny"]
+_gpt_models = [
+    "distilgpt2",
+    "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
+    "EleutherAI/gpt-j-6B"
+]
 _all_models = HfApi().list_models()
 
 pytest.test_models = set(_bert_models + _roberta_models + _gpt_models)
