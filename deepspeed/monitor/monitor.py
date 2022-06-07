@@ -30,7 +30,6 @@ class MonitorMaster(Monitor):
 
         if monitor_config.tensorboard_enabled:
             self.tb_monitor = TensorBoardMonitor(monitor_config)
-            self.tb_monitor.get_summary_writer()
         if monitor_config.wandb_enabled:
             self.wandb_monitor = WandbMonitor(monitor_config)
         if monitor_config.csv_monitor_enabled:

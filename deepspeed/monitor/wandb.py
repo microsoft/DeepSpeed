@@ -1,5 +1,5 @@
-from .utils import *
-from .monitor import *
+from .utils import check_wandb_availability
+from .monitor import Monitor
 
 
 class WandbMonitor(Monitor):

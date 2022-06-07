@@ -1,5 +1,5 @@
-from .utils import *
-from .monitor import *
+from .utils import check_tb_availability
+from .monitor import Monitor
 import os
 
 
@@ -13,6 +13,8 @@ class TensorBoardMonitor(Monitor):
 
         self.tensorboard_output_path = monitor_config.tensorboard_output_path
         self.tensorboard_job_name = monitor_config.tensorboard_job_name
+
+        self.get_summary_writer()
 
     def get_summary_writer(self,
                            base=os.path.join(os.path.expanduser("~"),

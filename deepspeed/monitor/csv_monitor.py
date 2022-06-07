@@ -1,5 +1,4 @@
-from .utils import *
-from .monitor import *
+from .monitor import Monitor
 
 
 class csvMonitor(Monitor):
