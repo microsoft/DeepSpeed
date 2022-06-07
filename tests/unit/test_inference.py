@@ -49,7 +49,6 @@ pytest.task_model_dict = {
     },
 }
 
-
 @pytest.fixture
 def model(task, model_family):
     if model_family not in pytest.task_model_dict[task]:
@@ -155,7 +154,7 @@ def test_fill_mask(enable_cuda_graph, model):
         output = pipe(query)
         baseline = set([res['token_str'] for res in output])
 
-        deepspeed.init_inference(pipe.model,
+        pipe.model = deepspeed.init_inference(pipe.model,
                                  mp_size=1,
                                  dtype=torch.float,
                                  replace_method="auto",
@@ -195,7 +194,7 @@ def test_question_answering(enable_cuda_graph, model):
 
         bs_output = pipe(query)
 
-        deepspeed.init_inference(pipe.model,
+        pipe.model = deepspeed.init_inference(pipe.model,
                                  mp_size=1,
                                  dtype=torch.float,
                                  replace_method="auto",
