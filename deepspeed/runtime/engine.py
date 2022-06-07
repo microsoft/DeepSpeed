@@ -53,7 +53,7 @@ from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvt
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 #from deepspeed.utils.monitor import TensorBoardMonitor, WandbMonitor, csvMonitor
-from deepspeed.utils.monitor import Monitor
+from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
@@ -249,8 +249,8 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
-        if self.monitor_enabled() and self.global_rank == 0:
-            self.monitor = Monitor(self._config)
+        if self.global_rank == 0:
+            self.monitor = MonitorMaster(self._config.monitor_config)
 
         see_memory_usage(
             f"DeepSpeed Engine: Before configure distributed model",
@@ -489,9 +489,6 @@ class DeepSpeedEngine(Module):
 
     def curriculum_params(self):
         return self._config.curriculum_params
-
-    def monitor_enabled(self):
-        return self._config.tensorboard_enabled or self._config.wandb_enabled or self._config.csv_monitor_enabled
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -1658,7 +1655,7 @@ class DeepSpeedEngine(Module):
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
-        if self.monitor_enabled():
+        if self.global_rank == 0 and self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
@@ -1889,7 +1886,7 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.step_timers)
 
         # Log learning rate
-        if self.monitor_enabled():
+        if self.global_rank == 0 and self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(f"Train/Samples/lr",
@@ -1940,7 +1937,7 @@ class DeepSpeedEngine(Module):
         if self.wall_clock_breakdown() or self.flops_profiler_enabled():
             # Log global timing and reset
             if self.is_gradient_accumulation_boundary():
-                if self.monitor_enabled():
+                if self.global_rank == 0 and self.monitor.enabled:
                     self._write_monitor()
 
                 if self.has_moe_layers:
@@ -2015,11 +2012,6 @@ class DeepSpeedEngine(Module):
                     self.global_samples,
                 ),
             ]
-            #self.tb_monitor.write_events(self.summary_events)
-            #if self.wandb_enabled():
-            #    self.wandb_monitor.write_events(self.summary_events)
-            #if self.csv_enabled():
-            #    self.csv_monitor.write_events(self.summary_events)
             self.monitor.write_events(self.summary_events)
 
     def _get_optimizer_param(self, param_name):

@@ -24,6 +24,7 @@ from .config_utils import (
 from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..monitor.config import DeepSpeedMonitorConfig
 
 from ..git_version_info import version as __version__
 from ..utils import logger
@@ -615,31 +616,6 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
-def get_tensorboard_enabled(param_dict):
-    if TENSORBOARD in param_dict.keys():
-        return get_scalar_param(param_dict[TENSORBOARD],
-                                TENSORBOARD_ENABLED,
-                                TENSORBOARD_ENABLED_DEFAULT)
-    else:
-        return False
-
-
-def get_csv_monitor_enabled(param_dict):
-    if CSV_MONITOR in param_dict.keys():
-        return get_scalar_param(param_dict[CSV_MONITOR],
-                                CSV_MONITOR_ENABLED,
-                                CSV_MONITOR_ENABLED_DEFAULT)
-    else:
-        return False
-
-
-def get_wandb_enabled(param_dict):
-    if WANDB in param_dict.keys():
-        return get_scalar_param(param_dict[WANDB], WANDB_ENABLED, WANDB_ENABLED_DEFAULT)
-    else:
-        return False
-
-
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):
         param_dict = param_dict[QUANTIZE_TRAINING]
@@ -738,73 +714,6 @@ def get_eigenvalue_layer_num(param_dict):
                                 EIGENVALUE_LAYER_NUM_DEFAULT)
     else:
         return EIGENVALUE_LAYER_NUM_DEFAULT
-
-
-def get_tensorboard_output_path(param_dict):
-    if get_tensorboard_enabled(param_dict):
-        return get_scalar_param(
-            param_dict[TENSORBOARD],
-            TENSORBOARD_OUTPUT_PATH,
-            TENSORBOARD_OUTPUT_PATH_DEFAULT,
-        )
-    else:
-        return TENSORBOARD_OUTPUT_PATH_DEFAULT
-
-
-def get_tensorboard_job_name(param_dict):
-    if get_tensorboard_enabled(param_dict):
-        return get_scalar_param(param_dict[TENSORBOARD],
-                                TENSORBOARD_JOB_NAME,
-                                TENSORBOARD_JOB_NAME_DEFAULT)
-    else:
-        return TENSORBOARD_JOB_NAME_DEFAULT
-
-
-def get_wandb_team(param_dict):
-    if get_wandb_enabled(param_dict):
-        return get_scalar_param(param_dict[WANDB],
-                                WANDB_TEAM_NAME,
-                                WANDB_TEAM_NAME_DEFAULT)
-    else:
-        return WANDB_TEAM_NAME_DEFAULT
-
-
-def get_wandb_project(param_dict):
-    if get_wandb_enabled(param_dict):
-        return get_scalar_param(param_dict[WANDB],
-                                WANDB_PROJECT_NAME,
-                                WANDB_PROJECT_NAME_DEFAULT)
-    else:
-        return WANDB_PROJECT_NAME_DEFAULT
-
-
-def get_wandb_group(param_dict):
-    if get_wandb_enabled(param_dict):
-        return get_scalar_param(param_dict[WANDB],
-                                WANDB_GROUP_NAME,
-                                WANDB_GROUP_NAME_DEFAULT)
-    else:
-        return WANDB_GROUP_NAME_DEFAULT
-
-
-def get_wandb_host(param_dict):
-    if get_wandb_enabled(param_dict):
-        return get_scalar_param(param_dict[WANDB],
-                                WANDB_HOST_NAME,
-                                WANDB_HOST_NAME_DEFAULT)
-    else:
-        return WANDB_HOST_NAME_DEFAULT
-
-
-def get_csv_monitor_output_path(param_dict):
-    if get_csv_monitor_enabled(param_dict):
-        return get_scalar_param(
-            param_dict[CSV_MONITOR],
-            CSV_MONITOR_OUTPUT_PATH,
-            CSV_MONITOR_OUTPUT_PATH_DEFAULT,
-        )
-    else:
-        return CSV_MONITOR_OUTPUT_PATH_DEFAULT
 
 
 def get_checkpoint_params(param_dict):
@@ -960,6 +869,8 @@ class DeepSpeedConfig(object):
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
 
+        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
@@ -1006,16 +917,6 @@ class DeepSpeedConfig(object):
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.autotuning_config = DeepSpeedAutotuningConfig(param_dict)
-        self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
-        self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
-        self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
-        self.wandb_enabled = get_wandb_enabled(param_dict)
-        self.wandb_group = get_wandb_group(param_dict)
-        self.wandb_team = get_wandb_team(param_dict)
-        self.wandb_project = get_wandb_project(param_dict)
-        self.wandb_host = get_wandb_host(param_dict)
-        self.csv_monitor_enabled = get_csv_monitor_enabled(param_dict)
-        self.csv_monitor_output_path = get_csv_monitor_output_path(param_dict)
 
         (
             self.eigenvalue_enabled,

@@ -366,13 +366,11 @@ class PipelineEngine(DeepSpeedEngine):
                       f'samples/sec: {tput:0.3f}')
 
         # Monitoring
-        if self.monitor_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/train_loss',
-                                        self.agg_train_loss.mean().item(),
-                                        self.global_samples)]
-                if self.monitor_enabled():
-                    self.monitor.write_events(self.summary_events)
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/train_loss',
+                                    self.agg_train_loss.mean().item(),
+                                    self.global_samples)]
+            self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown(
         ) and self.global_steps % self.steps_per_print() == 0:
@@ -456,13 +454,11 @@ class PipelineEngine(DeepSpeedEngine):
         if compute_loss:
             eval_output = self._bcast_pipe_scalar(eval_output)
 
-        if self.monitor_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/eval_loss',
-                                        eval_output.mean().item(),
-                                        self.global_samples)]
-                if self.monitor_enabled():
-                    self.monitor.write_events(self.summary_events)
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/eval_loss',
+                                    eval_output.mean().item(),
+                                    self.global_samples)]
+            self.monitor.write_events(self.summary_events)
 
         # Restore the training iterator
         self.set_dataiterator(train_iterator)
@@ -1168,16 +1164,15 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.mem_status('AFTER STEP')
 
-        if self.monitor_enabled():
-            if self.global_rank == 0:
-                self.summary_events = [(f'Train/Samples/lr',
-                                        self.get_lr()[0],
-                                        self.global_samples)]
-                if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
-                    self.summary_events.append((f'Train/Samples/loss_scale',
-                                                self.optimizer.cur_scale,
-                                                self.global_samples))
-                self.monitor.write_events(self.summary_events)
+        if self.global_rank == 0 and self.monitor.enabled:
+            self.summary_events = [(f'Train/Samples/lr',
+                                    self.get_lr()[0],
+                                    self.global_samples)]
+            if self.fp16_enabled() and hasattr(self.optimizer, 'cur_scale'):
+                self.summary_events.append((f'Train/Samples/loss_scale',
+                                            self.optimizer.cur_scale,
+                                            self.global_samples))
+            self.monitor.write_events(self.summary_events)
 
         if self.wall_clock_breakdown():
             self.timers('step_microstep').stop()
