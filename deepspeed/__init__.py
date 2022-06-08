@@ -83,7 +83,7 @@ def initialize(args=None,
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
 
-        dist_init_required: Optional: None will auto-initialize torch.distributed if needed,
+        dist_init_required: Optional: None will auto-initialize torch distributed if needed,
             otherwise the user can force it to be initialized or not via boolean.
 
         collate_fn: Optional: Merges a list of samples to form a

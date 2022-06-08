@@ -1047,7 +1047,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #     if numel in empty_buffers:
             #         empty_buffers[numel].append(buffer)
 
-            # if torch.distributed.get_rank():
+            # if deepspeed.comm.get_rank():
             #    print(f"Releasing {param.data.numel()}")
             if param.ds_tensor is not None and not has_been_updated:
 

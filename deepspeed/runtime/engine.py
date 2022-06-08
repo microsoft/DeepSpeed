@@ -70,7 +70,7 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
-# Set to torch.distributed or deepspeed.comm based inside DeepSpeedEngine init
+# Set to torch's distributed package or deepspeed.comm based inside DeepSpeedEngine init
 dist = None
 
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
@@ -896,7 +896,7 @@ class DeepSpeedEngine(Module):
             args.deepspeed_config = args.deepscale_config
 
         assert "LOCAL_RANK" in os.environ or "OMPI_COMM_WORLD_LOCAL_RANK" in os.environ, "DeepSpeed requires the LOCAL_RANK environment " \
-            "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch.distributed launcher. If using a " \
+            "variable, it is set by the deepspeed launcher, deepspeed.init_distributed, or the torch's launcher. If using a " \
             "different launcher please ensure LOCAL_RANK is set prior to initializing deepspeed."
 
         if hasattr(args, 'local_rank') and args.local_rank != None:
@@ -1666,7 +1666,7 @@ class DeepSpeedEngine(Module):
 
         # TODO: Allreduce/average them across ranks for more accurate timing.
 
-        # if torch.distributed.get_rank() == 0:
+        # if deepspeed.comm.get_rank() == 0:
         log_dist(
             f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
             ranks=[0])
@@ -2356,7 +2356,7 @@ class DeepSpeedEngine(Module):
         else:
             moe_layer_id = 0
             for n_module, module in model.named_modules():
-                if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
+                if isinstance(module, MoE):  # and deepspeed.comm.get_rank() == 0:
                     group_name = module.expert_group_name
                     num_local_experts = module.num_local_experts
                     expp_rank = groups._get_expert_parallel_rank(group_name)
@@ -2883,7 +2883,7 @@ class DeepSpeedEngine(Module):
         # Using layer_#_export_# to save the model's expert state_dict
         moe_layer_id = 0
         for n_module, module in self.module.named_modules():
-            if isinstance(module, MoE):  # and torch.distributed.get_rank() == 0:
+            if isinstance(module, MoE):  # and deepspeed.comm.get_rank() == 0:
                 group_name = module.expert_group_name
                 num_local_experts = module.num_local_experts
                 expp_rank = groups._get_expert_parallel_rank(group_name)

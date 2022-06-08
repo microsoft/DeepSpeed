@@ -671,7 +671,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                       self.config.epsilon)
 
             output = output.to(input_type)
-        #print(f'[{torch.distributed.get_rank()}] {self.config.layer_id}: {output.norm()}')
+        #print(f'[{deepspeed.comm.get_rank()}] {self.config.layer_id}: {output.norm()}')
         #exit()
         if get_present:
             output = (output, presents)
