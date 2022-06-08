@@ -28,11 +28,11 @@ class MonitorMaster(Monitor):
         self.wandb_monitor = None
         self.csv_monitor = None
 
-        if monitor_config.tensorboard.enabled:
+        if monitor_config.tensorboard_enabled:
             self.tb_monitor = TensorBoardMonitor(monitor_config)
-        if monitor_config.wandb.enabled:
+        if monitor_config.wandb_enabled:
             self.wandb_monitor = WandbMonitor(monitor_config)
-        if monitor_config.csv_monitor.enabled:
+        if monitor_config.csv_monitor_enabled:
             self.csv_monitor = csvMonitor(monitor_config)
 
     def write_events(self, event_list):

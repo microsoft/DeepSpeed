@@ -9,35 +9,42 @@ from pydantic import BaseModel, validator, ValidationError, create_model
 from .constants import *
 
 
-class DeepSpeedMonitorConfig(BaseModel):
-
-    tensorboard: Optional[create_model(
-        'TensorBoard',
-        enabled=(bool,
-                 TENSORBOARD_ENABLED_DEFAULT),
-        output_path=(str,
-                     TENSORBOARD_OUTPUT_PATH_DEFAULT),
-        job_name=(str,
-                  TENSORBOARD_JOB_NAME_DEFAULT))]  #, __validators__=tb_validators)]
-    wandb: Optional[create_model('Wandb',
-                                 enabled=(bool,
-                                          WANDB_ENABLED_DEFAULT),
-                                 group=(str,
-                                        WANDB_GROUP_NAME_DEFAULT),
-                                 team=(str,
-                                       WANDB_TEAM_NAME_DEFAULT),
-                                 project=(str,
-                                          WANDB_PROJECT_NAME_DEFAULT),
-                                 host=(str,
-                                       WANDB_HOST_NAME_DEFAULT))]
-    csv_monitor: Optional[create_model('csv_Monitor',
-                                       enabled=(bool,
-                                                CSV_MONITOR_ENABLED_DEFAULT),
-                                       output_path=(str,
-                                                    CSV_MONITOR_OUTPUT_PATH_DEFAULT))]
-
+class MonitorConfig(BaseModel):
     class Config:
         validate_all = True
         validate_assignment = True
         use_enum_values = True
-        #extra = 'forbid'
+        extra = 'forbid'
+
+
+class TensorBoardConfig(MonitorConfig):
+    enabled: bool = TENSORBOARD_ENABLED_DEFAULT
+    output_path: str = TENSORBOARD_OUTPUT_PATH_DEFAULT
+    job_name: str = TENSORBOARD_JOB_NAME_DEFAULT
+
+
+class WandbConfig(MonitorConfig):
+    enabled: bool = WANDB_ENABLED_DEFAULT
+    group: str = WANDB_GROUP_NAME_DEFAULT
+    team: str = WANDB_TEAM_NAME_DEFAULT
+    project: str = WANDB_PROJECT_NAME_DEFAULT
+    host: str = WANDB_HOST_NAME_DEFAULT
+
+
+class CSVConfig(MonitorConfig):
+    enabled: bool = CSV_MONITOR_ENABLED_DEFAULT
+    output_path: str = CSV_MONITOR_OUTPUT_PATH_DEFAULT
+
+
+class DeepSpeedMonitorConfig:
+    def __init__(self, ds_config):
+        self.tensorboard_enabled = 'tensorboard' in ds_config
+        self.wandb_enabled = 'wandb' in ds_config
+        self.csv_monitor_enabled = 'csv_monitor' in ds_config
+
+        if self.tensorboard_enabled:
+            self.tensorboard = TensorBoardConfig(**ds_config['tensorboard'])
+        if self.wandb_enabled:
+            self.wandb = WandbConfig(**ds_config['wandb'])
+        if self.csv_monitor_enabled:
+            self.csv_monitor = CSVConfig(**ds_config['csv_monitor'])
