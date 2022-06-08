@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Checks each file in sys.argv for the string "torch.distributed"."""
-
+"""
+Checks each file in sys.argv for the string "torch.distributed".
+Modified from https://github.com/jlebar/pre-commit-hooks/blob/master/check_do_not_submit.py
+"""
 from __future__ import annotations
 
 import os
@@ -28,7 +30,8 @@ res = subprocess.run(
     capture_output=True,
 )
 if res.returncode == 0:
-    err('Error: The string "torch.distributed" was found!')
+    err('Error: The string "torch.distributed" was found. Please replace all calls to torch.distributed with "deepspeed.comm"'
+        )
     err(res.stdout.decode("utf-8"))
     sys.exit(1)
 elif res.returncode == 2:
