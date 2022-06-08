@@ -174,8 +174,8 @@ class PartitionedParameterCoordinator:
 
         step_id = self.__step_id_module_fetched_for[sub_module.id].popleft()
         self._dump_params('record_param',
-                          sub_module.id,
-                          [p.ds_id for p in iter_params(sub_module)],
+                          sub_module,
+                          [p for p in iter_params(sub_module)],
                           step_id)
         for param in sorted(set(iter_params(sub_module)), key=lambda p: p.ds_id):
             self.__param_order.append(
@@ -264,7 +264,7 @@ class PartitionedParameterCoordinator:
             debug_rank0(f"-fetch: {param.ds_summary()}")
         self._dump_params('params_to_fetch',
                           current_submodule,
-                          [p.ds_id for p in params_to_fetch])
+                          [p for p in params_to_fetch])
         self.__all_gather_params(params_to_fetch)
 
         # wait for parameters in the immediately needed submodule to become available
@@ -357,8 +357,8 @@ class PartitionedParameterCoordinator:
                 for param in params_to_prefetch:
                     debug_rank0(f"-prefetch: {param.ds_summary()}")
                 self._dump_params('params_to_prefetch',
-                                  current_submodule.id,
-                                  [p.ds_id for p in params_to_prefetch])
+                                  current_submodule,
+                                  [p for p in params_to_prefetch])
                 self.__all_gather_params(params_to_prefetch)
 
                 if self.__prefetch_nvme:
