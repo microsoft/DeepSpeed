@@ -9,7 +9,7 @@ class Monitor(ABC):
     @abstractmethod
     def __init__(self, monitor_config):
         self.monitor_config = monitor_config
-        self.enabled = monitor_config.tensorboard.enabled or monitor_config.wandb.enabled or monitor_config.csv_monitor.enabled
+        self.enabled = monitor_config.tensorboard_enabled or monitor_config.wandb_enabled or monitor_config.csv_monitor_enabled
 
     @abstractmethod
     def write_events(self, event_list):
