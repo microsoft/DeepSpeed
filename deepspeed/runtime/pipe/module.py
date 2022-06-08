@@ -1,3 +1,4 @@
+import inspect
 import os
 import glob
 import enum
@@ -301,7 +302,7 @@ class PipelineModule(nn.Module):
                 f"Partitioning '{layername}' found no valid layers to partition.")
         return idxs
 
-    def forward(self, forward_input):
+    def forward(self, forward_input, **fwd_kwargs):
         # We need to offset the seed by the microbatch ID. Save it in a local var to
         # ensure it is preserved in the closure. Otherwise checkpointed forward funcs
         # will see a different offset.
@@ -327,7 +328,20 @@ class PipelineModule(nn.Module):
                         else:
                             ds_utils.set_random_seed(new_seed)
 
-                    inputs = layer(inputs)
+                    layer_kwargs = dict()
+                    if hasattr(layer, 'forward'):
+                        sig = inspect.signature(layer.forward)
+
+                        # Build kwargs for the current layer, we don't want to send a kwarg that doesn't exist.
+                        for key, val in fwd_kwargs.items():
+                            if key in sig.parameters:
+                                layer_kwargs[key] = val
+                    inputs = layer(inputs, **layer_kwargs)
+
+                    if len(layer_kwargs) > 0:
+                        # Update global args with local layer args.
+                        fwd_kwargs.update(layer_kwargs)
+
                 return inputs
 
             return exec_func

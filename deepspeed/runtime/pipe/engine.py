@@ -114,6 +114,8 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.micro_batch_size = self.train_micro_batch_size_per_gpu()
         self.micro_batches = self.gradient_accumulation_steps()
+        self.dynamic_activation_shape = False
+        self.fwd_kwargs = {}
 
         # Set Grid and Communication Groups
         self.grid = self.module._grid
@@ -267,6 +269,8 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('step_microstep').start()
             self.timers('step_microstep').stop()
 
+        self.save_norm_interval = self.steps_per_print()
+
     def _build_data_iter(self, dataset):
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset,
@@ -364,6 +368,8 @@ class PipelineEngine(DeepSpeedEngine):
         Returns:
             The arithmetic mean of the losses computed this batch.
         """
+        self.dynamic_activation_shape = False
+
         if not torch._C.is_grad_enabled():
             raise RuntimeError(
                 f'train_batch() requires gradients enabled. Use eval_batch() instead.')
@@ -1121,9 +1127,9 @@ class PipelineEngine(DeepSpeedEngine):
         if self.dynamic_activation_shape:
             if async_op:
                 promises.extend(p2p.new_send_obj(outputs, self.next_stage, async_op=async_op))
-                # promises.extend(p2p.send_obj(outputs, self.next_stage, async_op=async_op))
             else:
                 p2p.new_send_obj(outputs, self.grid.stage_to_global(self.next_stage), async_op=async_op)
+
         else:
             if self.first_output_send:
                 self.first_output_send = False
@@ -1218,7 +1224,6 @@ class PipelineEngine(DeepSpeedEngine):
         if self.dynamic_activation_shape:
             if async_op:
                 recvd = p2p.new_recv_obj(sender=self.prev_stage, async_op=async_op)
-                # recvd = p2p.recv_obj(sender=self.prev_stage, async_op=async_op)
             else:
                 recvd = p2p.new_recv_obj(sender=self.grid.stage_to_global(self.prev_stage), async_op=async_op)
         else:
@@ -1246,15 +1251,15 @@ class PipelineEngine(DeepSpeedEngine):
                     recvd[idx] = buffer.clone().detach()
                     promises.append(p2p.recv(recvd[idx], self.prev_stage, async_op=True))
 
-            # NCCL does not like to send torch.BoolTensor types, so un-cast the
-            # attention mask
-            if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
-                recvd[-1] = recvd[-1].bool()
+                # NCCL does not like to send torch.BoolTensor types, so un-cast the
+                # attention mask
+                if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
+                    recvd[-1] = recvd[-1].bool()
 
-            recvd = tuple(recvd)
+                recvd = tuple(recvd)
 
-            for buffer in recvd:
-                buffer.requires_grad = buffer.is_floating_point()
+                for buffer in recvd:
+                    buffer.requires_grad = buffer.is_floating_point()
 
         self.pipe_buffers['inputs'][buffer_id] = recvd
 
@@ -1331,136 +1336,15 @@ class PipelineEngine(DeepSpeedEngine):
         if self.wall_clock_breakdown():
             self.timers('pipe_recv_grad').stop()
 
-
-    def _collect_norms(self, which='params'):
-        norms = []
-
-        def _extract_optim_states(key='exp_avg'):
-            """Returns [(name, optim.state[param][key]), ... ] for each param"""
-            grabbed = []
-
-            if self.fp16_enabled():
-                # Unflatten optimizer's state
-                opt_states = []
-                if self.fp16_enabled():
-                    sd = self.optimizer.optimizer.state_dict()
-                for idx, group in enumerate(self.optimizer.fp16_groups):
-                    fp32_group = self.optimizer.fp32_groups_flat[idx]
-                    fused_fp32_state = sd['state'][idx]
-                    fp32_states = _unflatten_dense_tensors(fused_fp32_state[key], group)
-                    opt_states.append(fp32_states)
-                else:
-                    sd = self.optimizer.state_dict()
-
-                # Now grab the states for each parameter
-                for name, param in self.module.named_parameters():
-                    found = False
-                    # find param in the fp16_groups
-                    for group_idx, group in enumerate(self.optimizer.fp16_groups):
-                        for param_idx, fp16_param in enumerate(group):
-                            if id(param) == id(fp16_param):
-                                found = True
-                                param_state = opt_states[group_idx][param_idx]
-                                grabbed.append((name, param_state))
-                                break
-                    assert found
-
-            else:
-                #FP32 is easier
-                # Now grab the states for each parameter
-                for name, param in self.module.named_parameters():
-                    assert param in self.optimizer.state
-                    assert key in self.optimizer.state[param]
-                    param_state = self.optimizer.state[param][key]
-                    grabbed.append((name, param_state))
-
-            return grabbed
-
-        def mp(p):
-            return hasattr(p, 'model_parallel') and p.model_parallel
-
-        scales = (1.0 if mp(p) else 1.0 / math.sqrt(8.0) for name,
-                  p in self.module.named_parameters())
-
-        if which == 'params':
-            tensors = ((name, p) for name, p in self.module.named_parameters())
-        elif which == 'grads':
-            if self.bf16_enabled():
-                tensors = []
-                tensors = ((name,
-                            p._hp_grad) for name,
-                           p in self.module.named_parameters() if p._hp_grad is not None)
-            else:
-                tensors = ((name,
-                            p.grad) for name,
-                           p in self.module.named_parameters() if p.grad is not None)
-        elif which == 'exp_avg':
-            tensors = _extract_optim_states(key='exp_avg')
-        elif which == 'exp_avg_sq':
-            tensors = _extract_optim_states(key='exp_avg_sq')
-        else:
-            raise RuntimeError(f'cannot collect {which}')
-
-        for (name, t), scale in zip(tensors, scales):
-            norm = torch.norm(t.data.float(), 2)**2.0
-            torch.distributed.all_reduce(norm,
-                                         group=self.grid.get_slice_parallel_group())
-            norm = norm**0.5
-            norm = norm * scale
-
-            numel = torch.LongTensor([t.numel()]).cuda()
-            torch.distributed.all_reduce(numel,
-                                         group=self.grid.get_slice_parallel_group())
-            numel = numel.item()
-
-            numel = numel * scale
-
-            minv = torch.min(t.data)
-            torch.distributed.all_reduce(minv,
-                                         op=torch.distributed.ReduceOp.MIN,
-                                         group=self.grid.get_slice_parallel_group())
-
-            maxv = torch.max(t.data)
-            torch.distributed.all_reduce(maxv,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.grid.get_slice_parallel_group())
-
-            norms.append([
-                self.global_rank,
-                name,
-                self.global_steps + 1,
-                norm.item(),
-                norm.item() / numel,
-                minv.item(),
-                maxv.item()
-            ])
-
-        return norms
-
     def _exec_optimizer_step(self, lr_kwargs=None):
         if self.wall_clock_breakdown():
             self.timers('step_microstep').start()
             self.timers('step').start()
         self.mem_status('BEFORE STEP', reset_max=True)
 
-        if (self.global_steps + 1) % self.save_norm_interval == 0:
-            self._param_norms = self._collect_norms(which='params')
-            self._grad_norms = self._collect_norms(which='grads')
-        else:
-            self._param_norms = None
-            self._grad_norms = None
-
         self._force_grad_boundary = True
-        self._take_model_step()
+        self._take_model_step(lr_kwargs)
         self._force_grad_boundary = False
-
-        # no +1 because take_model_step increments global_steps
-        if self.global_steps % self.save_norm_interval == 0:
-            self._exp_avg_norms = self._collect_norms(which='exp_avg')
-            self._exp_avg_sq_norms = self._collect_norms(which='exp_avg_sq')
-        else:
-            self._exp_avg_norms = None
-            self._exp_avg_sq_norms = None
 
         self.mem_status('AFTER STEP')
 
