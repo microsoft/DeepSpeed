@@ -1,4 +1,5 @@
 from .monitor import Monitor
+import os
 
 
 class csvMonitor(Monitor):
@@ -7,6 +8,26 @@ class csvMonitor(Monitor):
         import csv
         self.filenames = []
         self.csv_monitor_output_path = monitor_config.csv_monitor.output_path
+        self.csv_monitor_job_name = monitor_config.csv_monitor.job_name
+        self.log_dir = self.setup_log_dir()
+
+    def setup_log_dir(self, base=os.path.join(os.path.expanduser("~"), "csv_monitor")):
+        if self.csv_monitor_output_path is not None:
+            log_dir = os.path.join(self.csv_monitor_output_path,
+                                   self.csv_monitor_job_name)
+        # NOTE: This code path currently is never used since the default tensorboard_output_path is an empty string and not None. Saving it in case we want this functionality in the future.
+        else:
+            if "DLWS_JOB_ID" in os.environ:
+                infra_job_id = os.environ["DLWS_JOB_ID"]
+            elif "DLTS_JOB_ID" in os.environ:
+                infra_job_id = os.environ["DLTS_JOB_ID"]
+            else:
+                infra_job_id = "unknown-job-id"
+
+            csv_monitor_dir_name = os.path.join(infra_job_id, "logs")
+            log_dir = os.path.join(base, csv_monitor_dir_name, self.csv_monitor_job_name)
+        os.makedirs(log_dir, exist_ok=True)
+        return log_dir
 
     def write_events(self, event_list):
         import csv
@@ -26,7 +47,7 @@ class csvMonitor(Monitor):
 
             # sanitize common naming conventions into filename
             filename = log_name.replace('/', '_').replace(' ', '_')
-            fname = self.csv_monitor_output_path + filename + '.csv'
+            fname = self.log_dir + '/' + filename + '.csv'
 
             # Open file and record event. Insert header if this is the first time writing
             with open(fname, 'a+') as csv_monitor_file:

@@ -23,8 +23,8 @@ class TensorBoardMonitor(Monitor):
         if self.tensorboard_output_path is not None:
             log_dir = os.path.join(self.tensorboard_output_path,
                                    self.tensorboard_job_name)
+        # NOTE: This code path currently is never used since the default tensorboard_output_path is an empty string and not None. Saving it in case we want this functionality in the future.
         else:
-
             if "DLWS_JOB_ID" in os.environ:
                 infra_job_id = os.environ["DLWS_JOB_ID"]
             elif "DLTS_JOB_ID" in os.environ:
@@ -37,6 +37,9 @@ class TensorBoardMonitor(Monitor):
                                    summary_writer_dir_name,
                                    self.tensorboard_job_name)
         os.makedirs(log_dir, exist_ok=True)
+        print(log_dir)
+        import sys
+        sys.exit()
         self.summary_writer = SummaryWriter(log_dir=log_dir)
         return self.summary_writer
 

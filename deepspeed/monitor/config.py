@@ -28,12 +28,12 @@ class WandbConfig(MonitorConfig):
     group: str = WANDB_GROUP_NAME_DEFAULT
     team: str = WANDB_TEAM_NAME_DEFAULT
     project: str = WANDB_PROJECT_NAME_DEFAULT
-    host: str = WANDB_HOST_NAME_DEFAULT
 
 
 class CSVConfig(MonitorConfig):
     enabled: bool = CSV_MONITOR_ENABLED_DEFAULT
     output_path: str = CSV_MONITOR_OUTPUT_PATH_DEFAULT
+    job_name: str = CSV_MONITOR_JOB_NAME_DEFAULT
 
 
 class DeepSpeedMonitorConfig:

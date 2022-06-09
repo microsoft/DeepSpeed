@@ -46,20 +46,16 @@ WANDB_ENABLED = "enabled"
 WANDB_ENABLED_DEFAULT = False
 
 # Wandb team
-WANDB_TEAM_NAME = "team_name"
+WANDB_TEAM_NAME = "team"
 WANDB_TEAM_NAME_DEFAULT = None
 
 # Wandb project
-WANDB_PROJECT_NAME = "project_name"
+WANDB_PROJECT_NAME = "project"
 WANDB_PROJECT_NAME_DEFAULT = "deepspeed"
 
 # Wandb group
-WANDB_GROUP_NAME = "group_name"
+WANDB_GROUP_NAME = "group"
 WANDB_GROUP_NAME_DEFAULT = None
-
-# Wandb host (for advanced users)
-WANDB_HOST_NAME = "host_name"
-WANDB_HOST_NAME_DEFAULT = "https://api.wandb.ai"
 
 #########################################
 # csv monitor
@@ -71,6 +67,7 @@ The basic csv monitor can be specified as:
 "csv_monitor": {
   "enabled": true,
   "output_path": "/home/myname/foo",
+  "job_name": "model_lr2e-5_epoch3_seed2_seq64"
 }
 '''
 CSV_MONITOR = "csv_monitor"
@@ -82,3 +79,7 @@ CSV_MONITOR_ENABLED_DEFAULT = False
 # csv monitor output path
 CSV_MONITOR_OUTPUT_PATH = "output_path"
 CSV_MONITOR_OUTPUT_PATH_DEFAULT = ""
+
+# csv_monitor job name
+CSV_MONITOR_JOB_NAME = "job_name"
+CSV_MONITOR_JOB_NAME_DEFAULT = "DeepSpeedJobName"
