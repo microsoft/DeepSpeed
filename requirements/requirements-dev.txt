@@ -2,6 +2,7 @@ clang-format
 docutils<0.18
 importlib-metadata>=4
 megatron-lm==1.1.5
+nvidia-smi
 pre-commit
 pytest
 pytest-forked

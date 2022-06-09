@@ -1,4 +1,5 @@
 import os
+import nvidia_smi
 import torch
 import pytest
 import deepspeed
@@ -47,6 +48,14 @@ pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
     for task in pytest.test_tasks
 }
+
+# Get GPU memory without initializing CUDA (i.e., torch.cuda.get_device_properties(0))
+# Used to avoid running large models without enough GPU memory
+# Initializing CUDA will break @distributed_test
+nvidia_smi.nvmlInit()
+handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+pytest.GPU_MEMORY = info.total
 """
 These fixtures will iterate over all combinations of tasks and models (and
 dtype), only returning valid combinations in valid_model_task
@@ -68,6 +77,11 @@ def dtype(request):
     return request.param
 
 
+@pytest.fixture(params=[True, False])
+def enable_cuda_graph(request):
+    return request.param
+
+
 @pytest.fixture()
 def valid_model_task(model, task, dtype):
     if model in pytest.all_models[task]:
@@ -75,8 +89,7 @@ def valid_model_task(model, task, dtype):
     else:
         pytest.skip(f"Not a valid model / task combination: {model} / {task}")
     ''' model specific checks '''
-    if 'gpt-j-6B' in model and (torch.cuda.get_device_properties(0).total_memory <
-                                24e9) and dtype == torch.float:
+    if ('gpt-j-6B' in model) and (pytest.GPU_MEMORY < 24e9) and (dtype == torch.float):
         pytest.skip(f"Not enough GPU memory to run {model} with dtype {dtype}")
 
     return model_task
@@ -142,7 +155,11 @@ def assert_fn(task, model):
         NotImplementedError(f'assert_fn for task "{task}" is not implemented')
 
 
-@pytest.mark.parametrize("enable_cuda_graph", [False, True])
+"""
+Tests
+"""
+
+
 def test_model_task(valid_model_task,
                     dtype,
                     enable_cuda_graph,
@@ -175,7 +192,6 @@ def test_model_task(valid_model_task,
     _go()
 
 
-@pytest.mark.parametrize("dtype", [(torch.float), (torch.half)])
 def test_gpt2_inject(dtype):
     if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
         pytest.skip("DS inference injection doesn't work well on older torch versions")
