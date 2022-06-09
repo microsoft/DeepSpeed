@@ -17,12 +17,19 @@ import time
 import signal
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
-
+from torch.distributed.launcher.api import LaunchConfig, elastic_launch
+from torch.distributed.elastic.multiprocessing import Std
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
-
 PID_FILE_BASEPATH = "/tmp"
-
+sys.path.append('/home/t-arpanjain/work/elastic_try/using_torch/')
+from functionAgent import FunctionElasticAgent
+from torch.distributed.elastic.rendezvous import RendezvousParameters
+from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
+import torch.distributed.elastic.rendezvous.registry as rdzv_registry
+from torch.distributed.elastic.agent.server.api import WorkerSpec
+from torch.distributed.elastic.multiprocessing import Std
+from typing import Any, Dict, Optional, Tuple
 
 def parse_args():
     parser = ArgumentParser(description="DeepSpeed distributed training launch"
@@ -87,6 +94,32 @@ def parse_args():
     return parser.parse_args()
 
 
+def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
+    max_nodes = args.nnodes *2
+    min_nodes = 1
+    config: Dict[str, str] = {'timeout': 100}
+    # config["rank"] =  node_rank
+    config["store_type "] =  "file"
+
+    config = LaunchConfig(
+        min_nodes=min_nodes,
+        max_nodes=max_nodes,
+        nproc_per_node=num_local_procs,
+        run_id="123456789",
+        role="default",
+        rdzv_endpoint="worker-0:46728",
+        rdzv_backend='c10d',
+        rdzv_configs=config,
+        max_restarts=100,
+        monitor_interval=1,
+        start_method="spawn",
+        redirects=Std.from_str("0"),
+        tee=Std.from_str("0"),
+        log_dir="",
+    )
+    return config
+
+
 def main():
     args = parse_args()
     current_env = os.environ.copy()
@@ -145,11 +178,40 @@ def main():
 
     processes = []
     cmd = []
-    for local_rank in range(0, num_local_procs):
-        # each process's rank
-        dist_rank = global_rank_mapping[local_node][local_rank]
-        current_env["RANK"] = str(dist_rank)
-        current_env["LOCAL_RANK"] = str(local_rank)
+    Elastic_training = False
+
+    if not Elastic_training:
+        for local_rank in range(0, num_local_procs):
+            # each process's rank
+            dist_rank = global_rank_mapping[local_node][local_rank]
+            current_env["RANK"] = str(dist_rank)
+            current_env["LOCAL_RANK"] = str(local_rank)
+
+            # spawn the processes
+            cmd = []
+            if not args.no_python:
+                cmd = [sys.executable, "-u"]
+                if args.module:
+                    cmd.append("-m")
+            else:
+                if args.module:
+                    raise ValueError("Don't use both the '--no_python' flag"
+                                    " and the '--module' flag at the same time.")
+            cmd.append(args.training_script)
+            # A user may not want to pass local_rank as a keyword arg so we make this optional.
+            if not args.no_local_rank:
+                cmd.append(f"--local_rank={local_rank}")
+            cmd += args.training_script_args
+
+            process = subprocess.Popen(cmd, env=current_env)
+            processes.append(process)
+    else:
+        # dist_rank = global_rank_mapping[local_node][local_rank]
+        # os.environ["RANK"] = str(dist_rank)
+        # os.environ["LOCAL_RANK"] = str(local_rank)
+
+        os.environ["MASTER_ADDR"] = args.master_addr
+        os.environ["MASTER_PORT"] = str(args.master_port)
 
         # spawn the processes
         cmd = []
@@ -160,15 +222,47 @@ def main():
         else:
             if args.module:
                 raise ValueError("Don't use both the '--no_python' flag"
-                                 " and the '--module' flag at the same time.")
+                                " and the '--module' flag at the same time.")
         cmd.append(args.training_script)
-        # A user may not want to pass local_rank as a keyword arg so we make this optional.
-        if not args.no_local_rank:
-            cmd.append(f"--local_rank={local_rank}")
         cmd += args.training_script_args
+        elastic_config = get_config_elastic(args, num_local_procs,args.node_rank)
+        cmd_args = cmd[1:]
+        # cmd_args = ['MASTER_ADDR={}'.format(args.master_addr), 'MASTER_PORT={}'.format(args.master_port)] + cmd_args
+        print ("CMD is:",cmd_args)
+        
+        
+        # elastic_launch(
+        #     config=elastic_config,
+        #     entrypoint= cmd[0],
+        # )(*cmd_args)
+        rdzv_configs: Dict[str, str] = {'timeout': 100}
+        rdzv_parameters = RendezvousParameters(
+            backend='c10d',
+            endpoint="worker-0:29401",
+            run_id='123456789',
+            min_nodes=1,
+            max_nodes=2,
+            **rdzv_configs
+        )
 
-        process = subprocess.Popen(cmd, env=current_env)
-        processes.append(process)
+        spec = WorkerSpec(
+                role='trainer',
+                local_world_size=8,
+                entrypoint=cmd[0],
+                args=cmd[1:],
+                rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
+                max_restarts=100,
+                monitor_interval=50,
+                redirects=Std.from_str("0"),
+                tee=Std.from_str("0"),
+                master_addr='worker-0',
+                master_port='51000',
+            )
+        agent = FunctionElasticAgent(
+            spec
+        )
+        agent.run()
+
 
     sig_names = {2: "SIGINT", 15: "SIGTERM"}
     last_return_code = None
