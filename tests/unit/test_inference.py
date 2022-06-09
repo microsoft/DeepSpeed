@@ -48,8 +48,8 @@ pytest.all_models = {
     for task in pytest.test_tasks
 }
 """
-These fixtures will iterate over all combinations of tasks and models, only
-returning valid combinations in valid_model_task
+These fixtures will iterate over all combinations of tasks and models (and
+dtype), only returning valid combinations in valid_model_task
 """
 
 
@@ -63,12 +63,23 @@ def model(request):
     return request.param
 
 
+@pytest.fixture(params=[torch.float, torch.half])
+def dtype(request):
+    return request.param
+
+
 @pytest.fixture()
-def valid_model_task(model, task):
+def valid_model_task(model, task, dtype):
     if model in pytest.all_models[task]:
-        return (model, task)
+        model_task = (model, task)
     else:
         pytest.skip(f"Not a valid model / task combination: {model} / {task}")
+    ''' model specific checks '''
+    if 'gpt-j-6B' in model and (torch.cuda.get_device_properties(0) <
+                                24e9) and dtype == torch.float:
+        pytest.skip(f"Not enough GPU memory to run {model} with dtype {dtype}")
+
+    return model_task
 
 
 """
@@ -132,7 +143,12 @@ def assert_fn(task, model):
 
 
 @pytest.mark.parametrize("enable_cuda_graph", [False, True])
-def test_model_task(valid_model_task, query, enable_cuda_graph, inf_kwargs, assert_fn):
+def test_model_task(valid_model_task,
+                    dtype,
+                    enable_cuda_graph,
+                    query,
+                    inf_kwargs,
+                    assert_fn):
     model, task = valid_model_task
 
     @distributed_test(world_size=[1])
@@ -144,7 +160,7 @@ def test_model_task(valid_model_task, query, enable_cuda_graph, inf_kwargs, asse
         pipe.model = deepspeed.init_inference(
             pipe.model,
             mp_size=1,
-            dtype=torch.float,
+            dtype=dtype,
             replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=enable_cuda_graph,
