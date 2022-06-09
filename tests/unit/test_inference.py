@@ -151,7 +151,7 @@ def test_model_task(valid_model_task, query, enable_cuda_graph, inf_kwargs, asse
         )
         ds_output = pipe(query, **inf_kwargs)
 
-        if task=='text-generation':
+        if task == 'text-generation':
             bs_output = pipe(query, **inf_kwargs)
 
         assert assert_fn(bs_output, ds_output)
