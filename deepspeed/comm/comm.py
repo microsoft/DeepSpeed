@@ -31,6 +31,7 @@ import os
 import torch
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
+from .constants import *
 
 
 class ReduceOp(Enum):
@@ -78,11 +79,11 @@ def init_deepspeed_backend(ds_backend):
     global mpi_backend
     global use_ds_backend
 
-    if ds_backend == 'nccl':
+    if ds_backend == NCCL_BACKEND:
         utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
-    elif ds_backend == 'mpi':
+    elif ds_backend == MPI_BACKEND:
         utils.logger.warn("MPI backend in DeepSpeed not yet implemented")
-    elif ds_backend == 'gloo':
+    elif ds_backend == GLOO_BACKEND:
         utils.logger.warn("Gloo backend in DeepSpeed not yet implemented")
     else:
         utils.logger.warn(f"DeepSpeed does not support {ds_backend} backend")
@@ -131,10 +132,10 @@ def set_backend(backend):
     global mpi_backend
 
     try:
-        if backend_name == 'nccl':
+        if backend_name == NCCL_BACKEND:
             if nccl_backend is not None and nccl_backend.is_initialized():
                 cdb = nccl_backend
-        elif backend_name == 'mpi':
+        elif backend_name == MPI_BACKEND:
             if mpi_backend is not None and mpi_backend.is_initialized():
                 cdb = mpi_backend
     except Exception as inst:
@@ -503,13 +504,13 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
             os.environ["MASTER_PORT"] = str(master_port)
     else:
         os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
-        os.environ["MASTER_PORT"] = "54965"
+        os.environ["MASTER_PORT"] = DEFAULT_AML_MASTER_PORT
 
     if verbose:
         utils.logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
             os.environ["NCCL_SOCKET_IFNAME"]))
 
-    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+    os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_AML_NCCL_SOCKET_IFNAME
     os.environ['LOCAL_RANK'] = os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]
 
     if verbose:
