@@ -38,7 +38,7 @@ class DeepSpeedConfigModel(BaseModel):
                         )
                     except Exception as e:
                         logger.Error(
-                            f"Error: tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
+                            f"Tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
                         )
                         raise e
 

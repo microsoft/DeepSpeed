@@ -77,8 +77,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     cpu_offload: bool = Field(None, deprecated=True)
 
     # Stage3 Specific Parameters
-    prefect_bucket_size: int = 5e7
-    param_persistence_threshold: int = 1e5
+    prefetch_bucket_size: int = 5e7
+    param_persistence_threshold: int = Field(1e5,
+                                             alias='stage3_param_persistence_threshold')
     max_live_parameters: int = 1e9
     max_reuse_distance: int = 1e9
     gather_16bit_weights_on_model_save: bool = False
