@@ -8,6 +8,45 @@ Collection of DeepSpeed configuration utilities
 import json
 import collections
 import collections.abc
+from pydantic import BaseModel
+
+
+class DeepSpeedConfigModel(BaseModel):
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.deprecated_fields_check(self)
+
+    @classmethod
+    def deprecated_fields_check(self, pydantic_config):
+        fields = pydantic_config.__fields__
+        fields_set = pydantic_config.__fields_set__
+        for field in fields.values():
+            kwargs = field.field_info.extra
+            if kwargs.get("deprecated", False):
+                dep_param = field.name
+                new_param = kwargs.get("new_param", "")
+                if new_param:
+                    assert (
+                        new_param not in fields_set
+                    ), f"Cannot provide deprecated parameter '{dep_param}' and replacing parameter '{new_param}' together"
+                    try:
+                        setattr(
+                            pydantic_config,
+                            new_param,
+                            getattr(pydantic_config,
+                                    dep_param),
+                        )
+                    except Exception as e:
+                        logger.Error(
+                            f"Error: tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
+                        )
+                        raise e
+
+    class Config:
+        validate_all = True
+        validate_assignment = True
+        use_enum_values = True
+        extra = "forbid"
 
 
 # adapted from https://stackoverflow.com/a/50701137/9201239

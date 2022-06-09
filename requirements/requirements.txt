@@ -3,7 +3,7 @@ ninja
 numpy
 packaging
 psutil
-pydantic
 py-cpuinfo
+pydantic
 torch
 tqdm
