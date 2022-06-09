@@ -534,7 +534,7 @@ def _conv_flops_compute(input,
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -575,7 +575,7 @@ def _conv_trans_flops_compute(
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -734,7 +734,6 @@ def _einsum_flops_compute(equation, *operands):
     np_arrs = [np.zeros(s) for s in input_shapes]
     optim = np.einsum_path(equation, *np_arrs, optimize="optimal")[1]
     for line in optim.split("\n"):
-        print(line.lower())
         if "optimized flop" in line.lower():
             flop = int(float(line.split(":")[-1]))
             return flop, 0

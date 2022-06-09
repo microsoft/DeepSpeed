@@ -17,6 +17,8 @@ from ..moe.layer import MoE
 import torch.distributed as dist
 import deepspeed.utils.groups as groups
 
+DS_INFERENCE_ENABLED = False
+
 
 class InferenceEngine(Module):
     inference_mp_group = None
@@ -27,6 +29,7 @@ class InferenceEngine(Module):
                  model,
                  triangular_masking=True,
                  mp_size=1,
+                 training_mp_size=1,
                  ep_size=1,
                  mpu=None,
                  ep_group=None,
@@ -40,7 +43,9 @@ class InferenceEngine(Module):
                  replace_with_kernel_inject=False,
                  moe=False,
                  moe_experts=1,
-                 moe_type='standard'):
+                 moe_type='standard',
+                 config=None,
+                 enable_cuda_graph=False):
         """
         Args:
             model: torch.nn.Module
@@ -58,12 +63,14 @@ class InferenceEngine(Module):
             replace_with_kernel_inject: this flag need to be set to true to inject inference kernels for models such as, Bert, GPT2, GPT-Neo and GPT-J. Otherwise,
             the injection_dict provides the names of two linear layers as a tuple: (attention_output projection, transformer output projection)
         """
+        global DS_INFERENCE_ENABLED
+        DS_INFERENCE_ENABLED = True
 
         super().__init__()
 
         self.module = model
 
-        self._get_model_config_generate()
+        self._get_model_config_generate(config)
 
         self.mp_world_size = mp_size
         self.checkpoint = checkpoint
@@ -79,7 +86,8 @@ class InferenceEngine(Module):
         self.ep_size = ep_size
         self.ep_group = ep_group
         self.expert_mp_group = expert_mp_group
-
+        self.enable_cuda_graph = enable_cuda_graph
+        self.cuda_grah_created = False
         self._init_quantization_setting(quantization_setting)
 
         if self.checkpoint:
@@ -109,14 +117,16 @@ class InferenceEngine(Module):
                                              replace_with_kernel_inject,
                                              moe,
                                              moe_experts,
-                                             moe_type)
+                                             moe_type,
+                                             training_mp_size)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
                 replace_with_kernel_inject=replace_with_kernel_inject,
                 moe=moe,
                 moe_experts=moe_experts,
-                moe_type=moe_type)
+                moe_type=moe_type,
+                training_mp_size=training_mp_size)
 
         device = torch.cuda.current_device()
         logger.info(f"Place model to device: {device}")
@@ -128,8 +138,8 @@ class InferenceEngine(Module):
         else:
             self.module.register_forward_pre_hook(self._pre_forward_hook)
 
-    def _get_model_config_generate(self):
-        self.config = getattr(self.module, 'config', None)
+    def _get_model_config_generate(self, config):
+        self.config = getattr(self.module, 'config', None) if config is None else config
         self.generate = getattr(self.module, 'generate', None)
 
     def _create_model_parallel_group(self):
@@ -221,7 +231,8 @@ class InferenceEngine(Module):
                                 replace_with_kernel_inject=False,
                                 moe=False,
                                 moe_experts=1,
-                                moe_type='standard'):
+                                moe_type='standard',
+                                training_mp_size=1):
 
         replace_transformer_layer(client_module,
                                   self.module,
@@ -243,7 +254,8 @@ class InferenceEngine(Module):
                                   replace_with_kernel_inject=replace_with_kernel_inject,
                                   moe=moe,
                                   moe_experts=moe_experts,
-                                  moe_type=moe_type)
+                                  moe_type=moe_type,
+                                  training_mp_size=training_mp_size)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -342,6 +354,35 @@ class InferenceEngine(Module):
             if torch.is_tensor(kwargs[k]):
                 kwargs[k] = kwargs[k].to(torch.cuda.current_device())
 
+    def _create_cuda_graph(self, *inputs, **kwargs):
+        # warmup to create the workspace and cublas handle
+        cuda_stream = torch.cuda.Stream()
+        cuda_stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(cuda_stream):
+            for i in range(3):
+                ret = self.module(*inputs, **kwargs)
+        torch.cuda.current_stream().wait_stream(cuda_stream)
+
+        # create cuda_graph and assign static_inputs and static_outputs
+        self._cuda_graphs = torch.cuda.CUDAGraph()
+        self.static_inputs = inputs
+        self.static_kwargs = kwargs
+
+        with torch.cuda.graph(self._cuda_graphs):
+            self.static_output = self.module(*self.static_inputs, **self.static_kwargs)
+
+        self.cuda_grah_created = True
+
+    def _graph_replay(self, *inputs, **kwargs):
+        for i in range(len(inputs)):
+            if torch.is_tensor(inputs[i]):
+                self.static_inputs[i].copy_(inputs[i])
+        for k in kwargs:
+            if torch.is_tensor(kwargs[k]):
+                self.static_kwargs[k].copy_(kwargs[k])
+        self._cuda_graphs.replay()
+        return self.static_output
+
     def forward(self, *inputs, **kwargs):
         """Execute forward propagation
 
@@ -366,5 +407,13 @@ class InferenceEngine(Module):
 
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:
-            outputs = self.module(*inputs, **kwargs)
+            if self.enable_cuda_graph:
+                if self.cuda_grah_created:
+                    outputs = self._graph_replay(*inputs, **kwargs)
+                else:
+                    self._create_cuda_graph(*inputs, **kwargs)
+                    outputs = self._graph_replay(*inputs, **kwargs)
+            else:
+                outputs = self.module(*inputs, **kwargs)
+            #outputs = self.module(*inputs, **kwargs)
         return outputs
