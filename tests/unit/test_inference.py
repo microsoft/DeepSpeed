@@ -1,5 +1,4 @@
 import os
-import nvidia_smi
 import torch
 import pytest
 import deepspeed
