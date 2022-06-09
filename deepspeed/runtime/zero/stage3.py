@@ -657,23 +657,18 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         ###################### offload optimizer setup ##################################
         if offload_optimizer_config is not None:
             self.offload_optimizer = True
-            self.offload_optimizer_pin_memory = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_PIN_MEMORY]
-            self.swap_optimizer = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.offload_optimizer_fast_init = offload_optimizer_config[
-                OFFLOAD_OPTIMIZER_FAST_INIT]
+            self.offload_optimizer_pin_memory = offload_optimizer_config.pin_memory
+            self.swap_optimizer = offload_optimizer_config.device == OFFLOAD_NVME_DEVICE
+            self.offload_optimizer_fast_init = offload_optimizer_config.fast_init
 
         ###################### offload param setup ##################################
         if offload_param_config is not None:
             if self.using_real_optimizer:
                 assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
             self.offload_param = True
-            self.offload_param_pin_memory = offload_param_config[
-                OFFLOAD_PARAM_PIN_MEMORY]
-            self.params_in_nvme_and_cpu = offload_param_config[
-                OFFLOAD_PARAM_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
+            self.offload_param_pin_memory = offload_param_config.pin_memory
+            self.params_in_nvme_and_cpu = offload_param_config.device == OFFLOAD_NVME_DEVICE
+            self.max_params_in_cpu = offload_param_config.max_in_cpu
             print_rank_0(
                 f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
                 force=False)
