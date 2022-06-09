@@ -75,7 +75,7 @@ def valid_model_task(model, task, dtype):
     else:
         pytest.skip(f"Not a valid model / task combination: {model} / {task}")
     ''' model specific checks '''
-    if 'gpt-j-6B' in model and (torch.cuda.get_device_properties(0) <
+    if 'gpt-j-6B' in model and (torch.cuda.get_device_properties(0).total_memory <
                                 24e9) and dtype == torch.float:
         pytest.skip(f"Not enough GPU memory to run {model} with dtype {dtype}")
 
