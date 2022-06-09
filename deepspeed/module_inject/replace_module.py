@@ -245,7 +245,7 @@ def replace_transformer_layer(orig_layer_impl,
         mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group)
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
-        if inference and policy_cls is not HFBertLayerPolicy:
+        if inference:
             if moe:
                 ep_world_size = torch.distributed.get_world_size()
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
