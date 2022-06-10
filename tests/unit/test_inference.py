@@ -60,22 +60,23 @@ def _valid_model_task(model_task):
 
 
 pytest.models_w_tasks = list(filter(_valid_model_task, _model_w_tasks))
+pytest.mt_names = [f"{m}-{t}" for m, t in pytest.models_w_tasks]
 """
 These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
 """
 
 
-@pytest.fixture(params=pytest.models_w_tasks)
+@pytest.fixture(params=pytest.models_w_tasks, ids=pytest.mt_names)
 def model_w_task(request):
     return request.param
 
 
-@pytest.fixture(params=[torch.float, torch.half])
+@pytest.fixture(params=[torch.float, torch.half], ids=['fp32', 'fp16'])
 def dtype(request):
     return request.param
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[True, False], ids=['CG', 'noCG'])
 def enable_cuda_graph(request):
     return request.param
 
