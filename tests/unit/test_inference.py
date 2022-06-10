@@ -6,7 +6,7 @@ import deepspeed
 from deepspeed.git_version_info import torch_info
 from collections import defaultdict
 from huggingface_hub import HfApi
-from transformers import pipeline
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from .common import distributed_test
 from packaging import version as pkg_version
 
@@ -188,7 +188,21 @@ def test_model_task(model_w_task,
     @distributed_test(world_size=[1])
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+
+        if 'gpt-j-6B' in model and dtype == torch.half:
+            _model = AutoModelForCausalLM.from_pretrained(model,
+                                                          revision="float16",
+                                                          torch_dtype=torch.float16,
+                                                          low_cpu_mem_usage=True)
+            tokenizer = AutoTokenizer.from_pretrained(model)
+            pipe = pipeline(task,
+                            model=_model,
+                            tokenizer=tokenizer,
+                            device=local_rank,
+                            framework="pt")
+        else:
+            pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(
