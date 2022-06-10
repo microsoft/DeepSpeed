@@ -2,6 +2,7 @@ import os
 import torch
 import pytest
 import deepspeed
+from deepspeed.git_version_info import torch_info
 from collections import defaultdict
 from huggingface_hub import HfApi
 from transformers import pipeline
@@ -29,6 +30,7 @@ _roberta_models = [
     "Jean-Baptiste/roberta-large-ner-english",
 ]
 _gpt_models = [
+    "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
     "EleutherAI/gpt-j-6B"
@@ -48,8 +50,7 @@ pytest.all_models = {
     for task in pytest.test_tasks
 }
 """
-These fixtures will iterate over all combinations of tasks and models (and
-dtype), only returning valid combinations in valid_model_task
+These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
 """
 
 
@@ -73,17 +74,24 @@ def enable_cuda_graph(request):
     return request.param
 
 
-@pytest.fixture()
-def valid_model_task(model, task, dtype):
-    if model in pytest.all_models[task]:
-        model_task = (model, task)
-    else:
-        pytest.skip(f"Not a valid model / task combination: {model} / {task}")
-    ''' model specific checks '''
-    if ('gpt-j-6B' in model) and (dtype == torch.float):
-        pytest.skip(f"Not enough GPU memory to run {model} with dtype {dtype}")
+"""
+This fixture will validate the configuration
+"""
 
-    return model_task
+
+@pytest.fixture()
+def invalid_model_task_config(model, task, dtype, enable_cuda_graph):
+    if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
+        msg = "DS inference injection doesn't work well on older torch versions"
+    elif model not in pytest.all_models[task]:
+        msg = f"Not a valid model / task combination: {model} / {task}"
+    elif enable_cuda_graph and (torch_info['cuda_version'] == "0.0"):
+        msg = "CUDA not detected, cannot use CUDA Graph"
+    elif ('gpt-j-6B' in model) and (dtype == torch.float):
+        msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
+    else:
+        msg = ''
+    return msg
 
 
 """
@@ -151,13 +159,16 @@ Tests
 """
 
 
-def test_model_task(valid_model_task,
+def test_model_task(model,
+                    task,
                     dtype,
                     enable_cuda_graph,
                     query,
                     inf_kwargs,
-                    assert_fn):
-    model, task = valid_model_task
+                    assert_fn,
+                    invalid_model_task_config):
+    if invalid_model_task_config:
+        pytest.skip(invalid_model_task_config)
 
     @distributed_test(world_size=[1])
     def _go():
@@ -179,34 +190,5 @@ def test_model_task(valid_model_task,
             bs_output = pipe(query, **inf_kwargs)
 
         assert assert_fn(bs_output, ds_output)
-
-    _go()
-
-
-def test_gpt2_inject(dtype):
-    if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
-        pytest.skip("DS inference injection doesn't work well on older torch versions")
-
-    @distributed_test(world_size=[1])
-    def _go():
-        local_rank = int(os.getenv("LOCAL_RANK", "0"))
-        world_size = int(os.getenv("WORLD_SIZE", "1"))
-        generator = pipeline("text-generation",
-                             model="gpt2",
-                             device=local_rank,
-                             framework="pt")
-
-        generator.model = deepspeed.init_inference(
-            generator.model,
-            mp_size=world_size,
-            dtype=dtype,
-            replace_method="auto",
-            replace_with_kernel_inject=True,
-        )
-
-        prompt = "DeepSpeed is"
-        string_1 = generator(prompt, do_sample=False, max_length=128)
-        string_2 = generator(prompt, do_sample=False, max_length=128)
-        assert string_1 == string_2
 
     _go()
