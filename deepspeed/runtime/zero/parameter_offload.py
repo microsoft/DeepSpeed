@@ -182,6 +182,14 @@ class DeepSpeedZeRoOffload(object):
                      force=False)
 
         self.module = module
+        self.dtype = list(module.parameters())[0].dtype
+        self.offload_device = None
+        self.offload_param_pin_memory = False
+        if offload_param_config is not None:
+            self.offload_device = offload_param_config[OFFLOAD_PARAM_DEVICE]
+            self.offload_param_pin_memory = offload_param_config[
+                OFFLOAD_PARAM_PIN_MEMORY]
+
         self._convert_to_zero_parameters(ds_config, module, mpu)
 
         for m in module.modules():
@@ -198,13 +206,6 @@ class DeepSpeedZeRoOffload(object):
         self._max_available_parameters_in_numel = int(max_live_parameters)
         self.__allgather_stream = Stream(
         ) if overlap_comm else torch.cuda.default_stream()
-
-        self.offload_device = None
-        self.offload_param_pin_memory = False
-        if offload_param_config is not None:
-            self.offload_device = offload_param_config[OFFLOAD_PARAM_DEVICE]
-            self.offload_param_pin_memory = offload_param_config[
-                OFFLOAD_PARAM_PIN_MEMORY]
 
         self.forward_hooks = []
         self.backward_hooks = []
