@@ -3,15 +3,14 @@
 Licensed under the MIT license.
 """
 
-import torch 
+import torch
 from torch.cuda import Stream
 from collections import OrderedDict
 from deepspeed.runtime.utils import see_memory_usage
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
-from deepspeed.runtime.zero.partition_parameters import * 
+from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
-
 
 FWD_MODULE_STACK = list()
 
@@ -118,7 +117,6 @@ def _inject_parameters(module, cls):
         module._parameters = new_param
 
 
-
 class PreBackwardFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
@@ -170,7 +168,7 @@ class DeepSpeedZeRoOffload(object):
                  module,
                  timers,
                  ds_config,
-                 overlap_comm=True, 
+                 overlap_comm=True,
                  prefetch_bucket_size=50000000,
                  max_reuse_distance=1000000000,
                  max_live_parameters=1000000000,
@@ -181,9 +179,9 @@ class DeepSpeedZeRoOffload(object):
         see_memory_usage("TensorOffload initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}",
-                     force=False)        
+                     force=False)
 
-        self.module = module 
+        self.module = module
         self._convert_to_zero_parameters(ds_config, module, mpu)
 
         for m in module.modules():
@@ -200,13 +198,13 @@ class DeepSpeedZeRoOffload(object):
         self._max_available_parameters_in_numel = int(max_live_parameters)
         self.__allgather_stream = Stream(
         ) if overlap_comm else torch.cuda.default_stream()
-        
-        self.offload_device = None 
-        self.offload_param_pin_memory = False        
+
+        self.offload_device = None
+        self.offload_param_pin_memory = False
         if offload_param_config is not None:
             self.offload_device = offload_param_config[OFFLOAD_PARAM_DEVICE]
-            self.offload_param_pin_memory = offload_param_config[OFFLOAD_PARAM_PIN_MEMORY]
-            
+            self.offload_param_pin_memory = offload_param_config[
+                OFFLOAD_PARAM_PIN_MEMORY]
 
         self.forward_hooks = []
         self.backward_hooks = []
@@ -214,8 +212,6 @@ class DeepSpeedZeRoOffload(object):
         print_rank_0(
             f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
             force=False)
-
-
 
     @instrument_w_nvtx
     def partition_all_parameters(self):
@@ -227,7 +223,6 @@ class DeepSpeedZeRoOffload(object):
         for param in iter_params(self.module, recurse=True):
             if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
                 raise RuntimeError(f"{param.ds_summary()} expected to be released")
-
 
     def get_param_coordinator(self, training):
         if not training in self.param_coordinators:
@@ -241,7 +236,6 @@ class DeepSpeedZeRoOffload(object):
             )
 
         return self.param_coordinators[training]
-
 
     def _convert_to_zero_parameters(self, ds_config, module, mpu):
         non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
@@ -260,8 +254,7 @@ class DeepSpeedZeRoOffload(object):
                      config_dict_or_path=ds_config,
                      remote_device=self.offload_device,
                      pin_memory=self.offload_param_pin_memory,
-                     mpu=mpu)    
-
+                     mpu=mpu)
 
     def destroy(self):
         self._remove_module_hooks()
@@ -279,7 +272,6 @@ class DeepSpeedZeRoOffload(object):
         print_rank_0(
             f'Deleted module hooks: forward = {num_forward_hooks}, backward = {num_backward_hooks}',
             force=False)
-
 
     def setup_zero_stage3_hooks(self):
         self.hierarchy = 0
