@@ -203,6 +203,9 @@ def test_model_task(model_w_task,
         else:
             pipe = pipeline(task, model=model, device=local_rank, framework="pt")
 
+        if dtype == torch.half:
+            pipe.model.half()
+
         bs_output = pipe(query, **inf_kwargs)
 
         pipe.model = deepspeed.init_inference(
