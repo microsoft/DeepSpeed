@@ -1,6 +1,7 @@
 import os
 import torch
 import pytest
+import itertools
 import deepspeed
 from deepspeed.git_version_info import torch_info
 from collections import defaultdict
@@ -37,8 +38,8 @@ _gpt_models = [
 ]
 _all_models = HfApi().list_models()
 
-pytest.test_models = set(_bert_models + _roberta_models + _gpt_models)
-pytest.test_tasks = [
+test_models = set(_bert_models + _roberta_models + _gpt_models)
+test_tasks = [
     "fill-mask",
     "question-answering",
     "text-classification",
@@ -47,20 +48,25 @@ pytest.test_tasks = [
 ]
 pytest.all_models = {
     task: [m.modelId for m in _all_models if m.pipeline_tag == task]
-    for task in pytest.test_tasks
+    for task in test_tasks
 }
+
+_model_w_tasks = itertools.product(*[test_models, test_tasks])
+
+
+def _valid_model_task(model_task):
+    m, t = model_task
+    return m in pytest.all_models[t]
+
+
+pytest.models_w_tasks = list(filter(_valid_model_task, _model_w_tasks))
 """
 These fixtures iterate all combinations of tasks and models, dtype, & cuda_graph
 """
 
 
-@pytest.fixture(params=pytest.test_tasks)
-def task(request):
-    return request.param
-
-
-@pytest.fixture(params=pytest.test_models)
-def model(request):
+@pytest.fixture(params=pytest.models_w_tasks)
+def model_w_task(request):
     return request.param
 
 
@@ -80,7 +86,8 @@ This fixture will validate the configuration
 
 
 @pytest.fixture()
-def invalid_model_task_config(model, task, dtype, enable_cuda_graph):
+def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
+    model, task = model_w_task
     if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
         msg = "DS inference injection doesn't work well on older torch versions"
     elif model not in pytest.all_models[task]:
@@ -104,7 +111,8 @@ statement for each combination of model /task
 
 
 @pytest.fixture
-def query(task, model):
+def query(model_w_task):
+    model, task = model_w_task
     if task == "fill-mask":
         if "roberta" in model:
             return "Hello I'm a <mask> model."
@@ -126,7 +134,8 @@ def query(task, model):
 
 
 @pytest.fixture
-def inf_kwargs(task, model):
+def inf_kwargs(model_w_task):
+    model, task = model_w_task
     if task == "text-generation":
         return {"do_sample": False}
     else:
@@ -134,7 +143,8 @@ def inf_kwargs(task, model):
 
 
 @pytest.fixture
-def assert_fn(task, model):
+def assert_fn(model_w_task):
+    model, task = model_w_task
     if task == "fill-mask":
         return lambda x, y: set(res["token_str"] for res in x) == set(
             res["token_str"] for res in y
@@ -162,8 +172,7 @@ Tests
 """
 
 
-def test_model_task(model,
-                    task,
+def test_model_task(model_w_task,
                     dtype,
                     enable_cuda_graph,
                     query,
@@ -172,6 +181,8 @@ def test_model_task(model,
                     invalid_model_task_config):
     if invalid_model_task_config:
         pytest.skip(invalid_model_task_config)
+
+    model, task = model_w_task
 
     @distributed_test(world_size=[1])
     def _go():
