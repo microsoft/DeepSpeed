@@ -190,10 +190,9 @@ def test_model_task(model_w_task,
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         if 'gpt-j-6B' in model and dtype == torch.half:
-            _model = AutoModelForCausalLM.from_pretrained(model,
-                                                          revision="float16",
-                                                          torch_dtype=torch.float16)
+            _model = AutoModelForCausalLM.from_pretrained(model)
             tokenizer = AutoTokenizer.from_pretrained(model)
+            _model.half()
             pipe = pipeline(task,
                             model=_model,
                             tokenizer=tokenizer,
@@ -201,9 +200,8 @@ def test_model_task(model_w_task,
                             framework="pt")
         else:
             pipe = pipeline(task, model=model, device=local_rank, framework="pt")
-
-        if dtype == torch.half:
-            pipe.model.half()
+            if dtype == torch.half:
+                pipe.model.half()
 
         bs_output = pipe(query, **inf_kwargs)
 
