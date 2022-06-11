@@ -192,8 +192,7 @@ def test_model_task(model_w_task,
         if 'gpt-j-6B' in model and dtype == torch.half:
             _model = AutoModelForCausalLM.from_pretrained(model,
                                                           revision="float16",
-                                                          torch_dtype=torch.float16,
-                                                          low_cpu_mem_usage=True)
+                                                          torch_dtype=torch.float16)
             tokenizer = AutoTokenizer.from_pretrained(model)
             pipe = pipeline(task,
                             model=_model,
