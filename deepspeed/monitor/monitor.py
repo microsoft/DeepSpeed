@@ -3,13 +3,13 @@
 """
 
 from abc import ABC, abstractmethod
+import torch.distributed as dist
 
 
 class Monitor(ABC):
     @abstractmethod
     def __init__(self, monitor_config):
         self.monitor_config = monitor_config
-        self.enabled = monitor_config.tensorboard_enabled or monitor_config.wandb_enabled or monitor_config.csv_monitor_enabled
 
     @abstractmethod
     def write_events(self, event_list):
@@ -27,18 +27,21 @@ class MonitorMaster(Monitor):
         self.tb_monitor = None
         self.wandb_monitor = None
         self.csv_monitor = None
+        self.enabled = monitor_config.tensorboard_enabled or monitor_config.csv_monitor_enabled or monitor_config.wandb_enabled
 
-        if monitor_config.tensorboard_enabled:
-            self.tb_monitor = TensorBoardMonitor(monitor_config)
-        if monitor_config.wandb_enabled:
-            self.wandb_monitor = WandbMonitor(monitor_config)
-        if monitor_config.csv_monitor_enabled:
-            self.csv_monitor = csvMonitor(monitor_config)
+        if dist.get_rank() == 0:
+            if monitor_config.tensorboard_enabled:
+                self.tb_monitor = TensorBoardMonitor(monitor_config)
+            if monitor_config.wandb_enabled:
+                self.wandb_monitor = WandbMonitor(monitor_config)
+            if monitor_config.csv_monitor_enabled:
+                self.csv_monitor = csvMonitor(monitor_config)
 
     def write_events(self, event_list):
-        if self.tb_monitor is not None:
-            self.tb_monitor.write_events(event_list)
-        if self.wandb_monitor is not None:
-            self.wandb_monitor.write_events(event_list)
-        if self.csv_monitor is not None:
-            self.csv_monitor.write_events(event_list)
+        if dist.get_rank() == 0:
+            if self.tb_monitor is not None:
+                self.tb_monitor.write_events(event_list)
+            if self.wandb_monitor is not None:
+                self.wandb_monitor.write_events(event_list)
+            if self.csv_monitor is not None:
+                self.csv_monitor.write_events(event_list)

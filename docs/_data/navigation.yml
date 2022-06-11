@@ -100,6 +100,8 @@ lnav:
         url: /tutorials/mixture-of-experts-inference/
       - title: 'Mixture-of-Quantization'
         url: /tutorials/MoQ-tutorial/
+      - title: 'Monitoring'
+        url: /tutorials/monitor
       - title: 'One-Cycle Schedule'
         url: /tutorials/one-cycle/
       - title: 'One-Bit Adam'

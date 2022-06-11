@@ -870,7 +870,6 @@ class DeepSpeedConfig(object):
             param_dict)
 
         self.monitor_config = DeepSpeedMonitorConfig(param_dict)
-        #self.monitor_config = DeepSpeedMonitorConfig(**param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)

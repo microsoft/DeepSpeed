@@ -52,7 +52,6 @@ from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, init_distributed, instrument_w_nvtx
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
-#from deepspeed.utils.monitor import TensorBoardMonitor, WandbMonitor, csvMonitor
 from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
@@ -249,8 +248,7 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
-        if self.global_rank == 0:
-            self.monitor = MonitorMaster(self._config.monitor_config)
+        self.monitor = MonitorMaster(self._config.monitor_config)
 
         see_memory_usage(
             f"DeepSpeed Engine: Before configure distributed model",
@@ -1655,7 +1653,7 @@ class DeepSpeedEngine(Module):
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
-        if self.global_rank == 0 and self.monitor.enabled:
+        if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
@@ -1886,7 +1884,7 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.step_timers)
 
         # Log learning rate
-        if self.global_rank == 0 and self.monitor.enabled:
+        if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(f"Train/Samples/lr",
@@ -1937,7 +1935,7 @@ class DeepSpeedEngine(Module):
         if self.wall_clock_breakdown() or self.flops_profiler_enabled():
             # Log global timing and reset
             if self.is_gradient_accumulation_boundary():
-                if self.global_rank == 0 and self.monitor.enabled:
+                if self.monitor.enabled:
                     self._write_monitor()
 
                 if self.has_moe_layers:
