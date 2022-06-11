@@ -38,9 +38,9 @@ class CSVConfig(MonitorConfig):
 
 class DeepSpeedMonitorConfig:
     def __init__(self, ds_config):
-        self.tensorboard_enabled = 'tensorboard' in ds_config #and 'enabled' in ds_config['tensorboard'] and ds_config['tensorboard']['enabled'] is True
-        self.wandb_enabled = 'wandb' in ds_config #and 'enabled' in ds_config['wandb'] and ds_config['wandb']['enabled'] is True
-        self.csv_monitor_enabled = 'csv_monitor' in ds_config #and 'enabled' in ds_config['csv_monitor'] and ds_config['csv_monitor']['enabled'] is True
+        self.tensorboard_enabled = 'tensorboard' in ds_config
+        self.wandb_enabled = 'wandb' in ds_config
+        self.csv_monitor_enabled = 'csv_monitor' in ds_config
 
         if self.tensorboard_enabled:
             self.tensorboard_config = TensorBoardConfig(**ds_config['tensorboard'])

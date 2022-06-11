@@ -1,5 +1,5 @@
 ---
-title: "Monitoring in DeepSpeed"
+title: "Monitor"
 excerpt: "Monitor your model's training metrics live and log for future analysis"
 tags: profiling performance-tuning
 ---
@@ -11,7 +11,7 @@ In this tutorial, we introduce the DeepSpeed Monitor and provide examples of its
 
 ## Overview
 
-Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), and simple CSV files. 
+Monitoring model and system metrics during training is vital to ensure hardware resources are fully utilized. The DeepSpeed Monitor enables live logging of metrics through one or more monitoring backends such as PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), and simple CSV files.
 
 Below is a live monitoring view for TensorBoard:
 

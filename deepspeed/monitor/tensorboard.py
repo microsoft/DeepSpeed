@@ -24,8 +24,7 @@ class TensorBoardMonitor(Monitor):
         if self.enabled and dist.get_rank() == 0:
             from torch.utils.tensorboard import SummaryWriter
             if self.output_path is not None:
-                log_dir = os.path.join(self.output_path,
-                                       self.job_name)
+                log_dir = os.path.join(self.output_path, self.job_name)
             # NOTE: This code path currently is never used since the default output_path is an empty string and not None. Saving it in case we want this functionality in the future.
             else:
                 if "DLWS_JOB_ID" in os.environ:
@@ -36,9 +35,7 @@ class TensorBoardMonitor(Monitor):
                     infra_job_id = "unknown-job-id"
 
                 summary_writer_dir_name = os.path.join(infra_job_id, "logs")
-                log_dir = os.path.join(base,
-                                       summary_writer_dir_name,
-                                       self.output_path)
+                log_dir = os.path.join(base, summary_writer_dir_name, self.output_path)
             os.makedirs(log_dir, exist_ok=True)
             self.summary_writer = SummaryWriter(log_dir=log_dir)
         return self.summary_writer

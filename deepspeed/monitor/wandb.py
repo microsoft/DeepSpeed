@@ -16,9 +16,7 @@ class WandbMonitor(Monitor):
         self.project = monitor_config.wandb_config.project
 
         if self.enabled and dist.get_rank() == 0:
-            wandb.init(project=self.project,
-                       group=self.group,
-                       entity=self.team)
+            wandb.init(project=self.project, group=self.group, entity=self.team)
 
     def log(self, data, step=None, commit=None, sync=None):
         if self.enabled and dist.get_rank() == 0:

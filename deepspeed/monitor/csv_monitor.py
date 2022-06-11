@@ -3,6 +3,7 @@ import os
 
 import torch.distributed as dist
 
+
 class csvMonitor(Monitor):
     def __init__(self, monitor_config):
         super().__init__(monitor_config)
@@ -16,8 +17,7 @@ class csvMonitor(Monitor):
     def setup_log_dir(self, base=os.path.join(os.path.expanduser("~"), "csv_monitor")):
         if self.enabled and dist.get_rank() == 0:
             if self.output_path is not None:
-                log_dir = os.path.join(self.output_path,
-                                       self.job_name)
+                log_dir = os.path.join(self.output_path, self.job_name)
             # NOTE: This code path currently is never used since the default tensorboard_output_path is an empty string and not None. Saving it in case we want this functionality in the future.
             else:
                 if "DLWS_JOB_ID" in os.environ:

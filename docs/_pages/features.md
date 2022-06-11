@@ -324,7 +324,7 @@ The flops profiler can also be used as a standalone package. Please refer to the
 
 ### Monitor
 
-The DeepSpeed Monitor logs live training metrics to one or more monitoring backends, including TensorBoard, WandB, or simply to CSV files. The Monitor can be configured with one or more backends in the `deepspeed_config` file as follows:
+The DeepSpeed Monitor logs live training metrics to one or more monitoring backends, including PyTorch's [TensorBoard](https://pytorch.org/docs/1.8.0/tensorboard.html), [WandB](https://docs.wandb.ai/quickstart), or simply to CSV files. The Monitor can be configured with one or more backends in the `deepspeed_config` file as follows:
 
 ```json
 {
@@ -348,7 +348,7 @@ The DeepSpeed Monitor logs live training metrics to one or more monitoring backe
 
 ```
 
-The Monitor can also be added to log custom metrics and client codes. Please refer to the [Monitoring in DeepSpeed](/tutorials/monitor) tutorial for more details.
+The Monitor can also be added to log custom metrics and client codes. Please refer to the [Monitor](/tutorials/monitor) tutorial for more details.
 
 ## Sparse Attention
 DeepSpeed offers sparse attention to support long sequences. Please refer to the [Sparse Attention](/tutorials/sparse-attention/) tutorial.
