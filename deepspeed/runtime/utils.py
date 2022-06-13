@@ -206,8 +206,7 @@ class CheckOverflow(object):
                             op=dist.ReduceOp.MAX,
                             group=self.mpu.get_model_parallel_group())
         elif reduce_overflow:
-            dist.all_reduce(overflow_gpu,
-                            op=dist.ReduceOp.MAX)
+            dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX)
             dist.barrier()
         overflow = overflow_gpu[0].item()
         return bool(overflow)
