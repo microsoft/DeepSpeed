@@ -26,6 +26,8 @@ from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..monitor.config import DeepSpeedMonitorConfig
 
+import deepspeed.comm as dist
+
 from ..git_version_info import version as __version__
 from ..utils import logger
 
@@ -775,9 +777,9 @@ class DeepSpeedConfig(object):
                 f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
             )
         try:
-            self.global_rank = torch.distributed.get_rank()
+            self.global_rank = dist.get_rank()
             if mpu is None:
-                self.world_size = torch.distributed.get_world_size()
+                self.world_size = dist.get_world_size()
             else:
                 self.world_size = mpu.get_data_parallel_world_size()
         except:
