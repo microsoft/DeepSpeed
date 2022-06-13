@@ -1,15 +1,8 @@
 name: nv-nightly
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'staging**'
-    paths-ignore:
-      - 'docs/**'
-  pull_request:
-    paths-ignore:
-      - 'docs/**'
+  schedule:
+    - cron: "0 0 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
