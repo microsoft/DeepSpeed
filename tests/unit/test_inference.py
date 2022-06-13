@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import pytest
 import itertools
@@ -212,7 +213,14 @@ def test_model_task(
             if dtype == torch.half:
                 pipe.model.half()
 
+        # Warm-up queries for perf measurement
+        for i in range(10):
+            _ = pipe(query, **inf_kwargs)
+        torch.cuda.synchronize()
+        start = time.time()
         bs_output = pipe(query, **inf_kwargs)
+        torch.cuda.synchronize()
+        bs_time = time.time() - start
 
         pipe.model = deepspeed.init_inference(
             pipe.model,
@@ -222,11 +230,21 @@ def test_model_task(
             replace_with_kernel_inject=True,
             enable_cuda_graph=enable_cuda_graph,
         )
+        # Warm-up queries for perf measurement
+        for i in range(10):
+            _ = pipe(query, **inf_kwargs)
+        torch.cuda.synchronize()
+        start = time.time()
         ds_output = pipe(query, **inf_kwargs)
+        torch.cuda.synchronize()
+        ds_time = time.time() - start
 
         if task == "text-generation":
             bs_output = pipe(query, **inf_kwargs)
 
+        assert ds_time <= bs_time
+        with open('times.txt', 'a') as f:
+            f.write(f'{model},{str(dtype)},{enable_cuda_graph},{bs_time},{ds_time}\n')
         assert assert_fn(bs_output, ds_output)
 
     _go()
@@ -249,26 +267,47 @@ def test_lm_correctness(model_family, model_name, task):
     @distributed_test(world_size=[1])
     def _go():
         local_rank = os.getenv("LOCAL_RANK", "0")
-        lm = lm_eval.models.get_model(model_family).create_from_arg_string(
-            f"pretrained={model_name}",
-            {"device": f"cuda:{local_rank}"})
+        device = torch.device(f"cuda:{local_rank}")
+        dtype = torch.float
         task_dict = lm_eval.tasks.get_task_dict([task])
+
+        if 'gpt-j-6B' in model_name:
+            dtype = torch.half
+            lm = lm_eval.models.get_model(model_family).create_from_arg_string(
+                f"pretrained={model_name}",
+                {"device": "cpu"})
+            setattr(lm, model_family, getattr(lm, model_family).half().to(device))
+            lm._device = device
+        else:
+            lm = lm_eval.models.get_model(model_family).create_from_arg_string(
+                f"pretrained={model_name}",
+                {"device": f"cuda:{local_rank}"})
+
+        torch.cuda.synchronize()
+        start = time.time()
         bs_output = evaluate(lm=lm, task_dict=task_dict)
+        torch.cuda.synchronize()
+        bs_time = time.time() - start
 
         ds_model = deepspeed.init_inference(
             getattr(lm,
                     model_family),
             mp_size=1,
-            dtype=torch.float,
+            dtype=dtype,
             replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=False,
         )
         setattr(lm, model_family, ds_model)
+        torch.cuda.synchronize()
+        start = time.time()
         ds_output = evaluate(lm=lm, task_dict=task_dict)
+        torch.cuda.synchronize()
+        ds_time = time.time() - start
 
         ppl_diff = abs(bs_output["results"][task]["ppl"] -
                        ds_output["results"][task]["ppl"])
+        assert ds_time <= bs_time
         assert ppl_diff < 0.01
 
     _go()
