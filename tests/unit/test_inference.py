@@ -251,7 +251,7 @@ def test_lm_correctness(model_family, model_name, task):
         local_rank = os.getenv("LOCAL_RANK", "0")
         lm = lm_eval.models.get_model(model_family).create_from_arg_string(
             f"pretrained={model_name}",
-            {"device": local_rank})
+            {"device": f"cuda:{local_rank}"})
         task_dict = lm_eval.tasks.get_task_dict([task])
         bs_output = evaluate(lm=lm, task_dict=task_dict)
 
