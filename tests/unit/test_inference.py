@@ -3,6 +3,10 @@ import torch
 import pytest
 import itertools
 import deepspeed
+import lm_eval
+import lm_eval.models
+import lm_eval.tasks
+from lm_eval.evaluator import evaluate
 from deepspeed.git_version_info import torch_info
 from collections import defaultdict
 from huggingface_hub import HfApi
@@ -34,7 +38,7 @@ _gpt_models = [
     "gpt2",
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
-    "EleutherAI/gpt-j-6B"
+    "EleutherAI/gpt-j-6B",
 ]
 _all_models = HfApi().list_models()
 
@@ -71,12 +75,12 @@ def model_w_task(request):
     return request.param
 
 
-@pytest.fixture(params=[torch.float, torch.half], ids=['fp32', 'fp16'])
+@pytest.fixture(params=[torch.float, torch.half], ids=["fp32", "fp16"])
 def dtype(request):
     return request.param
 
 
-@pytest.fixture(params=[True, False], ids=['CG', 'noCG'])
+@pytest.fixture(params=[True, False], ids=["CG", "noCG"])
 def enable_cuda_graph(request):
     return request.param
 
@@ -93,15 +97,15 @@ def invalid_model_task_config(model_w_task, dtype, enable_cuda_graph):
         msg = "DS inference injection doesn't work well on older torch versions"
     elif model not in pytest.all_models[task]:
         msg = f"Not a valid model / task combination: {model} / {task}"
-    elif enable_cuda_graph and (torch_info['cuda_version'] == "0.0"):
+    elif enable_cuda_graph and (torch_info["cuda_version"] == "0.0"):
         msg = "CUDA not detected, cannot use CUDA Graph"
     elif enable_cuda_graph and pkg_version.parse(
             torch.__version__) < pkg_version.parse("1.10"):
         msg = "CUDA Graph is only available in torch versions >= 1.10"
-    elif ('gpt-j-6B' in model) and (dtype == torch.float):
+    elif ("gpt-j-6B" in model) and (dtype == torch.float):
         msg = f"Not enough GPU memory to run {model} with dtype {dtype}"
     else:
-        msg = ''
+        msg = ""
     return msg
 
 
@@ -174,13 +178,15 @@ Tests
 
 
 @pytest.mark.sequential
-def test_model_task(model_w_task,
-                    dtype,
-                    enable_cuda_graph,
-                    query,
-                    inf_kwargs,
-                    assert_fn,
-                    invalid_model_task_config):
+def test_model_task(
+    model_w_task,
+    dtype,
+    enable_cuda_graph,
+    query,
+    inf_kwargs,
+    assert_fn,
+    invalid_model_task_config,
+):
     if invalid_model_task_config:
         pytest.skip(invalid_model_task_config)
 
@@ -190,15 +196,17 @@ def test_model_task(model_w_task,
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
-        if 'gpt-j-6B' in model and dtype == torch.half:
+        if "gpt-j-6B" in model and dtype == torch.half:
             _model = AutoModelForCausalLM.from_pretrained(model)
             tokenizer = AutoTokenizer.from_pretrained(model)
             _model.half()
-            pipe = pipeline(task,
-                            model=_model,
-                            tokenizer=tokenizer,
-                            device=local_rank,
-                            framework="pt")
+            pipe = pipeline(
+                task,
+                model=_model,
+                tokenizer=tokenizer,
+                device=local_rank,
+                framework="pt",
+            )
         else:
             pipe = pipeline(task, model=model, device=local_rank, framework="pt")
             if dtype == torch.half:
@@ -216,9 +224,51 @@ def test_model_task(model_w_task,
         )
         ds_output = pipe(query, **inf_kwargs)
 
-        if task == 'text-generation':
+        if task == "text-generation":
             bs_output = pipe(query, **inf_kwargs)
 
         assert assert_fn(bs_output, ds_output)
+
+    _go()
+
+
+@pytest.mark.nightly
+@pytest.mark.parametrize(
+    "model_family, model_name",
+    (
+        ["gpt2",
+         "EleutherAI/gpt-neo-2.7B"],
+        ["gpt2",
+         "EleutherAI/gpt-j-6B"],
+        ["gpt2",
+         "gpt2-xl"],
+    ),
+)
+@pytest.mark.parametrize("task", ["lambada"])
+def test_lm_correctness(model_family, model_name, task):
+    @distributed_test(world_size=[1])
+    def _go():
+        local_rank = os.getenv("LOCAL_RANK", "0")
+        lm = lm_eval.models.get_model(model_family).create_from_arg_string(
+            f"pretrained={model_name}",
+            {"device": local_rank})
+        task_dict = lm_eval.tasks.get_task_dict([task])
+        bs_output = evaluate(lm=lm, task_dict=task_dict)
+
+        ds_model = deepspeed.init_inference(
+            getattr(lm,
+                    model_family),
+            mp_size=1,
+            dtype=torch.float,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+            enable_cuda_graph=False,
+        )
+        setattr(lm, model_family, ds_model)
+        ds_output = evaluate(lm=lm, task_dict=task_dict)
+
+        ppl_diff = abs(bs_output["results"][task]["ppl"] -
+                       ds_output["results"][task]["ppl"])
+        assert ppl_diff < 0.001
 
     _go()
