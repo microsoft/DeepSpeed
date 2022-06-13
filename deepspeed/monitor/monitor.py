@@ -3,7 +3,7 @@
 """
 
 from abc import ABC, abstractmethod
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 
 class Monitor(ABC):

@@ -2,7 +2,7 @@ from .utils import check_tb_availability
 from .monitor import Monitor
 import os
 
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 
 class TensorBoardMonitor(Monitor):

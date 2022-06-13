@@ -1,7 +1,7 @@
 from .utils import check_wandb_availability
 from .monitor import Monitor
 
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 
 class WandbMonitor(Monitor):
