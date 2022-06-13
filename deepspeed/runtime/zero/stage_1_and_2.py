@@ -520,7 +520,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.partition_gradients:
             assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
         # NOTE: To run ZeRO stage 1 with MoE, we need to set self.contiguous_gradients to True or ignore the assertion
-        if not self.partition_gradients:
+        if not self.partition_gradients and not self.contiguous_gradients:
             logger.warn(
                 "ZeRO Stage 1 has not been thoroughly tested with MoE. This configuration is still experimental."
             )
@@ -992,7 +992,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             param_start_offset = 0
 
             num_elements = tensor.numel()
-            tensor_offset = 0
 
             # we need to offset to get to the right element
             if i == 0 and first_offset > 0:
@@ -1154,8 +1153,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=self.dp_process_group,
-                        log_name='complete_grad_norm_calculation_for_cpu_offload')
+                        group=self.dp_process_group)
 
         self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -1362,10 +1360,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                             log_name='allreduce_bucket')
         else:
             global_rank = dist.get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce,
-                        global_rank,
-                        group=self.dp_process_group,
-                        log_name='reduce_bucket')
+            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
@@ -1505,10 +1500,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.model_parallel_group is None:
             pass
         else:
-            dist.all_reduce(tensor=tensor,
-                            op=op,
-                            group=self.model_parallel_group,
-                            log_name='_model_parallel_all_reduce')
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
         """Clips gradient norm of an iterable of parameters.
@@ -1860,8 +1852,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            log_name='all_reduce_has_overflow')
+                            group=self.dp_process_group)
 
         else:
             params = []

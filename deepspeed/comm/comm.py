@@ -32,6 +32,7 @@ import torch
 import time
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
+from .constants import *
 
 
 class ReduceOp(Enum):
@@ -50,15 +51,14 @@ class ReduceOp(Enum):
 #class ProcessGroup(object):
 #   def
 
-from deepspeed.comm.backend import Backend
-from deepspeed.comm.nccl import NcclBackend
-from deepspeed.comm.torch import TorchBackend
-
 #import deepspeed.utils.timer
 #from deepspeed.utils import *
 from deepspeed.utils import logger, log_dist
 from deepspeed.utils.logging import CommsLogger
 from deepspeed.utils import timer
+from deepspeed.comm.backend import Backend
+from deepspeed.comm.torch import TorchBackend
+
 import deepspeed.utils as utils
 from datetime import timedelta
 
@@ -167,22 +167,14 @@ def init_deepspeed_backend(ds_backend):
     global mpi_backend
     global use_ds_backend
 
-    if ds_backend == 'nccl':
-        if nccl_backend is not None:
-            if nccl_backend.is_initialized():
-                cdb = nccl_backend
-            else:
-                nccl_backend.initialize()
-        else:
-            nccl_backend = NcclBackend()
-            cdb = nccl_backend
-            use_ds_backend = True
-    elif ds_backend == 'mpi':
-        logger.warn("MPI backend in DeepSpeed not yet implemented")
-    elif ds_backend == 'gloo':
-        logger.warn("Gloo backend in DeepSpeed not yet implemented")
+    if ds_backend == NCCL_BACKEND:
+        utils.logger.warn("NCCL backend in DeepSpeed not yet implemented")
+    elif ds_backend == MPI_BACKEND:
+        utils.logger.warn("MPI backend in DeepSpeed not yet implemented")
+    elif ds_backend == GLOO_BACKEND:
+        utils.logger.warn("Gloo backend in DeepSpeed not yet implemented")
     else:
-        logger.warn(f"DeepSpeed does not support {ds_backend} backend")
+        utils.logger.warn(f"DeepSpeed does not support {ds_backend} backend")
 
 
 def is_initialized():
@@ -216,20 +208,22 @@ def is_available() -> bool:
 
 def set_backend(backend):
     if not use_ds_backend:
-        logger.warn(
-            "DeepSpeed communication backend is required. Please use deepspeed.comm.init_process_group(backend, use_deepspeed=True) to use this functionality"
+        utils.logger.error(
+            "DeepSpeed communication backend is required. Please use deepspeed.comm.init_distributed(backend, use_deepspeed=True) to use this functionality"
         )
-        return
+        raise RuntimeError(
+            'Error: Custom DeepSpeed backend called without initializing DeepSpeed distributed.'
+        )
 
     global cdb
     global nccl_backend
     global mpi_backend
 
     try:
-        if backend_name == 'nccl':
+        if backend_name == NCCL_BACKEND:
             if nccl_backend is not None and nccl_backend.is_initialized():
                 cdb = nccl_backend
-        elif backend_name == 'mpi':
+        elif backend_name == MPI_BACKEND:
             if mpi_backend is not None and mpi_backend.is_initialized():
                 cdb = mpi_backend
     except Exception as inst:
@@ -478,35 +472,6 @@ def all_reduce(tensor,
     return cdb.all_reduce(tensor, op, group, async_op)
 
 
-# TODO QUENTIN: remove this when finished
-#@timed_op(log_name='all_reduce')
-def manual_all_reduce(tensor,
-                      op=ReduceOp.SUM,
-                      group=None,
-                      async_op=False,
-                      prof=False,
-                      log_name='manual_all_reduce'):
-    #if prof:
-    #    timers('all_reduce').start()
-    #if profile_comm:
-    # context of the timers?
-    # timers.start()
-    # TensorBoard logging for comm calls.?
-    global cdb
-    #print(f'op = {op}, cdb= {cdb.name}')
-    #try:
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    ret = cdb.all_reduce(tensor, op, group, async_op)
-    torch.cuda.synchronize()
-    end = time.perf_counter()
-    print("manual_all_reduce time (ms): " + str(round(1000.0 * (end - start), 2)))
-    #finally:
-    #    if prof:
-    #        timers.log(['all_reduce'])
-    #        timers('all_reduce').stop()
-
-
 def get_world_group():
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
@@ -702,13 +667,13 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
             os.environ["MASTER_PORT"] = str(master_port)
     else:
         os.environ["MASTER_ADDR"] = os.environ["AZ_BATCHAI_MPI_MASTER_NODE"]
-        os.environ["MASTER_PORT"] = "54965"
+        os.environ["MASTER_PORT"] = DEFAULT_AML_MASTER_PORT
 
     if verbose:
         logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
             os.environ["NCCL_SOCKET_IFNAME"]))
 
-    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+    os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_AML_NCCL_SOCKET_IFNAME
     os.environ['LOCAL_RANK'] = os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]
 
     if verbose:

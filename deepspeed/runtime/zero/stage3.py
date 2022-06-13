@@ -359,7 +359,12 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.persistent_parameters = self.persistent_parameters()
 
+        self.forward_hooks = []
+        self.backward_hooks = []
         self.setup_zero_stage3_hooks()
+        print_rank_0(
+            f'Created module hooks: forward = {len(self.forward_hooks)}, backward = {len(self.backward_hooks)}',
+            force=False)
 
         #resetting ds_tensor just in case parameters have been changed after initialization
         #example .half() or .to()
@@ -525,6 +530,23 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
+
+    def destroy(self):
+        self._remove_module_hooks()
+
+    def _remove_module_hooks(self):
+        num_forward_hooks = len(self.forward_hooks)
+        num_backward_hooks = len(self.backward_hooks)
+
+        for hook in self.forward_hooks:
+            hook.remove()
+
+        for hook in self.backward_hooks:
+            hook.remove()
+
+        print_rank_0(
+            f'Deleted module hooks: forward = {num_forward_hooks}, backward = {num_backward_hooks}',
+            force=False)
 
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
@@ -1201,15 +1223,20 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                           inputs)
 
         # Pre forward hook
-        module.register_forward_pre_hook(_pre_forward_module_hook)
+        self.forward_hooks.append(
+            module.register_forward_pre_hook(_pre_forward_module_hook))
+
         # Post forward hook
-        module.register_forward_hook(_post_forward_module_hook)
+        self.forward_hooks.append(
+            module.register_forward_hook(_post_forward_module_hook))
 
         # Pre backward hook
-        module.register_forward_hook(_pre_backward_module_hook)
+        self.backward_hooks.append(
+            module.register_forward_hook(_pre_backward_module_hook))
 
         # post backward hook
-        module.register_forward_pre_hook(_post_backward_module_hook)
+        self.backward_hooks.append(
+            module.register_forward_pre_hook(_post_backward_module_hook))
 
     @torch.no_grad()
     def pre_sub_module_forward_function(self, sub_module):
@@ -1655,8 +1682,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=self.dp_process_group,
-                        log_name='complete_grad_norm_calculation_for_cpu_offload')
+                        group=self.dp_process_group)
 
         self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -1842,10 +1868,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                             log_name='allreduce_bucket')
         else:
             global_rank = dist.get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce,
-                        global_rank,
-                        group=self.dp_process_group,
-                        log_name='reduce_bucket')
+            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
@@ -1960,10 +1983,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.model_parallel_group is None:
             pass
         else:
-            dist.all_reduce(tensor=tensor,
-                            op=op,
-                            group=self.model_parallel_group,
-                            log_name='all_reduce_model_parallel_all_reduce')
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     @instrument_w_nvtx
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
@@ -1989,8 +2009,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            log_name='all_reduce_get_grad_norm_direct')
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
@@ -2008,8 +2027,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=self.dp_process_group,
-                            log_name='all_reduce_get_grad_norm_direct')
+                            group=self.dp_process_group)
 
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -2453,8 +2471,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             overflow_gpu = torch.cuda.ByteTensor([overflow])
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            log_name='all_reduce_has_overflow')
+                            group=self.dp_process_group)
 
         else:
             params = []

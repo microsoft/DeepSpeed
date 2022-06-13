@@ -318,10 +318,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
                     fn_to_apply(module_to_apply_fn_to)
 
                     for param in params_to_apply_fn_to:
-                        dist.broadcast(param.data,
-                                       0,
-                                       group=param.ds_process_group,
-                                       log_name='broadcast_post_init_method')
+                        dist.broadcast(param.data, 0, group=param.ds_process_group)
 
                     for param in params_to_apply_fn_to:
                         param.partition(has_been_updated=True)
@@ -741,10 +738,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 )
 
                 if param.is_cuda:
-                    dist.broadcast(param,
-                                   0,
-                                   self.ds_process_group,
-                                   log_name='broadcast_internal_post_init_method')
+                    dist.broadcast(param, 0, self.ds_process_group)
                 else:
                     if dist.get_rank() == 0:
                         logger.warn(f"param `{name}` in {module.__class__.__name__} "
@@ -788,7 +782,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # else this is set to None
         param.nvme_swapper = self.param_swapper
 
-        # DeepSped Param ID
+        # DeepSpeed Param ID
         param.ds_id = Init.param_id
         Init.param_id += 1
 
@@ -1059,7 +1053,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #     if numel in empty_buffers:
             #         empty_buffers[numel].append(buffer)
 
-            # if torch.distributed.get_rank():
+            # if deepspeed.comm.get_rank():
             #    print(f"Releasing {param.data.numel()}")
             if param.ds_tensor is not None and not has_been_updated:
 
@@ -1213,8 +1207,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             handle = dist.all_gather_base(flat_tensor,
                                           param.ds_tensor.cuda(),
                                           group=self.ds_process_group,
-                                          async_op=async_op,
-                                          log_name='all_gather_base_param')
+                                          async_op=async_op)
         else:
             partitions = []
             for i in range(self.world_size):
@@ -1271,8 +1264,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 h = dist.all_gather_base(allgather_params[param_idx],
                                          input_tensor,
                                          group=self.ds_process_group,
-                                         async_op=True,
-                                         log_name='all_gather_base_params_coalesced')
+                                         async_op=True)
             else:
                 output_list = []
                 for i in range(self.world_size):
@@ -1338,8 +1330,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         dist.all_gather(partitions,
                         partitions[self.rank],
                         group=self.ds_process_group,
-                        async_op=False,
-                        log_name='all_gather_params')
+                        async_op=False)
         param_offset = 0
 
         for param in param_list:
@@ -1437,8 +1428,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         handle = dist.reduce_scatter(input_list[rank],
                                      input_list,
                                      group=self.ds_process_group,
-                                     async_op=True,
-                                     log_name='reduce_scatter_gradients')
+                                     async_op=True)
 
         return handle, input_list[rank]
 
@@ -1644,8 +1634,7 @@ class GatheredParameters:
             dist.broadcast(p,
                            self.src_rank,
                            group=p.ds_process_group,
-                           async_op=True,
-                           log_name='broadcast_gathered_params') for p in self.params
+                           async_op=True) for p in self.params
         ]
         for h in handles:
             h.wait()

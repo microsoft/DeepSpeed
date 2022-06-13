@@ -338,7 +338,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                           dtype=torch.float)
         dist.all_reduce(scaled_norm_tensor, group=pg)
         all_groups_norm = scaled_norm_tensor.item()
-        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {torch.distributed.get_rank()}")
+        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {deepspeed.comm.get_rank()}")
         return all_groups_norm
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm, apply_scale=True):

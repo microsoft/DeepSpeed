@@ -200,17 +200,14 @@ class CheckOverflow(object):
             # Only need to check groups.get_largest_expert_parallel_group()
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups._get_max_expert_parallel_group(),
-                            log_name='all_reduce_check_using_norm')
+                            group=groups._get_max_expert_parallel_group())
         if self.mpu is not None:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.mpu.get_model_parallel_group(),
-                            log_name='all_reduce_check_using_norm')
+                            group=self.mpu.get_model_parallel_group())
         elif reduce_overflow:
             dist.all_reduce(overflow_gpu,
-                            op=dist.ReduceOp.MAX,
-                            log_name='all_reduce_check_using_norm')
+                            op=dist.ReduceOp.MAX)
             dist.barrier()
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -247,8 +244,8 @@ class CheckOverflow(object):
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
         overflow_gpu = torch.cuda.ByteTensor([overflow])
-        # torch.distributed.all_reduce(overflow_gpu,
-        #                             op=torch.distributed.ReduceOp.MAX,
+        # deepspeeed.comm.all_reduce(overflow_gpu,
+        #                             op=deepspeed.comm.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
         if has_moe_params:
             # All reduce this across expert_parallel_group, so that if an expert
@@ -260,8 +257,7 @@ class CheckOverflow(object):
         if self.zero_reduce_scatter:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=dist.get_world_group(),
-                            log_name='all_reduce_has_overflow')
+                            group=dist.get_world_group())
         elif self.mpu is not None:
             if self.deepspeed is not None:
                 using_pipeline = hasattr(self.deepspeed,
@@ -272,17 +268,14 @@ class CheckOverflow(object):
                           and self.deepspeed.enable_backward_allreduce is False):
                     dist.all_reduce(overflow_gpu,
                                     op=dist.ReduceOp.MAX,
-                                    group=self.mpu.get_data_parallel_group(),
-                                    log_name='all_reduce_has_overflow')
+                                    group=self.mpu.get_data_parallel_group())
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.mpu.get_model_parallel_group(),
-                            log_name='all_reduce_has_overflow')
+                            group=self.mpu.get_model_parallel_group())
         elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=dist.get_world_group(),
-                            log_name='all_reduce_has_overflow')
+                            group=dist.get_world_group())
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -366,8 +359,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_clip_grad_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0
@@ -386,8 +378,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_clip_grad_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     # Need to average total_norm across different GPUs due to the presence of moe params
@@ -434,8 +425,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_get_grad_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
@@ -458,8 +448,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_get_grad_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -505,8 +494,7 @@ def get_grad_zeros(parameters, mpu=None):
     if mpu is not None:
         dist.all_reduce(total_zeros_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=mpu.get_model_parallel_group(),
-                        log_name='all_reduce_get_grad_zeros')
+                        group=mpu.get_model_parallel_group())
     total_zeros = total_zeros_cuda[0].item()
 
     return total_zeros
@@ -540,8 +528,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_get_weight_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
@@ -564,8 +551,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_get_weight_norm')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -942,8 +928,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group(),
-                            log_name='all_reduce_get_global_norm_of_tensors')
+                            group=mpu.get_model_parallel_group())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
