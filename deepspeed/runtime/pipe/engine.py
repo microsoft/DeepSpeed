@@ -45,6 +45,7 @@ def is_even(number):
 mem_alloced = 0
 mem_cached = 0
 
+
 def _tensor_bytes(tensor):
     return tensor.numel() * tensor.element_size()
 
@@ -435,7 +436,12 @@ class PipelineEngine(DeepSpeedEngine):
         # TODO: should return precisely what loss returned and allow others to be queried?
         return self.agg_train_loss
 
-    def eval_batch(self, data_iter, compute_loss=True, reduce_output='avg', dynamic_activation_shape=False, **fwd_kwargs):
+    def eval_batch(self,
+                   data_iter,
+                   compute_loss=True,
+                   reduce_output='avg',
+                   dynamic_activation_shape=False,
+                   **fwd_kwargs):
         """Evaluate the pipeline on a batch of data from ``data_iter``. The
         engine will evaluate ``self.train_batch_size()`` total samples
         collectively across all workers.
@@ -519,12 +525,23 @@ class PipelineEngine(DeepSpeedEngine):
         return eval_output
 
     def start_schedule(self):
-        self.scheduler = schedule.DynamicInferenceSchedule(micro_batches=self.micro_batches, stages=self.num_stages, stage_id=self.stage_id)
+        self.scheduler = schedule.DynamicInferenceSchedule(
+            micro_batches=self.micro_batches,
+            stages=self.num_stages,
+            stage_id=self.stage_id)
         schedule_context = PipeScheduleContext(self)
         return schedule_context
 
     class InferenceRequest:
-        def __init__(self, idx, data, promises=[], callback=None, dynamic_activation_shape=False, reduce_output=None, device=None, **fwd_kwargs):
+        def __init__(self,
+                     idx,
+                     data,
+                     promises=[],
+                     callback=None,
+                     dynamic_activation_shape=False,
+                     reduce_output=None,
+                     device=None,
+                     **fwd_kwargs):
             self.idx = idx
             self.data = data
             self.promises = promises
@@ -543,7 +560,8 @@ class PipelineEngine(DeepSpeedEngine):
 
     def start_worker(self):
         self.input_queue = queue.Queue()
-        self.worker = threading.Thread(name='Event-Blocking-Thread', target=self.exec_pipe)
+        self.worker = threading.Thread(name='Event-Blocking-Thread',
+                                       target=self.exec_pipe)
         self.completion_event.clear()
         self.worker.start()
 
@@ -553,7 +571,7 @@ class PipelineEngine(DeepSpeedEngine):
             self.enqueue(req)
             self.worker.join()
             self.worker = None
-            
+
     def exec_pipe(self):
         while True:
             req = self.input_queue.get()
@@ -580,7 +598,8 @@ class PipelineEngine(DeepSpeedEngine):
 
                         if req.callback is not None:
                             #ic(self.stage_id, "before callback")
-                            output = self._reduce_outputs(self.fwd_outputs, reduce=req.reduce_output)
+                            output = self._reduce_outputs(self.fwd_outputs,
+                                                          reduce=req.reduce_output)
                             req.callback(self.curr_micro_batch_id, output)
 
                         if self.input_queue.empty():
@@ -605,7 +624,9 @@ class PipelineEngine(DeepSpeedEngine):
         with torch.no_grad():
             self._exec_schedule(self.scheduler)
 
-        output = self._reduce_outputs(self.fwd_outputs, reduce=req.reduce_output) if self.is_last_stage() else None
+        output = self._reduce_outputs(
+            self.fwd_outputs,
+            reduce=req.reduce_output) if self.is_last_stage() else None
         self.fwd_kwargs = dict()
         self.curr_task_data = None
 
@@ -615,12 +636,14 @@ class PipelineEngine(DeepSpeedEngine):
         [p.wait() for p in self.promises]
         self.promises.clear()
 
-    #Once the inference is done, all pipelines are quitting. 
+    #Once the inference is done, all pipelines are quitting.
     #However, there are dangling send_activations need to be cleared
     def clear_dangling_send(self):
         if not self.is_first_stage():
-            self.promises.extend(self._exec_recv_activations(self.curr_buf_id, async_op=True))
-            
+            self.promises.extend(
+                self._exec_recv_activations(self.curr_buf_id,
+                                            async_op=True))
+
         self.wait_and_clear_promises()
 
     def step_pipe_async(self, req):
@@ -642,19 +665,23 @@ class PipelineEngine(DeepSpeedEngine):
             self._exec_load_micro_batch(self.curr_buf_id)
         else:
             # recv from prev stage
-            self.promises.extend(self._exec_recv_activations(self.curr_buf_id, async_op=True))
-        
+            self.promises.extend(
+                self._exec_recv_activations(self.curr_buf_id,
+                                            async_op=True))
+
         self.wait_and_clear_promises()
 
         # Forward.
         with torch.no_grad():
             self.module.eval()
             self._exec_forward_pass(self.curr_buf_id)
-        
+
         if self.is_last_stage():
             return self.fwd_outputs
         else:
-            self.promises.extend(self._exec_send_activations(self.curr_buf_id, async_op=True))
+            self.promises.extend(
+                self._exec_send_activations(self.curr_buf_id,
+                                            async_op=True))
 
         # Switch buf_id between 0 and 1.
         self.curr_buf_id = 1 - self.curr_buf_id
@@ -742,8 +769,9 @@ class PipelineEngine(DeepSpeedEngine):
         src_rank = self.grid.stage_to_global(src_stage)
 
         return dist.broadcast(tensor=msg,
-                       src=src_rank,
-                       group=self.mpu.get_pipe_parallel_group(), async_op=async_op)
+                              src=src_rank,
+                              group=self.mpu.get_pipe_parallel_group(),
+                              async_op=async_op)
 
     def bcast_pipeline_firstlast(self, msg, src_stage=None):
         # Support negative indices, which act as module num_stages
@@ -755,12 +783,12 @@ class PipelineEngine(DeepSpeedEngine):
         # am I the sender?
         if src_stage == self.stage_id:
             if self.stage_id == 0:
-                p2p.send(tensor=msg, dest_stage=self.num_stages-1, async_op=False)
+                p2p.send(tensor=msg, dest_stage=self.num_stages - 1, async_op=False)
             else:
                 p2p.send(tensor=msg, dest_stage=0, async_op=False)
         else:
             if self.stage_id == 0:
-                p2p.recv(tensor=msg, src_stage=self.num_stages-1, async_op=False)
+                p2p.recv(tensor=msg, src_stage=self.num_stages - 1, async_op=False)
             else:
                 p2p.recv(tensor=msg, src_stage=0, async_op=False)
 
@@ -775,12 +803,16 @@ class PipelineEngine(DeepSpeedEngine):
         # am I the sender?
         if src_stage == self.stage_id:
             if self.stage_id == 0:
-                promise = p2p.send(tensor=msg, dest_stage=self.num_stages-1, async_op=True)
+                promise = p2p.send(tensor=msg,
+                                   dest_stage=self.num_stages - 1,
+                                   async_op=True)
             else:
                 promise = p2p.send(tensor=msg, dest_stage=0, async_op=True)
         else:
             if self.stage_id == 0:
-                promise = p2p.recv(tensor=msg, src_stage=self.num_stages-1, async_op=True)
+                promise = p2p.recv(tensor=msg,
+                                   src_stage=self.num_stages - 1,
+                                   async_op=True)
             else:
                 promise = p2p.recv(tensor=msg, src_stage=0, async_op=True)
 
@@ -902,7 +934,7 @@ class PipelineEngine(DeepSpeedEngine):
         self._zero_grads(inputs)
 
         if "micro_batch_kwargs" in self.fwd_kwargs:
-            # Use different forward args for each micro batch. 
+            # Use different forward args for each micro batch.
             # E.g. in Megatron each micro batch has its own past layers.
             all_fwd_kwargs = self.fwd_kwargs["micro_batch_kwargs"]
             assert self.curr_micro_batch_id < len(all_fwd_kwargs), f"stage: {self.stage_id}, FWD micro batch id: {self.curr_micro_batch_id}, fwd_kwargs len: {len(all_fwd_kwargs)}"
@@ -1126,9 +1158,14 @@ class PipelineEngine(DeepSpeedEngine):
         promises = []
         if self.dynamic_activation_shape:
             if async_op:
-                promises.extend(p2p.new_send_obj(outputs, self.next_stage, async_op=async_op))
+                promises.extend(
+                    p2p.new_send_obj(outputs,
+                                     self.next_stage,
+                                     async_op=async_op))
             else:
-                p2p.new_send_obj(outputs, self.grid.stage_to_global(self.next_stage), async_op=async_op)
+                p2p.new_send_obj(outputs,
+                                 self.grid.stage_to_global(self.next_stage),
+                                 async_op=async_op)
 
         else:
             if self.first_output_send:
@@ -1142,7 +1179,7 @@ class PipelineEngine(DeepSpeedEngine):
                     promises.append(p2p.send(buffer, self.next_stage, async_op=True))
             else:
                 raise NotImplementedError('Could not send output of type '
-                                        f'{type(outputs)}')
+                                          f'{type(outputs)}')
 
         # Restore the boolean tensor
         if self.module.__class__.__name__ == 'GPT2ModelPipe' or self.has_bool_tensors:
@@ -1225,7 +1262,9 @@ class PipelineEngine(DeepSpeedEngine):
             if async_op:
                 recvd = p2p.new_recv_obj(sender=self.prev_stage, async_op=async_op)
             else:
-                recvd = p2p.new_recv_obj(sender=self.grid.stage_to_global(self.prev_stage), async_op=async_op)
+                recvd = p2p.new_recv_obj(sender=self.grid.stage_to_global(
+                    self.prev_stage),
+                                         async_op=async_op)
         else:
             # Allocate the buffer if necessary
             if self.pipe_recv_buf is None:
@@ -1244,8 +1283,8 @@ class PipelineEngine(DeepSpeedEngine):
                     if self.is_pipe_partitioned and idx == 0 and buffer.dtype != torch.long:
                         if self.meta_buffer is None:
                             self.meta_buffer = torch.zeros(buffer.size(),
-                                                        dtype=torch.long,
-                                                        device=self.device)
+                                                           dtype=torch.long,
+                                                           device=self.device)
                         buffer = self.meta_buffer
 
                     recvd[idx] = buffer.clone().detach()
@@ -1267,7 +1306,6 @@ class PipelineEngine(DeepSpeedEngine):
             self.timers('pipe_recv_input').stop()
 
         return promises
-
 
     def _exec_recv_grads(self, buffer_id):
         if self.wall_clock_breakdown():
