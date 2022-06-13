@@ -173,6 +173,7 @@ Tests
 """
 
 
+@pytest.mark.sequential
 def test_model_task(model_w_task,
                     dtype,
                     enable_cuda_graph,
