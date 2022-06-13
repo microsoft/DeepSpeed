@@ -269,6 +269,6 @@ def test_lm_correctness(model_family, model_name, task):
 
         ppl_diff = abs(bs_output["results"][task]["ppl"] -
                        ds_output["results"][task]["ppl"])
-        assert ppl_diff < 0.001
+        assert ppl_diff < 0.01
 
     _go()
