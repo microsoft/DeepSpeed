@@ -53,7 +53,7 @@ class ReduceOp(Enum):
 
 #import deepspeed.utils.timer
 #from deepspeed.utils import *
-from deepspeed.utils import logger, log_dist
+#from deepspeed.utils import logger, log_dist
 from deepspeed.utils.logging import CommsLogger
 from deepspeed.utils import timer
 from deepspeed.comm.backend import Backend
@@ -265,7 +265,7 @@ def reduce_scatter_fn(output_tensor: torch.Tensor, tensor: torch.Tensor, group):
         return cdb.reduce_scatter_base(output_tensor, tensor, group=group)
     else:
         if not has_warned_reduce_scatter:
-            logger.warning(
+            utils.logger.warning(
                 "unable to find torch.distributed._reduce_scatter_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
@@ -323,7 +323,7 @@ def allgather_fn(output_tensor: torch.Tensor,
                                log_name=log_name)
     else:
         if not has_warned_all_gather:
-            logger.warning(
+            utils.logger.warning(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
@@ -422,10 +422,6 @@ def log_summary_new():
     if cdb.get_rank() == 0:
         comms_logger.log_all()
     barrier(log_name='log_summary_barrier')
-
-
-# Local enum for Reduction operators
-#from .utils import ReduceOp
 
 
 @timed_op
@@ -564,7 +560,7 @@ def init_distributed(dist_backend="nccl",
         required_env = ["RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT", "LOCAL_RANK"]
         if auto_mpi_discovery and not all(map(lambda v: v in os.environ, required_env)):
             if verbose:
-                logger.info(
+                utils.logger.info(
                     "Not using the DeepSpeed or dist launchers, attempting to detect MPI environment..."
                 )
             if in_aml() and not in_dlts():
@@ -576,16 +572,17 @@ def init_distributed(dist_backend="nccl",
 
         if cdb is None or not cdb.is_initialized():
             if verbose and int(os.getenv('RANK', '0')) == 0:
-                logger.info("Initializing torch distributed with backend: {}".format(
-                    dist_backend))
+                utils.logger.info(
+                    "Initializing torch distributed with backend: {}".format(
+                        dist_backend))
             assert isinstance(timeout, timedelta)
 
             if cdb is not None and cdb.is_initialized():
                 if int(os.getenv('RANK', '0')) == 0:
-                    logger.info('Distributed backend already initialized')
+                    utils.logger.info('Distributed backend already initialized')
             else:
                 if int(os.getenv('RANK', '0')) == 0:
-                    logger.info('Initializing TorchBackend in DeepSpeed')
+                    utils.logger.info('Initializing TorchBackend in DeepSpeed')
                 # Create a torch backend object, initialize torch distributed, and assign to cdb
                 cdb = TorchBackend(dist_backend, timeout, init_method)
 
@@ -619,7 +616,7 @@ def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True)
     os.environ['MASTER_PORT'] = str(distributed_port)
 
     if verbose:
-        logger.info(
+        utils.logger.info(
             "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
             .format(os.environ['RANK'],
                     os.environ['LOCAL_RANK'],
@@ -670,14 +667,14 @@ def patch_aml_env_for_torch_nccl_backend(master_port=6105, verbose=True):
         os.environ["MASTER_PORT"] = DEFAULT_AML_MASTER_PORT
 
     if verbose:
-        logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
+        utils.logger.info("NCCL_SOCKET_IFNAME original value = {}".format(
             os.environ["NCCL_SOCKET_IFNAME"]))
 
     os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_AML_NCCL_SOCKET_IFNAME
     os.environ['LOCAL_RANK'] = os.environ["OMPI_COMM_WORLD_LOCAL_RANK"]
 
     if verbose:
-        logger.info(
+        utils.logger.info(
             "Discovered AzureML settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
             .format(os.environ['RANK'],
                     os.environ['LOCAL_RANK'],
@@ -694,7 +691,7 @@ def patch_aws_sm_env_for_torch_nccl_backend(verbose=True):
     os.environ["WORLD_SIZE"] = os.environ["OMPI_COMM_WORLD_SIZE"]
 
     if verbose:
-        logger.info(
+        utils.logger.info(
             "Discovered AWS SageMaker settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
             .format(os.environ['RANK'],
                     os.environ['LOCAL_RANK'],

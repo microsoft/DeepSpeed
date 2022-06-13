@@ -3,8 +3,6 @@ import sys
 import os
 import math
 
-import deepspeed.comm as dist
-
 log_levels = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -59,7 +57,7 @@ def convert_size(size_bytes):
 # See https://gist.github.com/jeffra/b5e80466b4c86be00ea3b6f130fb7a36 and https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
 def calc_bw(msg_size, lat):
     import deepspeed.comm as dist
-    n = dist.get_world_size()
+    n = deepspeed.comm.get_world_size()
     algbw = ((msg_size * 8 * 2) / lat) / 1e6
     busbw = algbw * ((n - 1) / n)
     return algbw, busbw
@@ -90,8 +88,8 @@ class CommsLogger:
         # If verbose, print every comm op
         # TODO: Add to tensorboard
         if self.verbose:
-            n = dist.get_world_size()
-            log_str = f"rank={dist.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(
+            n = deepspeed.comm.get_world_size()
+            log_str = f"rank={deepspeed.comm.get_rank()} | comm op: " + record_name + " | time (ms): {:.2f}".format(
                 latency)
             log_str += " | msg size: " + convert_size(msg_size)
             log_str += " | algbw (Gbps): {:.2f} ".format(algbw)
@@ -128,8 +126,8 @@ def log_dist(message, ranks=None, level=logging.INFO):
     import deepspeed.comm as dist
     """Log message when one of following condition meets
 
-    + not dist.is_initialized()
-    + dist.get_rank() in ranks if ranks is not None or ranks = [-1]
+    + not deepspeed.comm.is_initialized()
+    + deepspeed.comm.get_rank() in ranks if ranks is not None or ranks = [-1]
 
     Args:
         message (str)
@@ -137,9 +135,9 @@ def log_dist(message, ranks=None, level=logging.INFO):
         level (int)
 
     """
-    should_log = not dist.is_initialized()
+    should_log = not deepspeed.comm.is_initialized()
     ranks = ranks or []
-    my_rank = dist.get_rank() if dist.is_initialized() else -1
+    my_rank = deepspeed.comm.get_rank() if deepspeed.comm.is_initialized() else -1
     if ranks and not should_log:
         should_log = ranks[0] == -1
         should_log = should_log or (my_rank in set(ranks))
@@ -152,8 +150,8 @@ def print_json_dist(message, ranks=None, path=None):
     import deepspeed.comm as dist
     """Print message when one of following condition meets
 
-    + not dist.is_initialized()
-    + dist.get_rank() in ranks if ranks is not None or ranks = [-1]
+    + not deepspeed.comm.is_initialized()
+    + deepspeed.comm.get_rank() in ranks if ranks is not None or ranks = [-1]
 
     Args:
         message (str)
@@ -161,9 +159,9 @@ def print_json_dist(message, ranks=None, path=None):
         path (str)
 
     """
-    should_log = not dist.is_initialized()
+    should_log = not deepspeed.comm.is_initialized()
     ranks = ranks or []
-    my_rank = dist.get_rank() if dist.is_initialized() else -1
+    my_rank = deepspeed.comm.get_rank() if deepspeed.comm.is_initialized() else -1
     if ranks and not should_log:
         should_log = ranks[0] == -1
         should_log = should_log or (my_rank in set(ranks))
