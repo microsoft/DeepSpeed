@@ -56,7 +56,8 @@ jobs:
           # scipy/sklearn required for tests, using the 'dev' extra forces torch re-install
           pip install .[testing]
           # find reqs used in ds integration tests
-          find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec pip install --upgrade -r {} \;
+          find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec grep -v "torch" \; | xargs pip install --upgrade
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
+          pip list
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
