@@ -11,24 +11,57 @@ from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigMode
 from deepspeed.utils import logger
 from .constants import *
 from .offload_constants import *
-from .offload_config import (
-    get_offload_param_config,
-    get_default_offload_param_config,
-    get_offload_optimizer_config,
-    get_default_offload_optimizer_config,
-)
 
+
+# ZeRO optimization. By default, this optimization is not enabled.
+# Users have to configure the desired optimization (0 means disabled) in params.json as below example:
+ZERO_FORMAT = '''
+ZeRO optimization should be enabled as:
+"session_params": {
+  "zero_optimization": {
+    "stage": [0|1|2],
+    "stage3_max_live_parameters" : 1000000000,
+    "stage3_max_reuse_distance" : 1000000000,
+    "allgather_partitions": [true|false],
+    "allgather_bucket_size": 500000000,
+    "reduce_scatter": [true|false],
+    "contiguous_gradients" : [true|false]
+    "overlap_comm": [true|false],
+    "reduce_bucket_size": 500000000,
+    "load_from_fp32_weights": [true|false],
+    "cpu_offload": [true|false] (deprecated),
+    "cpu_offload_params" : [true|false] (deprecated),
+    "cpu_offload_use_pin_memory": [true|false] (deprecated),
+    "sub_group_size" : 1000000000000,
+    "offload_param": {...},
+    "offload_optimizer": {...},
+    "ignore_unused_parameters": [true|false],
+    "round_robin_gradients": [true|false]
+    }
+}
+'''
+
+ZERO_OPTIMIZATION = 'zero_optimization'
+ZERO_OPTIMIZATION_DISABLED = 0
+ZERO_OPTIMIZATION_OPTIMIZER_STATES = 1
+ZERO_OPTIMIZATION_GRADIENTS = 2
+ZERO_OPTIMIZATION_WEIGHTS = 3
+MAX_STAGE_ZERO_OPTIMIZATION = ZERO_OPTIMIZATION_WEIGHTS
 
 def read_zero_config_deprecated(self, param_dict):
     zero_config_dict = {}
-    zero_config_dict[ZERO_OPTIMIZATION_STAGE] = (1
+    zero_config_dict['stage'] = (1
                                                  if param_dict[ZERO_OPTIMIZATION] else 0)
-    if zero_config_dict[ZERO_OPTIMIZATION_STAGE] > 0:
-        zero_config_dict[ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE] = get_scalar_param(
+    if zero_config_dict['stage'] > 0:
+        zero_config_dict['allgather_bucket_size'] = get_scalar_param(
             param_dict,
-            ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEPRECATED,
-            ZERO_OPTIMIZATION_ALLGATHER_BUCKET_SIZE_DEFAULT,
+            'allgather_size',
+            5e8
         )
+    logger.warning(
+	'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
+	.format(ZERO_FORMAT))
+    return zero_config_dict
 
 
 class OffloadDeviceEnum(str, Enum):
@@ -54,6 +87,13 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     pipeline_read: bool = False
     pipeline_write: bool = False
     fast_init: bool = False
+
+    @validator("pipeline_read", "pipeline_write")
+    @classmethod
+    def set_pipeline(cls, field_value, values):
+        if field_value or values.get("pipeline", False):
+            values["pipeline"] = True
+        return field_value
 
 
 class DeepSpeedZeroConfig(DeepSpeedConfigModel):

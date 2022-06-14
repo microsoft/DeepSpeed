@@ -21,8 +21,7 @@ from .config_utils import (
     dict_raise_error_on_duplicate_keys,
     ScientificNotationEncoder,
 )
-from .zero.config import DeepSpeedZeroConfig, read_zero_config_deprecated
-from .zero.constants import *
+from .zero.config import DeepSpeedZeroConfig, read_zero_config_deprecated, ZERO_OPTIMIZATION, ZERO_OPTIMIZATION_GRADIENTS, MAX_STAGE_ZERO_OPTIMIZATION
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 
 from ..git_version_info import version as __version__
@@ -218,18 +217,6 @@ def get_gradient_accumulation_steps(param_dict):
 
 def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
-
-
-def get_zero_optimization(param_dict):
-    return get_scalar_param(param_dict, ZERO_OPTIMIZATION, ZERO_OPTIMIZATION_DEFAULT)
-
-
-def get_zero_reduce_scatter(param_dict):
-    return get_scalar_param(
-        param_dict,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT,
-    )
 
 
 def get_communication_data_type(param_dict):

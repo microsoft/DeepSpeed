@@ -13,8 +13,8 @@ from torch.cuda import Event, Stream
 from torch.nn import Module, Parameter
 
 from deepspeed.utils.logging import logger
+from deepspeed.runtime.zero.config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 
@@ -312,7 +312,7 @@ class PartitionedParameterCoordinator:
                 if param.nvme_swapper is None:
                     return False
 
-                return param.ds_tensor.final_location == OFFLOAD_NVME_DEVICE \
+                return param.ds_tensor.final_location == OffloadDeviceEnum.nvme \
                     and param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
 
             # kick off all gather for params in the next few submodules (prefetch)
