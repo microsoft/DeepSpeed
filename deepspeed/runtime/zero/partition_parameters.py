@@ -664,7 +664,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 model = deepspeed.zero.Init(module=model)
         """
-        see_memory_usage('before zero.Init()', force=True)
         if config is not None:
             config_dict_or_path = config
             logger.warning(
@@ -724,8 +723,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         except:
             logger.info(
                 f"_all_gather_base API is not available in torch {torch.__version__}")
-
-        see_memory_usage('after zero.Init()', force=True)
 
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
