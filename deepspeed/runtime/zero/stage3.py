@@ -42,7 +42,6 @@ from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUP
 # with gradient partitioning and without
 pg_correctness_test = False
 
-# FWD_MODULE_STACK = list()
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
