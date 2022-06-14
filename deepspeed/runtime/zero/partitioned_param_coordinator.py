@@ -12,6 +12,7 @@ import torch
 from torch.cuda import Event, Stream
 from torch.nn import Module, Parameter
 
+import deepspeed.comm as dist
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.zero.config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
