@@ -3,8 +3,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from torch.distributed.distributed_c10d import _get_global_rank
-import torch.distributed as dist
+import deepspeed.comm as dist
 from torch._six import inf
 from packaging import version as pkg_version
 
@@ -517,7 +516,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         return 'moe' in group and group['moe']
 
     def _configure_moe_settings(self):
-        assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        # if we're using ZeRO stage 2, ensure contiguous gradients are used
+        if self.partition_gradients:
+            assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        # NOTE: To run ZeRO stage 1 with MoE, we need to set self.contiguous_gradients to True or ignore the assertion
+        if not self.partition_gradients and not self.contiguous_gradients:
+            logger.warn(
+                "ZeRO Stage 1 has not been thoroughly tested with MoE. This configuration is still experimental."
+            )
         assert self.reduce_scatter, "Reduce Scatter in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
 
         assert any([self.is_moe_group(group) for group in self.optimizer.param_groups]), "The model has moe layers, but None of the param groups are marked as MoE. Create a param group with 'moe' key set to True before creating optimizer"
@@ -961,7 +967,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
                 # dist.barrier()
                 #dist.barrier()
-                dst_rank = _get_global_rank(real_dp_process_group[i], dst)
+                dst_rank = dist.get_global_rank(real_dp_process_group[i], dst)
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=real_dp_process_group[i],
@@ -1141,12 +1147,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        torch.distributed.all_reduce(total_norm_cuda,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=self.dp_process_group)
+        dist.all_reduce(total_norm_cuda,
+                        op=dist.ReduceOp.SUM,
+                        group=self.dp_process_group)
 
-        self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.SUM)
+        self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
@@ -1348,7 +1353,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             #    "All Reducing"
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
-            global_rank = _get_global_rank(self.dp_process_group, rank)
+            global_rank = dist.get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -1489,9 +1494,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.model_parallel_group is None:
             pass
         else:
-            torch.distributed.all_reduce(tensor=tensor,
-                                         op=op,
-                                         group=self.model_parallel_group)
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
         """Clips gradient norm of an iterable of parameters.
@@ -1514,13 +1517,12 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if norm_type == inf:
             total_norm = max(g.data.abs().max() for g in gradients)
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.MAX)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
             total_norm = total_norm_cuda[0].item()
         else:
             total_norm = 0.0
@@ -1535,12 +1537,11 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=self.dp_process_group)
 
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.SUM)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
             total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
@@ -1841,9 +1842,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             overflow_gpu = torch.cuda.ByteTensor([overflow])
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
         else:
             params = []
@@ -1856,8 +1857,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        self._model_parallel_all_reduce(tensor=overflow_gpu,
-                                        op=torch.distributed.ReduceOp.MAX)
+        self._model_parallel_all_reduce(tensor=overflow_gpu, op=dist.ReduceOp.MAX)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -2222,7 +2222,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
 def _handle_overflow(cpu_sum, x, i):
     import math
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
     if rank == 0:
         t_i = -1
         for v_i, v in enumerate(x.data.contiguous().view(-1)):
