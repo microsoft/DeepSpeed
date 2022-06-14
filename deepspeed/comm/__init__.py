@@ -39,7 +39,7 @@ if older_torch():
                   prof_all=None,
                   prof_ops=None,
                   verbose=None):
-        logger.warn(
+        utils.logger.warn(
             "Communication logging is not supported in torch versions older than 1.8")
 
 else:
