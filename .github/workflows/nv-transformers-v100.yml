@@ -57,4 +57,5 @@ jobs:
           pip install .[testing]
           # find reqs used in ds integration tests
           find examples/pytorch -regextype posix-egrep -regex '.*(language-modeling|question-answering|summarization|image-classification|text-classification|translation).*/requirements.txt' -exec pip install --upgrade -r {} \;
+          pip install --upgrade datasets
           TORCH_EXTENSIONS_DIR=./torch-extensions RUN_SLOW=1 pytest --color=yes --durations=0 --verbose tests/deepspeed
