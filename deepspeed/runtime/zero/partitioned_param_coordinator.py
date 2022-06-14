@@ -437,7 +437,7 @@ class PartitionedParameterCoordinator:
         # doing this, remove them from the set of parameters to release.
         params_traversed = 0
         for module in self.__submodule_order[step_id:]:
-            if params_traversed > self.__max_reuse_dist_in_numel:
+            if params_traversed >= self.__max_reuse_dist_in_numel:
                 break
             for param in iter_params(module):
                 params_to_release.discard(param.ds_id)
