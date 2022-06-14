@@ -1863,9 +1863,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if rank is None:
             #    "All Reducing"
-            dist.all_reduce(tensor_to_allreduce,
-                            group=self.dp_process_group,
-                            log_name='allreduce_bucket')
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
             global_rank = dist.get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)

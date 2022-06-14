@@ -251,8 +251,7 @@ class CheckOverflow(object):
             # overflows, we detect it here
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups._get_max_expert_parallel_group(),
-                            log_name='all_reduce_has_overflow')
+                            group=groups._get_max_expert_parallel_group())
         if self.zero_reduce_scatter:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
@@ -385,7 +384,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
     scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
-    dist.all_reduce(scaled_norm_tensor, group=pg, log_name='all_reduce_clip_grad_norm')
+    dist.all_reduce(scaled_norm_tensor, group=pg)
     total_norm = scaled_norm_tensor.item()
 
     clip_coef = max_norm / (total_norm + 1e-6)
@@ -728,8 +727,7 @@ class PartitionedTensor:
         # Collect the full tensor
         dist.all_gather(partition_tensors,
                         partition_tensors[self.rank],
-                        group=self.group,
-                        log_name='all_gather_full')
+                        group=self.group)
 
         for i in range(len(partition_tensors)):
             partition_tensors[i].data = torch.zeros(1)
@@ -1017,5 +1015,4 @@ def all_gather_dp_groups(partitioned_param_groups,
 
             dist.all_gather(shard_list,
                             shard_list[partition_id],
-                            dp_process_group[group_id],
-                            log_name='all_gather_dp_groups')
+                            dp_process_group[group_id])

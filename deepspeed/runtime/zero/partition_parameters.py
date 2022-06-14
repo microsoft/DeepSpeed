@@ -1222,8 +1222,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             handle = dist.all_gather(partitions,
                                      partitions[self.rank],
                                      group=self.ds_process_group,
-                                     async_op=async_op,
-                                     log_name='all_gather_param')
+                                     async_op=async_op)
 
         replicated_tensor = flat_tensor.narrow(0, 0, param.ds_numel).view(param.ds_shape)
         param.data = replicated_tensor.data
@@ -1280,8 +1279,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 h = dist.all_gather(output_list,
                                     input_tensor,
                                     group=self.ds_process_group,
-                                    async_op=True,
-                                    log_name='all_gather_params_coalesced')
+                                    async_op=True)
             launch_handles.append(h)
 
         # Wait ensures the operation is enqueued, but not necessarily complete.

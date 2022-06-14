@@ -87,52 +87,104 @@ from deepspeed.comm.utils import *
 # - Global profiling (profile all comms)
 # - Op-type profiling (e.g. profile all all_reduce comms)
 # - Op profiling (e.g. profile a specific all_reduce op)
-prof_all = True
-prof_op = None
+COMMS_LOGGER_PROF_ALL = True
+COMMS_LOGGER_PROF_OPS = []
+COMMS_LOGGER_ENABLED = False
+
+
+def _configure_defaults():
+    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
+
+    COMMS_LOGGER_ENABLED = False
+    COMMS_LOGGER_PROF_ALL = True
+    COMMS_LOGGER_PROF_OPS = []
+    comms_logger.verbose = False
+
+
+def _configure_using_config_file(config):
+    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
+
+    if config.comms_logger_enabled:
+        COMMS_LOGGER_ENABLED = config.comms_logger.enabled
+        COMMS_LOGGER_PROF_ALL = config.comms_logger.prof_all
+        COMMS_LOGGER_PROF_OPS = config.comms_logger.prof_ops
+        comms_logger.verbose = config.comms_logger.verbose
+
+
+def configure(deepspeed_config=None,
+              enabled=None,
+              prof_all=None,
+              prof_ops=None,
+              verbose=None):
+    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
+
+    _configure_defaults()
+
+    if deepspeed_config is not None:
+        _configure_using_config_file(deepspeed_config.comms_config)
+
+    if enabled is not None:
+        COMMS_LOGGER_ENABLED = enabled
+
+    if prof_all is not None:
+        COMMS_LOGGER_PROF_ALL = prof_all
+
+    if prof_ops is not None:
+        COMMS_LOGGER_PROF_OPS = prof_ops
+
+    if verbose is not None:
+        comms_logger.verbose = verbose
 
 
 def start_profiling_comms():
-    global prof_all
-    prof_all = True
+    global COMMS_LOGGER_PROF_ALL
+    COMMS_LOGGER_PROF_ALL = True
 
 
 # E.g. start_profiling_op('all_reduce')
-def start_profiling_op(op_name):
-    global prof_op
-    prof_op = op_name
+def start_profiling_op(op_name_list):
+    global COMMS_LOGGER_PROF_OPS
+    COMMS_LOGGER_PROF_OPS = op_name_list
 
 
-def stop_profiling_op(op_name):
-    global prof_op
-    prof_op = None
+def stop_profiling_op(op_name_list):
+    global COMMS_LOGGER_PROF_OPS
+    COMMS_LOGGER_PROF_OPS = [
+        op for op in COMMS_LOGGER_PROF_OPS if op not in op_name_list
+    ]
 
 
 def stop_profiling_comms():
-    global prof_all
-    prof_all = False
+    global COMMS_LOGGER_PROF_ALL
+    COMMS_LOGGER_PROF_ALL = False
 
 
 # Logging wrapper for timing ops
 def timed_op(func):
-    #TODO QUENTIN: move global prof options to config
-    global prof_all
+    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
 
     def log_wrapper(*args, **kwargs):
-        # Need func args and their defaults
-        func_args = get_default_args(func)
-        func_args.update(kwargs)
-        if func_args['prof'] or prof_all or func_args['log_name'] == prof_op:
-            msg_size = get_msg_size_from_args(func, *args, **kwargs)
-            timers(func_args['log_name']).start()
+        # Add enabled flag so that overhead to each comm op is two if conditions at most
+        if COMMS_LOGGER_ENABLED:
+            if ('prof' in kwargs and kwargs['prof']) or COMMS_LOGGER_PROF_ALL or (
+                    'log_name' in kwargs
+                    and kwargs['log_name'] in COMMS_LOGGER_PROF_OPS):
+                # Need func args for their defaults
+                func_args = get_default_args(func)
+                func_args.update(kwargs)
+                msg_size = get_msg_size_from_args(func, *args, **kwargs)
+                timers(func_args['log_name']).start()
         # Return the op, then stop the op's timer
         try:
             return func(*args, **kwargs)
         finally:
-            if func_args['prof'] or prof_all or func_args['log_name'] == prof_op:
-                timers(func_args['log_name']).stop()
-                # need temp var since 'elapsed' resets events
-                time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
-                comms_logger.append(func_args['log_name'], time_elapsed, msg_size)
+            if COMMS_LOGGER_ENABLED:
+                if func_args['prof'] or COMMS_LOGGER_PROF_ALL or func_args[
+                        'log_name'] in COMMS_LOGGER_PROF_OPS:
+                    timers(func_args['log_name']).stop()
+                    # need temp var since 'elapsed' resets events
+                    time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
+                    comms_logger.append(func_args['log_name'], time_elapsed, msg_size)
 
     return log_wrapper
 
@@ -535,7 +587,8 @@ def init_distributed(dist_backend="nccl",
                      verbose=True,
                      timeout=default_pg_timeout,
                      init_method=None,
-                     dist_init_required=None):
+                     dist_init_required=None,
+                     config=None):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
@@ -545,8 +598,11 @@ def init_distributed(dist_backend="nccl",
         verbose: Optional (bool). verbose logging
         timeout: Optional (timedelta). Timeout for operations executed against the process group. Default value equals 30 minutes.
         init_method: Optional (string). Torch distributed, URL specifying how to initialize the process group. Default is “env://” if no init_method or store is specified.
+        config: Optional (dict). DeepSpeed configuration for setting up comms options (e.g. Comms profiling)
     '''
     global cdb
+
+    configure(deepspeed_config=config)
 
     if dist_init_required is None:
         dist_init_required = cdb is None or not cdb.is_initialized()
