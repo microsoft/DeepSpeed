@@ -15,6 +15,10 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from .common import distributed_test
 from packaging import version as pkg_version
 
+rocm_version = OpBuilder.installed_rocm_version()
+if rocm_version != (0, 0):
+    pytest.skip("skip inference tests on rocm for now", allow_module_level=True)
+
 _bert_models = [
     "bert-base-cased",
     "bert-base-uncased",
