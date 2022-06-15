@@ -4,17 +4,22 @@ import torch
 import pytest
 import itertools
 import deepspeed
-import lm_eval
-import lm_eval.models
-import lm_eval.tasks
-from lm_eval.evaluator import evaluate
 from deepspeed.git_version_info import torch_info
 from collections import defaultdict
-from huggingface_hub import HfApi
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from .common import distributed_test
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
+
+try:
+    import lm_eval
+    import lm_eval.models
+    import lm_eval.tasks
+    from lm_eval.evaluator import evaluate
+    from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+    from huggingface_hub import HfApi
+except ImportError:
+    pytest.skip("please install w. [inf] extra to run this test",
+                allow_module_level=True)
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
