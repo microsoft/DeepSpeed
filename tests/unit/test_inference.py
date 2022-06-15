@@ -246,9 +246,9 @@ def test_model_task(
         if task == "text-generation":
             bs_output = pipe(query, **inf_kwargs)
 
-        assert ds_time <= bs_time
-        with open('times.txt', 'a') as f:
-            f.write(f'{model},{str(dtype)},{enable_cuda_graph},{bs_time},{ds_time}\n')
+        # These performance tests are only measuring the time for a single
+        # inference request, we just want to check that performance isn't terrible
+        assert ds_time <= (bs_time * 1.1)
         assert assert_fn(bs_output, ds_output)
 
     _go()
