@@ -183,6 +183,7 @@ Tests
 """
 
 
+@pytest.mark.inference
 def test_model_task(
     model_w_task,
     dtype,
