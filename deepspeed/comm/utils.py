@@ -147,3 +147,12 @@ def get_msg_size_from_args(func, *args, **kwargs):
             return sum(x.element_size() * x.nelement() for x in func_args['tensor_list'])
         else:
             return tensor_arg.element_size() * tensor_arg.nelement()
+
+
+def get_log_name(func_args, verbosity):
+    if verbosity == 1 and 'v1' in func_args:
+        return func_args['log_name'] + func_args['v1']
+    if verbosity == 2 and 'v2' in func_args and 'v1' in func_args:
+        return func_args['log_name'] + func_args['v1'] + func_args['v2']
+    else:
+        return func_args['log_name']
