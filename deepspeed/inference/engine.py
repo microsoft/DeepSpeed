@@ -4,7 +4,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import torch
 import os
 from torch.nn.modules import Module
-import deepspeed.comm as dist
+from deepspeed import comm as dist
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer
@@ -15,8 +15,8 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..moe.layer import MoE
 
-import deepspeed.comm as dist
-import deepspeed.utils.groups as groups
+from deepspeed import comm as dist
+from deepspeed.utils import groups
 
 DS_INFERENCE_ENABLED = False
 

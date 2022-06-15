@@ -25,7 +25,7 @@ from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 
-import deepspeed.comm as dist
+from deepspeed import comm as dist
 
 from ..git_version_info import version as __version__
 from ..utils import logger
