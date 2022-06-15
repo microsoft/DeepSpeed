@@ -14,6 +14,7 @@ from huggingface_hub import HfApi
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from .common import distributed_test
 from packaging import version as pkg_version
+from deepspeed.ops.op_builder import OpBuilder
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
