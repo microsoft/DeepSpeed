@@ -699,9 +699,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                      mpu=mpu)
 
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
-        nvme_swap_folder = os.path.join(
-            offload_optimizer_config.nvme_path,
-            'zero_stage_3')
+        nvme_swap_folder = os.path.join(offload_optimizer_config.nvme_path,
+                                        'zero_stage_3')
         os.makedirs(nvme_swap_folder, exist_ok=True)
         if dist.get_rank() == 0:
             logger.info(f'Tensor Swapping: Adding optimizer tensors')

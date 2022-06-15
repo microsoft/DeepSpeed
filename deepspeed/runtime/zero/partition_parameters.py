@@ -20,7 +20,6 @@ from torch.nn import Module
 from torch.nn import Parameter
 
 from .linear import LinearModuleForZeroStage3, zero3_linear_wrap
-from .offload_constants import *
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage

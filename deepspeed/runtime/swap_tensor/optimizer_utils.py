@@ -146,10 +146,9 @@ class OptimizerSwapper(object):
         # Swap buffer management
         self.largest_numel = self._io_aligned_numel(largest_numel)
         self.dtype = dtype
-        self.swap_buffer_manager = SwapBufferManager(
-            num_elems=self.largest_numel,
-            count=swap_config.buffer_count,
-            dtype=dtype)
+        self.swap_buffer_manager = SwapBufferManager(num_elems=self.largest_numel,
+                                                     count=swap_config.buffer_count,
+                                                     dtype=dtype)
 
         # Timers
         self.timers = timers

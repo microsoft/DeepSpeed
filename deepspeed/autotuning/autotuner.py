@@ -331,8 +331,7 @@ class Autotuner:
             model_info = self.model_info
             if model_info and "hidden_size" in model_info:
                 hs = model_info["hidden_size"]
-                template_config[ZERO_OPTIMIZATION][
-                    'reduce_bucket_size'] = hs * hs
+                template_config[ZERO_OPTIMIZATION]['reduce_bucket_size'] = hs * hs
                 template_config[ZERO_OPTIMIZATION][
                     'stage3_prefetch_bucket_size'] = 0.9 * hs * hs
                 template_config[ZERO_OPTIMIZATION][
@@ -369,7 +368,8 @@ class Autotuner:
             # if the config does not use offloading, remove the offloading section
             config_zero = config.get(ZERO_OPTIMIZATION, None)
             if config_zero:
-                if not config_zero.offload_optimizer and 'offload_optimizer' in exp_config[ZERO_OPTIMIZATION]:
+                if not config_zero.offload_optimizer and 'offload_optimizer' in exp_config[
+                        ZERO_OPTIMIZATION]:
                     del exp_config[ZERO_OPTIMIZATION]['offload_optimizer']
                 if not config_zero.offload_param and 'offload_param' in exp_config[
                         ZERO_OPTIMIZATION]:

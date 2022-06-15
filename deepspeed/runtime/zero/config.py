@@ -9,9 +9,6 @@ from enum import Enum
 from pathlib import Path
 from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
 from deepspeed.utils import logger
-from .constants import *
-from .offload_constants import *
-
 
 # ZeRO optimization. By default, this optimization is not enabled.
 # Users have to configure the desired optimization (0 means disabled) in params.json as below example:
@@ -48,19 +45,18 @@ ZERO_OPTIMIZATION_GRADIENTS = 2
 ZERO_OPTIMIZATION_WEIGHTS = 3
 MAX_STAGE_ZERO_OPTIMIZATION = ZERO_OPTIMIZATION_WEIGHTS
 
+
 def read_zero_config_deprecated(self, param_dict):
     zero_config_dict = {}
-    zero_config_dict['stage'] = (1
-                                                 if param_dict[ZERO_OPTIMIZATION] else 0)
+    zero_config_dict['stage'] = (1 if param_dict[ZERO_OPTIMIZATION] else 0)
     if zero_config_dict['stage'] > 0:
         zero_config_dict['allgather_bucket_size'] = get_scalar_param(
             param_dict,
             'allgather_size',
-            5e8
-        )
+            5e8)
     logger.warning(
-	'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
-	.format(ZERO_FORMAT))
+        'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
+        .format(ZERO_FORMAT))
     return zero_config_dict
 
 
