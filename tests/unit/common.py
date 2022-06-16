@@ -11,8 +11,7 @@ import pytest
 from functools import wraps
 import unittest
 from pathlib import Path
-
-from pathlib import Path
+import psutil
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
@@ -26,12 +25,40 @@ def get_xdist_worker_id():
     return None
 
 
+def port_available(port):
+    for conn in psutil.net_connections():
+        if isinstance(conn.laddr, psutil._common.addr):
+            if port == conn.laddr.port:
+                return False
+        if isinstance(conn.raddr, psutil._common.addr):
+            if port == conn.raddr.port:
+                return False
+    return True
+
+
+def get_available_port(port, xdist_add):
+    max_tries = 100
+    attempt = 0
+    while not port_available(port):
+        attempt += 1
+        port += xdist_add
+        if attempt > max_tries:
+            raise RuntimeError(
+                f"Unable to find open port to run tests after {attempt} tries")
+    return port
+
+
 def get_master_port():
     master_port = os.environ.get('DS_TEST_PORT', '29503')
     xdist_worker_id = get_xdist_worker_id()
-    if xdist_worker_id is not None:
-        master_port = str(int(master_port) + xdist_worker_id)
-    return master_port
+
+    xdist_add = xdist_worker_id
+    if xdist_worker_id is None:
+        xdist_add = 1
+
+    master_port = get_available_port(master_port, xdist_add)
+
+    return str(master_port)
 
 
 def set_cuda_visibile():
