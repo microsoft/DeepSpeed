@@ -337,6 +337,9 @@ def main(args=None):
 
     num_nodes, args.max_num_nodes = parse_num_nodes(args.num_nodes, args.elastic_training)
 
+    if args.elastic_training:
+        assert args.master_addr != "", "Master Addr is required when elastic training is enabled" 
+
     resource_pool = fetch_hostfile(args.hostfile)
 
     # respect CUDA_VISIBLE_DEVICES for a single node and no explicit resource filters

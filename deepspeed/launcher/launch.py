@@ -221,6 +221,7 @@ def main():
 
         os.environ["MASTER_ADDR"] = args.master_addr
         os.environ["MASTER_PORT"] = str(args.master_port)
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
         # spawn the processes
         cmd = []
