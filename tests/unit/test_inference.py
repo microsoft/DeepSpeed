@@ -17,7 +17,7 @@ try:
     from lm_eval.evaluator import evaluate
     from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
     from huggingface_hub import HfApi
-except ImportError, AssertionError:
+except (ImportError, AssertionError) as e:
     pytest.skip("please install w. [inf] extra to run this test",
                 allow_module_level=True)
 
