@@ -41,8 +41,7 @@ def test_tensorboard(tmpdir):
                 "job_name": "test"
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         tb_monitor = TensorBoardMonitor(ds_config.monitor_config)
         assert tb_monitor.enabled == True
         assert tb_monitor.output_path == "test_output/ds_logs/"
@@ -56,8 +55,7 @@ def test_empty_tensorboard(tmpdir):
     @distributed_test(world_size=2)
     def _test_empty_tensorboard():
         config_dict = {"train_batch_size": 2, "tensorboard": {}}
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         tb_monitor = TensorBoardMonitor(ds_config.monitor_config)
         assert tb_monitor.enabled == TENSORBOARD_ENABLED_DEFAULT
         assert tb_monitor.output_path == TENSORBOARD_OUTPUT_PATH_DEFAULT
@@ -79,8 +77,7 @@ def test_wandb(tmpdir):
                 "project": "my_project"
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         wandb_monitor = WandbMonitor(ds_config.monitor_config)
         assert wandb_monitor.enabled == False
         assert wandb_monitor.group == "my_group"
@@ -95,8 +92,7 @@ def test_empty_wandb(tmpdir):
     @distributed_test(world_size=2)
     def _test_empty_wandb():
         config_dict = {"train_batch_size": 2, "wandb": {}}
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         wandb_monitor = WandbMonitor(ds_config.monitor_config)
         assert wandb_monitor.enabled == WANDB_ENABLED_DEFAULT
         assert wandb_monitor.group == WANDB_GROUP_NAME_DEFAULT
@@ -117,8 +113,7 @@ def test_csv_monitor(tmpdir):
                 "job_name": "test"
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         csv_monitor = csvMonitor(ds_config.monitor_config)
         assert csv_monitor.enabled == True
         assert csv_monitor.output_path == "test_output/ds_logs/"
@@ -131,8 +126,7 @@ def test_empty_csv_monitor(tmpdir):
     @distributed_test(world_size=2)
     def _test_empty_csv_monitor():
         config_dict = {"train_batch_size": 2, "csv_monitor": {}}
-        args = args_from_dict(tmpdir, config_dict)
-        ds_config = DeepSpeedConfig(args.deepspeed_config)
+        ds_config = DeepSpeedConfig(config_dict)
         csv_monitor = csvMonitor(ds_config.monitor_config)
         assert csv_monitor.enabled == CSV_MONITOR_ENABLED_DEFAULT
         assert csv_monitor.output_path == CSV_MONITOR_OUTPUT_PATH_DEFAULT
