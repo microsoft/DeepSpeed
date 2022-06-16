@@ -22,8 +22,8 @@ from torch.distributed.elastic.multiprocessing import Std
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 PID_FILE_BASEPATH = "/tmp"
-sys.path.append('/home/t-arpanjain/work/elastic_try/using_torch/')
-from functionAgent import FunctionElasticAgent
+# sys.path.append('/home/t-arpanjain/work/elastic_try/using_torch/')
+# from functionAgent import FunctionElasticAgent
 from torch.distributed.elastic.rendezvous import RendezvousParameters
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
 import torch.distributed.elastic.rendezvous.registry as rdzv_registry
