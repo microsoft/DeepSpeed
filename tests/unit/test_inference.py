@@ -13,6 +13,7 @@ from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
 
+
 @pytest.fixture(scope="module", autouse=True)
 def lm_eval_imports():
     global lm_eval
@@ -20,6 +21,7 @@ def lm_eval_imports():
     import lm_eval.models
     import lm_eval.tasks
     import lm_eval.evaluator
+
 
 rocm_version = OpBuilder.installed_rocm_version()
 if rocm_version != (0, 0):
