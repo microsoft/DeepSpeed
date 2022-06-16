@@ -94,6 +94,9 @@ class PDSHRunner(MultiNodeRunner):
             deepspeed_launch.append("--no_local_rank")
         if self.args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
+        if self.args.elastic_training:
+            deepspeed_launch.append("--enable_elastic_training")
+            deepspeed_launch.append(f"--max_nodes={self.args.max_num_nodes}")
         return pdsh_cmd_args + deepspeed_launch + [self.user_script
                                                    ] + self.user_arguments
 

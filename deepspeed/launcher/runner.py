@@ -70,8 +70,8 @@ def parse_args(args=None):
                         ''')
 
     parser.add_argument("--num_nodes",
-                        type=int,
-                        default=-1,
+                        type=str,
+                        default="-1",
                         help="Total number of worker nodes to run on, this will use "
                         "the top N hosts from the given hostfile.")
 
@@ -145,6 +145,10 @@ def parse_args(args=None):
         type=str,
         help="Run DeepSpeed autotuner to discover optimal configuration parameters "
         "before running job.")
+
+    parser.add_argument("--elastic_training",
+                        action="store_true",
+                        help="Enable elastic training support in DeepSpeed.")
 
     parser.add_argument("user_script",
                         type=str,
@@ -313,9 +317,25 @@ def run_autotuning(args, active_resources):
     if args.autotuning == "run":
         tuner.run_after_tuning()
 
+def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
+    node_list = str_num_nodes.split(":")
+
+    if len(node_list) == 1:
+        min_nodes, max_nodes = int(node_list[0]), -1
+    elif len(node_list) == 2 and elastic_training:
+        min_nodes, max_nodes = int(node_list[0]), int(node_list[1])
+    elif len(node_list) == 2 and not elastic_training:
+        raise RuntimeError("MIN:MAX format is only supported in elastic training")
+    else:
+        raise RuntimeError("num_nodes {} is not in MIN:MAX format".format(str_num_nodes))
+    
+    return min_nodes, max_nodes
+
 
 def main(args=None):
     args = parse_args(args)
+
+    num_nodes, args.max_num_nodes = parse_num_nodes(args.num_nodes, args.elastic_training)
 
     resource_pool = fetch_hostfile(args.hostfile)
 
@@ -324,7 +344,7 @@ def main(args=None):
     if not resource_pool and len(cuda_visible_devices):
         detected_str = f"Detected CUDA_VISIBLE_DEVICES={cuda_visible_devices}"
         if len(args.include) or len(
-                args.exclude) or args.num_nodes > 1 or args.num_gpus > 0:
+                args.exclude) or num_nodes > 1 or args.num_gpus > 0:
             print(
                 f"{detected_str} but ignoring it because one or several of --include/--exclude/--num_gpus/--num_nodes cl args were used. If you want to use CUDA_VISIBLE_DEVICES don't pass any of these arguments to deepspeed."
             )
@@ -333,7 +353,7 @@ def main(args=None):
             print(f"{detected_str}: setting --include={args.include}")
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
-    if args.num_nodes >= 0 or args.num_gpus >= 0:
+    if num_nodes >= 0 or args.num_gpus >= 0:
         if args.include != "" or args.exclude != "":
             raise ValueError("Cannot specify num_nodes/gpus with include/exclude")
 
@@ -347,7 +367,7 @@ def main(args=None):
         args.master_addr = "127.0.0.1"
         multi_node_exec = False
 
-    if not multi_node_exec and args.num_nodes > 1:
+    if not multi_node_exec and num_nodes > 1:
         raise ValueError("Num nodes is >1 but no extra nodes available via hostfile")
 
     active_resources = parse_inclusion_exclusion(resource_pool,
@@ -381,10 +401,10 @@ def main(args=None):
         run_autotuning(args, active_resources)
         return
 
-    if args.num_nodes > 0:
+    if num_nodes > 0:
         updated_active_resources = collections.OrderedDict()
         for count, hostname in enumerate(active_resources.keys()):
-            if args.num_nodes == count:
+            if num_nodes == count:
                 break
             updated_active_resources[hostname] = active_resources[hostname]
         active_resources = updated_active_resources
@@ -418,6 +438,9 @@ def main(args=None):
             deepspeed_launch.append("--no_local_rank")
         if args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
+        if args.elastic_training:
+            deepspeed_launch.append("--enable_elastic_training")
+            deepspeed_launch.append(f"--max_nodes={args.max_num_nodes}")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()

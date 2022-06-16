@@ -71,6 +71,15 @@ def parse_args():
                         help="Skip prepending the training script with "
                         "'python' - just execute it directly.")
 
+    parser.add_argument("--enable_elastic_training",
+                        action="store_true",
+                        help="Enable elastic training support.")
+
+    parser.add_argument("--max_nodes",
+                        type=int,
+                        default=-1,
+                        help="Max number of nodes in elastic training.")
+
     parser.add_argument("--no_local_rank",
                         action="store_true",
                         help="Do not pass local_rank as an argument when calling "
@@ -95,15 +104,13 @@ def parse_args():
 
 
 def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
-    max_nodes = args.nnodes *2
-    min_nodes = 1
+
     config: Dict[str, str] = {'timeout': 100}
-    # config["rank"] =  node_rank
     config["store_type "] =  "file"
 
     config = LaunchConfig(
-        min_nodes=min_nodes,
-        max_nodes=max_nodes,
+        min_nodes=args.nnodes,
+        max_nodes=args.max_nodes,
         nproc_per_node=num_local_procs,
         run_id="123456789",
         role="default",
@@ -123,6 +130,8 @@ def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
 def main():
     args = parse_args()
     current_env = os.environ.copy()
+
+
 
     for k in current_env.keys():
         if "NCCL" in k:
@@ -178,9 +187,8 @@ def main():
 
     processes = []
     cmd = []
-    Elastic_training = False
 
-    if not Elastic_training:
+    if not args.enable_elastic_training:
         for local_rank in range(0, num_local_procs):
             # each process's rank
             dist_rank = global_rank_mapping[local_node][local_rank]
@@ -209,6 +217,7 @@ def main():
         # dist_rank = global_rank_mapping[local_node][local_rank]
         # os.environ["RANK"] = str(dist_rank)
         # os.environ["LOCAL_RANK"] = str(local_rank)
+        assert args.max_nodes > 0, "Max nodes should be provided in elastic training"
 
         os.environ["MASTER_ADDR"] = args.master_addr
         os.environ["MASTER_PORT"] = str(args.master_port)
@@ -238,27 +247,27 @@ def main():
         rdzv_configs: Dict[str, str] = {'timeout': 100}
         rdzv_parameters = RendezvousParameters(
             backend='c10d',
-            endpoint="worker-0:29401",
+            endpoint=args.master_addr+":29401",
             run_id='123456789',
-            min_nodes=1,
-            max_nodes=2,
+            min_nodes=args.nnodes,
+            max_nodes=args.max_nodes,
             **rdzv_configs
         )
 
         spec = WorkerSpec(
                 role='trainer',
-                local_world_size=8,
+                local_world_size=num_local_procs,
                 entrypoint=cmd[0],
                 args=cmd[1:],
                 rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
                 max_restarts=100,
-                monitor_interval=50,
+                monitor_interval=5,
                 redirects=Std.from_str("0"),
                 tee=Std.from_str("0"),
-                master_addr='worker-0',
-                master_port='51000',
+                master_addr=args.master_addr,
+                master_port=str(args.master_port),
             )
-        agent = FunctionElasticAgent(
+        agent = LocalElasticAgent(
             spec
         )
         agent.run()
