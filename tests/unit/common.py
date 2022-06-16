@@ -36,28 +36,23 @@ def port_available(port):
     return True
 
 
-def get_available_port(port, xdist_add):
-    max_tries = 100
-    attempt = 0
-    while not port_available(port):
-        attempt += 1
-        port += xdist_add
-        if attempt > max_tries:
-            raise RuntimeError(
-                f"Unable to find open port to run tests after {attempt} tries")
-    return port
+def get_available_port(port_range):
+    for p in port_range:
+        if port_available(p):
+            return p
+    raise RuntimeError(
+        f"Unable to find open port to run tests from this list: {port_range}")
 
 
 def get_master_port():
-    master_port = os.environ.get('DS_TEST_PORT', '29503')
+    master_port = int(os.environ.get('DS_TEST_PORT', '29503'))
     xdist_worker_id = get_xdist_worker_id()
 
-    xdist_add = xdist_worker_id
-    if xdist_worker_id is None:
-        xdist_add = 1
-
-    master_port = get_available_port(master_port, xdist_add)
-
+    xdist_id = 0 if xdist_worker_id is None else xdist_worker_id
+    span = 100
+    start_range = master_port + span * xdist_id
+    my_port_range = list(range(start_range, start_range + span))
+    master_port = get_available_port(my_port_range)
     return str(master_port)
 
 
