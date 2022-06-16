@@ -17,25 +17,29 @@ def pytest_addoption(parser):
     parser.addoption("--cuda_ver", default=None, type=str)
 
 
+def validate_version(expected, found):
+    version_depth = expected.count('.') + 1
+    found = '.'.join(found.split('.')[:version_depth])
+    return found == expected
+
+
 @pytest.fixture(scope="session", autouse=True)
 def check_environment(pytestconfig):
     expected_torch_version = pytestconfig.getoption("torch_ver")
     expected_cuda_version = pytestconfig.getoption("cuda_ver")
-    torch_version = '.'.join(torch.__version__.split('.')[:2])
-    cuda_version = torch.version.cuda
     if expected_torch_version is None:
         warnings.warn(
             "Running test without verifying torch version, please provide an expected torch version with --torch_ver"
         )
-    elif expected_torch_version != torch_version:
+    elif not validate_version(expected_torch_version, torch.__version__):
         pytest.exit(
-            f"expected torch version {expected_torch_version} did not match found torch version {torch_version}",
+            f"expected torch version {expected_torch_version} did not match found torch version {torch.__version__}",
             returncode=2)
     if expected_cuda_version is None:
         warnings.warn(
             "Running test without verifying cuda version, please provide an expected cuda version with --cuda_ver"
         )
-    elif expected_cuda_version != cuda_version:
+    elif not validate_version(expected_cuda_version, torch.version.cuda):
         pytest.exit(
-            f"expected cuda version {expected_cuda_version} did not match found cuda version {cuda_version}",
+            f"expected cuda version {expected_cuda_version} did not match found cuda version {torch.version.cuda}",
             returncode=2)
