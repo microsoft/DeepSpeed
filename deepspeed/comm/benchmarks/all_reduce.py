@@ -52,6 +52,7 @@ def run_bench(local_rank,
               max_size=DEFAULT_MAX,
               dtype=DEFAULT_TYPE,
               step=DEFAULT_STEP):
+    #
     #global_rank = dist.get_rank()
     #if global_rank == 0:
     #    print(global_rank, "data size:", M * N * 4 / 1e9, "GB")
