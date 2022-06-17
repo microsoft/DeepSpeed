@@ -97,6 +97,7 @@ class PDSHRunner(MultiNodeRunner):
         if self.args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
             deepspeed_launch.append(f"--max_nodes={self.args.max_num_nodes}")
+            deepspeed_launch.append(f"--min_nodes={self.args.min_num_nodes}")
         return pdsh_cmd_args + deepspeed_launch + [self.user_script
                                                    ] + self.user_arguments
 
