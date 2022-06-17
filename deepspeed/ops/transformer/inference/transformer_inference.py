@@ -276,7 +276,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
@@ -312,11 +311,13 @@ class DeepSpeedSelfAttentionFunction(Function):
                     (q_groups * (3 if qkv_merging else 1) * (2**merge_count)),
                     (attn_qkvb is not None))
             context_layer, key_layer, value_layer = compute_attention(qkv_out)
+
             output = inference_cuda_module.vector_matmul_int8(context_layer,
                                                               attn_ow,
                                                               q_scales[1],
                                                               q_groups,
                                                               (merge_count))
+
             return output, key_layer, value_layer, context_layer
 
         if config.q_int8:

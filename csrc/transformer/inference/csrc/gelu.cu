@@ -174,7 +174,7 @@ __global__ void fused_bias_residual(float* input,
                                     float* attnbias,
                                     int total_count,
                                     int intermediate_size,
-                                    int mp_size)
+                                    float mp_size)
 {
     float4* input_cast = reinterpret_cast<float4*>(input);
     float4* output_cast = reinterpret_cast<float4*>(output);
@@ -190,10 +190,10 @@ __global__ void fused_bias_residual(float* input,
         float4 bias_data = bias_cast[offset % intermediate_size];
         float4 attn_bias = attnbias_cast[offset % intermediate_size];
 
-        data.x = (data.x + res_vec.x) * mp_size + (out.x + bias_data.x + attn_bias.x);
-        data.y = (data.y + res_vec.y) * mp_size + (out.y + bias_data.y + attn_bias.y);
-        data.z = (data.z + res_vec.z) * mp_size + (out.z + bias_data.z + attn_bias.z);
-        data.w = (data.w + res_vec.w) * mp_size + (out.w + bias_data.w + attn_bias.w);
+        data.x = (data.x + res_vec.x + bias_data.x + attn_bias.x) * mp_size + (out.x);
+        data.y = (data.y + res_vec.y + bias_data.y + attn_bias.y) * mp_size + (out.y);
+        data.z = (data.z + res_vec.z + bias_data.z + attn_bias.z) * mp_size + (out.z);
+        data.w = (data.w + res_vec.w + bias_data.w + attn_bias.w) * mp_size + (out.w);
 
         output_cast[offset] = data;
     }
@@ -206,7 +206,7 @@ __global__ void fused_bias_residual(__half* input,
                                     __half* attn_bias,
                                     int total_count,
                                     int intermediate_size,
-                                    int mp_size)
+                                    float mp_size)
 {
 #ifdef HALF_PRECISION_AVAILABLE
 
@@ -249,13 +249,13 @@ __global__ void fused_bias_residual(__half* input,
         float2 attn_high_bias = __half22float2(attnbias_half[1]);
 
         low_data.x =
-            (low_data.x + low_res.x) * mp_size + (low_out.x + (low_bias.x + attn_low_bias.x));
+            (low_data.x + low_res.x + (low_bias.x + attn_low_bias.x)) * mp_size + low_out.x;
         low_data.y =
-            (low_data.y + low_res.y) * mp_size + (low_out.y + (low_bias.y + attn_low_bias.y));
+            (low_data.y + low_res.y + (low_bias.y + attn_low_bias.y)) * mp_size + low_out.y;
         high_data.x =
-            (high_data.x + high_res.x) * mp_size + (high_out.x + (high_bias.x + attn_high_bias.x));
+            (high_data.x + high_res.x + (high_bias.x + attn_high_bias.x)) * mp_size + high_out.x;
         high_data.y =
-            (high_data.y + high_res.y) * mp_size + (high_out.y + (high_bias.y + attn_high_bias.y));
+            (high_data.y + high_res.y + (high_bias.y + attn_high_bias.y)) * mp_size + high_out.y;
 
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);
@@ -325,10 +325,10 @@ __global__ void gptj_residual_add(float* input,
             data.z += attn_bias.z;
             data.w += attn_bias.w;
         }
-        data.x = data.x * mp_size + (out.x + res_vec.x + bias_data.x);
-        data.y = data.y * mp_size + (out.y + res_vec.y + bias_data.y);
-        data.z = data.z * mp_size + (out.z + res_vec.z + bias_data.z);
-        data.w = data.w * mp_size + (out.w + res_vec.w + bias_data.w);
+        data.x = (data.x + res_vec.x + bias_data.x) * mp_size + (out.x);
+        data.y = (data.y + res_vec.y + bias_data.y) * mp_size + (out.y);
+        data.z = (data.z + res_vec.z + bias_data.z) * mp_size + (out.z);
+        data.w = (data.w + res_vec.w + bias_data.w) * mp_size + (out.w);
 
         output_cast[offset] = data;
     }
@@ -388,10 +388,10 @@ __global__ void gptj_residual_add(__half* input,
             high_data.y += attn_high_bias.y;
         }
 
-        low_data.x = low_data.x * mp_size + (low_out.x + low_res.x + (low_bias.x));
-        low_data.y = low_data.y * mp_size + (low_out.y + low_res.y + (low_bias.y));
-        high_data.x = high_data.x * mp_size + (high_out.x + high_res.x + (high_bias.x));
-        high_data.y = high_data.y * mp_size + (high_out.y + high_res.y + (high_bias.y));
+        low_data.x = (low_data.x + low_res.x + (low_bias.x)) * mp_size + low_out.x;
+        low_data.y = (low_data.y + low_res.y + (low_bias.y)) * mp_size + low_out.y;
+        high_data.x = (high_data.x + high_res.x + (high_bias.x)) * mp_size + high_out.x;
+        high_data.y = (high_data.y + high_res.y + (high_bias.y)) * mp_size + high_out.y;
 
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);

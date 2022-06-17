@@ -7,6 +7,7 @@ from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
 from torch import nn
+from torch import distributed as dist
 
 
 class LinearAllreduce(nn.Module):
@@ -71,8 +72,8 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=1) for i in range(len(qkv_split[0]))
             ]
-            dst.data.copy_(weight_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+            dst = weight_split[self.gpu_index].contiguous().to(
+                torch.cuda.current_device())
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.Parameter(src)
@@ -83,8 +84,7 @@ class ReplaceWithTensorSlicing:
                 torch.cat([qkv_s[i] for qkv_s in qkv_split],
                           axis=0) for i in range(len(qkv_split[0]))
             ]
-            dst.data.copy_(bias_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+            dst = bias_split[self.gpu_index].contiguous().to(torch.cuda.current_device())
 
         return torch.nn.Parameter(dst)
 
@@ -107,15 +107,14 @@ class ReplaceWithTensorSlicing:
                 self.merge_assert(src_shape[1], dst_shape[1])
                 weight_split = torch.split(src.data, dst_shape[1], dim=1)
 
-            dst.data.copy_(weight_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+            dst = weight_split[self.gpu_index].contiguous().to(
+                torch.cuda.current_device())
         else:
             if src_shape[0] == dst_shape[0]:
                 return torch.nn.Parameter(src)
 
             bias_split = torch.split(src.data, dst_shape[-1])
-            dst.data.copy_(bias_split[self.gpu_index].to(
-                torch.cuda.current_device()).contiguous())
+            dst = bias_split[self.gpu_index].contiguous().to(torch.cuda.current_device())
 
         return torch.nn.Parameter(dst)
 
