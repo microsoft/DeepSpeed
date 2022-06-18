@@ -54,7 +54,7 @@ class ReduceOp(Enum):
 #import deepspeed.utils.timer
 #from deepspeed.utils import *
 #from deepspeed.utils import logger, log_dist
-from deepspeed.utils.logging import CommsLogger
+from deepspeed.utils.comms_logging import CommsLogger
 from deepspeed.utils import timer
 from deepspeed.comm.backend import Backend
 from deepspeed.comm.torch import TorchBackend
@@ -83,31 +83,9 @@ mpi_backend = None
 # This should be set here so all rank/size information from the launcher can be propagated
 from deepspeed.comm.utils import *
 
-# There are three settings for the op profiler:
-# - Global profiling (profile all comms)
-# - Op-type profiling (e.g. profile all all_reduce comms)
-# - Op profiling (e.g. profile a specific all_reduce op)
-COMMS_LOGGER_PROF_ALL = True
-COMMS_LOGGER_PROF_OPS = []
-COMMS_LOGGER_ENABLED = False
-
-
-def _configure_defaults():
-    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
-
-    COMMS_LOGGER_ENABLED = False
-    COMMS_LOGGER_PROF_ALL = True
-    COMMS_LOGGER_PROF_OPS = []
-    comms_logger.verbose = False
-
 
 def _configure_using_config_file(config):
-    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
-
     if config.comms_logger_enabled:
-        COMMS_LOGGER_ENABLED = config.comms_logger.enabled
-        COMMS_LOGGER_PROF_ALL = config.comms_logger.prof_all
-        COMMS_LOGGER_PROF_OPS = config.comms_logger.prof_ops
         comms_logger.configure(config)
 
 
@@ -116,47 +94,21 @@ def configure(deepspeed_config=None,
               prof_all=None,
               prof_ops=None,
               verbose=None):
-    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
-
-    _configure_defaults()
 
     if deepspeed_config is not None:
         _configure_using_config_file(deepspeed_config.comms_config)
 
     if enabled is not None:
-        COMMS_LOGGER_ENABLED = enabled
+        comms_logger.enabled = enabled
 
     if prof_all is not None:
-        COMMS_LOGGER_PROF_ALL = prof_all
+        comms_logger.prof_all = prof_all
 
     if prof_ops is not None:
-        COMMS_LOGGER_PROF_OPS = prof_ops
+        comms_logger.prof_ops = prof_ops
 
     if verbose is not None:
         comms_logger.verbose = verbose
-
-
-def start_profiling_comms():
-    global COMMS_LOGGER_PROF_ALL
-    COMMS_LOGGER_PROF_ALL = True
-
-
-# E.g. start_profiling_op('all_reduce')
-def start_profiling_op(op_name_list):
-    global COMMS_LOGGER_PROF_OPS
-    COMMS_LOGGER_PROF_OPS = op_name_list
-
-
-def stop_profiling_op(op_name_list):
-    global COMMS_LOGGER_PROF_OPS
-    COMMS_LOGGER_PROF_OPS = [
-        op for op in COMMS_LOGGER_PROF_OPS if op not in op_name_list
-    ]
-
-
-def stop_profiling_comms():
-    global COMMS_LOGGER_PROF_ALL
-    COMMS_LOGGER_PROF_ALL = False
 
 
 # Logging wrapper for timing ops
@@ -165,10 +117,11 @@ def timed_op(func):
 
     def log_wrapper(*args, **kwargs):
         # Add enabled flag so that overhead to each comm op is two if conditions at most
-        if COMMS_LOGGER_ENABLED:
-            if ('prof' in kwargs and kwargs['prof']) or COMMS_LOGGER_PROF_ALL or (
+        #if COMMS_LOGGER_ENABLED:
+        if comms_logger.enabled:
+            if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                     'log_name' in kwargs
-                    and kwargs['log_name'] in COMMS_LOGGER_PROF_OPS):
+                    and kwargs['log_name'] in comms_logger.prof_ops):
                 # Need func args for their defaults
                 func_args = get_default_args(func)
                 func_args.update(kwargs)
@@ -180,10 +133,10 @@ def timed_op(func):
         try:
             return func(*args, **kwargs)
         finally:
-            if COMMS_LOGGER_ENABLED:
-                if ('prof' in kwargs and kwargs['prof']) or COMMS_LOGGER_PROF_ALL or (
+            if comms_logger.enabled:
+                if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                         'log_name' in kwargs
-                        and kwargs['log_name'] in COMMS_LOGGER_PROF_OPS):
+                        and kwargs['log_name'] in comms_logger.prof_ops):
                     log_name = get_debug_log_name(func_args, comms_logger.debug_level)
                     #timers(func_args['log_name']).stop()
                     # need temp var since 'elapsed' resets events

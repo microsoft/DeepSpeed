@@ -12,7 +12,7 @@ from torch.distributed import ProcessGroup
 import torch.nn.functional
 
 from deepspeed.utils import instrument_w_nvtx
-from deepspeed.utils.logging import logger, get_logger_v2_name
+from deepspeed.utils import logger, get_logger_v2_name
 from deepspeed.runtime.constants import COMMS_LOGGER_COALESCED
 
 
