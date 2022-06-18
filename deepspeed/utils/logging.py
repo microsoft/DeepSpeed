@@ -42,6 +42,12 @@ class LoggerFactory:
         return logger_
 
 
+def get_logger_v2_name():
+    import inspect, sys
+    #return inspect.currentframe().f_code.co_name
+    return sys._getframe(1).f_code.co_name
+
+
 # Helper function to pretty-print message sizes
 def convert_size(size_bytes):
     if size_bytes == 0:
@@ -64,9 +70,22 @@ def calc_bw(msg_size, lat):
 
 
 class CommsLogger:
-    def __init__(self, verbose=False):
+    def __init__(self):
+        from deepspeed.comm.constants import COMMS_LOGGER_VERBOSE_DEFAULT, COMMS_LOGGER_DEBUG_LEVEL_DEFAULT, COMMS_LOGGER_PROF_OPS_DEFAULT, COMMS_LOGGER_PROF_ALL_DEFAULT, COMMS_LOGGER_ENABLED_DEFAULT
         self.comms_dict = {}
-        self.verbose = verbose
+        self.verbose = COMMS_LOGGER_VERBOSE_DEFAULT
+        self.debug_level = COMMS_LOGGER_DEBUG_LEVEL_DEFAULT
+        self.prof_ops = COMMS_LOGGER_PROF_OPS_DEFAULT
+        self.prof_all = COMMS_LOGGER_PROF_ALL_DEFAULT
+        self.enabled = COMMS_LOGGER_ENABLED_DEFAULT
+
+    def configure(self, comms_config):
+        self.enabled = comms_config.comms_logger_enabled
+        if self.enabled:
+            self.verbose = comms_config.comms_logger.verbose
+            self.debug_level = comms_config.comms_logger.debug_level
+            self.prof_ops = comms_config.comms_logger.prof_ops
+            self.prof_all = comms_config.comms_logger.prof_all
 
     # Add log entry
     def append(self, record_name, latency, msg_size):

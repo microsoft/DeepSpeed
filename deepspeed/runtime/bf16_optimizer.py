@@ -22,6 +22,9 @@ from deepspeed.checkpoint.constants import (DS_VERSION,
                                             CLIP_GRAD,
                                             GROUPS_PADDING)
 
+from deepspeed.runtime.constants import COMMS_LOGGER_BF16_OPTIM
+from deepspeed.utils import get_logger_v2_name
+
 import types
 
 from dataclasses import dataclass
@@ -68,7 +71,10 @@ def get_full_hp_param(self, optim_state_key=None):
             hp_fragment = self._hp_mapping.get_optim_state_fragment(optim_state_key)
 
         reduce_fragment.data.copy_(hp_fragment.data)
-    dist.all_reduce(reduce_buffer, group=self._dp_group)
+    dist.all_reduce(reduce_buffer,
+                    group=self._dp_group,
+                    v1=COMMS_LOGGER_BF16_OPTIM,
+                    v2=get_logger_v2_name())
     return reduce_buffer.reshape_as(self)
 
 
@@ -348,7 +354,8 @@ class BF16_Optimizer(ZeROOptimizer):
         all_groups_norm = get_global_norm_of_tensors(
             input_tensors=self.get_grads_for_norm(),
             mpu=self.mpu,
-            norm_type=self.norm_type)
+            norm_type=self.norm_type,
+            v1=COMMS_LOGGER_BF16_OPTIM)
         self._global_grad_norm = all_groups_norm
 
         assert all_groups_norm > 0.
@@ -366,7 +373,8 @@ class BF16_Optimizer(ZeROOptimizer):
         all_gather_dp_groups(partitioned_param_groups=self.bf16_partitioned_groups,
                              dp_process_group=self.real_dp_process_group,
                              start_alignment_factor=self.nccl_start_alignment_factor,
-                             allgather_bucket_size=self.allgather_bucket_size)
+                             allgather_bucket_size=self.allgather_bucket_size,
+                             v1=COMMS_LOGGER_BF16_OPTIM)
 
         self.clear_hp_grads()
         self.step_count += 1

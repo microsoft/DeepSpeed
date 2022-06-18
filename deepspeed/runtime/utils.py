@@ -19,8 +19,8 @@ import torch
 from torch._six import inf
 import deepspeed.comm as dist
 
-from deepspeed.utils import groups, logger
-from deepspeed.runtime.constants import PIPE_REPLICATED
+from deepspeed.utils import groups, logger, get_logger_v2_name
+from deepspeed.runtime.constants import PIPE_REPLICATED, COMMS_LOGGER_UTILS
 from numpy import prod
 
 # pt-1.9 deprecations
@@ -188,7 +188,7 @@ class CheckOverflow(object):
                     if is_moe_param(param):
                         self.has_moe_params = True
 
-    def check_using_norm(self, norm_group, reduce_overflow=True):
+    def check_using_norm(self, norm_group, reduce_overflow=True, v1=COMMS_LOGGER_UTILS):
         # TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
         overflow_gpu = torch.cuda.FloatTensor([overflow])
@@ -200,14 +200,21 @@ class CheckOverflow(object):
             # Only need to check groups.get_largest_expert_parallel_group()
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups._get_max_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         if self.mpu is not None:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.mpu.get_model_parallel_group())
+                            group=self.mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         elif reduce_overflow:
-            dist.all_reduce(overflow_gpu, op=dist.ReduceOp.MAX)
-            dist.barrier()
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            v1=v1,
+                            v2=get_logger_v2_name())
+            dist.barrier(v1=v1, v2=get_logger_v2_name())
         overflow = overflow_gpu[0].item()
         return bool(overflow)
 
@@ -251,11 +258,15 @@ class CheckOverflow(object):
             # overflows, we detect it here
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=groups._get_max_expert_parallel_group())
+                            group=groups._get_max_expert_parallel_group(),
+                            v1=COMMS_LOGGER_UTILS,
+                            v2=get_logger_v2_name())
         if self.zero_reduce_scatter:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=dist.get_world_group())
+                            group=dist.get_world_group(),
+                            v1=COMMS_LOGGER_UTILS,
+                            v2=get_logger_v2_name())
         elif self.mpu is not None:
             if self.deepspeed is not None:
                 using_pipeline = hasattr(self.deepspeed,
@@ -266,14 +277,20 @@ class CheckOverflow(object):
                           and self.deepspeed.enable_backward_allreduce is False):
                     dist.all_reduce(overflow_gpu,
                                     op=dist.ReduceOp.MAX,
-                                    group=self.mpu.get_data_parallel_group())
+                                    group=self.mpu.get_data_parallel_group(),
+                                    v1=COMMS_LOGGER_UTILS,
+                                    v2=get_logger_v2_name())
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.mpu.get_model_parallel_group())
+                            group=self.mpu.get_model_parallel_group(),
+                            v1=COMMS_LOGGER_UTILS,
+                            v2=get_logger_v2_name())
         elif self.deepspeed is not None and self.deepspeed.enable_backward_allreduce is False:
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=dist.get_world_group())
+                            group=dist.get_world_group(),
+                            v1=COMMS_LOGGER_UTILS,
+                            v2=get_logger_v2_name())
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -324,7 +341,7 @@ def get_global_norm(norm_list):
     return sqrt(total_norm)
 
 
-def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
+def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None, v1=COMMS_LOGGER_UTILS):
     """Clips gradient norm of an iterable of parameters.
 
     This has been adapted from Nvidia megatron. We add norm averaging
@@ -357,7 +374,9 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0
@@ -376,7 +395,9 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     # Need to average total_norm across different GPUs due to the presence of moe params
@@ -384,7 +405,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
     scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
-    dist.all_reduce(scaled_norm_tensor, group=pg)
+    dist.all_reduce(scaled_norm_tensor, group=pg, v1=v1, v2=get_logger_v2_name())
     total_norm = scaled_norm_tensor.item()
 
     clip_coef = max_norm / (total_norm + 1e-6)
@@ -394,7 +415,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     return total_norm
 
 
-def get_grad_norm(parameters, norm_type=2, mpu=None):
+def get_grad_norm(parameters, norm_type=2, mpu=None, v1=COMMS_LOGGER_UTILS):
     """Get grad norm of an iterable of parameters.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
@@ -423,7 +444,9 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
@@ -446,7 +469,9 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -456,7 +481,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
     return total_norm
 
 
-def get_grad_zeros(parameters, mpu=None):
+def get_grad_zeros(parameters, mpu=None, v1=COMMS_LOGGER_UTILS):
     """Compute the number of grads with zero values.
 
     This is adapted from get_grad_norm
@@ -492,13 +517,15 @@ def get_grad_zeros(parameters, mpu=None):
     if mpu is not None:
         dist.all_reduce(total_zeros_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=mpu.get_model_parallel_group())
+                        group=mpu.get_model_parallel_group(),
+                        v1=v1,
+                        v2=get_logger_v2_name())
     total_zeros = total_zeros_cuda[0].item()
 
     return total_zeros
 
 
-def get_weight_norm(parameters, norm_type=2, mpu=None):
+def get_weight_norm(parameters, norm_type=2, mpu=None, v1=COMMS_LOGGER_UTILS):
     """Get norm of an iterable of parameters.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
@@ -526,7 +553,9 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.
@@ -549,7 +578,9 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -727,7 +758,9 @@ class PartitionedTensor:
         # Collect the full tensor
         dist.all_gather(partition_tensors,
                         partition_tensors[self.rank],
-                        group=self.group)
+                        group=self.group,
+                        v1=COMMS_LOGGER_UTILS,
+                        v2=get_logger_v2_name())
 
         for i in range(len(partition_tensors)):
             partition_tensors[i].data = torch.zeros(1)
@@ -891,7 +924,10 @@ def clip_gradients(parameters, max_norm=1.0, global_grad_norm=None, mpu=None, ep
     return global_grad_norm
 
 
-def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
+def get_global_norm_of_tensors(input_tensors,
+                               norm_type=2,
+                               mpu=None,
+                               v1=COMMS_LOGGER_UTILS):
     """Get norm of an iterable of tensors.
 
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
@@ -916,7 +952,9 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
             total_norm = total_norm_cuda[0].item()
     else:
         total_norm = sum(
@@ -925,7 +963,9 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
         if mpu is not None:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=mpu.get_model_parallel_group())
+                            group=mpu.get_model_parallel_group(),
+                            v1=v1,
+                            v2=get_logger_v2_name())
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
     if total_norm == float(
@@ -980,7 +1020,8 @@ def align_dense_tensors(tensor_list, alignment):
 def all_gather_dp_groups(partitioned_param_groups,
                          dp_process_group,
                          start_alignment_factor,
-                         allgather_bucket_size):
+                         allgather_bucket_size,
+                         v1=COMMS_LOGGER_UTILS):
     for group_id, partitioned_params in enumerate(partitioned_param_groups):
         # Sequential AllGather Best of both worlds
         partition_id = dist.get_rank(group=dp_process_group[group_id])
@@ -1015,4 +1056,6 @@ def all_gather_dp_groups(partitioned_param_groups,
 
             dist.all_gather(shard_list,
                             shard_list[partition_id],
-                            dp_process_group[group_id])
+                            dp_process_group[group_id],
+                            v1=v1,
+                            v2=get_logger_v2_name())

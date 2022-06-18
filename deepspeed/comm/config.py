@@ -22,6 +22,7 @@ class CommsLoggerConfig(CommsConfig):
     prof_all: bool = COMMS_LOGGER_PROF_ALL_DEFAULT
     prof_ops: list = COMMS_LOGGER_PROF_OPS_DEFAULT
     verbose: bool = COMMS_LOGGER_VERBOSE_DEFAULT
+    debug_level: int = COMMS_LOGGER_DEBUG_LEVEL_DEFAULT
 
 
 class DeepSpeedCommsConfig:

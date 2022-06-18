@@ -39,7 +39,7 @@ from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
-    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16
+    PLD_THETA, PLD_GAMMA, BFLOAT16, FP16, COMMS_LOGGER_ENGINE
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
@@ -48,7 +48,7 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 import deepspeed.runtime.lr_schedules as lr_schedules
 import deepspeed.utils.groups as groups
 from deepspeed.runtime.utils import get_grad_norm
-from deepspeed.utils import logger, log_dist, instrument_w_nvtx
+from deepspeed.utils import logger, log_dist, instrument_w_nvtx, get_logger_v2_name
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
@@ -979,14 +979,22 @@ class DeepSpeedEngine(Module):
             # Broadcast the model for different parameters
             if is_moe_param(p):
                 if torch.is_tensor(p) and is_replicated(p):
-                    dist.broadcast(p,
-                                   groups._get_expert_broadcast_src_rank(p.group_name),
-                                   group=self.expert_data_parallel_group[p.group_name])
+                    dist.broadcast(
+                        p,
+                        groups._get_expert_broadcast_src_rank(p.group_name),
+                        group=self.expert_data_parallel_group[p.group_name],
+                        v1=COMMS_LOGGER_ENGINE,
+                    )
+                    #v2=get_logger_v2_name())
             else:
                 if torch.is_tensor(p) and is_replicated(p):
-                    dist.broadcast(p,
-                                   groups._get_broadcast_src_rank(),
-                                   group=self.data_parallel_group)
+                    dist.broadcast(
+                        p,
+                        groups._get_broadcast_src_rank(),
+                        group=self.data_parallel_group,
+                        v1=COMMS_LOGGER_ENGINE,
+                    )
+                    #v2=get_logger_v2_name())
 
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
@@ -1828,7 +1836,8 @@ class DeepSpeedEngine(Module):
     def clip_fp32_gradients(self):
         clip_grad_norm_(parameters=self.module.parameters(),
                         max_norm=self.gradient_clipping(),
-                        mpu=self.mpu)
+                        mpu=self.mpu,
+                        v1=COMMS_LOGGER_ENGINE)
 
     def _take_model_step(self, lr_kwargs, block_eigenvalue={}):
         if self.gradient_clipping() > 0.0:
@@ -1841,7 +1850,8 @@ class DeepSpeedEngine(Module):
                 master_params = amp.master_params(self.optimizer)
                 clip_grad_norm_(parameters=master_params,
                                 max_norm=self.gradient_clipping(),
-                                mpu=self.mpu)
+                                mpu=self.mpu,
+                                v1=COMMS_LOGGER_ENGINE)
         self.optimizer.step()
 
         if hasattr(self.optimizer, '_global_grad_norm'):
@@ -2130,7 +2140,10 @@ class DeepSpeedEngine(Module):
             if self.gradient_predivide_factor() != 1.0:
                 tensor_to_allreduce.mul_(1.0 / self.gradient_predivide_factor())
 
-            dist.all_reduce(tensor_to_allreduce, group=dp_group)
+            dist.all_reduce(tensor_to_allreduce,
+                            group=dp_group,
+                            v1=COMMS_LOGGER_ENGINE,
+                            v2=get_logger_v2_name())
             if self.gradient_average:
                 if self.gradient_predivide_factor() != dist.get_world_size(
                         group=dp_group):
@@ -2138,7 +2151,10 @@ class DeepSpeedEngine(Module):
                                              dist.get_world_size(group=dp_group))
         else:
             tensor_to_allreduce.mul_(1. / dist.get_world_size(group=dp_group))
-            dist.all_reduce(tensor_to_allreduce, group=dp_group)
+            dist.all_reduce(tensor_to_allreduce,
+                            group=dp_group,
+                            v1=COMMS_LOGGER_ENGINE,
+                            v2=get_logger_v2_name())
 
         if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
@@ -2298,7 +2314,11 @@ class DeepSpeedEngine(Module):
                 for _ in range(dist.get_world_size(group=dp_group))
             ]
 
-        dist.all_gather(tensor_list, value, group=dp_group)
+        dist.all_gather(tensor_list,
+                        value,
+                        group=dp_group,
+                        v1=COMMS_LOGGER_ENGINE,
+                        v2=get_logger_v2_name())
         tensors = []
         for dev_idx, t in enumerate(tensor_list):
             size = all_sizes[dev_idx][0]
@@ -2315,7 +2335,11 @@ class DeepSpeedEngine(Module):
             value.new_zeros(value.size())
             for _ in range(dist.get_world_size(group=dp_group))
         ]
-        dist.all_gather(tensor_list, value, group=dp_group)
+        dist.all_gather(tensor_list,
+                        value,
+                        group=dp_group,
+                        v1=COMMS_LOGGER_ENGINE,
+                        v2=get_logger_v2_name())
         return tensor_list
 
     def module_state_dict(self, destination=None, prefix="", keep_vars=False):
@@ -2795,8 +2819,14 @@ class DeepSpeedEngine(Module):
             bhash = torch.ByteTensor([s_hash.digest()]).flatten().to(self.device)
             max_bhash = bhash.clone()
             min_bhash = bhash.clone()
-            dist.all_reduce(max_bhash, op=dist.ReduceOp.MAX)
-            dist.all_reduce(min_bhash, op=dist.ReduceOp.MIN)
+            dist.all_reduce(max_bhash,
+                            op=dist.ReduceOp.MAX,
+                            v1=COMMS_LOGGER_ENGINE,
+                            v2=get_logger_v2_name())
+            dist.all_reduce(min_bhash,
+                            op=dist.ReduceOp.MIN,
+                            v1=COMMS_LOGGER_ENGINE,
+                            v2=get_logger_v2_name())
             valid = all(min_bhash == bhash) and all(max_bhash == bhash)
             msg = (
                 f"[rank={dist.get_rank()}] The checkpoint tag name '{tag}' is not consistent across "
@@ -2831,7 +2861,7 @@ class DeepSpeedEngine(Module):
 
         # Ensure save_dir directory exists
         os.makedirs(save_dir, exist_ok=True)
-        dist.barrier()
+        dist.barrier(v1=COMMS_LOGGER_ENGINE, v2=get_logger_v2_name())
 
         if tag is None:
             tag = f"global_step{self.global_steps}"
@@ -2859,7 +2889,7 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
-        dist.barrier()
+        dist.barrier(v1=COMMS_LOGGER_ENGINE, v2=get_logger_v2_name())
         if save_latest and self.global_rank == 0:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
@@ -3006,7 +3036,7 @@ class DeepSpeedEngine(Module):
             if rank == self.global_rank:
                 success = self._create_checkpoint_file(save_dir, tag, True)
 
-            dist.barrier()
+            dist.barrier(v1=COMMS_LOGGER_ENGINE, v2=get_logger_v2_name())
 
         return success
 

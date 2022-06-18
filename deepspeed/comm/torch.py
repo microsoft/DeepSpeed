@@ -95,11 +95,16 @@ class TorchBackend(Backend):
                 "please consider upgrading your pytorch installation.")
             pass
 
-    def reduce_scatter_base(self, output_tensor, input_tensor, group=None):
+    def reduce_scatter_base(self,
+                            output_tensor,
+                            input_tensor,
+                            group=None,
+                            async_op=False):
         if self.has_reduce_scatter_base:
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
-                                                          group=group)
+                                                          group=group,
+                                                          async_op=async_op)
         else:
             utils.logger.warning(
                 "unable to find torch.distributed._reduce_scatter_base. will fall back to "

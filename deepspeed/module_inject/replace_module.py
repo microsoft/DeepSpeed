@@ -7,6 +7,8 @@ from .replace_policy import replace_policies
 from ..constants import INFERENCE_GENERIC_MODE, INFERENCE_SPECIALIZED_MODE
 from ..runtime.weight_quantizer import WeightQuantization
 from torch import nn
+from deepspeed.utils import get_logger_v2_name
+from deepspeed.runtime.constants import COMMS_LOGGER_INJECT
 
 
 class LinearAllreduce(nn.Module):
@@ -19,7 +21,10 @@ class LinearAllreduce(nn.Module):
     def forward(self, input):
         output = torch.matmul(input, self.weight)
         if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
+            dist.all_reduce(output,
+                            group=self.mp_group,
+                            v1=COMMS_LOGGER_INJECT,
+                            v2=get_logger_v2_name())
         if self.bias is not None:
             output += self.bias
         return output

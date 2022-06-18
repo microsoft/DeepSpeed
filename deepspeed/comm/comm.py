@@ -70,7 +70,7 @@ cdb = None
 timers = timer.SynchronizedWallClockTimer()
 timer_summary = {}
 
-comms_logger = CommsLogger(verbose=True)
+comms_logger = CommsLogger()
 
 # Ensure we don't warn about base collectives more than once
 has_warned_all_gather = False
@@ -108,7 +108,7 @@ def _configure_using_config_file(config):
         COMMS_LOGGER_ENABLED = config.comms_logger.enabled
         COMMS_LOGGER_PROF_ALL = config.comms_logger.prof_all
         COMMS_LOGGER_PROF_OPS = config.comms_logger.prof_ops
-        comms_logger.verbose = config.comms_logger.verbose
+        comms_logger.configure(config)
 
 
 def configure(deepspeed_config=None,
@@ -173,7 +173,7 @@ def timed_op(func):
                 func_args = get_default_args(func)
                 func_args.update(kwargs)
                 msg_size = get_msg_size_from_args(func, *args, **kwargs)
-                log_name = get_log_name(func_args, comms_logger.verbose)
+                log_name = get_debug_log_name(func_args, comms_logger.debug_level)
                 timers(log_name).start()
                 #timers(func_args['log_name']).start()
         # Return the op, then stop the op's timer
@@ -184,7 +184,7 @@ def timed_op(func):
                 if ('prof' in kwargs and kwargs['prof']) or COMMS_LOGGER_PROF_ALL or (
                         'log_name' in kwargs
                         and kwargs['log_name'] in COMMS_LOGGER_PROF_OPS):
-                    log_name = get_log_name(func_args, comms_logger.verbose)
+                    log_name = get_debug_log_name(func_args, comms_logger.debug_level)
                     #timers(func_args['log_name']).stop()
                     # need temp var since 'elapsed' resets events
                     #time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
@@ -328,7 +328,6 @@ def has_reduce_scatter_base():
 
 def reduce_scatter_fn(output_tensor,
                       tensor,
-                      log_name,
                       group=None,
                       async_op=False,
                       prof=False,
@@ -343,7 +342,6 @@ def reduce_scatter_fn(output_tensor,
                                    group=group,
                                    async_op=async_op,
                                    prof=prof,
-                                   log_name=log_name,
                                    v1=v1,
                                    v2=v2)
     else:
@@ -359,7 +357,6 @@ def reduce_scatter_fn(output_tensor,
                               group=group,
                               async_op=async_op,
                               prof=prof,
-                              log_name=log_name,
                               v1=v1,
                               v2=v2)
 
@@ -368,6 +365,7 @@ def reduce_scatter_fn(output_tensor,
 def reduce_scatter_base(output_tensor,
                         tensor,
                         group=None,
+                        async_op=False,
                         prof=False,
                         log_name='reduce_scatter_base',
                         v1=None,
@@ -375,7 +373,8 @@ def reduce_scatter_base(output_tensor,
     global cdb
     return cdb.reduce_scatter_base(output_tensor=output_tensor,
                                    input_tensor=tensor,
-                                   group=group)
+                                   group=group,
+                                   async_op=async_op)
 
 
 @timed_op
@@ -403,7 +402,6 @@ def has_allgather_base():
 
 def allgather_fn(output_tensor,
                  input_tensor,
-                 log_name,
                  group=None,
                  async_op=False,
                  v1=None,
@@ -416,7 +414,6 @@ def allgather_fn(output_tensor,
                                input_tensor,
                                group=group,
                                async_op=True,
-                               log_name=log_name,
                                v1=v1,
                                v2=v2)
     else:
@@ -431,7 +428,6 @@ def allgather_fn(output_tensor,
                           input_tensor,
                           group=group,
                           async_op=True,
-                          log_name=log_name,
                           v1=v1,
                           v2=v2)
 

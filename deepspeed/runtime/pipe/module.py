@@ -11,11 +11,12 @@ import torch
 import torch.nn as nn
 import deepspeed.comm as dist
 
-from deepspeed.utils import logger
+from deepspeed.utils import logger, get_logger_v2_name
 from .. import utils as ds_utils
 from ..activation_checkpointing import checkpointing
 from .topology import PipeDataParallelTopology, PipelineParallelGrid
 from deepspeed.runtime.state_dict_factory import SDLoaderFactory
+from deepspeed.runtime.constants import COMMS_LOGGER_PIPE
 
 
 class PipelineError(Exception):
@@ -420,7 +421,10 @@ class PipelineModule(nn.Module):
         '''All reduce the gradients of the tied weights between tied stages'''
         for key, comm in self.tied_comms.items():
             weight = getattr(self.tied_modules[key], comm['weight_attr'])
-            dist.all_reduce(weight.grad, group=comm['group'])
+            dist.all_reduce(weight.grad,
+                            group=comm['group'],
+                            v1=COMMS_LOGGER_PIPE,
+                            v2=get_logger_v2_name())
 
     def get_tied_weights_and_groups(self):
         weight_group_list = []
@@ -431,12 +435,12 @@ class PipelineModule(nn.Module):
 
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
-            dist.broadcast(
-                getattr(comm['module'],
-                        comm['weight_attr']),
-                src=min(comm['ranks']),
-                group=comm['group'],
-            )
+            dist.broadcast(getattr(comm['module'],
+                                   comm['weight_attr']),
+                           src=min(comm['ranks']),
+                           group=comm['group'],
+                           v1=COMMS_LOGGER_PIPE,
+                           v2=get_logger_v2_name())
 
     def _index_tied_modules(self):
         ''' Build communication structures for tied modules. '''

@@ -13,8 +13,9 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # LICENSE file in the root directory of this source tree.
 
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
-from deepspeed.utils import logger, log_dist
+from deepspeed.utils import logger, log_dist, get_logger_v2_name
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
+from deepspeed.runtime.constants import COMMS_LOGGER_MOE
 
 import time
 from time import perf_counter
@@ -97,7 +98,11 @@ class _AllToAll(torch.autograd.Function):
         ctx.group = group
         input = input.contiguous()
         output = torch.empty_like(input)
-        dist.all_to_all_single(output, input, group=group)
+        dist.all_to_all_single(output,
+                               input,
+                               group=group,
+                               v1=COMMS_LOGGER_MOE,
+                               v2=get_logger_v2_name())
         return output
 
     @staticmethod
@@ -214,7 +219,11 @@ def top1gating(logits: Tensor,
     # if we don't want to drop any tokens
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
-        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+        dist.all_reduce(new_capacity,
+                        op=dist.ReduceOp.MAX,
+                        group=dist.get_world_group(),
+                        v1=COMMS_LOGGER_MOE,
+                        v2=get_logger_v2_name())
         capacity = new_capacity
 
     # Compute l_aux

@@ -11,6 +11,8 @@ import time
 from ... import op_builder
 import torch.nn as nn
 import deepspeed.comm as dist
+from deepspeed.utils import get_logger_v2_name
+from deepspeed.runtime.constants import COMMS_LOGGER_INFERENCE
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 
@@ -325,7 +327,10 @@ class DeepSpeedSelfAttentionFunction(Function):
             output, key_layer, value_layer, context_layer, inp_norm = selfAttention_fp()
         if config.mlp_after_attn and mp_group is not None and dist.get_world_size(
                 group=mp_group) > 1:
-            dist.all_reduce(output, group=mp_group)
+            dist.all_reduce(output,
+                            group=mp_group,
+                            v1=COMMS_LOGGER_INFERENCE,
+                            v2=get_logger_v2_name())
 
         return (output, key_layer, value_layer, context_layer, inp_norm)
 
@@ -491,7 +496,10 @@ class DeepSpeedMLPFunction(Function):
                                            config.mlp_after_attn,
                                            bias is not None)
         if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
-            dist.all_reduce(output, group=mp_group)
+            dist.all_reduce(output,
+                            group=mp_group,
+                            v1=COMMS_LOGGER_INFERENCE,
+                            v2=get_logger_v2_name())
         return output
 
     @staticmethod

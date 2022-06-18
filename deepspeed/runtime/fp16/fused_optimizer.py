@@ -11,9 +11,10 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from deepspeed.runtime import DeepSpeedOptimizer
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
-from deepspeed.utils import groups, logger, log_dist
+from deepspeed.utils import groups, logger, log_dist, get_logger_v2_name
 import deepspeed.comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
+from deepspeed.runtime.constants import COMMS_LOGGER_FUSED_OPTIM
 
 
 class FP16_Optimizer(DeepSpeedOptimizer):
@@ -160,9 +161,14 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                 device=p.device) if p.grad is None else p.grad
                     for p in group
                 ]))
-            norm_groups.append(get_weight_norm(grads_groups_flat[i], mpu=self.mpu))
+            norm_groups.append(
+                get_weight_norm(grads_groups_flat[i],
+                                mpu=self.mpu,
+                                v1=COMMS_LOGGER_FUSED_OPTIM))
 
-        self.overflow = self.overflow_checker.check_using_norm(norm_groups)
+        self.overflow = self.overflow_checker.check_using_norm(
+            norm_groups,
+            v1=COMMS_LOGGER_FUSED_OPTIM)
         prev_scale = self.cur_scale
         self._update_scale(self.overflow)
 
@@ -285,7 +291,9 @@ class FP16_Optimizer(DeepSpeedOptimizer):
 
         self.start_timers([COMPUTE_NORM])
 
-        all_groups_norm = get_grad_norm(self.fp32_groups_flat, mpu=self.mpu)
+        all_groups_norm = get_grad_norm(self.fp32_groups_flat,
+                                        mpu=self.mpu,
+                                        v1=COMMS_LOGGER_FUSED_OPTIM)
 
         self.stop_timers([COMPUTE_NORM])
 
@@ -336,7 +344,10 @@ class FP16_Optimizer(DeepSpeedOptimizer):
         scaled_norm_tensor = torch.tensor(scaled_norm,
                                           device=self.fp32_groups_flat[0].device,
                                           dtype=torch.float)
-        dist.all_reduce(scaled_norm_tensor, group=pg)
+        dist.all_reduce(scaled_norm_tensor,
+                        group=pg,
+                        v1=COMMS_LOGGER_FUSED_OPTIM,
+                        v2=get_logger_v2_name())
         all_groups_norm = scaled_norm_tensor.item()
         #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {deepspeed.comm.get_rank()}")
         return all_groups_norm

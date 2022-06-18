@@ -149,10 +149,11 @@ def get_msg_size_from_args(func, *args, **kwargs):
             return tensor_arg.element_size() * tensor_arg.nelement()
 
 
-def get_log_name(func_args, verbosity):
-    if verbosity == 1 and 'v1' in func_args:
-        return func_args['log_name'] + func_args['v1']
-    if verbosity == 2 and 'v2' in func_args and 'v1' in func_args:
-        return func_args['log_name'] + func_args['v1'] + func_args['v2']
+def get_debug_log_name(func_args, debug_level):
+    if debug_level == 1 and 'v1' in func_args and func_args['v1'] is not None:
+        return func_args['log_name'] + '_' + func_args['v1']
+    if debug_level == 2 and 'v2' in func_args and func_args[
+            'v2'] is not None and 'v1' in func_args and func_args['v1'] is not None:
+        return func_args['log_name'] + '_' + func_args['v1'] + '_' + str(func_args['v2'])
     else:
         return func_args['log_name']

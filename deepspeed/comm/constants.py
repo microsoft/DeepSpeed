@@ -17,6 +17,7 @@ The Comms Logger can be specified as:
   "enabled": true,
   "verbose": false,
   "prof_all": true,
+  "debug_level": 0,
   "prof_ops": ["all_reduce", "custom_all_reduce_name"]
 }
 '''
@@ -33,6 +34,10 @@ COMMS_LOGGER_VERBOSE_DEFAULT = False
 # comms logger profile all ops signal
 COMMS_LOGGER_PROF_ALL = "prof_all"
 COMMS_LOGGER_PROF_ALL_DEFAULT = False
+
+# comms logger show all ops signal
+COMMS_LOGGER_DETAIL_LEVEL = "debug_level"
+COMMS_LOGGER_DEBUG_LEVEL_DEFAULT = 0
 
 # comms logger profile specific ops in list
 COMMS_LOGGER_PROF_OPS = "prof_ops"
