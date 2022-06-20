@@ -2415,7 +2415,7 @@ class DeepSpeedEngine(Module):
                                  dp_rank,
                                  bf16_mode):
         file_prefix = self._get_zero_ckpt_prefix(dp_rank, bf16_mode=bf16_mode)
-        filename += f'{file_prefix}_mp_rank_{mp_rank:02d}_optim_states.pt'
+        filename = f'{file_prefix}_mp_rank_{mp_rank:02d}_optim_states.pt'
         return filename if self.enable_nebula else os.path.join(
             checkpoints_path,
             str(tag),
@@ -3050,14 +3050,15 @@ class DeepSpeedEngine(Module):
         self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
-        name_function = (self._get_zero_ckpt_name
-                         if zero_checkpoint else self._get_ckpt_name)
-        try:
-            checkpoint_name = name_function(save_dir, tag)
-            ensure_directory_exists(checkpoint_name)
-        except:
-            logger.error(f"Failed saving model checkpoint to {save_dir} with tag {tag}")
-            return False
+        if not self.enable_nebula:
+            name_function = (self._get_zero_ckpt_name
+                                if zero_checkpoint else self._get_ckpt_name)
+            try:
+                checkpoint_name = name_function(save_dir, tag)
+                ensure_directory_exists(checkpoint_name)
+            except:
+                logger.error(f"Failed saving model checkpoint to {save_dir} with tag {tag}")
+                return False
 
         return True
 
