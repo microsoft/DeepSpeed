@@ -321,3 +321,38 @@ def test_lm_correctness(model_family, model_name, task):
         assert ppl_diff < 0.01
 
     _go()
+
+
+@pytest.mark.inference
+@pytest.mark.parametrize("model_w_task",
+                         [("EleutherAI/gpt-neo-2.7B",
+                           "text-generation")])
+def test_multi_gpu(model_w_task,
+                   dtype,
+                   enable_cuda_graph,
+                   query,
+                   inf_kwargs,
+                   assert_fn,
+                   invalid_model_task_config):
+
+    model, task = model_w_task
+
+    @distributed_test(world_size=[2])
+    def _go():
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+        pipe.model = deepspeed.init_inference(
+            pipe.model,
+            mp_size=2,
+            dtype=dtype,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+            enable_cuda_graph=enable_cuda_graph,
+        )
+        bs_output = pipe(query, **inf_kwargs)
+        ds_output = pipe(query, **inf_kwargs)
+
+        assert assert_fn(bs_output, ds_output)
+
+    _go()
