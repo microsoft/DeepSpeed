@@ -5,7 +5,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 from typing import OrderedDict
 import torch
 import os
-import deepspeed.comm as dist
+from deepspeed import comm as dist
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.runtime import ZeROOptimizer
