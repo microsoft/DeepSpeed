@@ -22,6 +22,7 @@ def check_equal(first, second, atol=1e-2, verbose=False):
         print('-' * 80)
     np.testing.assert_allclose(x, y, err_msg="param-update mismatch!", atol=atol)
 
+@pytest.mark.parametrize('dtype', [torch.half, torch.float], ids=["fp16", "fp32"])
 @pytest.mark.parametrize('model_size',
                          [
                              (64),
@@ -31,15 +32,20 @@ def check_equal(first, second, atol=1e-2, verbose=False):
                              (1024),
                              (1048576),
                          ]) # yapf: disable
-def test_cpu_adam_opt(model_size):
+def test_cpu_adam_opt(dtype, model_size):
     from deepspeed.ops.adam import DeepSpeedCPUAdam
     device = 'cpu'
     rng_state = torch.get_rng_state()
-    param = torch.nn.Parameter(torch.randn(model_size, device=device))
+    param = torch.nn.Parameter(torch.randn(model_size, device=device, dtype=dtype))
     torch.set_rng_state(rng_state)
-    param1 = torch.nn.Parameter(torch.randn(model_size, device=device))
+    cpu_adam_dtype = dtype
+    if dtype == torch.half:
+        # torch.Adam doesn't support fp16 on cpu
+        cpu_adam_dtype = torch.float
+    param1_data = torch.randn(model_size, device=device, dtype=cpu_adam_dtype)
+    param1 = torch.nn.Parameter(param1_data)
     torch.set_rng_state(rng_state)
-    param2_data = torch.randn(model_size, device=device).cuda()
+    param2_data = torch.randn(model_size, device=device, dtype=dtype).cuda()
     param2 = torch.nn.Parameter(param2_data)
 
     optimizer1 = torch.optim.AdamW([param1])
@@ -48,11 +54,11 @@ def test_cpu_adam_opt(model_size):
 
     for i in range(10):
         rng_state = torch.get_rng_state()
-        param.grad = torch.randn(model_size, device=device)
+        param.grad = torch.randn(model_size, device=device, dtype=dtype)
         torch.set_rng_state(rng_state)
-        param1.grad = torch.randn(model_size, device=device)
+        param1.grad = torch.randn(model_size, device=device, dtype=cpu_adam_dtype)
         torch.set_rng_state(rng_state)
-        param2.grad = torch.randn(model_size, device=device).cuda()
+        param2.grad = torch.randn(model_size, device=device, dtype=dtype).cuda()
 
         optimizer.step()
         optimizer2.step()
