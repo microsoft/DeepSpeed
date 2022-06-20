@@ -117,7 +117,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     param_persistence_threshold: int = Field(1e5,
                                              alias='stage3_param_persistence_threshold')
     max_live_parameters: int = 1e9
-    max_reuse_distance: int = 1e9
+    max_reuse_distance: int = Field(1e9, alias='stage3_max_reuse_distance')
     gather_16bit_weights_on_model_save: bool = False
     stage3_gather_fp16_weights_on_model_save: bool = Field(
         False,

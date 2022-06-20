@@ -562,6 +562,7 @@ def test_zero3_param_partitioning_base(
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
                 "stage": 3,
+                "stage3_max_reuse_distance": 0,
                 "stage3_param_persistence_threshold": param_persistence_threshold,
                 "contiguous_gradients": contiguous_gradients,
             },
@@ -775,6 +776,7 @@ def test_zero3_param_partitioning_large_param(world_sz: int,
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
                 "stage": 3,
+                "stage3_max_reuse_distance": 0,
                 "contiguous_gradients": True,
                 "overlap_comm": True,
             },
@@ -869,6 +871,7 @@ def test_zero3_param_partitioning_many_params(world_sz: int,
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
                 "stage": 3,
+                "stage3_max_reuse_distance": 0,
                 "contiguous_gradients": True,
                 "overlap_comm": True,
             },
@@ -945,6 +948,7 @@ def test_zero3_init_for_parent_weight_initialization(world_sz):
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
                 "stage": 3,
+                "stage3_max_reuse_distance": 0,
                 "contiguous_gradients": True,
                 "overlap_comm": True,
             },
@@ -1001,6 +1005,7 @@ def test_zero3_param_partitioning_base_bf16(
             "train_micro_batch_size_per_gpu": 1,
             "zero_optimization": {
                 "stage": 3,
+                "stage3_max_reuse_distance": 0,
                 "stage3_param_persistence_threshold": param_persistence_threshold,
                 "contiguous_gradients": contiguous_gradients,
             },

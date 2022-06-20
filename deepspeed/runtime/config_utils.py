@@ -46,6 +46,7 @@ class DeepSpeedConfigModel(BaseModel):
         validate_all = True
         validate_assignment = True
         use_enum_values = True
+        allow_population_by_field_name = True
         extra = "forbid"
 
 
