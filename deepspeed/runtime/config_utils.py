@@ -9,6 +9,7 @@ import json
 import collections
 import collections.abc
 from pydantic import BaseModel
+from deepspeed.utils import logger
 
 
 class DeepSpeedConfigModel(BaseModel):
@@ -16,6 +17,7 @@ class DeepSpeedConfigModel(BaseModel):
         super().__init__(**data)
         self.deprecated_fields_check(self)
 
+    # TODO: add docs describing how to use deprecated field
     @classmethod
     def deprecated_fields_check(self, pydantic_config):
         fields = pydantic_config.__fields__
@@ -25,19 +27,18 @@ class DeepSpeedConfigModel(BaseModel):
             if kwargs.get("deprecated", False):
                 dep_param = field.name
                 new_param = kwargs.get("new_param", "")
-                if new_param:
+                logger.warning(f"Config parameter {dep_param} is deprecated" +
+                               (f" use {new_param} instead" if new_param else ""))
+                if new_param and kwargs.get("set_new_param", True):
                     assert (
                         new_param not in fields_set
                     ), f"Cannot provide deprecated parameter '{dep_param}' and replacing parameter '{new_param}' together"
+                    new_param_fn = kwargs.get("new_param_fn", lambda x: x)
+                    param_value = new_param_fn(getattr(pydantic_config, dep_param))
                     try:
-                        setattr(
-                            pydantic_config,
-                            new_param,
-                            getattr(pydantic_config,
-                                    dep_param),
-                        )
+                        setattr(pydantic_config, new_param, param_value)
                     except Exception as e:
-                        logger.Error(
+                        logger.error(
                             f"Tried setting value for '{new_param}' with value from deprecated '{dep_param}'"
                         )
                         raise e

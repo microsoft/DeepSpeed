@@ -108,9 +108,22 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     offload_param: Optional[DeepSpeedZeroOffloadParamConfig] = None
     offload_optimizer: Optional[DeepSpeedZeroOffloadOptimizerConfig] = None
     sub_group_size: int = 1e9
-    cpu_offload_param: bool = Field(None, deprecated=True)
-    cpu_offload_use_pin_memory: bool = Field(None, deprecated=True)
-    cpu_offload: bool = Field(None, deprecated=True)
+    cpu_offload_param: bool = Field(
+        None,
+        deprecated=True,
+        new_param='offload_param',
+        new_param_fn=(lambda val: DeepSpeedZeroOffloadParamConfig() if val else None))
+    cpu_offload_use_pin_memory: bool = Field(
+        None,
+        deprecated=True,
+        new_param='offload_param or offload_optimizer',
+        set_new_param=False)
+    cpu_offload: bool = Field(
+        None,
+        deprecated=True,
+        new_param='offload_optimizer',
+        new_param_fn=(lambda val: DeepSpeedZeroOffloadOptimizerConfig()
+                      if val else None))
 
     # Stage3 Specific Parameters
     prefetch_bucket_size: int = 5e7
