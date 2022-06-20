@@ -257,13 +257,13 @@ __global__ void fused_bias_residual(__half* input,
 
         if (preln) {
             low_data.x =
-              (low_data.x + low_res.x + (low_bias.x + attn_low_bias.x)) * mp_size + low_out.x;
+                (low_data.x + low_res.x + (low_bias.x + attn_low_bias.x)) * mp_size + low_out.x;
             low_data.y =
-              (low_data.y + low_res.y + (low_bias.y + attn_low_bias.y)) * mp_size + low_out.y;
-            high_data.x =
-              (high_data.x + high_res.x + (high_bias.x + attn_high_bias.x)) * mp_size + high_out.x;
-            high_data.y =
-              (high_data.y + high_res.y + (high_bias.y + attn_high_bias.y)) * mp_size + high_out.y;
+                (low_data.y + low_res.y + (low_bias.y + attn_low_bias.y)) * mp_size + low_out.y;
+            high_data.x = (high_data.x + high_res.x + (high_bias.x + attn_high_bias.x)) * mp_size +
+                          high_out.x;
+            high_data.y = (high_data.y + high_res.y + (high_bias.y + attn_high_bias.y)) * mp_size +
+                          high_out.y;
         } else {
             low_data.x = (low_data.x + low_out.x + low_bias.x);
             low_data.y = (low_data.y + low_out.y + low_bias.y);

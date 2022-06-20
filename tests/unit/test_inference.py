@@ -4,6 +4,7 @@ import torch
 import pytest
 import itertools
 import deepspeed
+from torch import distributed as dist
 from deepspeed.git_version_info import torch_info
 from collections import defaultdict
 from .common import distributed_test
@@ -335,24 +336,27 @@ def test_multi_gpu(model_w_task,
                    assert_fn,
                    invalid_model_task_config):
 
+    world_size = 2
     model, task = model_w_task
 
-    @distributed_test(world_size=[2])
+    @distributed_test(world_size=[world_size])
     def _go():
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         pipe = pipeline(task, model=model, device=local_rank, framework="pt")
         pipe.model = deepspeed.init_inference(
             pipe.model,
-            mp_size=2,
+            mp_size=world_size,
             dtype=dtype,
             replace_method="auto",
             replace_with_kernel_inject=True,
             enable_cuda_graph=enable_cuda_graph,
         )
-        bs_output = pipe(query, **inf_kwargs)
-        ds_output = pipe(query, **inf_kwargs)
+        response = pipe(query, **inf_kwargs)
 
-        assert assert_fn(bs_output, ds_output)
+        outputs = [None] * world_size
+        dist.all_gather_object(outputs, response)
+        for out_1, out_2 in itertools.combinations(outputs, 2):
+            assert assert_fn(out_1, out_2)
 
     _go()
