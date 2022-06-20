@@ -180,7 +180,6 @@ void Adam_Optimizer::Step_8(float* _params,
                 dev_params,
                 half_precision);
 #endif
-    return;
     if (_param_size > rounded_size)
         Step_4((_params + rounded_size),
                (grads + rounded_size),
