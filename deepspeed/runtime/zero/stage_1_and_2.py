@@ -358,7 +358,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
                         self.device).clone().half().detach())
 
-            # modify optimizer of have flat master weight.
+            # Set local optimizer to have flat params of its own partition.
             # After this, the local optimizer will only contain its own partition of params.
             # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
             self.single_partition_of_fp32_groups[
@@ -1776,7 +1776,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.reset_cpu_buffers()
 
         self.start_timers([OPTIMIZER_ALLGATHER])
-        # gather the updated weights from everyone.
+        # Gather the updated weights from everyone.
         # Then all partitions of the model parameters are updated and ready for next round forward.
         all_gather_dp_groups(
             partitioned_param_groups=self.parallel_partitioned_bit16_groups,
