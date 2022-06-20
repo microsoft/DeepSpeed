@@ -60,18 +60,16 @@ union AVX_Data {
 template <int span>
 inline void simd_store(float* dst, AVX_Data* src, bool half_precision)
 {
+    size_t width = (half_precision ? SIMD_WIDTH : SIMD_WIDTH / 2);
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) {
-        SIMD_STORE2(dst + SIMD_WIDTH * i, src[i].data, half_precision);
-    }
+    for (size_t i = 0; i < span; ++i) { SIMD_STORE2(dst + width * i, src[i].data, half_precision); }
 }
 template <int span>
 inline void simd_load(AVX_Data* dst, float* src, bool half_precision)
 {
+    size_t width = (half_precision ? SIMD_WIDTH : SIMD_WIDTH / 2);
 #pragma unroll
-    for (size_t i = 0; i < span; ++i) {
-        dst[i].data = SIMD_LOAD2(src + SIMD_WIDTH * i, half_precision);
-    }
+    for (size_t i = 0; i < span; ++i) { dst[i].data = SIMD_LOAD2(src + width * i, half_precision); }
 }
 template <int span>
 inline void simd_fma(AVX_Data* dst, AVX_Data* src_m_l, AVX_Data src_m_r, AVX_Data* src_a)
