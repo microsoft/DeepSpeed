@@ -12,7 +12,7 @@ import math
 
 from ..runtime.config_utils import dict_raise_error_on_duplicate_keys
 from ..runtime.constants import *
-from ..runtime.zero.config import DeepSpeedZeroConfig, ZERO_OPTIMIZATION, ZERO_OPTIMIZATION_DISABLED, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
+from ..runtime.zero.config import DeepSpeedZeroConfig, ZERO_OPTIMIZATION, ZeroStageEnum
 from ..utils import logger
 from .config import DeepSpeedAutotuningConfig
 from .constants import *
@@ -266,18 +266,18 @@ class Autotuner:
         if not num_params:
             return 0
         # assume the model uses Adam optimizer
-        # ZERO_OPTIMIZATION_DISABLED:
+        # ZeroStageEnum.disabled:
         params_mem = num_params * (2 if fp16_enabled else 4)
         gradients_mem = num_params * (2 if fp16_enabled else 4)
         optimizer_mem = num_params * (16 if fp16_enabled else 8)
 
-        if zero_stage >= ZERO_OPTIMIZATION_OPTIMIZER_STATES:
+        if zero_stage >= ZeroStageEnum.optimizer_states:
             optimizer_mem = optimizer_mem / total_gpus
 
-        if zero_stage >= ZERO_OPTIMIZATION_GRADIENTS:
+        if zero_stage >= ZeroStageEnum.gradients:
             gradients_mem = gradients_mem / total_gpus
 
-        if zero_stage >= ZERO_OPTIMIZATION_WEIGHTS:
+        if zero_stage >= ZeroStageEnum.weights:
             params_mem = params_mem / total_gpus
 
         mem_per_gpu = (params_mem + gradients_mem + optimizer_mem) / self.mp_size()
@@ -428,9 +428,9 @@ class Autotuner:
         metric_val = 0
 
         required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZERO_OPTIMIZATION_DISABLED) + self.activation_mem
+            ZeroStageEnum.disabled) + self.activation_mem
         if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZERO_OPTIMIZATION_DISABLED in user_zero_stages:
+            if "all" in user_zero_stages or ZeroStageEnum.disabled in user_zero_stages:
                 logger.info(
                     f"The model might be runable with ZERO 0 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1), adding DEFAULT_TUNING_SPACE_ZERO_0 to the global tuning space"
                 )
@@ -442,13 +442,13 @@ class Autotuner:
                     metric_val = next_metric_val
         else:
             logger.info(
-                f"The model is not runable with ZERO stage {ZERO_OPTIMIZATION_DISABLED} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                f"The model is not runable with ZERO stage {ZeroStageEnum.disabled} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
             )
 
         required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZERO_OPTIMIZATION_OPTIMIZER_STATES) + self.activation_mem
+            ZeroStageEnum.optimizer_states) + self.activation_mem
         if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZERO_OPTIMIZATION_OPTIMIZER_STATES in user_zero_stages:
+            if "all" in user_zero_stages or ZeroStageEnum.optimizer_states in user_zero_stages:
                 logger.info(
                     f"The model might be runable with ZERO 1 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_1 to the global tuning space"
                 )
@@ -460,13 +460,13 @@ class Autotuner:
                     metric_val = next_metric_val
         else:
             logger.info(
-                f"The model is not runable with ZERO stage {ZERO_OPTIMIZATION_OPTIMIZER_STATES} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                f"The model is not runable with ZERO stage {ZeroStageEnum.optimizer_states} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
             )
 
         required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZERO_OPTIMIZATION_GRADIENTS) + self.activation_mem
+            ZeroStageEnum.gradients) + self.activation_mem
         if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZERO_OPTIMIZATION_GRADIENTS in user_zero_stages:
+            if "all" in user_zero_stages or ZeroStageEnum.gradients in user_zero_stages:
                 logger.info(
                     f"The model might be runable with ZERO 2 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_2 to the global tuning space"
                 )
@@ -478,13 +478,13 @@ class Autotuner:
                     metric_val = next_metric_val
         else:
             logger.info(
-                f"The model is not runable with ZERO stage {ZERO_OPTIMIZATION_GRADIENTS} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
+                f"The model is not runable with ZERO stage {ZeroStageEnum.gradients} (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory with mbs = 1)"
             )
 
         required_gpu_mem = self.get_instantiation_memory_required_per_gpu(
-            ZERO_OPTIMIZATION_WEIGHTS) + self.activation_mem
+            ZeroStageEnum.weights) + self.activation_mem
         if self.gpu_mem > required_gpu_mem:
-            if "all" in user_zero_stages or ZERO_OPTIMIZATION_WEIGHTS in user_zero_stages:
+            if "all" in user_zero_stages or ZeroStageEnum.weights in user_zero_stages:
                 logger.info(
                     f"The model might be runable with ZERO 3 (which requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory), adding DEFAULT_TUNING_SPACE_ZERO_3 to the global tuning space"
                 )
@@ -492,7 +492,7 @@ class Autotuner:
                     DEFAULT_TUNING_SPACE_ZERO_3, prev_max_mbs = max_mbs, prev_best_mbs=mbs, prev_best_metric_val=metric_val)
         else:
             logger.info(
-                f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZERO_OPTIMIZATION_WEIGHTS} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
+                f"The model has {self.get_model_num_params()} parameters and requires at least {memory_to_string(required_gpu_mem, postfix='B')} memory per GPU with DeepSpeed Zero stage {ZeroStageEnum.weights} optimization. Memory per GPU in system is {memory_to_string(self.gpu_mem)}. No tuning is performed."
             )
             return
 

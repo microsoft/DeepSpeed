@@ -27,7 +27,7 @@ from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesce
 from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter, DummyOptim
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
-from deepspeed.runtime.zero.config import OffloadDeviceEnum, ZERO_OPTIMIZATION_WEIGHTS
+from deepspeed.runtime.zero.config import OffloadDeviceEnum, ZeroStageEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
@@ -2652,7 +2652,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _rigid_state_dict(self):
         state_dict = {}
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_WEIGHTS
+        state_dict[ZERO_STAGE] = ZeroStageEnum.weights
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow

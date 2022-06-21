@@ -39,11 +39,6 @@ ZeRO optimization should be enabled as:
 '''
 
 ZERO_OPTIMIZATION = 'zero_optimization'
-ZERO_OPTIMIZATION_DISABLED = 0
-ZERO_OPTIMIZATION_OPTIMIZER_STATES = 1
-ZERO_OPTIMIZATION_GRADIENTS = 2
-ZERO_OPTIMIZATION_WEIGHTS = 3
-MAX_STAGE_ZERO_OPTIMIZATION = ZERO_OPTIMIZATION_WEIGHTS
 
 
 def read_zero_config_deprecated(self, param_dict):
@@ -58,6 +53,14 @@ def read_zero_config_deprecated(self, param_dict):
         'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
         .format(ZERO_FORMAT))
     return zero_config_dict
+
+
+class ZeroStageEnum(int, Enum):
+    disabled = 0
+    optimizer_states = 1
+    gradients = 2
+    weights = 3
+    max_stage = 3
 
 
 class OffloadDeviceEnum(str, Enum):
@@ -93,7 +96,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
 
 
 class DeepSpeedZeroConfig(DeepSpeedConfigModel):
-    stage: int = Field(0, le=3, ge=0)
+    stage: ZeroStageEnum = ZeroStageEnum.disabled
     contiguous_gradients: bool = True
     reduce_scatter: bool = True
     reduce_bucket_size: int = 5e8
@@ -131,11 +134,13 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
                                              alias='stage3_param_persistence_threshold')
     max_live_parameters: int = 1e9
     max_reuse_distance: int = Field(1e9, alias='stage3_max_reuse_distance')
-    stage3_gather_16bit_weights_on_model_save: bool = False
+    gather_16bit_weights_on_model_save: bool = Field(
+        False,
+        alias='stage3_gather_16bit_weights_on_model_save')
     stage3_gather_fp16_weights_on_model_save: bool = Field(
         False,
         deprecated=True,
-        new_param="stage3_gather_16bit_weights_on_model_save")
+        new_param="gather_16bit_weights_on_model_save")
 
     ignore_unused_parameters: bool = True
     legacy_stage1: bool = False

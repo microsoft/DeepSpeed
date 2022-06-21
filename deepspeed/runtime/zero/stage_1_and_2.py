@@ -16,7 +16,7 @@ from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
                                      align_dense_tensors,
                                      all_gather_dp_groups)
 
-from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS, OffloadDeviceEnum
+from deepspeed.runtime.zero.config import ZeroStageEnum, OffloadDeviceEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
@@ -2014,7 +2014,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.single_partition_of_fp32_groups)
         state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
 
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict[ZERO_STAGE] = ZeroStageEnum.gradients
         state_dict[PARTITION_COUNT] = self.partition_count
 
         state_dict[DS_VERSION] = version
