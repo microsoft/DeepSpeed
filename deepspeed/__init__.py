@@ -62,8 +62,6 @@ def initialize(args=None,
                config=None,
                config_params=None,
                enable_nebula=None,
-               disable_nebula_load=False,
-               nebula_load_path=None,
                nebula_config_params=None):
     """Initialize the DeepSpeed Engine.
 
@@ -133,8 +131,6 @@ def initialize(args=None,
                                  config=config,
                                  config_params=config_params,
                                  enable_nebula=enable_nebula,
-                                 disable_nebula_load=disable_nebula_load,
-                                 nebula_load_path=nebula_load_path,
                                  nebula_config_params=nebula_config_params)
     else:
         assert mpu is None, "mpu must be None with pipeline parallelism"
@@ -150,8 +146,6 @@ def initialize(args=None,
                                 config=config,
                                 config_params=config_params,
                                 enable_nebula=enable_nebula,
-                                disable_nebula_load=disable_nebula_load,
-                                nebula_load_path=nebula_load_path,
                                 nebula_config_params=nebula_config_params)
 
     return_items = [
@@ -217,18 +211,6 @@ def _add_core_arguments(parser):
         action='store_true',
         help=
         "Save checkpoint via torch_nebula.save, this will attempt to save the time from torch.save")
-
-    group.add_argument(
-        '--disable_nebula_load',
-        default=False,
-        action='store_true',
-        help=
-        "Load checkpoint via the way which customers want, this will need the converter functions to convert the tier3 storage path")
-
-    group.add_argument(
-        '--nebula_load_path',
-        default=None,
-        help="Load nebula checkpoint via the path which customers specified")
 
     group.add_argument(
         '--persistent_storage_path',

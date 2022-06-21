@@ -1358,8 +1358,7 @@ class PipelineEngine(DeepSpeedEngine):
                                    strict=strict,
                                    tag=tag,
                                    enable_nebula=self.enable_nebula,
-                                   disable_nebula_load=self.disable_nebula_load,
-                                   nebula_load_path=self.nebula_load_path)
+                                   persist_path=self.persist_path)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the
     # kwargs provided to the PipeInstruction from the scheduler.

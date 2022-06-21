@@ -190,8 +190,6 @@ class DeepSpeedEngine(Module):
         config_params=None,
         dont_change_device=False,
         enable_nebula=None,
-        disable_nebula_load=False,
-        nebula_load_path=None,
         nebula_config_params=None,
     ):
         super(DeepSpeedEngine, self).__init__()
@@ -328,9 +326,8 @@ class DeepSpeedEngine(Module):
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
         self.enable_nebula = enable_nebula and not torch_nebula is None
+        self.persist_path = None # for specific checkpoint loading from given tier3 path
         self.nebula_config_params = nebula_config_params
-        self.nebula_load_path = nebula_load_path
-        self.disable_nebula_load = disable_nebula_load
         self._configure_checkpointing(dist_init_required)
 
         if self.eigenvalue_enabled():
@@ -2434,10 +2431,7 @@ class DeepSpeedEngine(Module):
     def _get_ckpt_name(self,
                        checkpoints_path,
                        tag,
-                       mp_placeholder=None,
-                       disable_nebula_load=False):
-        enable_nebula_load = not disable_nebula_load and self.enable_nebula
-
+                       mp_placeholder=None):
         if mp_placeholder is not None:
             mp_rank_str = mp_placeholder
         else:
@@ -2452,7 +2446,7 @@ class DeepSpeedEngine(Module):
 
         else:
             filename = "mp_rank_" + mp_rank_str + "_model_states.pt"
-        return filename if enable_nebula_load else os.path.join(
+        return filename if self.enable_nebula else os.path.join(
             checkpoints_path,
             str(tag),
             filename)
@@ -2504,7 +2498,9 @@ class DeepSpeedEngine(Module):
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
                         load_module_only=False,
-                        custom_load_fn=None):
+                        custom_load_fn=None,
+                        enable_nebula_load=True,
+                        nebula_load_path_tier3=None):
         """Load training checkpoint
 
         Arguments:
@@ -2527,11 +2523,14 @@ class DeepSpeedEngine(Module):
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
         before ``load_checkpoint()``.
         """
+        enable_nebula_tmp = self.enable_nebula
+        self.enable_nebula = enable_nebula_load and self.enable_nebula
+        self.persist_path = nebula_load_path_tier3
 
         latest_checkpoint = None
         if self.enable_nebula:
             latest_checkpoint = torch_nebula.get_latest_checkpoint(
-                persist_path=self.nebula_load_path)
+                persist_path=self.persist_path)
             if latest_checkpoint is None or (latest_checkpoint is not None
                                              and latest_checkpoint.tag == ''):
                 logger.warning(f"Unable to find latest valid checkpoint from Nebula!")
@@ -2576,6 +2575,9 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
+
+        self.enable_nebula = enable_nebula_tmp
+        self.persist_path = None
 
         return load_path, client_states
 
@@ -2794,7 +2796,7 @@ class DeepSpeedEngine(Module):
 
     def _get_all_zero_checkpoint_state_dicts(self, zero_ckpt_names):
         ckpt = torch_nebula.get_latest_checkpoint(
-            persist_path=self.nebula_load_path) if self.enable_nebula else None
+            persist_path=self.persist_path) if self.enable_nebula else None
         load_func = ckpt.load if ckpt is not None and self.enable_nebula else torch.load
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
