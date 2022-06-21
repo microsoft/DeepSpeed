@@ -131,11 +131,11 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
                                              alias='stage3_param_persistence_threshold')
     max_live_parameters: int = 1e9
     max_reuse_distance: int = Field(1e9, alias='stage3_max_reuse_distance')
-    gather_16bit_weights_on_model_save: bool = False
+    stage3_gather_16bit_weights_on_model_save: bool = False
     stage3_gather_fp16_weights_on_model_save: bool = Field(
         False,
         deprecated=True,
-        new_param="gather_16bit_weights_on_model_save")
+        new_param="stage3_gather_16bit_weights_on_model_save")
 
     ignore_unused_parameters: bool = True
     legacy_stage1: bool = False
