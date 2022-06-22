@@ -129,7 +129,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
                       if val else None))
 
     # Stage3 Specific Parameters
-    prefetch_bucket_size: int = 5e7
+    prefetch_bucket_size: int = Field(5e7, alias='stage3_prefetch_bucket_size')
     param_persistence_threshold: int = Field(1e5,
                                              alias='stage3_param_persistence_threshold')
     max_live_parameters: int = 1e9

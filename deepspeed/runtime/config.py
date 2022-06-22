@@ -1049,9 +1049,9 @@ class DeepSpeedConfig(object):
 
         if self.zero_enabled:
             assert (
-                self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION
+                self.zero_optimization_stage <= ZeroStageEnum.max_stage
             ), "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(
-                MAX_STAGE_ZERO_OPTIMIZATION
+                ZeroStageEnum.max_stage
             )
 
         if self.fp16_master_weights_and_gradients:
