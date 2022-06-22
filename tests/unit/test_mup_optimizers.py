@@ -8,12 +8,15 @@ from .common import distributed_test
 from .simple_model import SimpleModel, args_from_dict, random_dataloader
 
 
-@pytest.mark.parametrize("optimizer, expected_opt_class", [("MuAdam", torch.optim.Adam), ("MuAdamW", torch.optim.AdamW), ("MuSGD", torch.optim.SGD)])
+@pytest.mark.parametrize("optimizer, expected_opt_class",
+                         [("MuAdam",
+                           torch.optim.Adam),
+                          ("MuAdamW",
+                           torch.optim.AdamW),
+                          ("MuSGD",
+                           torch.optim.SGD)])
 @pytest.mark.parametrize("zero_offload", [True, False])
-def test_mup_optimizers(tmpdir,
-                      optimizer,
-                      zero_offload,
-                      expected_opt_class):
+def test_mup_optimizers(tmpdir, optimizer, zero_offload, expected_opt_class):
     config_dict = {
         "train_batch_size": 2,
         "steps_per_print": 1,
