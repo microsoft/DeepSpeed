@@ -1193,6 +1193,25 @@ class DeepSpeedEngine(Module):
                 logger.warning(
                     f"Currently the convergence of 1-bit Lamb is only verified under FP16"
                 )
+        elif self.optimizer_name() == MUADAM_OPTIMIZER:
+            try:
+                from mup import MuAdam
+            except ImportError:
+                logger.error(f"Install mup to use MuAdam optimizer")
+            optimzer = MuAdam(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == MUADAMW_OPTIMIZER:
+            try:
+                from mup import MuAdamW
+            except ImportError:
+                logger.error(f"Install mup to use MuAdamW optimizer")
+            optimzer = MuAdamW(model_parameters, **optimizer_parameters)
+        elif self.optimizer_name() == MUSGD_OPTIMIZER:
+            try:
+                from mup import MuSGD
+            except ImportError:
+                logger.error(f"Install mup to use MuSGD optimizer")
+            optimzer = MuSGD(model_parameters, **optimizer_parameters)
+
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
