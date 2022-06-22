@@ -112,8 +112,34 @@ def split_params_into_different_moe_groups_for_optimizer(
         param_group['params'] = new_params
 
     # Flatten the moe groups
+    MAX_SPIKE_GB = 6
+    max_group_size = MAX_SPIKE_GB * 2**30 // 6
     for k, v in group_moe.items():
         for k1, v1 in v.items():
-            param_groups.append(v1)
-
+#            print(v1.keys())
+#            print(v1['name'], v1['moe'], type(v1['params']))
+            cur_group = []
+            all_groups = []
+            size_of_cur_group = 0
+            for param in v1['params']:
+                if size_of_cur_group + param.numel() <= max_group_size:
+                    cur_group.append(param)
+                    size_of_cur_group += param.numel()
+                else:
+                    print(f'1. Size of current group = {size_of_cur_group/1e9} B')
+                    all_groups.append(cur_group)
+                    cur_group = [param]
+                    size_of_cur_group = param.numel()
+            if cur_group:
+                all_groups.append(cur_group)
+                print(f'2. Size of current group = {size_of_cur_group/1e9} B')
+            #print(f'Size of MoE group is = {size_of_moe_group/1e9} B')
+            for group in all_groups:
+                new_dict = {}
+                for key, val in v1.items():
+                    if key != 'params':
+                        new_dict[key] = val 
+                new_dict['params'] = group 
+                param_groups.append(new_dict)
+    
     return tuple(param_groups)
