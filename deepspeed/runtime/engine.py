@@ -37,7 +37,7 @@ from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
 
 from deepspeed.runtime.config import DeepSpeedConfig, DEEPSPEED_OPTIMIZERS, \
     ADAGRAD_OPTIMIZER, ADAM_OPTIMIZER, ADAMW_OPTIMIZER, LAMB_OPTIMIZER, ONEBIT_ADAM_OPTIMIZER, ONEBIT_LAMB_OPTIMIZER, \
-    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER
+    TORCH_ADAM_PARAM, ADAM_W_MODE, ADAM_W_MODE_DEFAULT, ZERO_ONE_ADAM_OPTIMIZER, MUADAM_OPTIMIZER, MUADAMW_OPTIMIZER, MUSGD_OPTIMIZER
 
 from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
@@ -1198,19 +1198,19 @@ class DeepSpeedEngine(Module):
                 from mup import MuAdam
             except ImportError:
                 logger.error(f"Install mup to use MuAdam optimizer")
-            optimzer = MuAdam(model_parameters, **optimizer_parameters)
+            optimizer = MuAdam(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == MUADAMW_OPTIMIZER:
             try:
                 from mup import MuAdamW
             except ImportError:
                 logger.error(f"Install mup to use MuAdamW optimizer")
-            optimzer = MuAdamW(model_parameters, **optimizer_parameters)
+            optimizer = MuAdamW(model_parameters, **optimizer_parameters)
         elif self.optimizer_name() == MUSGD_OPTIMIZER:
             try:
                 from mup import MuSGD
             except ImportError:
                 logger.error(f"Install mup to use MuSGD optimizer")
-            optimzer = MuSGD(model_parameters, **optimizer_parameters)
+            optimizer = MuSGD(model_parameters, **optimizer_parameters)
 
         else:
             torch_optimizer = getattr(torch.optim, self.optimizer_name())
