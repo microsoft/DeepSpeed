@@ -816,6 +816,7 @@ def get_ma_status():
 
 
 def see_memory_usage(message, force=False):
+    return
     if not force:
         return
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:

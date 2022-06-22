@@ -112,12 +112,12 @@ def split_params_into_different_moe_groups_for_optimizer(
         param_group['params'] = new_params
 
     # Flatten the moe groups
-    MAX_SPIKE_GB = 6
+    
+    MAX_SPIKE_GB = 4
+    assert MAX_SPIKE_GB == 4, "script hardcodes this to 4 GB"
     max_group_size = MAX_SPIKE_GB * 2**30 // 6
     for k, v in group_moe.items():
         for k1, v1 in v.items():
-#            print(v1.keys())
-#            print(v1['name'], v1['moe'], type(v1['params']))
             cur_group = []
             all_groups = []
             size_of_cur_group = 0

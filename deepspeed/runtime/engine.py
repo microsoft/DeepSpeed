@@ -839,6 +839,7 @@ class DeepSpeedEngine(Module):
             'device_rank') else self.local_rank
         if device_rank >= 0:
             torch.cuda.set_device(device_rank)
+            torch.cuda.set_per_process_memory_fraction(0.95)
             self.device = torch.device("cuda", device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
@@ -1641,22 +1642,36 @@ class DeepSpeedEngine(Module):
         moe_time = 0.0
         falltoall = 0.0
         salltoall = 0.0
+        global_gate_timers = defaultdict(float)
 
         for gate in self.gate_modules:
             #logger.info(f"Individual TopK gate time: {gate.gate_time:.2f} ms")
             gate_time += gate.gate_time
+            gate.gate_time = 0.0
+            for key,val in gate.gate_timers.items():
+                global_gate_timers[key] += val
+                gate.gate_timers[key] = 0.0
 
         for l in self.moe_layers:
             #logger.info(f"MoE layer; total: {l.time_moe:.2f} ms, first alltoall: {l.time_falltoall:.2f}, second alltoall: {l.time_salltoall:.2f}")
             moe_time += l.time_moe
             falltoall += l.time_falltoall
             salltoall += l.time_salltoall
+            l.time_moe = 0.0
+            l.time_falltoall = 0.0
+            l.time_salltoall = 0.0
 
         # TODO: Allreduce/average them across ranks for more accurate timing.
 
         # if torch.distributed.get_rank() == 0:
         log_dist(
-            f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
+                f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}",
+            ranks=[0])
+        log_str = ''
+        for key, val in global_gate_timers.items():
+            log_str += f'{key}: {val:.2f} ms '
+            
+        log_dist(f"rank={torch.distributed.get_rank()} time (ms) | {log_str} \n",
             ranks=[0])
 
     @instrument_w_nvtx
@@ -1995,7 +2010,7 @@ class DeepSpeedEngine(Module):
 
                 if self.has_moe_layers:
                     fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
-                        reset=False) * 1000
+                        reset=False)
                     self.print_forward_breakdown(fwd_time=fwd_time)
 
                 self.timers.log(self.engine_timers.global_timers)
@@ -2039,29 +2054,27 @@ class DeepSpeedEngine(Module):
             self.summary_events = [
                 (
                     f"Train/Samples/elapsed_time_ms_forward",
-                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False) ,
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward",
-                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False) ,
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward_inner",
-                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False) *
-                    1000.0,
+                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False) ,
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward_allreduce",
-                    self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).elapsed(reset=False) *
-                    1000.0,
+                    self.timers(BACKWARD_REDUCE_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_step",
-                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False) * 1000.0,
+                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False) ,
                     self.global_samples,
                 ),
             ]
