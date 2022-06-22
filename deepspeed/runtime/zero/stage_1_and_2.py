@@ -1736,9 +1736,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 # create a flat gradients for parameters updated by this process
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
-                grad_numel_ = 0 
-                for tensor in self.averaged_gradients[i]:
-                    grad_numel_ += torch.numel(tensor)
+                
                 #see_memory_usage(f'{i} - {grad_numel_} | Before Flatenning average gradients', force=True)
                 if partition_id == dist.get_world_size(
                         group=self.real_dp_process_group[i]) - 1:
