@@ -231,7 +231,8 @@ def test_model_task(
             _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
-        bs_output = pipe(query, **inf_kwargs)
+        for i in range(10):
+            bs_output = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         bs_time = time.time() - start
 
@@ -248,14 +249,15 @@ def test_model_task(
             _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
-        ds_output = pipe(query, **inf_kwargs)
+        for i in range(10):
+            ds_output = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         ds_time = time.time() - start
 
         if task == "text-generation":
             bs_output = pipe(query, **inf_kwargs)
 
-        # These performance tests are only measuring the time for a single
+        # These performance tests are only measuring the time for a few
         # inference request, we just want to check that performance isn't terrible
         assert ds_time <= (bs_time * 1.1)
         assert assert_fn(bs_output, ds_output)
@@ -330,13 +332,9 @@ def test_lm_correctness(model_family, model_name, task):
 @pytest.mark.parametrize("model_w_task",
                          [("EleutherAI/gpt-neo-2.7B",
                            "text-generation")])
-def test_multi_gpu(model_w_task,
-                   dtype,
-                   enable_cuda_graph,
-                   query,
-                   inf_kwargs,
-                   assert_fn,
-                   invalid_model_task_config):
+@pytest.mark.parametrize("dtype",
+                         [torch.half])  # FP32 tests are failing due to OOM on 16GB V100
+def test_multi_gpu(model_w_task, dtype, enable_cuda_graph, query, inf_kwargs, assert_fn):
 
     world_size = 2
     model, task = model_w_task
