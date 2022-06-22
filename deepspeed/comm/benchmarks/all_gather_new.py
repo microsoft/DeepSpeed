@@ -8,6 +8,8 @@ import time
 import argparse
 import os
 
+import math
+
 
 # Run allgather and print metrics
 def timed_allgather(input, output, args):
@@ -19,13 +21,33 @@ def timed_allgather(input, output, args):
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
-        dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+        # use all_gather_base if available
+        if args.dist == 'torch':
+            if hasattr(torch.distributed, "_all_gather_base"):
+                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+            else:
+                output_tensors = list(
+                    torch.chunk(output_tensor,
+                                cdb.get_world_size(group)))
+                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
+        elif args.dist == 'deepspeed':
+            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
     sync_all()
 
     # time the actual collective trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
-        dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+        # use all_gather_base if available
+        if args.dist == 'torch':
+            if hasattr(torch.distributed, "_all_gather_base"):
+                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+            else:
+                output_tensors = list(
+                    torch.chunk(output_tensor,
+                                cdb.get_world_size(group)))
+                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
+        elif args.dist == 'deepspeed':
+            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
     sync_all()
     duration = time.perf_counter() - pre
 
@@ -58,17 +80,16 @@ def run_allgather_scan(local_rank, args):
     # loop over various tensor sizes
     for M in M_LIST:
         global_rank = dist.get_rank()
-        mat = torch.ones(world_size, M, dtype=torch.float32).cuda(local_rank)
+        mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
         sync_all()
         input = ((mat.mul_(float(global_rank))).view(-1))
-        output = torch.cat([(mat.clone().view(-1))
-                            for _ in range(dist.get_world_size())])
-        sync_all()
-        timed_allgather(input, output, args)
-
+        # Delete original mat to avoid OOM
         del mat
         torch.cuda.empty_cache()
+        output = torch.zeros(input.nelement() * world_size,
+                             dtype=args.dtype).cuda(local_rank)
         sync_all()
+        timed_allgather(input, output, args)
 
 
 def run_allgather_single(local_rank, args):
@@ -79,31 +100,76 @@ def run_allgather_single(local_rank, args):
 
     print_header(args, 'allgather')
     global_rank = dist.get_rank()
-    #ALLGATHER_M =
-    #ALLGATHER_N =
-    mat = torch.ones(ALLGATHER_N, ALLGATHER_M, dtype=DEFAULT_TYPE).cuda(local_rank)
+    world_size = dist.get_world_size()
+
+    # all_gather_base saves memory
+    if (args.dist == 'torch'
+            and hasattr(torch.distributed,
+                        "_all_gather_base")) or (args.dist == 'deepspeed'
+                                                 and dist.has_allgather_base):
+        mem_factor = 0.6
+    else:
+        mem_factor = 0.4
+    # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
+    elements_per_gpu = max_numel(collective='allgather',
+                                 dtype=args.dtype,
+                                 mem_factor=.8,
+                                 local_rank=local_rank,
+                                 args=args)
+    mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
+    # multiply each GPU's tensor by the rank to ease debugging
     input = ((mat.mul_(float(global_rank))).view(-1))
-    output = torch.cat([(mat.clone().view(-1)) for _ in range(dist.get_world_size())])
+    # Delete original mat to avoid OOM
+    del mat
+    torch.cuda.empty_cache()
+    output = torch.zeros(elements_per_gpu * world_size,
+                         dtype=args.dtype).cuda(local_rank)
 
     sync_all()
     timed_allgather(input, output, args)
-
-    del mat, input, output
-    torch.cuda.empty_cache()
-    sync_all()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int)
-    parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--warmup", type=int, default=5)
-    parser.add_argument("--maxsize", type=int, default=24)
-    parser.add_argument("--async-op", action="store_true")
-    parser.add_argument("--bw-unit", type=str, default='Gbps')
-    parser.add_argument("--backend", type=str, default='nccl')
-    parser.add_argument("--dist", type=str, default='deepspeed')
-    parser.add_argument("--scan", action="store_true")
+    parser.add_argument("--trials",
+                        type=int,
+                        default=DEFAULT_TRIALS,
+                        help='Number of timed iterations')
+    parser.add_argument("--warmup",
+                        type=int,
+                        default=DEFAULT_WARMUPS,
+                        help='Number of warmup (non-timed) iterations')
+    parser.add_argument("--maxsize",
+                        type=int,
+                        default=24,
+                        help='Max message size as a power of 2')
+    parser.add_argument("--async-op",
+                        action="store_true",
+                        help='Enables non-blocking collectives')
+    parser.add_argument("--bw-unit",
+                        type=str,
+                        default=DEFAULT_UNIT,
+                        choices=['Gbps',
+                                 'GBps'])
+    parser.add_argument("--backend",
+                        type=str,
+                        default=DEFAULT_BACKEND,
+                        choices=['nccl'],
+                        help='Communication library to use')
+    parser.add_argument("--dist",
+                        type=str,
+                        default=DEFAULT_DIST,
+                        choices=['deepspeed',
+                                 'torch'],
+                        help='Distributed DL framework to use')
+    parser.add_argument("--scan",
+                        action="store_true",
+                        help='Enables scanning all message sizes')
+    parser.add_argument("--dtype",
+                        type=str,
+                        default=DEFAULT_TYPE,
+                        help='PyTorch tensor dtype')
     args = parser.parse_args()
     rank = args.local_rank
     init_processes(local_rank=rank, args=args)

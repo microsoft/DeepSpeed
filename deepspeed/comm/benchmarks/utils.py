@@ -1,5 +1,6 @@
 import torch
 import os
+import math
 
 global dist
 
@@ -86,4 +87,19 @@ def get_metric_strings(args, tput, busbw, duration):
 
 def sync_all():
     torch.cuda.synchronize()
-    dist.barrier
+    dist.barrier()
+
+
+def max_numel(collective, dtype, mem_factor, local_rank, args):
+    dtype_size = torch._utils._element_size(args.dtype)
+    max_memory_per_gpu = torch.cuda.get_device_properties(
+        local_rank).total_memory * mem_factor
+    if collective == 'allreduce':
+        elements_per_gpu = int(max_memory_per_gpu // dtype_size)
+        return elements_per_gpu
+    elif collective == 'allgather':
+        # all_gather performance is lower for non-powers of two, and the output buffer size scales with world size
+        # Therefore, divide by world size and round down to nearest power of 2
+        elements_per_gpu = int(max_memory_per_gpu // dtype_size // dist.get_world_size())
+        elements_per_gpu = int(pow(2, int(math.log(elements_per_gpu, 2))))
+        return elements_per_gpu
