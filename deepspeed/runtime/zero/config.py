@@ -87,11 +87,9 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
     pipeline_write: bool = False
     fast_init: bool = False
 
-    @validator("pipeline_read", "pipeline_write")
-    @classmethod
+    @validator("pipeline_read", "pipeline_write", always=True)
     def set_pipeline(cls, field_value, values):
-        if field_value or values.get("pipeline", False):
-            values["pipeline"] = True
+        values["pipeline"] = (field_value or values.get("pipeline", False))
         return field_value
 
 
@@ -99,9 +97,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     stage: ZeroStageEnum = ZeroStageEnum.disabled
     contiguous_gradients: bool = True
     reduce_scatter: bool = True
-    reduce_bucket_size: int = 5e8
+    reduce_bucket_size: int = Field(5e8, ge=0)
     allgather_partitions: bool = True
-    allgather_bucket_size: int = 5e8
+    allgather_bucket_size: int = Field(5e8, ge=0)
     overlap_comm: bool = None  # None for dynamic default value
     load_from_fp32_weights: bool = True
 
@@ -110,7 +108,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     # Offload Specific Parameters
     offload_param: Optional[DeepSpeedZeroOffloadParamConfig] = None
     offload_optimizer: Optional[DeepSpeedZeroOffloadOptimizerConfig] = None
-    sub_group_size: int = 1e9
+    sub_group_size: int = Field(1e9, ge=0)
     cpu_offload_param: bool = Field(
         None,
         deprecated=True,
@@ -129,11 +127,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
                       if val else None))
 
     # Stage3 Specific Parameters
-    prefetch_bucket_size: int = Field(5e7, alias='stage3_prefetch_bucket_size')
+    prefetch_bucket_size: int = Field(5e7, ge=0, alias='stage3_prefetch_bucket_size')
     param_persistence_threshold: int = Field(1e5,
+                                             ge=0,
                                              alias='stage3_param_persistence_threshold')
-    max_live_parameters: int = 1e9
-    max_reuse_distance: int = Field(1e9, alias='stage3_max_reuse_distance')
+    max_live_parameters: int = Field(1e9, ge=0)
+    max_reuse_distance: int = Field(1e9, ge=0, alias='stage3_max_reuse_distance')
     gather_16bit_weights_on_model_save: bool = Field(
         False,
         alias='stage3_gather_16bit_weights_on_model_save')
@@ -147,9 +146,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     round_robin_gradients: bool = False
 
     @validator("overlap_comm")
-    @classmethod
     def overlap_comm_valid(cls, field_value, values):
         if field_value is None:
             assert "stage" in values, "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
-            field_value = values["stage"] == 3
+            field_value = values["stage"] == ZeroStageEnum.weights
         return field_value
