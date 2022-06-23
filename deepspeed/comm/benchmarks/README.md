@@ -35,13 +35,13 @@ optional arguments:
   --dtype DTYPE         PyTorch tensor dtype
 </pre>
 
-2. Run all available communication benchmarks in `scan` mode:
+2. Run all available communication benchmarks:
 
 <pre>
 deepspeed run_all.py
 </pre>
 
-Like the individual benchmarks, `run_all.py` supports scanning arguments for the max message size, bw-unit, etc.
+Like the individual benchmarks, `run_all.py` supports scanning arguments for the max message size, bw-unit, etc. Simply pass the desired arguments to `run_all.py` and they'll be propagated to each comm op.
 
 
 # Adding Communication Benchmarks
@@ -52,4 +52,5 @@ To add new communication benchmarks, follow this general procedure:
 2. Add a new bw formula in `utils.get_bw`
 3. Add a new maximum tensor element formula in `utils.max_numel`
 4. Replace comm op calls in new file with find-replace
-5. Find a good experimental `mem_factor` for use in `run_<collective>_single()` function
+5. Find a good default `mem_factor` for use in `run_<collective>_single()` function
+6. Add new comm op to `run_all.py`

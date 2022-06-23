@@ -41,71 +41,63 @@ def timed_alltoall(input, output, args):
         f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
-def run_alltoall_scan(local_rank, args):
+def run_alltoall(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
-    world_size = dist.get_world_size()
-    # Create list of message sizes
-    M_LIST = []
-    for x in (2**p for p in range(1, args.maxsize)):
-        M_LIST.append(x)
 
-    sync_all()
-    # Prepare benchmark header
+    world_size = dist.get_world_size()
+    global_rank = dist.get_rank()
     print_header(args, 'alltoall')
-    # loop over various tensor sizes
-    for M in M_LIST:
-        global_rank = dist.get_rank()
-        mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
-        assert mat.numel() % world_size == 0, f"tensor cannot be divided in {world_size} chunks"
+
+    if args.scan:
+        M_LIST = []
+        for x in (2**p for p in range(1, args.maxsize)):
+            M_LIST.append(x)
+
         sync_all()
+        # Prepare benchmark header
+        print_header(args, 'alltoall')
+        # loop over various tensor sizes
+        for M in M_LIST:
+            global_rank = dist.get_rank()
+            mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
+            assert mat.numel() % world_size == 0, f"tensor cannot be divided in {world_size} chunks"
+            sync_all()
+            input = ((mat.mul_(float(global_rank))).view(-1))
+            output = (mat.clone().view(-1))
+            sync_all()
+            timed_alltoall(input, output, args)
+    else:
+        # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
+        elements_per_gpu = max_numel(comm_op='alltoall',
+                                     dtype=args.dtype,
+                                     mem_factor=args.mem_factor,
+                                     local_rank=local_rank,
+                                     args=args)
+        mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
+        assert mat.numel() % world_size == 0, f"tensor with {mat.numel()} elements cannot be divided in {world_size} chunks"
         input = ((mat.mul_(float(global_rank))).view(-1))
-        output = (mat.clone().view(-1))
+        # Delete original mat to avoid OOM
+        del mat
+        torch.cuda.empty_cache()
+        output = torch.zeros(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
         sync_all()
+
+        if args.debug:
+            for i in range(world_size):
+                if i == global_rank:
+                    print(f"Before AllToAll Input List at rank {global_rank}: {input}")
+                dist.barrier()
+
         timed_alltoall(input, output, args)
 
-
-def run_alltoall_single(local_rank, args):
-    if args.dist == 'torch':
-        import torch.distributed as dist
-    elif args.dist == 'deepspeed':
-        import deepspeed.comm as dist
-
-    world_size = dist.get_world_size()
-    global_rank = dist.get_rank()
-
-    print_header(args, 'alltoall')
-    global_rank = dist.get_rank()
-    # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
-    elements_per_gpu = max_numel(comm_op='alltoall',
-                                 dtype=args.dtype,
-                                 mem_factor=args.mem_factor,
-                                 local_rank=local_rank,
-                                 args=args)
-    mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
-    assert mat.numel() % world_size == 0, f"tensor with {mat.numel()} elements cannot be divided in {world_size} chunks"
-    input = ((mat.mul_(float(global_rank))).view(-1))
-    # Delete original mat to avoid OOM
-    del mat
-    torch.cuda.empty_cache()
-    output = torch.zeros(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
-    sync_all()
-
-    if args.debug:
-        for i in range(world_size):
-            if i == global_rank:
-                print(f"Before AllToAll Input List at rank {global_rank}: {input}")
-            dist.barrier()
-
-    timed_alltoall(input, output, args)
-
-    if args.debug:
-        for i in range(world_size):
-            if i == global_rank:
-                print(f"AllToAll Results at rank {global_rank}: {output}")
-            dist.barrier()
+        if args.debug:
+            for i in range(world_size):
+                if i == global_rank:
+                    print(f"AllToAll Results at rank {global_rank}: {output}")
+                dist.barrier()
 
 
 if __name__ == "__main__":
@@ -121,7 +113,7 @@ if __name__ == "__main__":
                         help='Number of warmup (non-timed) iterations')
     parser.add_argument("--maxsize",
                         type=int,
-                        default=24,
+                        default=DEFAULT_MAXSIZE,
                         help='Max message size as a power of 2')
     parser.add_argument("--async-op",
                         action="store_true",
@@ -158,11 +150,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     rank = args.local_rank
     init_processes(local_rank=rank, args=args)
-    if args.dist == 'torch':
-        import torch.distributed as dist
-    elif args.dist == 'deepspeed':
-        import deepspeed.comm as dist
-    if args.scan:
-        run_alltoall_scan(local_rank=rank, args=args)
-    else:
-        run_alltoall_single(local_rank=rank, args=args)
+    run_alltoall(local_rank=rank, args=args)

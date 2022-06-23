@@ -42,7 +42,7 @@ def print_header(args, comm_op):
     if comm_op == 'pt2pt':
         world_size = 2
     else:
-        world_size = dist.get_world_size
+        world_size = dist.get_world_size()
     tput = f'Throughput ({args.bw_unit})'
     busbw = f'BusBW ({args.bw_unit})'
     header = f"\n---- Performance of {comm_op} on {world_size} devices ---------------------------------------------------------\n"
