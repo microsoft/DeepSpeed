@@ -141,7 +141,9 @@ if __name__ == "__main__":
                         type=str,
                         default=DEFAULT_TYPE,
                         help='PyTorch tensor dtype')
-    parser.add_argument("--debug", action="store_true", help='Enables data validation')
+    parser.add_argument("--debug",
+                        action="store_true",
+                        help='Enables alltoall debug prints')
     parser.add_argument(
         "--mem-factor",
         type=float,

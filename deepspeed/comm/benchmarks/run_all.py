@@ -56,6 +56,9 @@ if __name__ == "__main__":
         type=float,
         default=.4,
         help='Proportion of max available GPU memory to use for single-size evals')
+    parser.add_argument("--debug",
+                        action="store_true",
+                        help='Enables alltoall debug prints')
     args = parser.parse_args()
     rank = args.local_rank
 
