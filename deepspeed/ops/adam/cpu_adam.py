@@ -76,6 +76,12 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
                             amsgrad=amsgrad)
         super(DeepSpeedCPUAdam, self).__init__(model_params, default_args)
 
+        self.cpu_vendor = get_cpu_info()["vendor_id_raw"].lower()
+        if "amd" in self.cpu_vendor:
+            for group_id, group in enumerate(self.param_groups):
+                for param_id, p in enumerate(group['params']):
+                    assert p.dtype != torch.half, "FP16 params not supported on AMD CPUs"
+
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
         self.adam_w_mode = adamw_mode
@@ -128,6 +134,9 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
         # intended device for step
         device = torch.device('cpu')
+
+        if "amd" in self.cpu_vendor:
+            assert fp16_param_groups is None, "FP16 params not supported on AMD CPUs"
 
         # converting the fp16 params to a group of parameter
         if type(fp16_param_groups) is list:
