@@ -8,6 +8,7 @@ import time
 from cpuinfo import get_cpu_info
 from pathlib import Path
 from ..op_builder import CPUAdamBuilder
+from deepspeed.utils import logger
 from deepspeed.utils.logging import should_log_le
 
 
@@ -81,7 +82,13 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
         if "amd" in self.cpu_vendor:
             for group_id, group in enumerate(self.param_groups):
                 for param_id, p in enumerate(group['params']):
-                    assert p.dtype != torch.half, "FP16 params not supported on AMD CPUs"
+                    if p.dtype == torch.half:
+                        logger.warning(
+                            "FP16 params for CPUAdam may not work on AMD CPUs")
+                        break
+                else:
+                    continue
+                break
 
         self.opt_id = DeepSpeedCPUAdam.optimizer_id
         DeepSpeedCPUAdam.optimizer_id = DeepSpeedCPUAdam.optimizer_id + 1
@@ -135,9 +142,6 @@ class DeepSpeedCPUAdam(torch.optim.Optimizer):
 
         # intended device for step
         device = torch.device('cpu')
-
-        if "amd" in self.cpu_vendor:
-            assert fp16_param_groups is None, "FP16 params not supported on AMD CPUs"
 
         # converting the fp16 params to a group of parameter
         if type(fp16_param_groups) is list:
