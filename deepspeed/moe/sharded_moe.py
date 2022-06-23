@@ -168,33 +168,35 @@ def _one_hot_to_float(x, num_classes):
     return F.one_hot(x, num_classes=num_classes).float()
 
 
-def top1gating(logits: Tensor,
-               capacity_factor: float,
-               min_capacity: int,
-               used_token: Tensor = None,
-               noisy_gate_policy: Optional[str] = None,
-               drop_tokens: bool = True,
-               use_rts: bool = True,
-               use_tutel: bool = False,
-               timers = None,
-               ) -> Tuple[Tensor,
-                                                 Tensor,
-                                                 Tensor,
-                                                 Tensor]:
+def top1gating(
+    logits: Tensor,
+    capacity_factor: float,
+    min_capacity: int,
+    used_token: Tensor = None,
+    noisy_gate_policy: Optional[str] = None,
+    drop_tokens: bool = True,
+    use_rts: bool = True,
+    use_tutel: bool = False,
+    timers=None,
+) -> Tuple[Tensor,
+           Tensor,
+           Tensor,
+           Tensor]:
     """Implements Top1Gating on logits."""
     if noisy_gate_policy == 'RSample':
         logits_w_noise = logits + gumbel_rsample(logits.shape, device=logits.device)
     # everything is in fp32 in this function
     if timers is not None:
         timers[0]('TopKGate-Softmax').start()
-    
+
     gates = F.softmax(logits, dim=1)
 
     gate_softmax_time = 0.0
     if timers is not None:
         timers[0]('TopKGate-Softmax').stop()
-        timers[1]['gate_softmax_time'] += timers[0]('TopKGate-Softmax').elapsed(reset=False) 
-    
+        timers[1]['gate_softmax_time'] += timers[0]('TopKGate-Softmax').elapsed(
+            reset=False)
+
     capacity = _capacity(gates,
                          torch.tensor(capacity_factor),
                          torch.tensor(min_capacity))
@@ -223,12 +225,12 @@ def top1gating(logits: Tensor,
     #    timers('CPU_move').start()
     if timers is not None:
         timers[0]('exp-count-cpu').start()
-    
+
     exp_counts = torch.sum(mask1, dim=0).detach().to('cpu')
 
     if timers is not None:
         timers[0]('exp-count-cpu').stop()
-        timers[1]['exp-count-cpu'] += timers[0]('exp-count-cpu').elapsed(reset=False) 
+        timers[1]['exp-count-cpu'] += timers[0]('exp-count-cpu').elapsed(reset=False)
 
     # if we don't want to drop any tokens
 
@@ -247,19 +249,19 @@ def top1gating(logits: Tensor,
     # Compute l_aux
     if timers is not None:
         timers[0]('l-aux').start()
-    
+
     me = torch.mean(gates, dim=0)
     ce = torch.mean(mask1.float(), dim=0)
     l_aux = torch.sum(me * ce) * num_experts
-    
+
     if timers is not None:
         timers[0]('l-aux').stop()
-        timers[1]['l-aux'] += timers[0]('l-aux').elapsed(reset=False) 
+        timers[1]['l-aux'] += timers[0]('l-aux').elapsed(reset=False)
     # Random Token Selection
 
     if timers is not None:
         timers[0]('exp-selection').start()
-    
+
     if use_rts:
         uniform = exp_selection_uniform_map.get(logits.device)
         if uniform is None:
@@ -280,26 +282,25 @@ def top1gating(logits: Tensor,
 
     assert logits.shape[0] >= min_capacity, "No. of tokens (batch-size) should be greater than min_capacity. Either set min_capacity to 0 or increase your batch size."
 
-    
     if timers is not None:
         timers[0]('top-idx').start()
-    
+
     top_idx = _top_idx(mask1_rand, capacity)
-    
+
     if timers is not None:
         timers[0]('top-idx').stop()
-        timers[1]['top-idx'] += timers[0]('top-idx').elapsed(reset=False) 
+        timers[1]['top-idx'] += timers[0]('top-idx').elapsed(reset=False)
 
     if timers is not None:
         timers[0]('mask-scatter').start()
-    
+
     new_mask1 = mask1 * torch.zeros_like(mask1).scatter_(0, top_idx, 1)
     mask1 = new_mask1
 
     if timers is not None:
         timers[0]('mask-scatter').stop()
-        timers[1]['mask-scatter'] += timers[0]('mask-scatter').elapsed(reset=False) 
-    
+        timers[1]['mask-scatter'] += timers[0]('mask-scatter').elapsed(reset=False)
+
     if use_tutel:
         # Tutel doesn't support index values masked with zero
         # so we need to replace masked indices with -1
@@ -316,8 +317,8 @@ def top1gating(logits: Tensor,
 
     if timers is not None:
         timers[0]('cumsum').stop()
-        timers[1]['cumsum'] += timers[0]('cumsum').elapsed(reset=False) 
-    
+        timers[1]['cumsum'] += timers[0]('cumsum').elapsed(reset=False)
+
     if use_tutel:
         gates1_s = (gates * mask1).sum(dim=1)
         locations1_s = torch.sum(locations1 * mask1, dim=1)
@@ -330,7 +331,7 @@ def top1gating(logits: Tensor,
     if timers is not None:
         timers[0]('norm-prob').stop()
         timers[1]['norm-prob'] += timers[0]('norm-prob').elapsed(reset=False)
-    
+
     # Normalize gate probabilities
     mask1_float = mask1.float()
     gates = gates * mask1_float
@@ -344,8 +345,6 @@ def top1gating(logits: Tensor,
         timers[1]['combine-weights'] += timers[0]('combine-weights').elapsed(reset=False)
 
     dispatch_mask = combine_weights.bool()
-    
-
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
@@ -490,7 +489,8 @@ class TopKGate(Module):
 
         if self.wall_clock_breakdown:
             self.timers('logit-calc').stop()
-            self.gate_timers['logit-calc'] += self.timers('logit-calc').elapsed(reset=False) 
+            self.gate_timers['logit-calc'] += self.timers('logit-calc').elapsed(
+                reset=False)
 
         if self.k == 1:
             if self.wall_clock_breakdown:
@@ -516,7 +516,7 @@ class TopKGate(Module):
 
         if self.wall_clock_breakdown:
             self.timers('TopKGate').stop()
-            self.gate_time += self.timers('TopKGate').elapsed(reset=False) 
+            self.gate_time += self.timers('TopKGate').elapsed(reset=False)
 
         return gate_output
 
@@ -607,7 +607,7 @@ class MOELayer(Base):
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').stop()
-            self.time_falltoall += self.timers('falltoall').elapsed(reset=False) 
+            self.time_falltoall += self.timers('falltoall').elapsed(reset=False)
 
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.ep_size,
@@ -624,7 +624,7 @@ class MOELayer(Base):
 
         if self.wall_clock_breakdown:
             self.timers('salltoall').stop()
-            self.time_salltoall += self.timers('salltoall').elapsed(reset=False) 
+            self.time_salltoall += self.timers('salltoall').elapsed(reset=False)
 
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.ep_size * self.num_local_experts,
@@ -642,6 +642,6 @@ class MOELayer(Base):
 
         if self.wall_clock_breakdown:
             self.timers('moe').stop()
-            self.time_moe += self.timers('moe').elapsed(reset=False) 
+            self.time_moe += self.timers('moe').elapsed(reset=False)
 
         return a

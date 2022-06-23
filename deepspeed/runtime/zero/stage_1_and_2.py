@@ -1647,8 +1647,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             )
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
-    
-    
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1688,8 +1687,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.stop_timers(timer_names)
             return
 
-        
-        
         norm_groups = []
         # separate norm calculation from gradient upscaling+optimizer
         see_memory_usage('Before norm calculation', force=True)
@@ -1712,7 +1709,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
 
         #single_partition_grad_groups = []
-        
+
         skip = False
         for i, group in enumerate(self.bit16_groups):
             see_memory_usage(f'Before upscale+optim (Group {i})', force=True)
@@ -1736,15 +1733,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 # create a flat gradients for parameters updated by this process
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
-                
+
                 #see_memory_usage(f'{i} - {grad_numel_} | Before Flatenning average gradients', force=True)
                 if partition_id == dist.get_world_size(
                         group=self.real_dp_process_group[i]) - 1:
                     single_grad_partition = self.flatten_dense_tensors_aligned(
                         self.averaged_gradients[i],
                         int(self.partition_size[i])).to(
-                            self.single_partition_of_fp32_groups[i].dtype)     
-                else: 
+                            self.single_partition_of_fp32_groups[i].dtype)
+                else:
                     single_grad_partition = self.flatten(self.averaged_gradients[i]).to(
                         self.single_partition_of_fp32_groups[i].dtype)
                 assert single_grad_partition.numel() == self.partition_size[i], \
@@ -1758,10 +1755,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.averaged_gradients[i] = None
                 #see_memory_usage('After deleting fp16 gradients', force=True)
             #single_partition_grad_groups.append(single_grad_partition)
-            
+
             # Step 2:- unscale and clip gradient
-            self.unscale_and_clip_grads([single_grad_partition],
-                                        scaled_global_grad_norm)
+            self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
             self.stop_timers([OPTIMIZER_GRADIENTS])
             if dist.get_rank() == 0:
                 logger.info(f'Running optimizer on group {i}')
@@ -1788,7 +1784,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     # @for group in self.single_partition_of_fp32_groups:
                     #     group.grad = None  # in step
                     # single_grad_partition.grad = None
-                    self.single_partition_of_fp32_groups[i].grad = None 
+                    self.single_partition_of_fp32_groups[i].grad = None
                     del single_grad_partition
 
             self.stop_timers([OPTIMIZER_STEP])
@@ -1796,7 +1792,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
             bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-
 
         # Stash unscaled gradient norm
         if self.cpu_offload:

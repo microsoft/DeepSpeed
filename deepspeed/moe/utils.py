@@ -112,7 +112,7 @@ def split_params_into_different_moe_groups_for_optimizer(
         param_group['params'] = new_params
 
     # Flatten the moe groups
-    
+
     MAX_SPIKE_GB = 4
     assert MAX_SPIKE_GB == 4, "script hardcodes this to 4 GB"
     max_group_size = MAX_SPIKE_GB * 2**30 // 6
@@ -138,8 +138,8 @@ def split_params_into_different_moe_groups_for_optimizer(
                 new_dict = {}
                 for key, val in v1.items():
                     if key != 'params':
-                        new_dict[key] = val 
-                new_dict['params'] = group 
+                        new_dict[key] = val
+                new_dict['params'] = group
                 param_groups.append(new_dict)
-    
+
     return tuple(param_groups)

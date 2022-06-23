@@ -1648,7 +1648,7 @@ class DeepSpeedEngine(Module):
             #logger.info(f"Individual TopK gate time: {gate.gate_time:.2f} ms")
             gate_time += gate.gate_time
             gate.gate_time = 0.0
-            for key,val in gate.gate_timers.items():
+            for key, val in gate.gate_timers.items():
                 global_gate_timers[key] += val
                 gate.gate_timers[key] = 0.0
 
@@ -1665,14 +1665,14 @@ class DeepSpeedEngine(Module):
 
         # if torch.distributed.get_rank() == 0:
         log_dist(
-                f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}",
+            f"rank={torch.distributed.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}",
             ranks=[0])
         log_str = ''
         for key, val in global_gate_timers.items():
             log_str += f'{key}: {val:.2f} ms '
-            
+
         log_dist(f"rank={torch.distributed.get_rank()} time (ms) | {log_str} \n",
-            ranks=[0])
+                 ranks=[0])
 
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
@@ -2009,8 +2009,7 @@ class DeepSpeedEngine(Module):
                     self._write_tensorboard()
 
                 if self.has_moe_layers:
-                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
-                        reset=False)
+                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False)
                     self.print_forward_breakdown(fwd_time=fwd_time)
 
                 self.timers.log(self.engine_timers.global_timers)
@@ -2054,17 +2053,17 @@ class DeepSpeedEngine(Module):
             self.summary_events = [
                 (
                     f"Train/Samples/elapsed_time_ms_forward",
-                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False) ,
+                    self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward",
-                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False) ,
+                    self.timers(BACKWARD_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_backward_inner",
-                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False) ,
+                    self.timers(BACKWARD_INNER_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
                 (
@@ -2074,7 +2073,7 @@ class DeepSpeedEngine(Module):
                 ),
                 (
                     f"Train/Samples/elapsed_time_ms_step",
-                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False) ,
+                    self.timers(STEP_GLOBAL_TIMER).elapsed(reset=False),
                     self.global_samples,
                 ),
             ]
