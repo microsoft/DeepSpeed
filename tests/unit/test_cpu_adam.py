@@ -88,3 +88,13 @@ def test_cpu_adam_gpu_error():
     param.grad = torch.randn(model_size, device=device)
     with pytest.raises(AssertionError):
         optimizer.step()
+
+
+def test_cpu_adam_fp16_amd_error():
+    model_size = 64
+    from deepspeed.ops.adam import DeepSpeedCPUAdam
+    device = 'cpu'
+    param = torch.nn.Parameter(torch.randn(model_size, device=device).to(torch.half))
+
+    with pytest.raises(Assertion_error):
+        optimizer = DeepSpeedCPUAdam([param])
