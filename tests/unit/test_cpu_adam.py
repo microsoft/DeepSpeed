@@ -16,6 +16,7 @@ if not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
 def check_equal(first, second, atol=1e-2, verbose=False):
     x = first.detach().numpy()
     y = second.detach().numpy()
+    print("ATOL", atol)
     if verbose:
         print("x = {}".format(x.flatten()))
         print("y = {}".format(y.flatten()))
@@ -60,7 +61,7 @@ def test_cpu_adam_opt(dtype, model_size):
         optimizer.step()
         optimizer2.step()
         optimizer1.step()
-    tolerance = param1.float().norm().detach() * 1e-2
+    tolerance = param1.float().norm().detach().numpy() * 1e-2
     check_equal(param.float().norm(),
                 param1.float().norm(),
                 atol=tolerance,
