@@ -442,7 +442,7 @@ class PipelineModule(nn.Module):
 
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
-            for weight_attr in comm['weight_attr']:
+            for weight_attr in comm['weight_attrs']:
                 dist.broadcast(
                     getattr(comm['module'],
                             weight_attr),
