@@ -1652,8 +1652,7 @@ class DeepSpeedEngine(Module):
         for key, val in global_gate_timers.items():
             log_str += f'{key}: {val:.2f} ms '
 
-        log_dist(f"rank={torch.distributed.get_rank()} time (ms) | {log_str} \n",
-                 ranks=[0])
+        log_dist(f"rank={dist.get_rank()} time (ms) | {log_str} \n", ranks=[0])
 
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):

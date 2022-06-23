@@ -1666,7 +1666,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if self.has_moe_layers:
             self._average_expert_grad_norms(norm_groups)
-        
+
         # note that the get_global_norm function only supports l2 norm
         return get_global_norm(norm_list=norm_groups)
 
@@ -1750,7 +1750,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.free_grad_in_param_list(self.params_in_partition[i])
                 self.averaged_gradients[i] = None
                 #see_memory_usage('After deleting fp16 gradients', force=True)
-            
+
             # Step 2:- unscale and clip gradient
             self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
             self.stop_timers([OPTIMIZER_GRADIENTS])
@@ -1768,7 +1768,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     # ] for bit16_partitions in self.parallel_partitioned_bit16_groups]
                     bit16_param_groups = [[
                         self.parallel_partitioned_bit16_groups[i][partition_id]
-                        ]]
+                    ]]
                     self.optimizer.step(fp16_param_groups=bit16_param_groups)
                 else:
                     self.optimizer.step()
@@ -1782,7 +1782,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.stop_timers([OPTIMIZER_STEP])
             see_memory_usage(f'After optim (Group {i})', force=True)
 
-        if (not self.deepspeed_adam_offload) or (type(self.optimizer) != DeepSpeedCPUAdam) or (self.dtype != torch.half):
+        if (not self.deepspeed_adam_offload) or (type(
+                self.optimizer) != DeepSpeedCPUAdam) or (self.dtype != torch.half):
             for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
                 bit16_partitions[partition_id].data.copy_(fp32_partition.data)
 
