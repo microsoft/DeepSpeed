@@ -807,7 +807,6 @@ class DeepSpeedEngine(Module):
             'device_rank') else self.local_rank
         if device_rank >= 0:
             torch.cuda.set_device(device_rank)
-            torch.cuda.set_per_process_memory_fraction(0.95)
             self.device = torch.device("cuda", device_rank)
             self.world_size = dist.get_world_size()
             self.global_rank = dist.get_rank()
@@ -1652,7 +1651,8 @@ class DeepSpeedEngine(Module):
         for key, val in global_gate_timers.items():
             log_str += f'{key}: {val:.2f} ms '
 
-        log_dist(f"rank={dist.get_rank()} time (ms) | {log_str} \n", ranks=[0])
+        log_dist(f"rank={dist.get_rank()} time (ms) | {log_str} \n",
+                 ranks=[0])
 
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
