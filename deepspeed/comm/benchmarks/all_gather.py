@@ -7,10 +7,12 @@ from constants import *
 import time
 import argparse
 import os
+
 import math
 
 
-def timed_allreduce(input, args):
+# Run allgather and print metrics
+def timed_allgather(input, output, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
@@ -19,13 +21,33 @@ def timed_allreduce(input, args):
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
-        dist.all_reduce(input, async_op=args.async_op)
+        # use all_gather_base if available
+        if args.dist == 'torch':
+            if hasattr(torch.distributed, "_all_gather_base"):
+                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+            else:
+                output_tensors = list(
+                    torch.chunk(output_tensor,
+                                cdb.get_world_size(group)))
+                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
+        elif args.dist == 'deepspeed':
+            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
     sync_all()
 
-    # time the actual collective trials times and average it
+    # time the actual comm op trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
-        dist.all_reduce(input, async_op=args.async_op)
+        # use all_gather_base if available
+        if args.dist == 'torch':
+            if hasattr(torch.distributed, "_all_gather_base"):
+                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+            else:
+                output_tensors = list(
+                    torch.chunk(output_tensor,
+                                cdb.get_world_size(group)))
+                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
+        elif args.dist == 'deepspeed':
+            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
     sync_all()
     duration = time.perf_counter() - pre
 
@@ -33,7 +55,7 @@ def timed_allreduce(input, args):
     avg_duration = duration / args.trials
     size = input.element_size() * input.nelement()
     n = dist.get_world_size()
-    tput, busbw = get_bw('allreduce', size, avg_duration, n)
+    tput, busbw = get_bw('allgather', size, avg_duration, n)
     tput_str, busbw_str, duration_str = get_metric_strings(args, tput, busbw, avg_duration)
     desc = f'{input.nelement()}x{input.element_size()}'
 
@@ -41,7 +63,7 @@ def timed_allreduce(input, args):
         f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
-def run_allreduce_scan(local_rank, args):
+def run_allgather_scan(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
@@ -54,35 +76,57 @@ def run_allreduce_scan(local_rank, args):
 
     sync_all()
     # Prepare benchmark header
-    print_header(args, 'allreduce')
+    print_header(args, 'allgather')
     # loop over various tensor sizes
     for M in M_LIST:
         global_rank = dist.get_rank()
         mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
         sync_all()
         input = ((mat.mul_(float(global_rank))).view(-1))
+        # Delete original mat to avoid OOM
+        del mat
+        torch.cuda.empty_cache()
+        output = torch.zeros(input.nelement() * world_size,
+                             dtype=args.dtype).cuda(local_rank)
         sync_all()
-        timed_allreduce(input, args)
+        timed_allgather(input, output, args)
 
 
-def run_allreduce_single(local_rank, args):
+def run_allgather_single(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
-    print_header(args, 'allreduce')
+    print_header(args, 'allgather')
     global_rank = dist.get_rank()
+    world_size = dist.get_world_size()
+
+    # all_gather_base saves memory
+    if (args.dist == 'torch'
+            and hasattr(torch.distributed,
+                        "_all_gather_base")) or (args.dist == 'deepspeed'
+                                                 and dist.has_allgather_base):
+        mem_factor = 0.6
+    else:
+        mem_factor = 0.4
     # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
-    elements_per_gpu = max_numel(collective='allreduce',
+    elements_per_gpu = max_numel(comm_op='allgather',
                                  dtype=args.dtype,
-                                 mem_factor=.8,
+                                 mem_factor=mem_factor,
                                  local_rank=local_rank,
                                  args=args)
     mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
+    # multiply each GPU's tensor by the rank to ease debugging
     input = ((mat.mul_(float(global_rank))).view(-1))
+    # Delete original mat to avoid OOM
+    del mat
+    torch.cuda.empty_cache()
+    output = torch.zeros(elements_per_gpu * world_size,
+                         dtype=args.dtype).cuda(local_rank)
+
     sync_all()
-    timed_allreduce(input, args)
+    timed_allgather(input, output, args)
 
 
 if __name__ == "__main__":
@@ -102,7 +146,7 @@ if __name__ == "__main__":
                         help='Max message size as a power of 2')
     parser.add_argument("--async-op",
                         action="store_true",
-                        help='Enables non-blocking collectives')
+                        help='Enables non-blocking communication')
     parser.add_argument("--bw-unit",
                         type=str,
                         default=DEFAULT_UNIT,
@@ -134,6 +178,6 @@ if __name__ == "__main__":
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
     if args.scan:
-        run_allreduce_scan(local_rank=rank, args=args)
+        run_allgather_scan(local_rank=rank, args=args)
     else:
-        run_allreduce_single(local_rank=rank, args=args)
+        run_allgather_single(local_rank=rank, args=args)

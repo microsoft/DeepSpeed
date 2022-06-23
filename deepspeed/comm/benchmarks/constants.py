@@ -9,5 +9,3 @@ DEFAULT_STEP = 2
 DEFAULT_BACKEND = 'nccl'
 DEFAULT_UNIT = 'Gbps'
 DEFAULT_DIST = 'deepspeed'
-
-DEBUG = False

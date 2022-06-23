@@ -1,6 +1,9 @@
 import torch
 from utils import init_processes
 from all_reduce_new import run_allreduce_scan
+from all_gather_new import run_allgather_scan
+from all_to_all_new import run_alltoall_scan
+from p2p_new import run_pt2pt_scan
 
 import time
 import argparse
@@ -22,9 +25,13 @@ if __name__ == "__main__":
 
     init_processes(local_rank=rank, args=args)
 
-    for collective in ['allreduce', 'allgather', 'alltoall']:
-        if collective == 'allreduce':
+    for comm_op in ['allreduce', 'allgather', 'alltoall', 'pt2pt']:
+        if comm_op == 'allreduce':
             run_allreduce_scan(local_rank=rank, args=args)
-        if collective == 'allgather':
+        if comm_op == 'allgather':
             run_allgather_scan(local_rank=rank, args=args)
-        #run_collective(collective, args)
+        if comm_op == 'alltoall':
+            run_allgather_scan(local_rank=rank, args=args)
+        if comm_op == 'pt2pt':
+            run_pt2pt_scan(local_rank=rank, args=args)
+        #run_comm_op(collective, args)

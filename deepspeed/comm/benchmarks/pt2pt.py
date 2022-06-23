@@ -7,12 +7,10 @@ from constants import *
 import time
 import argparse
 import os
-
 import math
 
 
-# Run allgather and print metrics
-def timed_allgather(input, output, args):
+def timed_pt2pt(input, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
@@ -21,33 +19,32 @@ def timed_allgather(input, output, args):
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
-        # use all_gather_base if available
-        if args.dist == 'torch':
-            if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+        if dist.get_rank() == 0:
+            if args.async_op:
+                dist.isend(input, 1)
             else:
-                output_tensors = list(
-                    torch.chunk(output_tensor,
-                                cdb.get_world_size(group)))
-                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
-        elif args.dist == 'deepspeed':
-            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+                dist.send(input, 1)
+        if dist.get_rank() == 1:
+            if args.async_op:
+                dist.irecv(input, src=0)
+            else:
+                dist.recv(input, src=0)
     sync_all()
 
-    # time the actual collective trials times and average it
+    # time the actual comm op trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
-        # use all_gather_base if available
-        if args.dist == 'torch':
-            if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+        if dist.get_rank() == 0:
+            if args.async_op:
+                dist.isend(input, 1)
             else:
-                output_tensors = list(
-                    torch.chunk(output_tensor,
-                                cdb.get_world_size(group)))
-                dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
-        elif args.dist == 'deepspeed':
-            dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+                dist.send(input, 1)
+        if dist.get_rank() == 1:
+            if args.async_op:
+                dist.irecv(input, src=0)
+            else:
+                dist.recv(input, src=0)
+
     sync_all()
     duration = time.perf_counter() - pre
 
@@ -55,7 +52,7 @@ def timed_allgather(input, output, args):
     avg_duration = duration / args.trials
     size = input.element_size() * input.nelement()
     n = dist.get_world_size()
-    tput, busbw = get_bw('allgather', size, avg_duration, n)
+    tput, busbw = get_bw('pt2pt', size, avg_duration, args)
     tput_str, busbw_str, duration_str = get_metric_strings(args, tput, busbw, avg_duration)
     desc = f'{input.nelement()}x{input.element_size()}'
 
@@ -63,7 +60,7 @@ def timed_allgather(input, output, args):
         f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
-def run_allgather_scan(local_rank, args):
+def run_pt2pt_scan(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
@@ -76,57 +73,35 @@ def run_allgather_scan(local_rank, args):
 
     sync_all()
     # Prepare benchmark header
-    print_header(args, 'allgather')
+    print_header(args, 'pt2pt')
     # loop over various tensor sizes
     for M in M_LIST:
         global_rank = dist.get_rank()
         mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
         sync_all()
         input = ((mat.mul_(float(global_rank))).view(-1))
-        # Delete original mat to avoid OOM
-        del mat
-        torch.cuda.empty_cache()
-        output = torch.zeros(input.nelement() * world_size,
-                             dtype=args.dtype).cuda(local_rank)
         sync_all()
-        timed_allgather(input, output, args)
+        timed_pt2pt(input, args)
 
 
-def run_allgather_single(local_rank, args):
+def run_pt2pt_single(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
-    print_header(args, 'allgather')
+    print_header(args, 'pt2pt')
     global_rank = dist.get_rank()
-    world_size = dist.get_world_size()
-
-    # all_gather_base saves memory
-    if (args.dist == 'torch'
-            and hasattr(torch.distributed,
-                        "_all_gather_base")) or (args.dist == 'deepspeed'
-                                                 and dist.has_allgather_base):
-        mem_factor = 0.6
-    else:
-        mem_factor = 0.4
     # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
-    elements_per_gpu = max_numel(collective='allgather',
+    elements_per_gpu = max_numel(comm_op='pt2pt',
                                  dtype=args.dtype,
-                                 mem_factor=.8,
+                                 mem_factor=args.mem_factor,
                                  local_rank=local_rank,
                                  args=args)
     mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
-    # multiply each GPU's tensor by the rank to ease debugging
     input = ((mat.mul_(float(global_rank))).view(-1))
-    # Delete original mat to avoid OOM
-    del mat
-    torch.cuda.empty_cache()
-    output = torch.zeros(elements_per_gpu * world_size,
-                         dtype=args.dtype).cuda(local_rank)
-
     sync_all()
-    timed_allgather(input, output, args)
+    timed_pt2pt(input, args)
 
 
 if __name__ == "__main__":
@@ -146,7 +121,7 @@ if __name__ == "__main__":
                         help='Max message size as a power of 2')
     parser.add_argument("--async-op",
                         action="store_true",
-                        help='Enables non-blocking collectives')
+                        help='Enables non-blocking communication')
     parser.add_argument("--bw-unit",
                         type=str,
                         default=DEFAULT_UNIT,
@@ -170,6 +145,11 @@ if __name__ == "__main__":
                         type=str,
                         default=DEFAULT_TYPE,
                         help='PyTorch tensor dtype')
+    parser.add_argument(
+        "--mem-factor",
+        type=float,
+        default=.8,
+        help='Proportion of max available GPU memory to use for single-size evals')
     args = parser.parse_args()
     rank = args.local_rank
     init_processes(local_rank=rank, args=args)
@@ -178,6 +158,6 @@ if __name__ == "__main__":
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
     if args.scan:
-        run_allgather_scan(local_rank=rank, args=args)
+        run_pt2pt_scan(local_rank=rank, args=args)
     else:
-        run_allgather_single(local_rank=rank, args=args)
+        run_pt2pt_single(local_rank=rank, args=args)
