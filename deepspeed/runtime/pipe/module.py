@@ -1,4 +1,3 @@
-from faulthandler import disable
 import os
 import glob
 import enum
