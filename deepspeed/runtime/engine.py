@@ -142,6 +142,7 @@ STEP_GLOBAL_TIMER = 'step'
 
 class EngineTimers(object):
     r"""Wallclock timers for DeepSpeedEngine"""
+
     def __init__(self, enable_micro_timers, enable_global_timers):
         self.forward_timers = []
         self.backward_timers = []
@@ -182,6 +183,7 @@ class EngineTimers(object):
 
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
+
     def __init__(
         self,
         args,
@@ -343,7 +345,7 @@ class DeepSpeedEngine(Module):
         self.save_zero_checkpoint = False
 
         self.enable_nebula = enable_nebula and not torch_nebula is None
-        self.persist_path = None # for specific checkpoint loading from given tier3 path
+        self.persist_path = None  # for specific checkpoint loading from given tier3 path
         self.nebula_config_params = nebula_config_params
 
         self._configure_checkpointing(dist_init_required)
@@ -943,6 +945,7 @@ class DeepSpeedEngine(Module):
                 f'Client Optimizer (type = {type(self.client_optimizer)} is not instantiated but Client LR Scheduler is instantiated'
 
     def _broadcast_model(self):
+
         def is_replicated(p):
             if hasattr(p, "ds_status") and p.ds_status is not ZeroParamStatus.AVAILABLE:
                 return False
@@ -2403,10 +2406,7 @@ class DeepSpeedEngine(Module):
                                              pp_rank,
                                              bf16_mode)
 
-    def _get_ckpt_name(self,
-                       checkpoints_path,
-                       tag,
-                       mp_placeholder=None):
+    def _get_ckpt_name(self, checkpoints_path, tag, mp_placeholder=None):
         if mp_placeholder is not None:
             mp_rank_str = mp_placeholder
         else:
@@ -2449,9 +2449,8 @@ class DeepSpeedEngine(Module):
         else:
             # Used to support new checkpoint loading
             filename = f'layer_{layer_id}_expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
-        # TODO:static method to self
         return filename if enable_nebula else os.path.join(checkpoints_path,
-                                                           str(tag),
+                                                           tag,
                                                            filename)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
@@ -2748,7 +2747,7 @@ class DeepSpeedEngine(Module):
             mp_rank=mp_rank,
             dp_world_size=self.loaded_checkpoint_dp_world_size,
             bf16_mode=bf16_mode)
-        
+
         if not self.enable_nebula:
             invalid_zero_ckpt_paths = []
             for i, ckpt_name in enumerate(zero_ckpt_names):
@@ -2756,7 +2755,7 @@ class DeepSpeedEngine(Module):
                     # transparently handle the old file pattern for optim_states
                     if "optim_states.pt" in ckpt_name:
                         ckpt_name_try = ckpt_name.replace("_optim_states.pt",
-                                                        "optim_states.pt")
+                                                          "optim_states.pt")
                         if os.path.exists(ckpt_name_try):
                             zero_ckpt_names[i] = ckpt_name_try
                             continue
@@ -3030,12 +3029,13 @@ class DeepSpeedEngine(Module):
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
         if not self.enable_nebula:
             name_function = (self._get_zero_ckpt_name
-                                if zero_checkpoint else self._get_ckpt_name)
+                             if zero_checkpoint else self._get_ckpt_name)
             try:
                 checkpoint_name = name_function(save_dir, tag)
                 ensure_directory_exists(checkpoint_name)
             except:
-                logger.error(f"Failed saving model checkpoint to {save_dir} with tag {tag}")
+                logger.error(
+                    f"Failed saving model checkpoint to {save_dir} with tag {tag}")
                 return False
 
         return True
