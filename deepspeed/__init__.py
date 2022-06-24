@@ -211,22 +211,20 @@ def _add_core_arguments(parser):
         default=False,
         action='store_true',
         help=
-        "Save checkpoint via torch_nebula.save, this will attempt to save the time from torch.save")
+        "Save checkpoint via torch_nebula.save, this will attempt to save the time from torch.save"
+    )
 
-    group.add_argument(
-        '--persistent_storage_path',
-        default=None,
-        help="Iter3 path for persistence")
+    group.add_argument('--persistent_storage_path',
+                       default=None,
+                       help="Iter3 path for persistence")
 
-    group.add_argument(
-        '--persistent_time_interval',
-        default=None,
-        help="Time interval for tier3 saving")
+    group.add_argument('--persistent_time_interval',
+                       default=None,
+                       help="Time interval for tier3 saving")
 
-    group.add_argument(
-        '--num_of_version_in_retention',
-        default=2,
-        help="File numbers to be remained")
+    group.add_argument('--num_of_version_in_retention',
+                       default=2,
+                       help="File numbers to be remained")
 
     return parser
 
