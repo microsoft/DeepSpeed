@@ -8,7 +8,6 @@ global dist
 def init_torch_distributed(backend):
     global dist
     import torch.distributed as dist
-    import deepspeed
     torch.distributed.init_process_group(backend)
     local_rank = int(os.environ['LOCAL_RANK'])
     torch.cuda.set_device(local_rank)

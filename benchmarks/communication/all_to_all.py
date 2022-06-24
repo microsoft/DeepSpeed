@@ -1,6 +1,5 @@
 import torch
 import utils
-import deepspeed
 from utils import *
 from constants import *
 
@@ -49,6 +48,7 @@ def run_alltoall(local_rank, args):
 
     world_size = dist.get_world_size()
     global_rank = dist.get_rank()
+    # Prepare benchmark header
     print_header(args, 'alltoall')
 
     if args.scan:
@@ -57,8 +57,6 @@ def run_alltoall(local_rank, args):
             M_LIST.append(x)
 
         sync_all()
-        # Prepare benchmark header
-        print_header(args, 'alltoall')
         # loop over various tensor sizes
         for M in M_LIST:
             global_rank = dist.get_rank()

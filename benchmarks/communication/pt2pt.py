@@ -1,6 +1,5 @@
 import torch
 import utils
-import deepspeed
 from utils import *
 from constants import *
 
@@ -66,6 +65,7 @@ def run_pt2pt(local_rank, args):
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
+    # Prepare benchmark header
     print_header(args, 'pt2pt')
     global_rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -77,8 +77,6 @@ def run_pt2pt(local_rank, args):
             M_LIST.append(x)
 
         sync_all()
-        # Prepare benchmark header
-        print_header(args, 'pt2pt')
         # loop over various tensor sizes
         for M in M_LIST:
             global_rank = dist.get_rank()
