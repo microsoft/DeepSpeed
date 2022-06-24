@@ -1383,7 +1383,6 @@ def test_load_immediate_save(tmpdir, zero_stage):
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
     config_dict = {
-        "train_batch_size": 4,
         "optimizer": {
             "type": 'Adam'
         },
