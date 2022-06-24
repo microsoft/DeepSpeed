@@ -346,7 +346,6 @@ class DeepSpeedEngine(Module):
         self.persist_path = None  # for specific checkpoint loading from given tier3 path
         self.nebula_config_params = nebula_config_params
 
-        self._configure_checkpointing(dist_init_required)
         if not isinstance(self.optimizer, DeepSpeedZeRoOffload):
             self._configure_checkpointing(dist_init_required)
 
