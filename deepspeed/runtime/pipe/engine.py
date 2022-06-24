@@ -577,6 +577,11 @@ class PipelineEngine(DeepSpeedEngine):
             self.data_iterator = iterator
 
     def set_batch_fn(self, fn):
+        """Execute a post-processing function on input data.
+
+        Args:
+            fn (function): The function to run.
+        """
         self.batch_fn = fn
 
     def is_gradient_accumulation_boundary(self):
@@ -1363,11 +1368,3 @@ class PipelineEngine(DeepSpeedEngine):
                 # Equivalent to: self._exec_forward_pass(buffer_id=0)
                 self._exec_instr = MethodType(self._INSTRUCTION_MAP[type(cmd)], self)
                 self._exec_instr(**cmd.kwargs)
-
-    def set_batch_fn(self, fn):
-        """Execute a post-processing function on input data.
-
-        Args:
-            fn (function): The function to run.
-        """
-        self.batch_fn = fn

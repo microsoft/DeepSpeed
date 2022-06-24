@@ -33,18 +33,6 @@ def was_interruptted(filename):
     return False
 
 
-def was_interruptted(filename):
-    if not os.path.exists(filename):
-        return "stderr.log does not exist"
-    with open(filename) as f:
-        for line in f:
-            s = "KeyboardInterrupt"
-            idx = line.find(s)
-            if idx != -1:
-                return True
-    return False
-
-
 def find_replace_str(value, replace_dict):
     if not isinstance(value, str):
         return str(value)
