@@ -103,7 +103,7 @@ class GPT2PerfBaselineTestCase(BaseTestCase):
             lines = f.readlines()
             line_filter = "elapsed time per iteration"
             match_number = re.compile(
-                'elapsed time per iteration \(ms\): ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)'
+                r'elapsed time per iteration \(ms\): ([-+]?[0-9]+\.?[0-9]*(?:[Ee][-+]?[0-9]+)?)'
             )
 
             for line in lines:

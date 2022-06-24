@@ -59,4 +59,4 @@ repos:
     rev: 4.0.1
     hooks:
     -   id: flake8
-        args: ['--ignore=E,F401,F403,F405,F541,F811,F821,F841,W,W605', '--select=E9,F,W6']
+        args: ['--ignore=E,F401,F403,F405,F541,F811,F821,F841,W', '--select=E9,F,W6']

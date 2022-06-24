@@ -47,7 +47,7 @@ class ZeroOneAdam(torch.optim.Optimizer):
         cuda_aware (boolean, required): Set True if the underlying MPI implementation
             supports CUDA-Aware communication. (default: False)
         comm_backend_name (string, optional): Set to 'mpi' if needed. (default: 'nccl')
-    .. _Adam\: A Method for Stochastic Optimization:
+    .. _Adam\\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ

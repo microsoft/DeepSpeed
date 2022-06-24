@@ -25,7 +25,7 @@ res = subprocess.run(
      "grep",
      "-Hn",
      "--no-index",
-     "torch\.distributed",
+     r"torch\.distributed",
      *sys.argv[1:]],
     capture_output=True,
 )

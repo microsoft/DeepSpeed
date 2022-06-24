@@ -51,7 +51,7 @@ def find_replace_str(value, replace_dict):
     if not isinstance(value, str):
         return str(value)
 
-    matches = re.findall("\$[A-Za-z0-9_]+", value)
+    matches = re.findall(r"\$[A-Za-z0-9_]+", value)
     for var in matches:
         var_key = var.replace("$", "").lower()
         if var_key == "nvme_path":
