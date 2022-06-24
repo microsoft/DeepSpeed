@@ -1714,22 +1714,19 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         scaled_global_grad_norm = self.scaled_global_norm()
         self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
 
-        for i, group in enumerate(self.bit16_groups):
-            see_memory_usage(f'Before upscale+optim (Group {i})')
-            if dist.get_rank() == 0:
-                logger.info(f'Upscaling group {i}')
-            self.start_timers([OPTIMIZER_GRADIENTS])
-            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
-            # step 1:- upscale
-            if self.cpu_offload:
-                single_grad_partition = self.single_partition_of_fp32_groups[i].grad
-            else:
+        ## Run upscaling and optimizer together on each group to save gpu memory
+        if not self.cpu_offload:
+            for i, group in enumerate(self.bit16_groups):
+                see_memory_usage(f'Before upscale+optim (Group {i})')
+                if dist.get_rank() == 0:
+                    logger.info(f'Upscaling group {i}')
+                self.start_timers([OPTIMIZER_GRADIENTS])
+                partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+                # Step 1:- upscale
                 # free gradients for all the parameters that are not updated by this process
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
-
                 # create a flat gradients for parameters updated by this process
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
-
                 #see_memory_usage(f'{i} - {grad_numel_} | Before Flatenning average gradients', force=True)
                 if partition_id == dist.get_world_size(
                         group=self.real_dp_process_group[i]) - 1:
@@ -1751,41 +1748,51 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.averaged_gradients[i] = None
                 #see_memory_usage('After deleting fp16 gradients', force=True)
 
-            # Step 2:- unscale and clip gradient
-            self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
-            self.stop_timers([OPTIMIZER_GRADIENTS])
-            if dist.get_rank() == 0:
-                logger.info(f'Running optimizer on group {i}')
+                # Step 2:- unscale and clip gradient
+                self.unscale_and_clip_grads([single_grad_partition], scaled_global_grad_norm)
+                self.stop_timers([OPTIMIZER_GRADIENTS])
+                if dist.get_rank() == 0:
+                    logger.info(f'Running optimizer on group {i}')
 
-            # Step 3:- run the optimizer
-            see_memory_usage(f'Before optim (Group {i})', force=True)
-            self.start_timers([OPTIMIZER_STEP])
-            if self.deepspeed_adam_offload:
-                from deepspeed.ops.adam import DeepSpeedCPUAdam
-                if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                    # bit16_param_groups = [[
-                    #     bit16_partitions[partition_id]
-                    # ] for bit16_partitions in self.parallel_partitioned_bit16_groups]
-                    bit16_param_groups = [[
-                        self.parallel_partitioned_bit16_groups[i][partition_id]
-                    ]]
-                    self.optimizer.step(fp16_param_groups=bit16_param_groups)
-                else:
-                    self.optimizer.step()
+                # Step 3:- run the optimizer if no offloading
+                see_memory_usage(f'Before optim (Group {i})', force=True)
+                self.start_timers([OPTIMIZER_STEP])
+                
+                self.optimizer.step()
+                # Step 4:- get rid of the fp32 gradients. Not needed anymore    
+                self.single_partition_of_fp32_groups[i].grad = None
+                del single_grad_partition
+                self.stop_timers([OPTIMIZER_STEP])
+
+                #bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+            see_memory_usage(f'After optim (Group {i})', force=True)
+            for group_no, (bit16_partitions, fp32_partition) in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
+                partition_id = dist.get_rank(group=self.real_dp_process_group[group_no])
+                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+        else:
+            # Step 1:- gradients are already in fp32, just need to unscale and clip
+            single_partition_grad_groups = []
+            for i, group in enumerate(self.bit16_groups):
+                single_grad_partition = self.single_partition_of_fp32_groups[i].grad
+                single_partition_grad_groups.append(single_grad_partition)
+            self.unscale_and_clip_grads(single_partition_grad_groups, scaled_global_grad_norm)
+
+            #Step 2:- Run the optimizer once
+            from deepspeed.ops.adam import DeepSpeedCPUAdam
+            if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
+                # for bit16_partitions in self.parallel_partitioned_bit16_groups:
+                #     if dist.get_rank() == 0:
+                #         logger.info(f'Length of partitions = {len(bit16_partitions)}')
+                # exit(-1)
+                bit16_param_groups = [[
+                   bit16_partitions[dist.get_rank(group=self.real_dp_process_group[i])]
+                ] for i, bit16_partitions in enumerate(self.parallel_partitioned_bit16_groups)]
+                self.optimizer.step(fp16_param_groups=bit16_param_groups)
             else:
                 self.optimizer.step()
-                # get rid of the fp32 gradients. Not needed anymore
-                if not self.cpu_offload:
-                    self.single_partition_of_fp32_groups[i].grad = None
-                    del single_grad_partition
-
-            self.stop_timers([OPTIMIZER_STEP])
-            see_memory_usage(f'After optim (Group {i})', force=True)
-
-        if (not self.deepspeed_adam_offload) or (type(
-                self.optimizer) != DeepSpeedCPUAdam) or (self.dtype != torch.half):
-            for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
-                bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                for group_no, (bit16_partitions, fp32_partition) in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
+                    partition_id = dist.get_rank(group=self.real_dp_process_group[group_no])
+                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
 
         # Stash unscaled gradient norm
         if self.cpu_offload:
