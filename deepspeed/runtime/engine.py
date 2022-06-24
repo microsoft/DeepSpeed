@@ -2439,7 +2439,7 @@ class DeepSpeedEngine(Module):
                               enable_nebula=False):
         mp_rank = 0 if mpu is None else mpu.get_model_parallel_rank()
         filename = ''
-        tag = '' if tag is None else str(tag),
+        tag = '' if tag is None else str(tag)
         if layer_id <= -1:
             # Used to support old checkpoint loading
             filename = f'expert_{expert_id}_mp_rank_{mp_rank:02d}_model_states.pt'
