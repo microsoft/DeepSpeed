@@ -5,9 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import re
 import stat
-import math
 import torch
-import warnings
 import hashlib
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
@@ -17,20 +15,16 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from typing import Callable, Dict, Optional, Union, Iterable
+from typing import Callable, Dict, Union, Iterable
 from deepspeed.checkpoint.utils import get_zero_ckpt_name_for_rank
 
 import deepspeed
 
-from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
+from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-
-from deepspeed.runtime.activation_checkpointing import (
-    checkpointing as activation_checkpointing,
-)
 
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
@@ -72,9 +66,7 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 
 from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
-from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
-from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
@@ -86,7 +78,6 @@ from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumSched
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
 from ..ops.op_builder import UtilsBuilder
-from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE

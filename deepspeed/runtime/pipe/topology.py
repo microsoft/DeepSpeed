@@ -1,9 +1,6 @@
 # Copyright 2019 The Microsoft DeepSpeed Team
 
-from deepspeed.utils import logger
-
 from deepspeed import comm as dist
-import sys
 
 from collections import namedtuple
 from itertools import product as cartesian_product

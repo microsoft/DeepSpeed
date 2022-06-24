@@ -3,8 +3,6 @@ import collections.abc
 import os
 import json
 from deepspeed.runtime.constants import GRADIENT_ACCUMULATION_STEPS, TRAIN_MICRO_BATCH_SIZE_PER_GPU
-import hjson
-import sys
 import itertools
 import copy
 

@@ -38,10 +38,8 @@ from torch.utils import checkpoint
 import deepspeed.comm as dist
 
 from torch.nn import Module
-from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 import torch.nn.init as init
-import time
 
 #from numba import cuda
 

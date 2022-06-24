@@ -48,7 +48,6 @@ class ReduceOp(Enum):
 
 from deepspeed.utils.comms_logging import CommsLogger
 from deepspeed.utils import timer, get_caller_func
-from deepspeed.comm.backend import Backend
 from deepspeed.comm.torch import TorchBackend
 
 from deepspeed import utils

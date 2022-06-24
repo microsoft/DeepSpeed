@@ -1,5 +1,4 @@
 import os
-import enum
 import torch
 import inspect
 from deepspeed.utils import get_caller_func

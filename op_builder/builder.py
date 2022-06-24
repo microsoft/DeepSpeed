@@ -4,7 +4,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import time
-import json
 import importlib
 from pathlib import Path
 import subprocess
@@ -475,7 +474,7 @@ class OpBuilder(ABC):
                 f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
             )
         try:
-            import ninja
+            import ninja  # noqa: F401
         except ImportError:
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."

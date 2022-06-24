@@ -1,19 +1,12 @@
-import argparse
 import numpy as np
 import torch
-import torch.nn.functional as F
 import pytest
-import json
 import random
-import time
 import copy
 from torch import nn
 from .modelingpreln import BertEncoder as BertEncoderPreln
 from .modeling import BertLayerNorm, BertConfig, BertEncoder as BertEncoderPostln
 from deepspeed import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
-import deepspeed
-
-import sys
 
 
 def check_equal(first, second, atol=1e-2, verbose=False):
