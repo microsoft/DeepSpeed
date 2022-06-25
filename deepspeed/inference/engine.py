@@ -8,9 +8,8 @@ import deepspeed.comm as dist
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer
-from ..utils import logger, get_logger_v2_name
+from ..utils import logger
 from ..comm.comm import init_distributed
-from ..runtime.constants import COMMS_LOGGER_INFERENCE
 
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
@@ -399,19 +398,13 @@ class InferenceEngine(Module):
                         input = input.to(torch.cuda.current_device())
                         if not input.is_contiguous():
                             input = input.contiguous()
-                        dist.broadcast(input,
-                                       0,
-                                       v1=COMMS_LOGGER_INFERENCE,
-                                       v2=get_logger_v2_name())
+                        dist.broadcast(input, 0)
                 for k in kwargs:
                     if torch.is_tensor(kwargs[k]):
                         kwargs[k] = kwargs[k].to(torch.cuda.current_device())
                         if not kwargs[k].is_contiguous():
                             kwargs[k] = kwargs[k].contiguous()
-                        dist.broadcast(kwargs[k],
-                                       0,
-                                       v1=COMMS_LOGGER_INFERENCE,
-                                       v2=get_logger_v2_name())
+                        dist.broadcast(kwargs[k], 0)
 
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:

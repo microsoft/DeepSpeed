@@ -13,9 +13,8 @@ Copyright 2021 The Microsoft DeepSpeed Team
 # LICENSE file in the root directory of this source tree.
 
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
-from deepspeed.utils import logger, log_dist, get_logger_v2_name
+from deepspeed.utils import logger, log_dist
 from typing import Callable, Dict, TYPE_CHECKING, Any, Optional, Tuple, Union, cast
-from deepspeed.runtime.constants import COMMS_LOGGER_MOE
 
 import time
 from time import perf_counter

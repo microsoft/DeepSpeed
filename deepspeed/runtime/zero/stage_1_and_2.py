@@ -20,10 +20,10 @@ from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
-from deepspeed.utils import logger, get_logger_v2_name
+from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
-from deepspeed.runtime.constants import PIPE_REPLICATED, COMMS_LOGGER_ZERO
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.checkpoint.constants import (DS_VERSION,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
@@ -378,7 +378,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 print(
                     f"Rank: {rank} partition count {self.partition_count} and sizes{[(p.numel(), self.is_moe_param_group[i] if hasattr(self, 'is_moe_param_group') else False) for i,p in enumerate(self.single_partition_of_fp32_groups)]} "
                 )
-                dist.barrier(v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+                dist.barrier()
         #exit(0)
         self.reduce_bucket_size = int(reduce_bucket_size)
         self.allgather_bucket_size = int(allgather_bucket_size)
@@ -873,19 +873,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if self.gradient_predivide_factor != 1.0:
                 tensor_to_allreduce.mul_(1. / self.gradient_predivide_factor)
 
-            dist.all_reduce(tensor_to_allreduce,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
             if self.gradient_predivide_factor != dp_world_size:
                 tensor_to_allreduce.mul_(self.gradient_predivide_factor / dp_world_size)
         else:
             tensor_to_allreduce.div_(dp_world_size)
-            dist.all_reduce(tensor_to_allreduce,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
         if self.communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             tensor.copy_(tensor_to_allreduce)
@@ -977,9 +971,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=real_dp_process_group[i],
-                                           async_op=True,
-                                           v1=COMMS_LOGGER_ZERO,
-                                           v2=get_logger_v2_name())
+                                           async_op=True)
                 async_handles.append(async_handle)
 
             for handle in async_handles:
@@ -1157,9 +1149,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=self.dp_process_group,
-                        v1=COMMS_LOGGER_ZERO,
-                        v2=get_logger_v2_name())
+                        group=self.dp_process_group)
 
         self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -1332,7 +1322,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         for id in range(dist.get_world_size(group=group)):
             if id == dist.get_rank(group=group):
                 function()
-            dist.barrier(group=group, v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+            dist.barrier(group=group)
 
     def set_none_gradients_to_zero(self, i, partition_id):
         for param_id in self.is_grad_computed[i][partition_id]:
@@ -1361,17 +1351,10 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
         if rank is None:
             #    "All Reducing"
-            dist.all_reduce(tensor_to_allreduce,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
             global_rank = dist.get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce,
-                        global_rank,
-                        group=self.dp_process_group,
-                        v1=COMMS_LOGGER_ZERO,
-                        v2=get_logger_v2_name())
+            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
@@ -1511,11 +1494,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.model_parallel_group is None:
             pass
         else:
-            dist.all_reduce(tensor=tensor,
-                            op=op,
-                            group=self.model_parallel_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
         """Clips gradient norm of an iterable of parameters.
@@ -1540,9 +1519,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
@@ -1562,9 +1539,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -1801,8 +1776,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             partitioned_param_groups=self.parallel_partitioned_bit16_groups,
             dp_process_group=self.real_dp_process_group,
             start_alignment_factor=self.nccl_start_alignment_factor,
-            allgather_bucket_size=self.allgather_bucket_size,
-            v1=COMMS_LOGGER_ZERO)
+            allgather_bucket_size=self.allgather_bucket_size)
 
         self.stop_timers([OPTIMIZER_ALLGATHER])
 
@@ -1823,10 +1797,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 scaled_norm_tensor = torch.tensor(scaled_norm,
                                                   device='cuda',
                                                   dtype=torch.float)
-                dist.all_reduce(scaled_norm_tensor,
-                                group=self.real_dp_process_group[i],
-                                v1=COMMS_LOGGER_ZERO,
-                                v2=get_logger_v2_name())
+                dist.all_reduce(scaled_norm_tensor, group=self.real_dp_process_group[i])
                 norm_groups[i] = scaled_norm_tensor.item()
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm):
@@ -1873,9 +1844,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             Since expert parallel process are a subset of data parallel process'''
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
         else:
             params = []

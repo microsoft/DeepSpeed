@@ -451,24 +451,3 @@ DATALOADER_DROP_LAST_DEFAULT = False
 # PIPELINE PARALLELISM
 #########################################
 PIPE_REPLICATED = 'ds_pipe_replicated'
-
-#########################################
-# Comms Logger
-#########################################
-# Communication logging feature. Provide verbosity strings for the comms logger to use
-
-COMMS_LOGGER_ZERO = 'zero'
-COMMS_LOGGER_BF16_OPTIM = 'bf16_optim'
-COMMS_LOGGER_PIPE = 'pipe'
-COMMS_LOGGER_SWAP_TENSOR = 'swap_tensor'
-COMMS_LOGGER_FP16 = 'fp16'
-COMMS_LOGGER_UTILS = 'utils'
-COMMS_LOGGER_ENGINE = 'engine'
-COMMS_LOGGER_UNFUSED_OPTIM = 'unfused_optim'
-COMMS_LOGGER_FUSED_OPTIM = 'fused_optim'
-COMMS_LOGGER_ACTIVATION_CP = 'activation_checkpoint'
-COMMS_LOGGER_INFERENCE = 'inference'
-COMMS_LOGGER_COALESCED = 'coalesced_colls'
-COMMS_LOGGER_SA = 'sparse_attention'
-COMMS_LOGGER_MOE = 'moe'
-COMMS_LOGGER_INJECT = 'inject'

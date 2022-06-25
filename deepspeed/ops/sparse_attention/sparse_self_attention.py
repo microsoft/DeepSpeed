@@ -8,8 +8,6 @@ import torch
 from torch import distributed as dist
 from collections import namedtuple
 from deepspeed.ops.sparse_attention import SparsityConfig
-from deepspeed.utils import get_logger_v2_name
-from deepspeed.runtime.constants import COMMS_LOGGER_SA
 
 
 class SparseSelfAttention(nn.Module):
@@ -52,10 +50,7 @@ class SparseSelfAttention(nn.Module):
     def get_layout(self, L):
         # if layout is never synchronized across GPUs, broadcast the layout from global rank 0
         if self._need_layout_synchronization and dist.is_initialized():
-            dist.broadcast(self.master_layout,
-                           src=0,
-                           v1=COMMS_LOGGER_SA,
-                           v2=get_logger_v2_name())
+            dist.broadcast(self.master_layout, src=0)
             self._need_layout_synchronization = False
 
         if (L % self.sparsity_config.block != 0):

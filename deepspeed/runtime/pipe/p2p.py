@@ -8,9 +8,6 @@ import typing
 import torch
 import deepspeed.comm as dist
 
-from deepspeed.utils import get_logger_v2_name
-from deepspeed.runtime.constants import COMMS_LOGGER_PIPE
-
 # To query whether we have send/recv support
 from packaging.version import Version
 from deepspeed.git_version_info import torch_info
@@ -57,24 +54,16 @@ def send(tensor, dest_stage, async_op=False):
     dest_rank = _grid.stage_to_global(stage_id=dest_stage)
     if async_op:
         global _async
-        op = dist.isend(tensor, dest_rank, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+        op = dist.isend(tensor, dest_rank)
         _async.append(op)
     else:
 
         if can_send_recv():
-            return dist.send(tensor,
-                             dest_rank,
-                             v1=COMMS_LOGGER_PIPE,
-                             v2=get_logger_v2_name())
+            return dist.send(tensor, dest_rank)
         else:
             group = _get_send_recv_group(src_stage, dest_stage)
             src_rank = _grid.stage_to_global(stage_id=src_stage)
-            return dist.broadcast(tensor,
-                                  src_rank,
-                                  group=group,
-                                  async_op=async_op,
-                                  v1=COMMS_LOGGER_PIPE,
-                                  v2=get_logger_v2_name())
+            return dist.broadcast(tensor, src_rank, group=group, async_op=async_op)
 
 
 def recv(tensor, src_stage, async_op=False):
@@ -87,22 +76,14 @@ def recv(tensor, src_stage, async_op=False):
 
     if async_op:
         global _async
-        op = dist.irecv(tensor, src_rank, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+        op = dist.irecv(tensor, src_rank)
         _async.append(op)
     else:
         if can_send_recv():
-            return dist.recv(tensor,
-                             src_rank,
-                             v1=COMMS_LOGGER_PIPE,
-                             v2=get_logger_v2_name())
+            return dist.recv(tensor, src_rank)
         else:
             group = _get_send_recv_group(src_stage, dest_stage)
-            return dist.broadcast(tensor,
-                                  src_rank,
-                                  group=group,
-                                  async_op=async_op,
-                                  v1=COMMS_LOGGER_PIPE,
-                                  v2=get_logger_v2_name())
+            return dist.broadcast(tensor, src_rank, group=group, async_op=async_op)
 
 
 def wait():
@@ -133,8 +114,8 @@ def send_obj(msg: typing.Any, dest: int):
 
     # Send meta and message
     length_tensor = torch.tensor([len(msg)], dtype=torch.long).cuda()
-    dist.send(length_tensor, dst=dest, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
-    dist.send(msg, dst=dest, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+    dist.send(length_tensor, dst=dest)
+    dist.send(msg, dst=dest)
 
 
 def recv_obj(sender: int) -> typing.Any:
@@ -148,11 +129,11 @@ def recv_obj(sender: int) -> typing.Any:
     """
     # Get message meta
     length = torch.tensor([0], dtype=torch.long).cuda()
-    dist.recv(length, src=sender, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+    dist.recv(length, src=sender)
 
     # Receive and deserialize
     msg = torch.empty(length.item(), dtype=torch.uint8).cuda()
-    dist.recv(msg, src=sender, v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+    dist.recv(msg, src=sender)
 
     msg = pickle.loads(msg.cpu().numpy().tobytes())
 

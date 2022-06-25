@@ -14,7 +14,6 @@ from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_n
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
-from deepspeed.runtime.constants import COMMS_LOGGER_UNFUSED_OPTIM
 import deepspeed.comm as dist
 
 
@@ -148,20 +147,17 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             if len(grads_for_norm) > 0:
                 norm_group_value = get_weight_norm(
                     _flatten_dense_tensors(grads_for_norm),
-                    mpu=self.mpu,
-                    v1=COMMS_LOGGER_UNFUSED_OPTIM)
+                    mpu=self.mpu)
             norm_groups.append(norm_group_value)
             expert_norm_group_value = 0.0
             if len(expert_grads_for_norm) > 0:
                 expert_norm_group_value = get_weight_norm(
                     _flatten_dense_tensors(expert_grads_for_norm),
-                    mpu=self.mpu,
-                    v1=COMMS_LOGGER_UNFUSED_OPTIM)
+                    mpu=self.mpu)
             expert_norm_groups.append(expert_norm_group_value)
 
-        self.overflow = self.overflow_checker.check_using_norm(
-            norm_groups + expert_norm_groups,
-            v1=COMMS_LOGGER_UNFUSED_OPTIM)
+        self.overflow = self.overflow_checker.check_using_norm(norm_groups +
+                                                               expert_norm_groups)
         prev_scale = self.cur_scale
 
         self._update_scale(self.overflow)
@@ -233,9 +229,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             grads_for_norm, _ = split_params_grads_into_shared_and_expert_params(group)
             norm_group_value = 0.0
             if len(grads_for_norm) > 0:
-                norm_group_value = get_weight_norm(grads_for_norm,
-                                                   mpu=self.mpu,
-                                                   v1=COMMS_LOGGER_UNFUSED_OPTIM)
+                norm_group_value = get_weight_norm(grads_for_norm, mpu=self.mpu)
             norm_groups.append(norm_group_value)
 
             # copying gradients to fp32 to wor  k with fp32 parameters

@@ -21,7 +21,7 @@ from torch.nn import Module
 from torch.nn.parameter import Parameter
 
 from deepspeed.runtime import ZeROOptimizer
-from deepspeed.utils import logger, get_logger_v2_name
+from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
 from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter, DummyOptim
@@ -36,7 +36,6 @@ from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedP
 from deepspeed.runtime.swap_tensor.partitioned_optimizer_swapper import PartitionedOptimizerSwapper
 from deepspeed.runtime.swap_tensor.pipelined_optimizer_swapper import PipelinedOptimizerSwapper
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUPS, PARTITION_COUNT, ZERO_STAGE
-from deepspeed.runtime.constants import COMMS_LOGGER_ZERO
 
 # Toggle this to true to enable correctness test
 # with gradient partitioning and without
@@ -553,7 +552,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         see_memory_usage("Before creating fp32 partitions", force=False)
         self._create_fp32_partitions()
         see_memory_usage("After creating fp32 partitions", force=False)
-        dist.barrier(v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+        dist.barrier()
 
         # To support pipelined optimizer swapping
         self._create_next_swappable_fp32_groups()
@@ -562,7 +561,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         self.initialize_optimizer_states()
         see_memory_usage("After initializing optimizer states", force=False)
-        dist.barrier(v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+        dist.barrier()
 
         if dist.get_rank() == 0:
             logger.info(f"optimizer state initialized")
@@ -797,7 +796,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                 dtype=self.dtype))
 
     def _create_fp16_partitions_with_defragmentation(self):
-        dist.barrier(v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+        dist.barrier()
         param_groups: List[List[Parameter]] = tuple(
             self._create_fp16_sub_groups(param_group["params"])
             for param_group in self.optimizer.param_groups)
@@ -1683,9 +1682,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         dist.all_reduce(total_norm_cuda,
                         op=dist.ReduceOp.SUM,
-                        group=self.dp_process_group,
-                        v1=COMMS_LOGGER_ZERO,
-                        v2=get_logger_v2_name())
+                        group=self.dp_process_group)
 
         self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -1836,7 +1833,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         for id in range(dist.get_world_size(group=group)):
             if id == dist.get_rank(group=group):
                 function()
-            dist.barrier(group=group, v1=COMMS_LOGGER_ZERO, v2=get_logger_v2_name())
+            dist.barrier(group=group)
 
     def set_none_gradients_to_zero(self, i, partition_id):
         for param_id in self.is_grad_computed[i][partition_id]:
@@ -1866,17 +1863,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if rank is None:
             #    "All Reducing"
-            dist.all_reduce(tensor_to_allreduce,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
             global_rank = dist.get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce,
-                        global_rank,
-                        group=self.dp_process_group,
-                        v1=COMMS_LOGGER_ZERO,
-                        v2=get_logger_v2_name())
+            dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
             if rank is None or rank == dist.get_rank(group=self.dp_process_group):
@@ -1991,11 +1981,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.model_parallel_group is None:
             pass
         else:
-            dist.all_reduce(tensor=tensor,
-                            op=op,
-                            group=self.model_parallel_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     @instrument_w_nvtx
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
@@ -2021,9 +2007,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
@@ -2041,9 +2025,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.SUM,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
             self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
@@ -2487,9 +2469,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             overflow_gpu = torch.cuda.ByteTensor([overflow])
             dist.all_reduce(overflow_gpu,
                             op=dist.ReduceOp.MAX,
-                            group=self.dp_process_group,
-                            v1=COMMS_LOGGER_ZERO,
-                            v2=get_logger_v2_name())
+                            group=self.dp_process_group)
 
         else:
             params = []

@@ -18,9 +18,6 @@ from .transformer_inference import DeepSpeedSelfAttention, DeepSpeedInferenceCon
 from ....moe.sharded_moe import TopKGate
 import deepspeed.comm as dist
 
-from deepspeed.utils import get_logger_v2_name
-from deepspeed.runtime.constants import COMMS_LOGGER_INFERENCE
-
 import torch.nn.functional as F
 
 
@@ -159,11 +156,7 @@ class DeepSpeedMLPFunction(Function):
                                    config.pre_layer_norm,
                                    async_op)
         if mp_group is not None and dist.get_world_size(group=mp_group) > 1:
-            dist.all_reduce(output,
-                            group=mp_group,
-                            async_op=async_op,
-                            v1=COMMS_LOGGER_INFERENCE,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(output, group=mp_group, async_op=async_op)
 
         return output + output_b
 
@@ -360,9 +353,7 @@ class DeepSpeedMoEInference(nn.Module):
             dispatched_input = torch.empty_like(dispatched_attention)
             dist.all_to_all_single(dispatched_input,
                                    dispatched_attention,
-                                   group=self.ep_group,
-                                   v1=COMMS_LOGGER_INFERENCE,
-                                   v2=get_logger_v2_name())
+                                   group=self.ep_group)
             return dispatched_input
         else:
             return dispatched_attention
@@ -436,9 +427,7 @@ class DeepSpeedMoEInference(nn.Module):
                 tensor_list[dist.get_rank(group=self.expert_mp_group)] = attention_output
                 dist.all_gather(tensor_list,
                                 attention_output,
-                                group=self.expert_mp_group,
-                                v1=COMMS_LOGGER_INFERENCE,
-                                v2=get_logger_v2_name())
+                                group=self.expert_mp_group)
                 attention_output = torch.cat(tensor_list).contiguous()
 
             ############## MoE Gating + Experts ###############

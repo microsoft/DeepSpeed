@@ -55,7 +55,7 @@ class ReduceOp(Enum):
 #from deepspeed.utils import *
 #from deepspeed.utils import logger, log_dist
 from deepspeed.utils.comms_logging import CommsLogger
-from deepspeed.utils import timer
+from deepspeed.utils import timer, get_logger_v2_name
 from deepspeed.comm.backend import Backend
 from deepspeed.comm.torch import TorchBackend
 
@@ -117,7 +117,6 @@ def timed_op(func):
 
     def log_wrapper(*args, **kwargs):
         # Add enabled flag so that overhead to each comm op is two if conditions at most
-        #if COMMS_LOGGER_ENABLED:
         if comms_logger.enabled:
             if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                     'log_name' in kwargs
@@ -126,7 +125,7 @@ def timed_op(func):
                 func_args = get_default_args(func)
                 func_args.update(kwargs)
                 msg_size = get_msg_size_from_args(func, *args, **kwargs)
-                log_name = get_debug_log_name(func_args, comms_logger.debug_level)
+                log_name = get_debug_log_name(func_args, comms_logger.debug)
                 timers(log_name).start()
                 #timers(func_args['log_name']).start()
         # Return the op, then stop the op's timer
@@ -137,7 +136,7 @@ def timed_op(func):
                 if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                         'log_name' in kwargs
                         and kwargs['log_name'] in comms_logger.prof_ops):
-                    log_name = get_debug_log_name(func_args, comms_logger.debug_level)
+                    log_name = get_debug_log_name(func_args, comms_logger.debug)
                     #timers(func_args['log_name']).stop()
                     # need temp var since 'elapsed' resets events
                     #time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
@@ -250,8 +249,7 @@ def broadcast(tensor,
               async_op=False,
               prof=False,
               log_name='broadcast',
-              v1=None,
-              v2=None):
+              debug=get_logger_v2_name()):
     global cdb
     return cdb.broadcast(tensor=tensor, src=src, group=group, async_op=async_op)
 
@@ -263,8 +261,7 @@ def all_gather(tensor_list,
                async_op=False,
                prof=False,
                log_name='all_gather',
-               v1=None,
-               v2=None):
+               debug=get_logger_v2_name()):
     global cdb
     return cdb.all_gather(tensor_list=tensor_list,
                           tensor=tensor,
@@ -284,8 +281,7 @@ def reduce_scatter_fn(output_tensor,
                       group=None,
                       async_op=False,
                       prof=False,
-                      v1=None,
-                      v2=None):
+                      debug=get_logger_v2_name()):
     global cdb
     global has_warned_reduce_scatter
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
@@ -295,8 +291,7 @@ def reduce_scatter_fn(output_tensor,
                                    group=group,
                                    async_op=async_op,
                                    prof=prof,
-                                   v1=v1,
-                                   v2=v2)
+                                   debug=debug)
     else:
         if not has_warned_reduce_scatter:
             utils.logger.warning(
@@ -310,8 +305,7 @@ def reduce_scatter_fn(output_tensor,
                               group=group,
                               async_op=async_op,
                               prof=prof,
-                              v1=v1,
-                              v2=v2)
+                              debug=debug)
 
 
 @timed_op
@@ -321,8 +315,7 @@ def reduce_scatter_base(output_tensor,
                         async_op=False,
                         prof=False,
                         log_name='reduce_scatter_base',
-                        v1=None,
-                        v2=None):
+                        debug=get_logger_v2_name()):
     global cdb
     return cdb.reduce_scatter_base(output_tensor=output_tensor,
                                    input_tensor=tensor,
@@ -337,8 +330,7 @@ def all_gather_base(output_tensor,
                     async_op=False,
                     prof=False,
                     log_name='all_gather_base',
-                    v1=None,
-                    v2=None):
+                    debug=get_logger_v2_name()):
     global cdb
     return cdb.all_gather_base(output_tensor=output_tensor,
                                input_tensor=tensor,
@@ -357,8 +349,7 @@ def allgather_fn(output_tensor,
                  input_tensor,
                  group=None,
                  async_op=False,
-                 v1=None,
-                 v2=None):
+                 debug=get_logger_v2_name()):
     global cdb
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
@@ -367,8 +358,7 @@ def allgather_fn(output_tensor,
                                input_tensor,
                                group=group,
                                async_op=True,
-                               v1=v1,
-                               v2=v2)
+                               debug=debug)
     else:
         if not has_warned_all_gather:
             utils.logger.warning(
@@ -381,8 +371,7 @@ def allgather_fn(output_tensor,
                           input_tensor,
                           group=group,
                           async_op=True,
-                          v1=v1,
-                          v2=v2)
+                          debug=debug)
 
 
 @timed_op
@@ -394,8 +383,7 @@ def all_to_all_single(output,
                       async_op=False,
                       prof=False,
                       log_name='all_to_all_single',
-                      v1=None,
-                      v2=None):
+                      debug=get_logger_v2_name()):
     global cdb
     return cdb.all_to_all_single(output=output,
                                  input=tensor,
@@ -406,7 +394,13 @@ def all_to_all_single(output,
 
 
 @timed_op
-def send(tensor, dst, group=None, tag=0, prof=False, log_name='send', v1=None, v2=None):
+def send(tensor,
+         dst,
+         group=None,
+         tag=0,
+         prof=False,
+         log_name='send',
+         debug=get_logger_v2_name()):
     global cdb
     return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
 
@@ -418,8 +412,7 @@ def recv(tensor,
          tag=0,
          prof=False,
          log_name='recv',
-         v1=None,
-         v2=None):
+         debug=get_logger_v2_name()):
     global cdb
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
@@ -431,8 +424,7 @@ def isend(tensor,
           tag=0,
           prof=False,
           log_name='isend',
-          v1=None,
-          v2=None):
+          debug=get_logger_v2_name()):
     global cdb
     return cdb.send(tensor=tensor, dst=dst, group=group, tag=tag)
 
@@ -444,8 +436,7 @@ def irecv(tensor,
           tag=0,
           prof=False,
           log_name='irecv',
-          v1=None,
-          v2=None):
+          debug=get_logger_v2_name()):
     global cdb
     return cdb.recv(tensor=tensor, src=src, group=group, tag=tag)
 
@@ -458,8 +449,7 @@ def gather(tensor,
            async_op=False,
            prof=False,
            log_name='gather',
-           v1=None,
-           v2=None):
+           debug=get_logger_v2_name()):
     global cdb
     return cdb.gather(tensor=tensor,
                       gather_list=gather_list,
@@ -476,8 +466,7 @@ def scatter(tensor,
             async_op=False,
             prof=False,
             log_name='scatter',
-            v1=None,
-            v2=None):
+            debug=get_logger_v2_name()):
     global cdb
     return cdb.scatter(tensor=tensor,
                        scatter_list=scatter_list,
@@ -487,7 +476,7 @@ def scatter(tensor,
 
 
 @timed_op
-def barrier(group=None, prof=False, log_name='barrier', v1=None, v2=None):
+def barrier(group=None, prof=False, log_name='barrier', debug=get_logger_v2_name()):
     global cdb
     return cdb.barrier()
 
@@ -508,8 +497,7 @@ def reduce(tensor,
            async_op=False,
            prof=False,
            log_name='reduce',
-           v1=None,
-           v2=None):
+           debug=get_logger_v2_name()):
     global cdb
     return cdb.reduce(tensor=tensor, dst=dst, op=op, group=group, async_op=async_op)
 
@@ -522,8 +510,7 @@ def reduce_scatter(output,
                    async_op=False,
                    prof=False,
                    log_name='reduce_scatter',
-                   v1=None,
-                   v2=None):
+                   debug=get_logger_v2_name()):
     global cdb
     return cdb.reduce_scatter(output=output,
                               input_list=input_list,
@@ -539,8 +526,7 @@ def all_reduce(tensor,
                async_op=False,
                prof=False,
                log_name='all_reduce',
-               v1=None,
-               v2=None):
+               debug=get_logger_v2_name()):
     #if profile_comm:
     # context of the timers?
     # timers.start()

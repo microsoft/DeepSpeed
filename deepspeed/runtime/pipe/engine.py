@@ -14,9 +14,8 @@ import torch.nn as nn
 import torch.optim as optim
 import deepspeed.comm as dist
 
-from deepspeed.utils import logger, get_logger_v2_name
+from deepspeed.utils import logger
 from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
-from deepspeed.runtime.constants import COMMS_LOGGER_PIPE
 
 from deepspeed.inference.engine import InferenceEngine
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
@@ -146,10 +145,7 @@ class PipelineEngine(DeepSpeedEngine):
             unique_params -= tied_params
         params_tensor = torch.LongTensor(data=[num_params,
                                                unique_params]).to(self.device)
-        dist.all_reduce(params_tensor,
-                        group=self.grid.get_model_parallel_group(),
-                        v1=COMMS_LOGGER_PIPE,
-                        v2=get_logger_v2_name())
+        dist.all_reduce(params_tensor, group=self.grid.get_model_parallel_group())
         params_tensor = params_tensor.tolist()
         total_params = params_tensor[0]
         unique_params = params_tensor[1]
@@ -256,10 +252,7 @@ class PipelineEngine(DeepSpeedEngine):
         weight_group_list = self.module.get_tied_weights_and_groups()
         for weight, group in weight_group_list:
             grad = weight._hp_grad if self.bfloat16_enabled() else weight.grad
-            dist.all_reduce(grad,
-                            group=group,
-                            v1=COMMS_LOGGER_PIPE,
-                            v2=get_logger_v2_name())
+            dist.all_reduce(grad, group=group)
 
     def _exec_reduce_grads(self):
         self._force_grad_boundary = True
@@ -454,7 +447,7 @@ class PipelineEngine(DeepSpeedEngine):
                                            stage_id=self.stage_id)
 
         # prevent dead-lock with multiple evals sequence
-        dist.barrier(v1=COMMS_LOGGER_PIPE, v2=get_logger_v2_name())
+        dist.barrier()
 
         with torch.no_grad():
             self._exec_schedule(sched)
@@ -527,17 +520,12 @@ class PipelineEngine(DeepSpeedEngine):
             # Average over DP groups
             if reduce_dp and self.is_data_parallel:
                 if torch.is_tensor(reduced):
-                    dist.all_reduce(reduced,
-                                    group=self.mpu.get_data_parallel_group(),
-                                    v1=COMMS_LOGGER_PIPE,
-                                    v2=get_logger_v2_name())
+                    dist.all_reduce(reduced, group=self.mpu.get_data_parallel_group())
                     reduced /= self.dp_world_size
                 else:
                     for idx in range(len(reduced)):
                         dist.all_reduce(reduced[idx],
-                                        group=self.mpu.get_data_parallel_group(),
-                                        v1=COMMS_LOGGER_PIPE,
-                                        v2=get_logger_v2_name())
+                                        group=self.mpu.get_data_parallel_group())
                         reduced[idx] /= self.dp_world_size
 
             return reduced
@@ -557,9 +545,7 @@ class PipelineEngine(DeepSpeedEngine):
 
         dist.broadcast(tensor=result,
                        src=src_rank,
-                       group=self.mpu.get_pipe_parallel_group(),
-                       v1=COMMS_LOGGER_PIPE,
-                       v2=get_logger_v2_name())
+                       group=self.mpu.get_pipe_parallel_group())
 
         return result
 
@@ -573,19 +559,14 @@ class PipelineEngine(DeepSpeedEngine):
             agg_loss = self.dp_group_loss.clone().detach()
             #print(f'RANK={self.global_rank} bcast SENDER src={self.global_rank} group={self.grid.pp_group}', flush=True)
             if self.is_data_parallel:
-                dist.all_reduce(agg_loss,
-                                group=self.mpu.get_data_parallel_group(),
-                                v1=COMMS_LOGGER_PIPE,
-                                v2=get_logger_v2_name())
+                dist.all_reduce(agg_loss, group=self.mpu.get_data_parallel_group())
                 agg_loss /= self.dp_world_size
 
             assert self.global_rank in self.grid.pp_group
             losses = torch.Tensor([self.dp_group_loss, agg_loss]).to(self.device)
             dist.broadcast(tensor=losses,
                            src=self.global_rank,
-                           group=self.mpu.get_pipe_parallel_group(),
-                           v1=COMMS_LOGGER_PIPE,
-                           v2=get_logger_v2_name())
+                           group=self.mpu.get_pipe_parallel_group())
 
         else:
             # Get loss from last stage
@@ -594,9 +575,7 @@ class PipelineEngine(DeepSpeedEngine):
             losses = torch.Tensor([0., 0.]).to(self.device)
             dist.broadcast(tensor=losses,
                            src=src_rank,
-                           group=self.grid.get_pipe_parallel_group(),
-                           v1=COMMS_LOGGER_PIPE,
-                           v2=get_logger_v2_name())
+                           group=self.grid.get_pipe_parallel_group())
             self.dp_group_loss = losses[0].clone().detach()
             agg_loss = losses[1].clone().detach()
 

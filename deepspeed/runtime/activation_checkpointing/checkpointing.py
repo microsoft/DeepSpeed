@@ -23,11 +23,9 @@ from torch import _C
 from torch.cuda import _lazy_call, device as device_ctx_manager
 
 from deepspeed.runtime.config import DeepSpeedConfig
-from deepspeed.utils import logger, get_logger_v2_name
+from deepspeed.utils import logger
 from deepspeed.runtime.utils import copy_to_device, move_to_device, see_memory_usage, bwc_tensor_model_parallel_rank
 from deepspeed.utils.timer import SynchronizedWallClockTimer as Timers
-
-from deepspeed.runtime.constants import COMMS_LOGGER_ACTIVATION_CP
 
 # DeepSpeed Checkpointing Enabled or Disabled
 deepspeed_checkpointing_enabled = False
@@ -287,11 +285,7 @@ def gather_partitioned_activations(tensors, device=None):
                 part_i.copy_(item)
             partitions.append(part_i)
         if mp_group is not None:
-            dist.all_gather(partitions,
-                            partitions[mp_rank],
-                            group=mp_group,
-                            v1=COMMS_LOGGER_ACTIVATION_CP,
-                            v2=get_logger_v2_name())
+            dist.all_gather(partitions, partitions[mp_rank], group=mp_group)
         input_tensor = flat_tensor.view(list(size.numpy()))
         item.data = input_tensor.data
 
