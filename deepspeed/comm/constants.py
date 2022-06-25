@@ -33,7 +33,7 @@ COMMS_LOGGER_VERBOSE_DEFAULT = False
 
 # comms logger profile all ops signal
 COMMS_LOGGER_PROF_ALL = "prof_all"
-COMMS_LOGGER_PROF_ALL_DEFAULT = False
+COMMS_LOGGER_PROF_ALL_DEFAULT = True
 
 # comms logger show all ops signal
 COMMS_LOGGER_DEBUG = "debug"

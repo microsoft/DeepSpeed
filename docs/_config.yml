@@ -49,6 +49,7 @@ collections:
       - mixture-of-experts-nlg.md
       - mixture-of-experts-inference.md
       - monitor.md
+      - comms-logging.md
       - one-cycle.md
       - onebit-adam.md
       - zero-one-adam.md

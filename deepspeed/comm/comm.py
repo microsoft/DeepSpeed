@@ -127,7 +127,6 @@ def timed_op(func):
                 msg_size = get_msg_size_from_args(func, *args, **kwargs)
                 log_name = get_debug_log_name(func_args, comms_logger.debug)
                 timers(log_name).start()
-                #timers(func_args['log_name']).start()
         # Return the op, then stop the op's timer
         try:
             return func(*args, **kwargs)
@@ -137,34 +136,12 @@ def timed_op(func):
                         'log_name' in kwargs
                         and kwargs['log_name'] in comms_logger.prof_ops):
                     log_name = get_debug_log_name(func_args, comms_logger.debug)
-                    #timers(func_args['log_name']).stop()
-                    # need temp var since 'elapsed' resets events
-                    #time_elapsed = timers(func_args['log_name']).elapsed(reset=False)
-                    #comms_logger.append(func_args['log_name'], time_elapsed, msg_size)
                     timers(log_name).stop()
                     # need temp var since 'elapsed' resets events
                     time_elapsed = timers(log_name).elapsed(reset=False)
                     comms_logger.append(log_name, time_elapsed, msg_size)
 
     return log_wrapper
-
-
-def log_summary(coll_names, ranks=None):
-    global cdb
-    if coll_names == ['all']:
-        coll_names = timers.get_timers()
-    timers.log(names=coll_names, reset=False)
-    # Populate records for averaging and remove empty ones
-    #for name in coll_names:
-    #    print(timers(name).elapsed(reset=False))
-    # Calculate average dict
-    coll_means = timers.get_mean(coll_names, reset=False)
-    # Print averages
-    for coll, mean in coll_means.items():
-        string = f"rank={cdb.get_rank()} avg time (ms)" + " | {}: {:.2f}".format(
-            coll,
-            mean / 1000.0)
-        log_dist(string, ranks=ranks or [0])
 
 
 # For compatibility with torch distributed's init_process_group, we shall retain the signature from PyTorch code.
@@ -481,7 +458,7 @@ def barrier(group=None, prof=False, log_name='barrier', debug=get_caller_func())
     return cdb.barrier()
 
 
-def log_summary_new():
+def log_summary():
     global cdb
     barrier(log_name='log_summary_barrier')
     if cdb.get_rank() == 0:

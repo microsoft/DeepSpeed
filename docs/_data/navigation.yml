@@ -63,6 +63,8 @@ lnav:
         url: /docs/config-json/#sparse-attention
       - title: 'Monitoring'
         url: /docs/config-json/#monitoring-module-tensorboard-wandb-csv
+      - title: 'Communication Logging'
+        url: /docs/config-json/#communication-logging
   - title: 'Tutorials'
     url: /tutorials/
     children:
@@ -102,6 +104,8 @@ lnav:
         url: /tutorials/MoQ-tutorial/
       - title: 'Monitoring'
         url: /tutorials/monitor
+      - title: 'Communication Logging'
+        url: /tutorials/comms-logging
       - title: 'One-Cycle Schedule'
         url: /tutorials/one-cycle/
       - title: 'One-Bit Adam'
