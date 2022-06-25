@@ -4,9 +4,9 @@ import os
 import math
 
 
-def get_logger_debug_name():
+def get_caller_func(frame=3):
     import inspect, sys
-    return sys._getframe(3).f_code.co_name
+    return sys._getframe(frame).f_code.co_name
 
 
 # Helper function to pretty-print message sizes
