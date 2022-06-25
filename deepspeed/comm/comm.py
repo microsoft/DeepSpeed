@@ -89,12 +89,14 @@ def _configure_using_config_file(config):
         comms_logger.configure(config)
 
 
-def configure(deepspeed_config=None,
-              enabled=None,
-              prof_all=None,
-              prof_ops=None,
-              verbose=None,
-              debug=None,):
+def configure(
+    deepspeed_config=None,
+    enabled=None,
+    prof_all=None,
+    prof_ops=None,
+    verbose=None,
+    debug=None,
+):
 
     if deepspeed_config is not None:
         _configure_using_config_file(deepspeed_config.comms_config)
@@ -110,7 +112,7 @@ def configure(deepspeed_config=None,
 
     if verbose is not None:
         comms_logger.verbose = verbose
-        
+
     if debug is not None:
         comms_logger.debug = debug
 
