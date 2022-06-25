@@ -1048,7 +1048,7 @@ Example of <i>**csv_monitor**</i> configuration:
 ### Communication Logging
 
 
-DeepSpeed provides a flexible communication logging tool which can automatically detect and record communication operations launched via `deepspeed.comm`. Once the logs are populated, they can be summarized with `deepspeed.comm.log_summary()`. For more detail and example usage, see the [tutorial](/tutorials/comms-logging/))
+DeepSpeed provides a flexible communication logging tool which can automatically detect and record communication operations launched via `deepspeed.comm`. Once the logs are populated, they can be summarized with `deepspeed.comm.log_summary()`. For more detail and example usage, see the [tutorial](/tutorials/comms-logging/)
 
 
 <i>**comms_logger**</i>: [dictionary]
@@ -1062,14 +1062,25 @@ DeepSpeed provides a flexible communication logging tool which can automatically
 | prof_ops  | A list of communication operations to log (only the specified ops will be profiled). | `[]` |
 
 
-Example of <i>**comms_logger**</i> configuration:
+Example of recommended <i>**comms_logger**</i> configuration:
 
 ```json
 "comms_logger": {
   "enabled": true,
   "verbose": false,
   "prof_all": true,
+  "debug": false
+}
+```
+
+Example of <i>**comms_logger**</i> configuration for logging specific operations only:
+
+```json
+"comms_logger": {
+  "enabled": true,
+  "verbose": false,
+  "prof_all": false,
   "debug": false,
-  "prof_ops": ["all_reduce", "custom_all_reduce_name"]
+  "prof_ops": ["all_reduce", "all_gather"]
 }
 ```

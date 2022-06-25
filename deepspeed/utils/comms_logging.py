@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import math
+from deepspeed.utils import log_dist
 
 
 def get_caller_func(frame=3):

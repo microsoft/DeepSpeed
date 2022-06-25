@@ -151,5 +151,7 @@ def get_msg_size_from_args(func, *args, **kwargs):
 
 
 def get_debug_log_name(func_args, debug):
-    if debug and 'log_name' in func_args:
+    if debug:
         return func_args['log_name'] + ' | [Caller Func: ' + get_caller_func() + ']'
+    else:
+        return func_args['log_name']
