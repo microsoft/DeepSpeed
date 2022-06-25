@@ -3,6 +3,8 @@ import sys
 import os
 import math
 
+from deepspeed import comm as dist
+
 log_levels = {
     "debug": logging.DEBUG,
     "info": logging.INFO,

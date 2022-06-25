@@ -25,9 +25,12 @@ from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
+from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
+
 from deepspeed.runtime.activation_checkpointing import (
     checkpointing as activation_checkpointing,
 )
+
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
 from deepspeed.runtime.bf16_optimizer import BF16_Optimizer
@@ -45,13 +48,14 @@ from deepspeed.runtime.zero.constants import \
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
-import deepspeed.runtime.lr_schedules as lr_schedules
-import deepspeed.utils.groups as groups
+from deepspeed.runtime import lr_schedules
+from deepspeed.utils import groups
 from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
 from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
+from deepspeed.monitor.monitor import MonitorMaster
 from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
@@ -218,7 +222,7 @@ class DeepSpeedEngine(Module):
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         global dist
-        import deepspeed.comm as dist
+        from deepspeed import comm as dist
         self._is_gradient_accumulation_boundary = None
 
         # for debug purposes - can then debug print: debug_get_module_name(module)
@@ -260,10 +264,11 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
+
         dist.configure(self._config)
 
-        if self.tensorboard_enabled() and self.global_rank == 0:
-            self.summary_writer = self.get_summary_writer()
+        self.monitor = MonitorMaster(self._config.monitor_config)
+
 
         see_memory_usage(
             f"DeepSpeed Engine: Before configure distributed model",
@@ -330,7 +335,8 @@ class DeepSpeedEngine(Module):
 
         self.save_non_zero_checkpoint = False
         self.save_zero_checkpoint = False
-        self._configure_checkpointing(dist_init_required)
+        if not isinstance(self.optimizer, DeepSpeedZeRoOffload):
+            self._configure_checkpointing(dist_init_required)
 
         if self.eigenvalue_enabled():
             self.eigenvalue = self._configure_eigenvalue()
@@ -502,54 +508,6 @@ class DeepSpeedEngine(Module):
 
     def curriculum_params(self):
         return self._config.curriculum_params
-
-    def tensorboard_enabled(self):
-        return self._config.tensorboard_enabled
-
-    def tensorboard_output_path(self):
-        return self._config.tensorboard_output_path
-
-    def tensorboard_job_name(self):
-        return self._config.tensorboard_job_name
-
-    def get_summary_writer(
-            self,
-            name="DeepSpeedJobName",
-            base=os.path.join(os.path.expanduser("~"),
-                              "tensorboard"),
-    ):
-        if self.tensorboard_output_path():
-            base_dir = self.tensorboard_output_path()
-            job_name = self.tensorboard_job_name()
-            log_dir = os.path.join(base_dir, job_name)
-        else:
-            if self.tensorboard_job_name():
-                name = self.tensorboard_job_name()
-
-            # Infrastructure-specific job-id
-            if "DLWS_JOB_ID" in os.environ:
-                infra_job_id = os.environ["DLWS_JOB_ID"]
-            elif "DLTS_JOB_ID" in os.environ:
-                infra_job_id = os.environ["DLTS_JOB_ID"]
-            else:
-                infra_job_id = "unknown-job-id"
-
-            summary_writer_dir_name = os.path.join(infra_job_id, "logs")
-            log_dir = os.path.join(base, summary_writer_dir_name, name)
-
-        os.makedirs(log_dir, exist_ok=True)
-        try:
-            # torch.utils.tensorboard will fail if `tensorboard` is not available,
-            # see their docs for more details: https://pytorch.org/docs/1.8.0/tensorboard.html
-            import tensorboard
-        except ImportError:
-            print(
-                'If you want to use tensorboard logging please `pip install tensorboard`'
-            )
-            raise
-        from torch.utils.tensorboard import SummaryWriter
-
-        return SummaryWriter(log_dir=log_dir)
 
     def wall_clock_breakdown(self):
         return self._config.wall_clock_breakdown
@@ -1387,7 +1345,6 @@ class DeepSpeedEngine(Module):
                         "Pipeline parallelism does not support overlapped communication, will be disabled."
                     )
                     overlap_comm = False
-
             optimizer = DeepSpeedZeroOptimizer(
                 optimizer,
                 timers=timers,
@@ -1424,33 +1381,47 @@ class DeepSpeedEngine(Module):
             logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
             from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 
-            optimizer = DeepSpeedZeroOptimizer_Stage3(
-                self.module,
-                optimizer,
-                timers=timers,
-                ds_config=self.config,
-                static_loss_scale=self.loss_scale(),
-                dynamic_loss_scale=self.dynamic_loss_scale(),
-                dynamic_loss_args=self.dynamic_loss_scale_args(),
-                clip_grad=self.gradient_clipping(),
-                contiguous_gradients=self.zero_contiguous_gradients(),
-                reduce_bucket_size=self.zero_reduce_bucket_size(),
-                prefetch_bucket_size=self.zero_prefetch_bucket_size(),
-                max_reuse_distance=self.zero_max_reuse_distance(),
-                max_live_parameters=self.zero_max_live_parameters(),
-                param_persistence_threshold=self.zero_param_persistence_threshold(),
-                dp_process_group=self.data_parallel_group,
-                reduce_scatter=self.zero_reduce_scatter(),
-                overlap_comm=self.zero_overlap_comm(),
-                offload_optimizer_config=self.zero_offload_optimizer(),
-                offload_param_config=self.zero_offload_param(),
-                sub_group_size=self.zero_sub_group_size(),
-                mpu=self.mpu,
-                postscale_gradients=self.postscale_gradients(),
-                gradient_predivide_factor=self.gradient_predivide_factor(),
-                gradient_accumulation_steps=self.gradient_accumulation_steps(),
-                aio_config=self.aio_config(),
-                communication_data_type=self.communication_data_type)
+            if isinstance(optimizer, DummyOptim):
+                optimizer = DeepSpeedZeRoOffload(
+                    self.module,
+                    timers=timers,
+                    ds_config=self.config,
+                    overlap_comm=self.zero_overlap_comm(),
+                    prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                    max_reuse_distance=self.zero_max_reuse_distance(),
+                    max_live_parameters=self.zero_max_live_parameters(),
+                    param_persistence_threshold=self.zero_param_persistence_threshold(),
+                    offload_param_config=self.zero_offload_param(),
+                    mpu=self.mpu)
+            else:
+
+                optimizer = DeepSpeedZeroOptimizer_Stage3(
+                    self.module,
+                    optimizer,
+                    timers=timers,
+                    ds_config=self.config,
+                    static_loss_scale=self.loss_scale(),
+                    dynamic_loss_scale=self.dynamic_loss_scale(),
+                    dynamic_loss_args=self.dynamic_loss_scale_args(),
+                    clip_grad=self.gradient_clipping(),
+                    contiguous_gradients=self.zero_contiguous_gradients(),
+                    reduce_bucket_size=self.zero_reduce_bucket_size(),
+                    prefetch_bucket_size=self.zero_prefetch_bucket_size(),
+                    max_reuse_distance=self.zero_max_reuse_distance(),
+                    max_live_parameters=self.zero_max_live_parameters(),
+                    param_persistence_threshold=self.zero_param_persistence_threshold(),
+                    dp_process_group=self.data_parallel_group,
+                    reduce_scatter=self.zero_reduce_scatter(),
+                    overlap_comm=self.zero_overlap_comm(),
+                    offload_optimizer_config=self.zero_offload_optimizer(),
+                    offload_param_config=self.zero_offload_param(),
+                    sub_group_size=self.zero_sub_group_size(),
+                    mpu=self.mpu,
+                    postscale_gradients=self.postscale_gradients(),
+                    gradient_predivide_factor=self.gradient_predivide_factor(),
+                    gradient_accumulation_steps=self.gradient_accumulation_steps(),
+                    aio_config=self.aio_config(),
+                    communication_data_type=self.communication_data_type)
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
@@ -1715,7 +1686,7 @@ class DeepSpeedEngine(Module):
             loss = self._scale_loss_by_gas(loss.float())
 
         # Log training Loss
-        if self.tensorboard_enabled():
+        if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(
@@ -1723,9 +1694,7 @@ class DeepSpeedEngine(Module):
                         loss.mean().item() * self.gradient_accumulation_steps(),
                         self.global_samples,
                     )]
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
-                    self.summary_writer.flush()
+                    self.monitor.write_events(self.summary_events)
 
         self._start_timers(self.engine_timers.backward_timers)
 
@@ -1948,14 +1917,13 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.step_timers)
 
         # Log learning rate
-        if self.tensorboard_enabled():
+        if self.monitor.enabled:
             if self.is_gradient_accumulation_boundary():
                 if self.global_rank == 0:
                     self.summary_events = [(f"Train/Samples/lr",
                                             self.get_lr()[0],
                                             self.global_samples)]
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
+
                     if self.fp16_enabled() and hasattr(self.optimizer, "cur_scale"):
                         self.summary_events.append((
                             f"Train/Samples/loss_scale",
@@ -1967,16 +1935,12 @@ class DeepSpeedEngine(Module):
                             self.eigenvalue_gas_boundary_resolution()):
                         ev_values = self.block_eigenvalue.values()
                         for i in range(len(ev_values)):
-                            self.summary_writer.add_scalar(
+                            self.summary_events.append((
                                 f"Train/Eigenvalues/ModelBlockParam_{i}",
                                 self.ev_values[i][0],
                                 self.global_samples,
-                            )
-                            self.summary_writer.flush()
-
-                    for event in self.summary_events:  # write_summary_events
-                        self.summary_writer.add_scalar(event[0], event[1], event[2])
-                    self.summary_writer.flush()
+                            ))
+                    self.monitor.write_events(self.summary_events)
 
         # Check flops profiling
         if flops_profiler_active:
@@ -2004,8 +1968,8 @@ class DeepSpeedEngine(Module):
         if self.wall_clock_breakdown() or self.flops_profiler_enabled():
             # Log global timing and reset
             if self.is_gradient_accumulation_boundary():
-                if self.tensorboard_enabled():
-                    self._write_tensorboard()
+                if self.monitor.enabled:
+                    self._write_monitor()
 
                 if self.has_moe_layers:
                     fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
@@ -2048,7 +2012,7 @@ class DeepSpeedEngine(Module):
             atexit.register(print, "Autotuning: done with running current ds config.")
         exit()
 
-    def _write_tensorboard(self):
+    def _write_monitor(self):
         if self.global_rank == 0:
             self.summary_events = [
                 (
@@ -2079,9 +2043,7 @@ class DeepSpeedEngine(Module):
                     self.global_samples,
                 ),
             ]
-            for event in self.summary_events:  # write_summary_events
-                self.summary_writer.add_scalar(event[0], event[1], event[2])
-            self.summary_writer.flush()
+            self.monitor.write_events(self.summary_events)
 
     def _get_optimizer_param(self, param_name):
         result = []
