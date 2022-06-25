@@ -47,13 +47,6 @@ class ReduceOp(Enum):
     UNUSED = 8
 
 
-# TODO: Add ProcessGroup class
-#class ProcessGroup(object):
-#   def
-
-#import deepspeed.utils.timer
-#from deepspeed.utils import *
-#from deepspeed.utils import logger, log_dist
 from deepspeed.utils.comms_logging import CommsLogger
 from deepspeed.utils import timer, get_caller_func
 from deepspeed.comm.backend import Backend

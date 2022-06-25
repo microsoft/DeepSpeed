@@ -10,9 +10,6 @@ from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed import comm as dist
 
-#from deepspeed.utils import logger
-#import deepspeed.utils.logger
-
 try:
     import psutil
 
