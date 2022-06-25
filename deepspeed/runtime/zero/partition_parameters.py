@@ -985,11 +985,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             swap_in_flight[0].nvme_swapper.synchronize_reads()
 
     @instrument_w_nvtx
-    def _all_gather(self,
-                    param_list,
-                    async_op=False,
-                    hierarchy=None,
-                    log_name='all_gather'):
+    def _all_gather(self, param_list, async_op=False, hierarchy=None):
 
         # fetches from nvme if the partition is not available and in nvme
         self._ensure_availability_of_partitioned_params(param_list)

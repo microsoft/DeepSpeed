@@ -2,7 +2,7 @@ import os
 import enum
 import torch
 import inspect
-from deepspeed.utils import get_logger_v2_name
+from deepspeed.utils import get_logger_debug_name
 
 
 def older_torch():
@@ -152,7 +152,7 @@ def get_msg_size_from_args(func, *args, **kwargs):
 
 def get_debug_log_name(func_args, debug):
     if debug:
-        return func_args['log_name'] + '_' + get_logger_v2_name()
+        return func_args['log_name'] + '_' + get_logger_debug_name()
     #if debug_level == 1 and 'v1' in func_args and func_args['v1'] is not None:
     #    return func_args['log_name'] + '_' + func_args['v1']
     #if debug_level == 2 and 'v2' in func_args and func_args[

@@ -97,11 +97,7 @@ class _AllToAll(torch.autograd.Function):
         ctx.group = group
         input = input.contiguous()
         output = torch.empty_like(input)
-        dist.all_to_all_single(output,
-                               input,
-                               group=group,
-                               v1=COMMS_LOGGER_MOE,
-                               v2=get_logger_v2_name())
+        dist.all_to_all_single(output, input, group=group)
         return output
 
     @staticmethod
@@ -218,11 +214,7 @@ def top1gating(logits: Tensor,
     # if we don't want to drop any tokens
     if not drop_tokens:
         new_capacity = torch.max(exp_counts).to(logits.device)
-        dist.all_reduce(new_capacity,
-                        op=dist.ReduceOp.MAX,
-                        group=dist.get_world_group(),
-                        v1=COMMS_LOGGER_MOE,
-                        v2=get_logger_v2_name())
+        dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
         capacity = new_capacity
 
     # Compute l_aux

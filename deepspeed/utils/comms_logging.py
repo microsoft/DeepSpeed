@@ -4,9 +4,8 @@ import os
 import math
 
 
-def get_logger_v2_name():
+def get_logger_debug_name():
     import inspect, sys
-    #return inspect.currentframe().f_code.co_name
     return sys._getframe(3).f_code.co_name
 
 
