@@ -55,7 +55,7 @@ class ProcessTopology:
             raise ValueError('get_rank() does not support slices. Use filter_match())')
 
         key = self.ProcessCoord(**coord_kwargs)
-        assert key in self.mapping, f'key {kwargs} invalid'
+        assert key in self.mapping, f'key {coord_kwargs} invalid'
         return self.mapping[key]
 
     def get_axis_names(self):
