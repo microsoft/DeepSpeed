@@ -46,7 +46,7 @@ class LayerSpec:
     def __init__(self, typename, *module_args, **module_kwargs):
         self.typename = typename
         if "forward_fn" in module_kwargs:
-            self.forward_fn = module_kwargs["forward_fn"]
+            self.forward_fn = module_kwargs.pop("forward_fn")
         else:
             self.forward_fn = None
         self.module_args = module_args
