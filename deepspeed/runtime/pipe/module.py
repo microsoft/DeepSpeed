@@ -43,9 +43,12 @@ class LayerSpec:
             LayerSpec(torch.nn.Linear, self.hidden_hidden, self.out_dim)]
         ]
     """
-    def __init__(self, typename, forward_fn=None, *module_args, **module_kwargs):
+    def __init__(self, typename, *module_args, **module_kwargs):
         self.typename = typename
-        self.forward_fn = forward_fn
+        if "forward_fn" in module_kwargs:
+            self.forward_fn = module_kwargs["forward_fn"]
+        else:
+            self.forward_fn = None
         self.module_args = module_args
         self.module_kwargs = module_kwargs
 
@@ -79,7 +82,7 @@ class TiedLayerSpec(LayerSpec):
                  tied_weight_attr='weight',
                  tied_weight_attrs: List[str] = None,
                  **module_kwargs):
-        super().__init__(typename, forward_fn, *module_args, **module_kwargs)
+        super().__init__(typename, *module_args, **module_kwargs, forward_fn=forward_fn)
         self.key = key
 
         # XOR operator as when one is None the other one has to be not None and vice-versa.
