@@ -23,8 +23,7 @@ def _torch_reduce_scatter_fn(input_tensor: Tensor,
     return instrument_w_nvtx(dist.reduce_scatter_fn)(output_tensor,
                                                      input_tensor,
                                                      group=group,
-                                                     async_op=async_op,
-                                                     prof=prof)
+                                                     async_op=async_op)
 
 
 @instrument_w_nvtx
