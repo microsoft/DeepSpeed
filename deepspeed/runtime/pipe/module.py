@@ -43,8 +43,9 @@ class LayerSpec:
             LayerSpec(torch.nn.Linear, self.hidden_hidden, self.out_dim)]
         ]
     """
-    def __init__(self, typename, *module_args, **module_kwargs):
+    def __init__(self, typename, forward_fn=None, *module_args, **module_kwargs):
         self.typename = typename
+        self.forward_fn = forward_fn
         self.module_args = module_args
         self.module_kwargs = module_kwargs
 
@@ -78,9 +79,8 @@ class TiedLayerSpec(LayerSpec):
                  tied_weight_attr='weight',
                  tied_weight_attrs: List[str] = None,
                  **module_kwargs):
-        super().__init__(typename, *module_args, **module_kwargs)
+        super().__init__(typename, forward_fn, *module_args, **module_kwargs)
         self.key = key
-        self.forward_fn = forward_fn
 
         # XOR operator as when one is None the other one has to be not None and vice-versa.
         assert (tied_weight_attr is None) ^ (tied_weight_attrs is None)
@@ -258,9 +258,15 @@ class PipelineModule(nn.Module):
             elif isinstance(layer, LayerSpec):
                 module = layer.build()
                 name = str(layer_idx)
-                self.forward_funcs.append(module)
                 self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, module)
+
+                if layer.forward_fn is None:
+                    # Just use forward()
+                    self.forward_funcs.append(module)
+                else:
+                    # User specified fn with args (module, input)
+                    self.forward_funcs.append(partial(layer.forward_fn, module))
 
             # Last option: layer may be a functional (e.g., lambda). We do nothing in
             # that case and just use it in forward()
