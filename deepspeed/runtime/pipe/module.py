@@ -83,7 +83,7 @@ class TiedLayerSpec(LayerSpec):
         self.forward_fn = forward_fn
 
         # XOR operator as when one is None the other one has to be not None and vice-versa.
-        assert tied_weight_attr is None ^ tied_weight_attrs is None
+        assert (tied_weight_attr is None) ^ (tied_weight_attrs is None)
         if tied_weight_attr is not None:
             logger.warning(
                 "`tied_weight_attr` in TiedLayerSpec is deprecated, please use `tied_weight_attrs` instead."
