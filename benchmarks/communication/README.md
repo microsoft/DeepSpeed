@@ -46,6 +46,12 @@ deepspeed run_all.py
 
 Like the individual benchmarks, `run_all.py` supports scanning arguments for the max message size, bw-unit, etc. Simply pass the desired arguments to `run_all.py` and they'll be propagated to each comm op.
 
+Note that `ds_bench` is a pre-packaged wrapper around `run_all.py`. Users can pass the same arguments as well:
+
+<pre>
+ds_bench --scan --trials=10
+</pre>
+
 
 # Adding Communication Benchmarks
 
