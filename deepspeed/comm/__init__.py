@@ -22,13 +22,13 @@ if older_torch():
         from torch.distributed.distributed_c10d import _get_global_rank
         return _get_global_rank(group, group_rank)
 
-    def allgather_fn(output_tensor, input_tensor, group, async_op, log_name=None):
+    def allgather_fn(output_tensor, input_tensor, group=None, async_op=False):
         from torch.distributed import all_gather, get_world_size
         from torch import chunk
         output_tensors = list(chunk(output_tensor, get_world_size(group)))
-        return all_gather(output_tensors, input_tensor, group=group, async_op=True)
+        return all_gather(output_tensors, input_tensor, group=group, async_op=async_op)
 
-    def reduce_scatter_fn(output_tensor, input_tensor, group, log_name=None):
+    def reduce_scatter_fn(output_tensor, input_tensor, group=None, async_op=False):
         from torch.distributed import reduce_scatter, get_world_size
         from torch import chunk
         input_tensor_lst = list(chunk(input_tensor, get_world_size(group)))
