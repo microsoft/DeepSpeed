@@ -1,6 +1,8 @@
 import torch
 import os
 import math
+import argparse
+from benchmarks.communication.constants import *
 
 global dist
 
@@ -122,3 +124,66 @@ def max_numel(comm_op, dtype, mem_factor, local_rank, args):
         print(f"This communication operation: {comm_op} is not supported yet")
         exit(0)
     return elements_per_gpu
+
+
+# Helper function to pretty-print message sizes
+def convert_size(size_bytes):
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    return "%s %s" % (s, size_name[i])
+
+
+def benchmark_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local_rank", type=int)
+    parser.add_argument("--trials",
+                        type=int,
+                        default=DEFAULT_TRIALS,
+                        help='Number of timed iterations')
+    parser.add_argument("--warmup",
+                        type=int,
+                        default=DEFAULT_WARMUPS,
+                        help='Number of warmup (non-timed) iterations')
+    parser.add_argument("--maxsize",
+                        type=int,
+                        default=24,
+                        help='Max message size as a power of 2')
+    parser.add_argument("--async-op",
+                        action="store_true",
+                        help='Enables non-blocking communication')
+    parser.add_argument("--bw-unit",
+                        type=str,
+                        default=DEFAULT_UNIT,
+                        choices=['Gbps',
+                                 'GBps'])
+    parser.add_argument("--backend",
+                        type=str,
+                        default=DEFAULT_BACKEND,
+                        choices=['nccl'],
+                        help='Communication library to use')
+    parser.add_argument("--dist",
+                        type=str,
+                        default=DEFAULT_DIST,
+                        choices=['deepspeed',
+                                 'torch'],
+                        help='Distributed DL framework to use')
+    parser.add_argument("--scan",
+                        action="store_true",
+                        help='Enables scanning all message sizes')
+    parser.add_argument("--dtype",
+                        type=str,
+                        default=DEFAULT_TYPE,
+                        help='PyTorch tensor dtype')
+    parser.add_argument(
+        "--mem-factor",
+        type=float,
+        default=.4,
+        help='Proportion of max available GPU memory to use for single-size evals')
+    parser.add_argument("--debug",
+                        action="store_true",
+                        help='Enables alltoall debug prints')
+    return parser

@@ -18,7 +18,7 @@ deepspeed all_reduce.py --scan
 Each individual communication operation's benchmarks have separate benchmarking options. For `all_reduce.py`, for example:
 
 <pre>
-usage: all_reduce.py [-h] [--local_rank LOCAL_RANK] [--trials TRIALS] [--warmup WARMUP] [--maxsize MAXSIZE] [--async-op] [--bw-unit {Gbps,GBps}] [--backend {nccl}] [--dist {deepspeed,torch}] [--scan] [--dtype DTYPE]
+usage: ds_bench [-h] [--local_rank LOCAL_RANK] [--trials TRIALS] [--warmup WARMUP] [--maxsize MAXSIZE] [--async-op] [--bw-unit {Gbps,GBps}] [--backend {nccl}] [--dist {deepspeed,torch}] [--scan] [--dtype DTYPE] [--mem-factor MEM_FACTOR] [--debug]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -33,6 +33,9 @@ optional arguments:
                         Distributed DL framework to use
   --scan                Enables scanning all message sizes
   --dtype DTYPE         PyTorch tensor dtype
+  --mem-factor MEM_FACTOR
+                        Proportion of max available GPU memory to use for single-size evals
+  --debug               Enables alltoall debug prints
 </pre>
 
 2. Run all available communication benchmarks:

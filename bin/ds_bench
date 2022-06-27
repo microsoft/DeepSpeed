@@ -1,0 +1,11 @@
+#!/usr/bin/env deepspeed
+
+from benchmarks.communication.run_all import main
+from benchmarks.communication.constants import *
+from benchmarks.communication.utils import *
+import argparse
+
+if __name__ == '__main__':
+    args = benchmark_parser().parse_args()
+    rank = args.local_rank
+    main(args, rank)

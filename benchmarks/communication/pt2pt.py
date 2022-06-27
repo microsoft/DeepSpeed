@@ -1,7 +1,6 @@
 import torch
-import utils
-from utils import *
-from constants import *
+from benchmarks.communication.utils import *
+from benchmarks.communication.constants import *
 
 import time
 import argparse
@@ -56,7 +55,8 @@ def timed_pt2pt(input, args):
     desc = f'{input.nelement()}x{input.element_size()}'
 
     print_rank_0(
-        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
+        f"{convert_size(size):<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
+    )
 
 
 def run_pt2pt(local_rank, args):
@@ -80,71 +80,43 @@ def run_pt2pt(local_rank, args):
         # loop over various tensor sizes
         for M in M_LIST:
             global_rank = dist.get_rank()
-            mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
-            sync_all()
-            input = ((mat.mul_(float(global_rank))).view(-1))
+            try:
+                mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
+                sync_all()
+                input = ((mat.mul_(float(global_rank))).view(-1))
+            except RuntimeError as e:
+                if 'out of memory' in str(e):
+                    if dist.get_rank() == 0:
+                        print('WARNING: Ran out of GPU memory. Exiting comm op.')
+                    sync_all()
+                    break
             sync_all()
             timed_pt2pt(input, args)
     else:
         # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
+        # Don't need output tensor, so double mem_factor
         elements_per_gpu = max_numel(comm_op='pt2pt',
                                      dtype=args.dtype,
-                                     mem_factor=args.mem_factor,
+                                     mem_factor=args.mem_factor * 2,
                                      local_rank=local_rank,
                                      args=args)
-        mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
-        input = ((mat.mul_(float(global_rank))).view(-1))
+        try:
+            mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
+            input = ((mat.mul_(float(global_rank))).view(-1))
+        except RuntimeError as e:
+            if 'out of memory' in str(e):
+                if dist.get_rank() == 0:
+                    print(
+                        'WARNING: Ran out of GPU memory. Try to reduce the --mem-factor argument!'
+                    )
+                sync_all()
+                return
         sync_all()
         timed_pt2pt(input, args)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--local_rank", type=int)
-    parser.add_argument("--trials",
-                        type=int,
-                        default=DEFAULT_TRIALS,
-                        help='Number of timed iterations')
-    parser.add_argument("--warmup",
-                        type=int,
-                        default=DEFAULT_WARMUPS,
-                        help='Number of warmup (non-timed) iterations')
-    parser.add_argument("--maxsize",
-                        type=int,
-                        default=DEFAULT_MAXSIZE,
-                        help='Max message size as a power of 2')
-    parser.add_argument("--async-op",
-                        action="store_true",
-                        help='Enables non-blocking communication')
-    parser.add_argument("--bw-unit",
-                        type=str,
-                        default=DEFAULT_UNIT,
-                        choices=['Gbps',
-                                 'GBps'])
-    parser.add_argument("--backend",
-                        type=str,
-                        default=DEFAULT_BACKEND,
-                        choices=['nccl'],
-                        help='Communication library to use')
-    parser.add_argument("--dist",
-                        type=str,
-                        default=DEFAULT_DIST,
-                        choices=['deepspeed',
-                                 'torch'],
-                        help='Distributed DL framework to use')
-    parser.add_argument("--scan",
-                        action="store_true",
-                        help='Enables scanning all message sizes')
-    parser.add_argument("--dtype",
-                        type=str,
-                        default=DEFAULT_TYPE,
-                        help='PyTorch tensor dtype')
-    parser.add_argument(
-        "--mem-factor",
-        type=float,
-        default=.8,
-        help='Proportion of max available GPU memory to use for single-size evals')
-    args = parser.parse_args()
+    args = benchmark_parser().parse_args()
     rank = args.local_rank
     init_processes(local_rank=rank, args=args)
     run_pt2pt(local_rank=rank, args=args)
