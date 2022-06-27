@@ -1746,14 +1746,19 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         if self.deepspeed_adam_offload:
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                bit16_param_groups = [[
-                    bit16_partitions[dist.get_rank(group=self.real_dp_process_group[group_id])]
-                ] for group_id, bit16_partitions in enumerate(self.parallel_partitioned_bit16_groups)]
+                bit16_param_groups = [
+                    [
+                        bit16_partitions[dist.get_rank(
+                            group=self.real_dp_process_group[group_id])]
+                    ] for group_id,
+                    bit16_partitions in enumerate(self.parallel_partitioned_bit16_groups)
+                ]
                 self.optimizer.step(fp16_param_groups=bit16_param_groups)
             else:
                 self.optimizer.step()
                 for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
-                    partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
+                    partition_id = dist.get_rank(
+                        group=self.real_dp_process_group[group_id])
                     bit16_partitions[partition_id].data.copy_(fp32_partition.data)
         else:
             self.optimizer.step()
