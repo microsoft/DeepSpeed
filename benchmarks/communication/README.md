@@ -49,7 +49,7 @@ Like the individual benchmarks, `run_all.py` supports scanning arguments for the
 Note that `ds_bench` is a pre-packaged wrapper around `run_all.py`. Users can pass the same arguments as well:
 
 <pre>
-ds_bench --scan --trials=10
+<path to deepspeed>/bin/ds_bench --scan --trials=10
 </pre>
 
 
