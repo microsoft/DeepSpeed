@@ -61,7 +61,8 @@ extras_require = {
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
-    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt')
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'inf': fetch_requirements('requirements/requirements-inf.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -280,10 +281,18 @@ setup(name='deepspeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(exclude=["docker",
-                                      "third_party",
-                                      "csrc",
-                                      "op_builder"]),
+      packages=find_packages(exclude=[
+          "azure",
+          "csrc",
+          "docker",
+          "docs",
+          "examples",
+          "op_builder",
+          "release",
+          "requirements",
+          "scripts",
+          "tests"
+      ]),
       include_package_data=True,
       scripts=[
           'bin/deepspeed',
@@ -291,8 +300,9 @@ setup(name='deepspeed',
           'bin/ds',
           'bin/ds_ssh',
           'bin/ds_report',
-          'bin/ds_elastic',
-          'bin/ds_bench'
+          'bin/ds_bench',
+          'bin/dsr',
+          'bin/ds_elastic'
       ],
       classifiers=[
           'Programming Language :: Python :: 3.6',
