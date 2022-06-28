@@ -111,12 +111,14 @@ def run_allgather(local_rank, args):
                             "_all_gather_base")) or (args.dist == 'deepspeed'
                                                      and dist.has_allgather_base):
             mem_factor = args.mem_factor + 0.2
+        else:
+            mem_factor = args.mem_factor
         # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
         sync_all()
         elements_per_gpu = max_numel(comm_op='allgather',
                                      dtype=getattr(torch,
                                                    args.dtype),
-                                     mem_factor=args.mem_factor,
+                                     mem_factor=mem_factor,
                                      local_rank=local_rank,
                                      args=args)
         try:
