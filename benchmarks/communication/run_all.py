@@ -1,5 +1,5 @@
 import torch
-from benchmarks.communication.utils import init_processes
+from benchmarks.communication.utils import *
 from benchmarks.communication.all_reduce import run_allreduce
 from benchmarks.communication.all_gather import run_allgather
 from benchmarks.communication.all_to_all import run_alltoall
@@ -9,12 +9,6 @@ from benchmarks.communication.constants import *
 import time
 import argparse
 import os
-
-# For directly calling benchmark
-if __name__ == "__main__":
-    args = benchmark_parser().parse_args()
-    rank = args.local_rank
-    main(args, rank)
 
 
 # For importing
@@ -31,3 +25,10 @@ def main(args, rank):
             run_alltoall(local_rank=rank, args=args)
         if comm_op == 'pt2pt':
             run_pt2pt(local_rank=rank, args=args)
+
+
+# For directly calling benchmark
+if __name__ == "__main__":
+    args = benchmark_parser().parse_args()
+    rank = args.local_rank
+    main(args, rank)

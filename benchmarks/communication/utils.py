@@ -83,12 +83,8 @@ def get_bw(comm_op, size, duration, args):
 def get_metric_strings(args, tput, busbw, duration):
     duration_ms = duration * 1e3
     duration_us = duration * 1e6
-    if args.bw_unit == 'Gbps':
-        tput = f'{tput / 1e9:.3f}'
-        busbw = f'{busbw /1e9:.3f}'
-    elif args.bw_unit == 'GBps':
-        tput = f'{tput/8 / 1e9:.3f}'
-        busbw = f'{busbw/8 /1e9:.3f}'
+    tput = f'{tput / 1e9:.3f}'
+    busbw = f'{busbw /1e9:.3f}'
 
     if duration_us < 1e3:
         duration = f'{duration_us:.3f} us'
@@ -103,7 +99,7 @@ def sync_all():
 
 
 def max_numel(comm_op, dtype, mem_factor, local_rank, args):
-    dtype_size = torch._utils._element_size(args.dtype)
+    dtype_size = torch._utils._element_size(dtype)
     max_memory_per_gpu = torch.cuda.get_device_properties(
         local_rank).total_memory * mem_factor
     if comm_op == 'allreduce' or comm_op == 'pt2pt':

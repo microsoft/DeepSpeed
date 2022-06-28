@@ -81,7 +81,10 @@ def run_pt2pt(local_rank, args):
         for M in M_LIST:
             global_rank = dist.get_rank()
             try:
-                mat = torch.ones(world_size, M, dtype=args.dtype).cuda(local_rank)
+                mat = torch.ones(world_size,
+                                 M,
+                                 dtype=getattr(torch,
+                                               args.dtype)).cuda(local_rank)
                 sync_all()
                 input = ((mat.mul_(float(global_rank))).view(-1))
             except RuntimeError as e:
@@ -96,12 +99,15 @@ def run_pt2pt(local_rank, args):
         # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
         # Don't need output tensor, so double mem_factor
         elements_per_gpu = max_numel(comm_op='pt2pt',
-                                     dtype=args.dtype,
+                                     dtype=getattr(torch,
+                                                   args.dtype),
                                      mem_factor=args.mem_factor * 2,
                                      local_rank=local_rank,
                                      args=args)
         try:
-            mat = torch.ones(elements_per_gpu, dtype=args.dtype).cuda(local_rank)
+            mat = torch.ones(elements_per_gpu,
+                             dtype=getattr(torch,
+                                           args.dtype)).cuda(local_rank)
             input = ((mat.mul_(float(global_rank))).view(-1))
         except RuntimeError as e:
             if 'out of memory' in str(e):

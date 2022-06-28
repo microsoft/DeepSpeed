@@ -291,7 +291,8 @@ setup(name='deepspeed',
           'bin/ds',
           'bin/ds_ssh',
           'bin/ds_report',
-          'bin/ds_elastic'
+          'bin/ds_elastic',
+          'bin/ds_bench'
       ],
       classifiers=[
           'Programming Language :: Python :: 3.6',
