@@ -569,6 +569,8 @@ class DeepSpeedTransformerInference(nn.Module):
         super(DeepSpeedTransformerInference, self).__init__()
 
         self.config = config
+        self.config.fairseq = True
+
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
 
@@ -594,6 +596,9 @@ class DeepSpeedTransformerInference(nn.Module):
 
         self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
+
+        self.prev_key = None
+        self.prev_value = None
 
     def forward(self,
                 input,
@@ -622,6 +627,8 @@ class DeepSpeedTransformerInference(nn.Module):
             and input.dtype == torch.float:
             input = input.half()
 
+        layer_past = None if self.prev_key is None else (self.prev_key, self.prev_value)
+
         with torch.no_grad():
             attention_output = self.attention(input,
                                               input_mask,
@@ -633,6 +640,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                               output_attentions,
                                               self.norm_w,
                                               self.norm_b)
+
+            self.prev_key = attention_output[1]
+            self.prev_value = attention_output[2]
 
             if get_present:
                 presents = (attention_output[1], attention_output[2])
@@ -662,6 +672,10 @@ class DeepSpeedTransformerInference(nn.Module):
             output = output.to(input_type)
         if get_present:
             output = (output, presents)
+
+        if self.config.fairseq:
+            print("returning fairseq config")
+            return output, None, None, None
 
         #print(f"non-MoE {context_output.shape}")
         if self.config.return_tuple:

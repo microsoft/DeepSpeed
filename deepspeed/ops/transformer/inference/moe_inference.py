@@ -238,6 +238,7 @@ class DeepSpeedMoEInference(nn.Module):
         super(DeepSpeedMoEInference, self).__init__()
 
         self.config = config
+        self.config.fairseq = True
         self.config.layer_id = DeepSpeedMoEInference.layer_id
         global inference_cuda_module
         global specialized_mode
@@ -266,6 +267,9 @@ class DeepSpeedMoEInference(nn.Module):
 
         self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
         self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
+
+        self.prev_key = None
+        self.prev_value = None
 
         if config.mlp_type == 'residual':
             self.res_mlp = DeepSpeedMoEMLP(config,
@@ -393,6 +397,8 @@ class DeepSpeedMoEInference(nn.Module):
             and input.dtype == torch.float:
             input = input.half()
 
+        layer_past = None if self.prev_key is None else (self.prev_key, self.prev_value)
+        
         with torch.no_grad():
             attention_output = self.attention(input,
                                               input_mask,
@@ -405,6 +411,9 @@ class DeepSpeedMoEInference(nn.Module):
                                               self.norm_w,
                                               self.norm_b)
             context_output = attention_output[3]
+            self.prev_key = attention_output[1]
+            self.prev_value = attention_output[2]
+
             if get_present:
                 attention_output, p_key, p_value = attention_output[0:3]
                 presents = (p_key, p_value)
@@ -466,6 +475,11 @@ class DeepSpeedMoEInference(nn.Module):
         if get_present:
             output = (output, presents)
         #print(f"MoE {context_output.shape}")
+        if self.config.fairseq:
+            print("returning fairseq moe config")
+            # output, attn_weights, [key, value, self_attn_padding_mask]
+            return output, None, None, None #[attention_output[1], attention_output[2], self_attn_padding_mask
+
         if self.config.return_tuple:
             return output if type(output) is tuple else (output, None, None, None)
         else:
