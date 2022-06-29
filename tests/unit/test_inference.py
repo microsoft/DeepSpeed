@@ -334,9 +334,15 @@ def test_lm_correctness(model_family, model_name, task):
                            "text-generation")])
 @pytest.mark.parametrize("dtype",
                          [torch.half])  # FP32 tests are failing due to OOM on 16GB V100
-@pytest.mark.parametrize("enable_cuda_graph",
-                         [False])  # Disable CUDA graph until re-enable torch-latest workflow
-def test_multi_gpu(model_w_task, dtype, enable_cuda_graph, query, inf_kwargs, assert_fn):
+def test_multi_gpu(model_w_task,
+                   dtype,
+                   enable_cuda_graph,
+                   query,
+                   inf_kwargs,
+                   assert_fn,
+                   invalid_model_task_config):
+    if invalid_model_task_config:
+        pytest.skip(invalid_model_task_config)
 
     world_size = 2
     model, task = model_w_task
