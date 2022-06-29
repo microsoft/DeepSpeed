@@ -336,7 +336,7 @@ def allgather_fn(output_tensor,
                                async_op=async_op,
                                debug=debug)
     else:
-        if not has_warned_all_gather:
+        if not has_warned_all_gather and get_rank() == 0:
             utils.logger.warning(
                 "unable to find torch.distributed._all_gather_base. will fall back to "
                 "torch.distributed.all_gather which will result in suboptimal performance. "
