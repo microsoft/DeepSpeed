@@ -46,7 +46,11 @@ class DeepSpeedConfigModel(BaseModel):
                                       new_param='my_new_field',
                                       new_param_fn=(lambda x: int(x)))
     """
-    def __init__(self, **data):
+    def __init__(self, strict=False, **data):
+        if (
+                not strict
+        ):  # This is temporary until we refactor all DS configs, allows HF to load models
+            data = {k: v for k, v in data.items() if v != "auto"}
         super().__init__(**data)
         self._deprecated_fields_check(self)
 
@@ -113,7 +117,7 @@ class ScientificNotationEncoder(json.JSONEncoder):
                 f'\n{prefix}"{k}": {self.iterencode(v, level=level)}' for k,
                 v in o.items()
             ]
-            return "{" + ', '.join(x) + f"\n{prefix_close}" + "}"
+            return "{" + ", ".join(x) + f"\n{prefix_close}" + "}"
         elif isinstance(o, collections.abc.Sequence) and not isinstance(o, str):
             return f"[{ f', '.join(map(self.iterencode, o)) }]"
         return "\n, ".join(super().iterencode(o, _one_shot))

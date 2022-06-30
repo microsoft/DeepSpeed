@@ -12,7 +12,7 @@ from deepspeed.utils import logger
 
 # ZeRO optimization. By default, this optimization is not enabled.
 # Users have to configure the desired optimization (0 means disabled) in params.json as below example:
-ZERO_FORMAT = '''
+ZERO_FORMAT = """
 ZeRO optimization should be enabled as:
 "session_params": {
   "zero_optimization": {
@@ -36,21 +36,21 @@ ZeRO optimization should be enabled as:
     "round_robin_gradients": [true|false]
     }
 }
-'''
+"""
 
-ZERO_OPTIMIZATION = 'zero_optimization'
+ZERO_OPTIMIZATION = "zero_optimization"
 
 
 def read_zero_config_deprecated(self, param_dict):
     zero_config_dict = {}
-    zero_config_dict['stage'] = (1 if param_dict[ZERO_OPTIMIZATION] else 0)
-    if zero_config_dict['stage'] > 0:
-        zero_config_dict['allgather_bucket_size'] = get_scalar_param(
+    zero_config_dict["stage"] = 1 if param_dict[ZERO_OPTIMIZATION] else 0
+    if zero_config_dict["stage"] > 0:
+        zero_config_dict["allgather_bucket_size"] = get_scalar_param(
             param_dict,
-            'allgather_size',
+            "allgather_size",
             5e8)
     logger.warning(
-        'DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}'
+        "DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}"
         .format(ZERO_FORMAT))
     return zero_config_dict
 
@@ -89,7 +89,7 @@ class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
 
     @validator("pipeline_read", "pipeline_write", always=True)
     def set_pipeline(cls, field_value, values):
-        values["pipeline"] = (field_value or values.get("pipeline", False))
+        values["pipeline"] = field_value or values.get("pipeline", False)
         return field_value
 
 
@@ -112,30 +112,33 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     cpu_offload_param: bool = Field(
         None,
         deprecated=True,
-        new_param='offload_param',
-        new_param_fn=(lambda val: DeepSpeedZeroOffloadParamConfig() if val else None))
+        new_param="offload_param",
+        new_param_fn=(lambda val: DeepSpeedZeroOffloadParamConfig() if val else None),
+    )
     cpu_offload_use_pin_memory: bool = Field(
         None,
         deprecated=True,
-        new_param='offload_param or offload_optimizer',
-        set_new_param=False)
+        new_param="offload_param or offload_optimizer",
+        set_new_param=False,
+    )
     cpu_offload: bool = Field(
         None,
         deprecated=True,
-        new_param='offload_optimizer',
+        new_param="offload_optimizer",
         new_param_fn=(lambda val: DeepSpeedZeroOffloadOptimizerConfig()
-                      if val else None))
+                      if val else None),
+    )
 
     # Stage3 Specific Parameters
-    prefetch_bucket_size: int = Field(5e7, ge=0, alias='stage3_prefetch_bucket_size')
+    prefetch_bucket_size: int = Field(5e7, ge=0, alias="stage3_prefetch_bucket_size")
     param_persistence_threshold: int = Field(1e5,
                                              ge=0,
-                                             alias='stage3_param_persistence_threshold')
-    max_live_parameters: int = Field(1e9, ge=0)
-    max_reuse_distance: int = Field(1e9, ge=0, alias='stage3_max_reuse_distance')
+                                             alias="stage3_param_persistence_threshold")
+    max_live_parameters: int = Field(1e9, ge=0, alias="stage3_max_live_parameters")
+    max_reuse_distance: int = Field(1e9, ge=0, alias="stage3_max_reuse_distance")
     gather_16bit_weights_on_model_save: bool = Field(
         False,
-        alias='stage3_gather_16bit_weights_on_model_save')
+        alias="stage3_gather_16bit_weights_on_model_save")
     stage3_gather_fp16_weights_on_model_save: bool = Field(
         False,
         deprecated=True,
@@ -148,6 +151,8 @@ class DeepSpeedZeroConfig(DeepSpeedConfigModel):
     @validator("overlap_comm")
     def overlap_comm_valid(cls, field_value, values):
         if field_value is None:
-            assert "stage" in values, "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
+            assert (
+                "stage" in values
+            ), "DeepSpeedZeroConfig: 'stage' must be defined before 'overlap_comm'"
             field_value = values["stage"] == ZeroStageEnum.weights
         return field_value
