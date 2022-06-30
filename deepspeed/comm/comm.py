@@ -615,21 +615,17 @@ def init_distributed(dist_backend="nccl",
             else:
                 mpi_discovery(distributed_port=distributed_port, verbose=verbose)
 
-        if cdb is None or not cdb.is_initialized():
-            if verbose and int(os.getenv('RANK', '0')) == 0:
-                utils.logger.info(
-                    "Initializing torch distributed with backend: {}".format(
-                        dist_backend))
+        if cdb is not None and cdb.is_initialized():
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.info('Distributed backend already initialized')
+        else:
             assert isinstance(timeout, timedelta)
-
-            if cdb is not None and cdb.is_initialized():
-                if int(os.getenv('RANK', '0')) == 0:
-                    utils.logger.info('Distributed backend already initialized')
-            else:
-                if int(os.getenv('RANK', '0')) == 0:
-                    utils.logger.info('Initializing TorchBackend in DeepSpeed')
-                # Create a torch backend object, initialize torch distributed, and assign to cdb
-                cdb = TorchBackend(dist_backend, timeout, init_method)
+            if int(os.getenv('RANK', '0')) == 0:
+                utils.logger.info(
+                    'Initializing TorchBackend in DeepSpeed with backend {}'.format(
+                        dist_backend))
+            # Create a torch backend object, initialize torch distributed, and assign to cdb
+            cdb = TorchBackend(dist_backend, timeout, init_method)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
