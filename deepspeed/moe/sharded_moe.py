@@ -482,8 +482,9 @@ class MOELayer(Base):
             logger.warning("Tutel optimization requested but not installed. "
                            "Proceeding without Tutel.")
         elif use_tutel and TUTEL_INSTALLED and gate.k != 1:
-            logger.warning("To enable Tutel optimization, use top-1 instead of top-2 gate."
-                           "Proceeding without Tutel.")
+            logger.warning(
+                "To enable Tutel optimization, use top-1 instead of top-2 gate. "
+                "Proceeding without Tutel.")
 
     def _set_ep_group(self, ep_group):
         self.ep_group = ep_group
