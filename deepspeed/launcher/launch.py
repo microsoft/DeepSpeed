@@ -216,9 +216,6 @@ def main():
             process = subprocess.Popen(cmd, env=current_env)
             processes.append(process)
     else:
-        # dist_rank = global_rank_mapping[local_node][local_rank]
-        # os.environ["RANK"] = str(dist_rank)
-        # os.environ["LOCAL_RANK"] = str(local_rank)
         if args.min_nodes== -1:
             args.min_nodes = 1
         if args.max_nodes== -1:
@@ -229,9 +226,7 @@ def main():
         os.environ["MASTER_PORT"] = str(args.master_port)
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
-        
-
-        # spawn the processes
+        # Get config and arguments
         cmd = []
         if not args.no_python:
             cmd = [sys.executable, "-u"]
@@ -245,14 +240,7 @@ def main():
         cmd += args.training_script_args
         elastic_config = get_config_elastic(args, num_local_procs,args.node_rank)
         cmd_args = cmd[1:]
-        # cmd_args = ['MASTER_ADDR={}'.format(args.master_addr), 'MASTER_PORT={}'.format(args.master_port)] + cmd_args
-        print ("CMD is:",cmd_args)
-        
-        
-        # elastic_launch(
-        #     config=elastic_config,
-        #     entrypoint= cmd[0],
-        # )(*cmd_args)
+
         rdzv_configs: Dict[str, str] = {'timeout': 100}
         rdzv_parameters = RendezvousParameters(
             backend='c10d',
