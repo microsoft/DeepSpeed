@@ -251,7 +251,8 @@ def replace_transformer_layer(orig_layer_impl,
 
         if inference:
             if moe:
-                ep_world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
+                ep_world_size = torch.distributed.get_world_size(
+                ) if torch.distributed.is_initialized() else 1
                 local_ep_size = 1 if num_experts < ep_world_size else num_experts // ep_world_size
 
                 transformer_config = transformer_inference.DeepSpeedMoEInferenceConfig(
@@ -378,7 +379,8 @@ def replace_transformer_layer(orig_layer_impl,
 
             mpl_block = new_module.mlp
             if moe:
-                gpu_index = torch.distributed.get_rank() if torch.distributed.is_initialized() else 1
+                gpu_index = torch.distributed.get_rank(
+                ) if torch.distributed.is_initialized() else 1
                 gpu_index = 0
                 for ep_index in range(local_ep_size):
                     mpl_block[ep_index].inter_w.data = _h4h_w[
@@ -393,7 +395,7 @@ def replace_transformer_layer(orig_layer_impl,
                     mpl_block[ep_index].output_b.data = _4hh_b[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
-                new_module.moe_gate.wg = wg 
+                new_module.moe_gate.wg = wg
                 new_module.moe_gate.k = k
                 new_module.attn_nw.data = attn_nw.to(torch.cuda.current_device())
                 new_module.attn_nb.data = attn_nb.to(torch.cuda.current_device())

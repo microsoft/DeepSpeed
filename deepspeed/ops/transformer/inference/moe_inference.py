@@ -398,7 +398,7 @@ class DeepSpeedMoEInference(nn.Module):
             input = input.half()
 
         layer_past = None if self.prev_key is None else (self.prev_key, self.prev_value)
-        
+
         with torch.no_grad():
             attention_output = self.attention(input,
                                               input_mask,

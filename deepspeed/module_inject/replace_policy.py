@@ -274,9 +274,9 @@ class MegatronLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
-
 class FairSeqLayerPolicy(DSPolicy):
     _orig_layer_class = None
+
     def __init__(self, client_module, inference=True):
         super().__init__(inference)
         self.client_module = client_module
@@ -317,7 +317,7 @@ class FairSeqLayerPolicy(DSPolicy):
         if moe:
             moe_layer = self.client_module.moe_layer
             wg = moe_layer.gate.wg
-            k = 2 if isinstance(moe_layer.gate, FairSeqLayerPolicy._gate_class) else 1 
+            k = 2 if isinstance(moe_layer.gate, FairSeqLayerPolicy._gate_class) else 1
             moe_experts = moe_layer.experts
             num_experts = len(moe_experts)
             return self.linear_layer, \
@@ -335,10 +335,10 @@ class FairSeqLayerPolicy(DSPolicy):
                 self.client_module.fc2.bias
 
     def layerNorm(self):
-        return self.client_module.self_attn_layer_norm.weight, \
-               self.client_module.self_attn_layer_norm.bias, \
-               self.client_module.final_layer_norm.weight, \
-               self.client_module.final_layer_norm.bias
+        return self.client_module.final_layer_norm.weight, \
+               self.client_module.final_layer_norm.bias, \
+               self.client_module.self_attn_layer_norm.weight, \
+               self.client_module.self_attn_layer_norm.bias
 
 
 class HFGPT2LayerPolicy(DSPolicy):
