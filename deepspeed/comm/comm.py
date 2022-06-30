@@ -28,7 +28,6 @@
 from enum import Enum
 import torch
 import os
-import torch
 import time
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
@@ -112,8 +111,6 @@ def configure(
 
 # Logging wrapper for timing ops
 def timed_op(func):
-    global COMMS_LOGGER_PROF_ALL, COMMS_LOGGER_PROF_OPS, COMMS_LOGGER_ENABLED
-
     def log_wrapper(*args, **kwargs):
         # Add enabled flag so that overhead to each comm op is two if conditions at most
         if comms_logger.enabled:

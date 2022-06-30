@@ -431,10 +431,12 @@ class PipelineModule(nn.Module):
 
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
-            dist.broadcast(getattr(comm['module'],
-                                   comm['weight_attr']),
-                           src=min(comm['ranks']),
-                           group=comm['group'])
+            dist.broadcast(
+                getattr(comm['module'],
+                        comm['weight_attr']),
+                src=min(comm['ranks']),
+                group=comm['group'],
+            )
 
     def _index_tied_modules(self):
         ''' Build communication structures for tied modules. '''

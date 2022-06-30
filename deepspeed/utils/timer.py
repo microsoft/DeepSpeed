@@ -234,6 +234,7 @@ def trim_mean(data, trim_percent):
     """
     assert trim_percent >= 0.0 and trim_percent <= 1.0
     n = len(data)
+    # Account for edge case of empty list
     if len(data) == 0:
         return 0
     data.sort()

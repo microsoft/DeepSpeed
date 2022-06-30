@@ -1,7 +1,6 @@
 import logging
 import sys
 import os
-import math
 
 log_levels = {
     "debug": logging.DEBUG,
