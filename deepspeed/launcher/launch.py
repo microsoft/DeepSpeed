@@ -221,10 +221,8 @@ def main():
         if args.max_nodes== -1:
             args.max_nodes = args.nnodes
         assert args.max_nodes > 0 and  args.min_nodes > 0 , "Max and Min nodes should be positive"
-
-        os.environ["MASTER_ADDR"] = args.master_addr
-        os.environ["MASTER_PORT"] = str(args.master_port)
-        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
+        
+        current_env["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
         # Get config and arguments
         cmd = []
@@ -265,7 +263,8 @@ def main():
                 master_port=str(args.master_port),
             )
         agent = DSElasticAgent(
-            spec
+            spec,
+            current_env
         )
         agent.run()
 
