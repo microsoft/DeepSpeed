@@ -242,7 +242,7 @@ def main():
         rdzv_configs: Dict[str, str] = {'timeout': 100}
         rdzv_parameters = RendezvousParameters(
             backend='c10d',
-            endpoint=args.master_addr+":29400",
+            endpoint=args.master_addr+":"+str(args.master_port),
             run_id='123456789',
             min_nodes=args.min_nodes,
             max_nodes=args.max_nodes,
@@ -259,8 +259,8 @@ def main():
                 monitor_interval=5,
                 redirects=Std.from_str("0"),
                 tee=Std.from_str("0"),
-                master_addr=args.master_addr,
-                master_port=str(args.master_port),
+                master_addr=None,
+                master_port=None,
             )
         agent = DSElasticAgent(
             spec,

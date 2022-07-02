@@ -1,7 +1,7 @@
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime, timedelta
-from torch.distributed.elastic.agent.server.api import RunResult, log, WorkerState
+from torch.distributed.elastic.agent.server.api import RunResult, log, WorkerState, _get_socket_with_port
 from torch.distributed.elastic.metrics import prof, put_metric
 from torch.distributed.elastic.agent.server.api import (
     RunResult,
@@ -9,13 +9,15 @@ from torch.distributed.elastic.agent.server.api import (
     WorkerSpec,
     WorkerState,
 )
+from torch.distributed import  Store
 import time
 import os
 from torch.distributed.elastic.multiprocessing import PContext, start_processes
 from torch.distributed.elastic.utils import macros
 import shutil
 import copy
-
+from contextlib import closing
+import subprocess
 
 class DSElasticAgent(LocalElasticAgent):
 
@@ -29,6 +31,23 @@ class DSElasticAgent(LocalElasticAgent):
     ):
         super().__init__(spec, start_method, exit_barrier_timeout, log_dir)
         self.ds_env = env
+
+    @staticmethod
+    def _set_master_addr_port(
+        store: Store, master_addr: Optional[str], master_port: Optional[int]
+    ):
+        if master_port is None:
+            sock = _get_socket_with_port()
+            with closing(sock):
+                master_port = sock.getsockname()[1]
+
+        if master_addr is None:
+            # master_addr = _get_fq_hostname()
+            result = subprocess.check_output("hostname -I", shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+
+        store.set("MASTER_ADDR", master_addr.encode(encoding="UTF-8"))
+        store.set("MASTER_PORT", str(master_port).encode(encoding="UTF-8"))
     
     def _start_workers(self, worker_group: WorkerGroup) -> Dict[int, Any]:
         spec = worker_group.spec
