@@ -9,7 +9,7 @@ from torch.distributed.elastic.agent.server.api import (
     WorkerSpec,
     WorkerState,
 )
-from torch.distributed import  Store
+from torch.distributed import Store
 import time
 import os
 from torch.distributed.elastic.multiprocessing import PContext, start_processes
@@ -19,8 +19,8 @@ import copy
 from contextlib import closing
 import subprocess
 
-class DSElasticAgent(LocalElasticAgent):
 
+class DSElasticAgent(LocalElasticAgent):
     def __init__(
         self,
         spec: WorkerSpec,
@@ -33,9 +33,9 @@ class DSElasticAgent(LocalElasticAgent):
         self.ds_env = env
 
     @staticmethod
-    def _set_master_addr_port(
-        store: Store, master_addr: Optional[str], master_port: Optional[int]
-    ):
+    def _set_master_addr_port(store: Store,
+                              master_addr: Optional[str],
+                              master_port: Optional[int]):
         if master_port is None:
             sock = _get_socket_with_port()
             with closing(sock):
@@ -48,7 +48,7 @@ class DSElasticAgent(LocalElasticAgent):
 
         store.set("MASTER_ADDR", master_addr.encode(encoding="UTF-8"))
         store.set("MASTER_PORT", str(master_port).encode(encoding="UTF-8"))
-    
+
     def _start_workers(self, worker_group: WorkerGroup) -> Dict[int, Any]:
         spec = worker_group.spec
         store = worker_group.store
@@ -80,9 +80,8 @@ class DSElasticAgent(LocalElasticAgent):
                 "TORCHELASTIC_MAX_RESTARTS": str(spec.max_restarts),
                 "TORCHELASTIC_RUN_ID": spec.rdzv_handler.get_run_id(),
                 "TORCHELASTIC_USE_AGENT_STORE": str(use_agent_store),
-                "NCCL_ASYNC_ERROR_HANDLING": os.getenv(
-                    "NCCL_ASYNC_ERROR_HANDLING", str(1)
-                ),
+                "NCCL_ASYNC_ERROR_HANDLING": os.getenv("NCCL_ASYNC_ERROR_HANDLING",
+                                                       str(1)),
             }
             worker_env_ds.update(worker_env_elastic)
             if "OMP_NUM_THREADS" in os.environ:
@@ -113,8 +112,6 @@ class DSElasticAgent(LocalElasticAgent):
 
         return self._pcontext.pids()
 
-
-
     def _invoke_run(self, role: str = "default") -> RunResult:
         # NOTE: currently only works for a single role
 
@@ -122,8 +119,7 @@ class DSElasticAgent(LocalElasticAgent):
         role = spec.role
 
         log.info(
-            f"[{role}] starting workers for entrypoint: {spec.get_entrypoint_name()}"
-        )
+            f"[{role}] starting workers for entrypoint: {spec.get_entrypoint_name()}")
 
         self._initialize_workers(self._worker_group)
         monitor_interval = spec.monitor_interval
@@ -139,11 +135,12 @@ class DSElasticAgent(LocalElasticAgent):
             self._worker_group.state = state
 
             expire_time = datetime.utcnow() - (
-                rdzv_handler._settings.keep_alive_interval * rdzv_handler._settings.keep_alive_max_attempt
-            )
+                rdzv_handler._settings.keep_alive_interval *
+                rdzv_handler._settings.keep_alive_max_attempt)
             _dead_nodes = [
-                node
-                for node, last_heartbeat in rdzv_handler._state_holder.state.last_heartbeats.items()
+                node for node,
+                last_heartbeat in
+                rdzv_handler._state_holder.state.last_heartbeats.items()
                 if last_heartbeat < expire_time
             ]
 
@@ -157,18 +154,20 @@ class DSElasticAgent(LocalElasticAgent):
                 )
                 self._exit_barrier()
                 return run_result
-            elif state in {WorkerState.UNHEALTHY, WorkerState.FAILED} or len(participants)>len( rdzv_handler._state_holder.state.participants):
+            elif state in {
+                    WorkerState.UNHEALTHY,
+                    WorkerState.FAILED
+            } or len(participants) > len(rdzv_handler._state_holder.state.participants):
                 if self._remaining_restarts > 0:
                     log.info(
                         f"[{role}] Worker group {state.name}. "
                         f"{self._remaining_restarts}/{spec.max_restarts} attempts left;"
-                        f" will restart worker group"
-                    )
+                        f" will restart worker group")
                     self._remaining_restarts -= 1
                     # rdzv_handler._state_holder.state.restart = False
                     self._restart_workers(self._worker_group)
-                    participants =  rdzv_handler._state_holder.state.participants
-                    
+                    participants = rdzv_handler._state_holder.state.participants
+
                 else:
                     self._stop_workers(self._worker_group)
                     self._worker_group.state = WorkerState.FAILED
@@ -179,12 +178,10 @@ class DSElasticAgent(LocalElasticAgent):
                 num_nodes_waiting = rdzv_handler.num_nodes_waiting()
                 group_rank = self._worker_group.group_rank
                 if num_nodes_waiting > 0:
-                    log.info(
-                        f"[{role}] Detected {num_nodes_waiting} "
-                        f"new nodes from group_rank={group_rank}; "
-                        f"will restart worker group"
-                    )
+                    log.info(f"[{role}] Detected {num_nodes_waiting} "
+                             f"new nodes from group_rank={group_rank}; "
+                             f"will restart worker group")
                     self._restart_workers(self._worker_group)
-                    participants =  rdzv_handler._state_holder.state.participants
+                    participants = rdzv_handler._state_holder.state.participants
             else:
                 raise Exception(f"[{role}] Worker group in {state.name} state")

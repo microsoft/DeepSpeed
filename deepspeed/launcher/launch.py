@@ -25,8 +25,8 @@ from ..elasticity import DSElasticAgent
 from torch.distributed.elastic.rendezvous import RendezvousParameters
 from torch.distributed.elastic.agent.server.api import WorkerSpec
 import torch.distributed.elastic.rendezvous.registry as rdzv_registry
-PID_FILE_BASEPATH = "/tmp"
 
+PID_FILE_BASEPATH = "/tmp"
 
 
 def parse_args():
@@ -109,7 +109,7 @@ def parse_args():
 def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
 
     config: Dict[str, str] = {'timeout': 100}
-    config["store_type "] =  "file"
+    config["store_type "] = "file"
 
     config = LaunchConfig(
         min_nodes=args.nnodes,
@@ -129,11 +129,10 @@ def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
     )
     return config
 
+
 def main():
     args = parse_args()
     current_env = os.environ.copy()
-
-
 
     for k in current_env.keys():
         if "NCCL" in k:
@@ -206,7 +205,7 @@ def main():
             else:
                 if args.module:
                     raise ValueError("Don't use both the '--no_python' flag"
-                                    " and the '--module' flag at the same time.")
+                                     " and the '--module' flag at the same time.")
             cmd.append(args.training_script)
             # A user may not want to pass local_rank as a keyword arg so we make this optional.
             if not args.no_local_rank:
@@ -216,12 +215,12 @@ def main():
             process = subprocess.Popen(cmd, env=current_env)
             processes.append(process)
     else:
-        if args.min_nodes== -1:
+        if args.min_nodes == -1:
             args.min_nodes = 1
-        if args.max_nodes== -1:
+        if args.max_nodes == -1:
             args.max_nodes = args.nnodes
         assert args.max_nodes > 0 and  args.min_nodes > 0 , "Max and Min nodes should be positive"
-        
+
         current_env["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
         # Get config and arguments
@@ -233,41 +232,36 @@ def main():
         else:
             if args.module:
                 raise ValueError("Don't use both the '--no_python' flag"
-                                " and the '--module' flag at the same time.")
+                                 " and the '--module' flag at the same time.")
         cmd.append(args.training_script)
         cmd += args.training_script_args
-        elastic_config = get_config_elastic(args, num_local_procs,args.node_rank)
+        elastic_config = get_config_elastic(args, num_local_procs, args.node_rank)
         cmd_args = cmd[1:]
 
         rdzv_configs: Dict[str, str] = {'timeout': 100}
-        rdzv_parameters = RendezvousParameters(
-            backend='c10d',
-            endpoint=args.master_addr+":"+str(args.master_port),
-            run_id='123456789',
-            min_nodes=args.min_nodes,
-            max_nodes=args.max_nodes,
-            **rdzv_configs
-        )
+        rdzv_parameters = RendezvousParameters(backend='c10d',
+                                               endpoint=args.master_addr + ":" +
+                                               str(args.master_port),
+                                               run_id='123456789',
+                                               min_nodes=args.min_nodes,
+                                               max_nodes=args.max_nodes,
+                                               **rdzv_configs)
 
         spec = WorkerSpec(
-                role='trainer',
-                local_world_size=num_local_procs,
-                entrypoint=cmd[0],
-                args=cmd[1:],
-                rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
-                max_restarts=100,
-                monitor_interval=5,
-                redirects=Std.from_str("0"),
-                tee=Std.from_str("0"),
-                master_addr=None,
-                master_port=None,
-            )
-        agent = DSElasticAgent(
-            spec,
-            current_env
+            role='trainer',
+            local_world_size=num_local_procs,
+            entrypoint=cmd[0],
+            args=cmd[1:],
+            rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
+            max_restarts=100,
+            monitor_interval=5,
+            redirects=Std.from_str("0"),
+            tee=Std.from_str("0"),
+            master_addr=None,
+            master_port=None,
         )
+        agent = DSElasticAgent(spec, current_env)
         agent.run()
-
 
     sig_names = {2: "SIGINT", 15: "SIGTERM"}
     last_return_code = None

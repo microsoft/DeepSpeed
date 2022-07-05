@@ -329,6 +329,7 @@ def run_autotuning(args, active_resources):
     if args.autotuning == "run":
         tuner.run_after_tuning()
 
+
 def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
     node_list = str_num_nodes.split(":")
 
@@ -340,7 +341,7 @@ def parse_num_nodes(str_num_nodes: str, elastic_training: bool):
         raise RuntimeError("MIN:MAX format is only supported in elastic training")
     else:
         raise RuntimeError("num_nodes {} is not in MIN:MAX format".format(str_num_nodes))
-    
+
     return min_nodes, max_nodes
 
 
@@ -348,7 +349,7 @@ def main(args=None):
     args = parse_args(args)
 
     if args.elastic_training:
-        assert args.master_addr != "", "Master Addr is required when elastic training is enabled" 
+        assert args.master_addr != "", "Master Addr is required when elastic training is enabled"
 
     resource_pool = fetch_hostfile(args.hostfile)
 
