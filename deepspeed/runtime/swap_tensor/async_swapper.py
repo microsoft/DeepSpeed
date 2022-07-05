@@ -6,6 +6,7 @@ Functionality of swapping tensors to/from (NVMe) storage devices.
 """
 import torch
 
+from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.swap_tensor.utils import swap_out_tensors, SwapBuffer
 
@@ -66,10 +67,10 @@ class AsyncTensorSwapper(object):
             self._swap_out_tensor(tensor, swap_path)
 
     def _report_statistics(self, message):
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             element_size = torch.tensor([], dtype=self.dtype).element_size()
             swapped_GB = (self.num_elements_swapped * element_size) / (1024**3)
-            logger.info(
+            logger.debug(
                 f'{message} num_elems = {self.num_elements_swapped}, {swapped_GB:5.2f} GB'
             )
 

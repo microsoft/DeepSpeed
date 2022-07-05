@@ -287,7 +287,7 @@ class FlopsProfiler(object):
         print('{:<60}  {:<8}'.format(
             'params of model = params per GPU * mp_size: ',
             params_to_string(total_params *
-                             (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+                             ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
 
         print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', macs_to_string(total_macs)))
 
@@ -296,7 +296,7 @@ class FlopsProfiler(object):
         print('{:<60}  {:<8}'.format(
             'fwd flops of model = fwd flops per GPU * mp_size: ',
             num_to_string(total_flops *
-                          (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+                          ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
 
         fwd_latency = self.get_total_duration()
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
@@ -534,7 +534,7 @@ def _conv_flops_compute(input,
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -575,7 +575,7 @@ def _conv_trans_flops_compute(
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
