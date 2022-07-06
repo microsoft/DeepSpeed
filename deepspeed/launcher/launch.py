@@ -17,14 +17,9 @@ import time
 import signal
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
-from torch.distributed.launcher.api import LaunchConfig, elastic_launch
-from torch.distributed.elastic.multiprocessing import Std
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
-from ..elasticity import DSElasticAgent
-from torch.distributed.elastic.rendezvous import RendezvousParameters
-from torch.distributed.elastic.agent.server.api import WorkerSpec
-import torch.distributed.elastic.rendezvous.registry as rdzv_registry
+from ..elasticity import is_torch_elastic_compatible
 
 PID_FILE_BASEPATH = "/tmp"
 
@@ -106,30 +101,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
-
-    config: Dict[str, str] = {'timeout': 100}
-    config["store_type "] = "file"
-
-    config = LaunchConfig(
-        min_nodes=args.nnodes,
-        max_nodes=args.max_nodes,
-        nproc_per_node=num_local_procs,
-        run_id="123456789",
-        role="default",
-        rdzv_endpoint="worker-0:46728",
-        rdzv_backend='c10d',
-        rdzv_configs=config,
-        max_restarts=100,
-        monitor_interval=1,
-        start_method="spawn",
-        redirects=Std.from_str("0"),
-        tee=Std.from_str("0"),
-        log_dir="",
-    )
-    return config
-
-
 def main():
     args = parse_args()
     current_env = os.environ.copy()
@@ -186,6 +157,13 @@ def main():
         with open(pid_file, 'w') as fd:
             fd.write(f"{launcher_pid}")
 
+    if not is_torch_elastic_compatible():
+        if args.enable_elastic_training:
+            logger.info(f"Disabling elastic training support as \
+                    PyTorch version should be greater than 1.11.x.\
+                    Current version is {torch.__version__}")
+            args.enable_elastic_training = False
+
     processes = []
     cmd = []
 
@@ -215,6 +193,12 @@ def main():
             process = subprocess.Popen(cmd, env=current_env)
             processes.append(process)
     else:
+        from ..elasticity import DSElasticAgent
+        from torch.distributed.elastic.rendezvous import RendezvousParameters
+        from torch.distributed.elastic.agent.server.api import WorkerSpec
+        import torch.distributed.elastic.rendezvous.registry as rdzv_registry
+        from torch.distributed.elastic.multiprocessing import Std
+
         if args.min_nodes == -1:
             args.min_nodes = 1
         if args.max_nodes == -1:
@@ -235,7 +219,6 @@ def main():
                                  " and the '--module' flag at the same time.")
         cmd.append(args.training_script)
         cmd += args.training_script_args
-        elastic_config = get_config_elastic(args, num_local_procs, args.node_rank)
         cmd_args = cmd[1:]
 
         rdzv_configs: Dict[str, str] = {'timeout': 100}
