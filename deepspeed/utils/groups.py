@@ -220,13 +220,12 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
         expert_data_parallel_group = [0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[7,15]
     """
     assert dist.is_initialized(), "dist is not initialized"
-    model_parallel_size_ = 1 #mpu.get_expert_model_parallel_world_size()
+    model_parallel_size_ = 1  #mpu.get_expert_model_parallel_world_size()
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
-    dp_world_size = world_size # mpu.get_expert_data_parallel_world_size()
-    dp_rank = rank # mpu.get_expert_data_parallel_rank()
-
+    dp_world_size = world_size  # mpu.get_expert_data_parallel_world_size()
+    dp_rank = rank  # mpu.get_expert_data_parallel_rank()
 
     log_dist(
         f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",

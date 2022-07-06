@@ -193,7 +193,6 @@ def top1gating(logits: Tensor,
     # everything is in fp32 in this function
     gates = F.softmax(logits, dim=1)
 
-
     capacity = _capacity(gates,
                          torch.tensor(capacity_factor),
                          torch.tensor(min_capacity))
@@ -517,13 +516,12 @@ class MOELayer(Base):
             dispatched_input = einsum("sec,sm->ecm",
                                       dispatch_mask.type_as(input[0]),
                                       reshaped_input)
-            
+
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
 
-        if groups.mpu is not None: # dropping duplicate tokens
-          dispatched_input = groups.mpu.drop_tokens(dispatched_input, dim=1)
-
+        if groups.mpu is not None:  # dropping duplicate tokens
+            dispatched_input = groups.mpu.drop_tokens(dispatched_input, dim=1)
 
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
 
@@ -553,9 +551,11 @@ class MOELayer(Base):
                                               -1,
                                               d_model)
 
-        if groups.mpu is not None: # gathering the dropped tokens
-          expert_output = groups.mpu.all_gather_from_tensor_model_parallel_region(expert_output, dim=1)
-            
+        if groups.mpu is not None:  # gathering the dropped tokens
+            expert_output = groups.mpu.all_gather_from_tensor_model_parallel_region(
+                expert_output,
+                dim=1)
+
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
         else:
