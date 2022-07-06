@@ -3,3 +3,4 @@ hjson
 psutil
 torch
 tqdm
+py-cpuinfo
