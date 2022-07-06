@@ -521,7 +521,7 @@ class MOELayer(Base):
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
 
-        if groups.mpu is not None: # there is tensor parallelism
+        if groups.mpu is not None: # dropping duplicate tokens
           dispatched_input = groups.mpu.drop_tokens(dispatched_input, dim=1)
 
 
@@ -553,7 +553,7 @@ class MOELayer(Base):
                                               -1,
                                               d_model)
 
-        if groups.mpu is not None:
+        if groups.mpu is not None: # gathering the dropped tokens
           expert_output = groups.mpu.all_gather_from_tensor_model_parallel_region(expert_output, dim=1)
             
         if self.use_tutel:
