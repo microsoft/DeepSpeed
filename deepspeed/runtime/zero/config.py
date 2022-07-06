@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
 from deepspeed.utils import logger
+from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig
 
 # ZeRO optimization. By default, this optimization is not enabled.
 # Users have to configure the desired optimization (0 means disabled) in params.json as below example:
@@ -61,36 +62,6 @@ class ZeroStageEnum(int, Enum):
     gradients = 2
     weights = 3
     max_stage = 3
-
-
-class OffloadDeviceEnum(str, Enum):
-    none = "none"
-    cpu = "cpu"
-    nvme = "nvme"
-
-
-class DeepSpeedZeroOffloadParamConfig(DeepSpeedConfigModel):
-    device: OffloadDeviceEnum = OffloadDeviceEnum.none
-    nvme_path: Path = None
-    buffer_count: int = Field(5, ge=0)
-    buffer_size: int = Field(1e8, ge=0)
-    max_in_cpu: int = Field(1e9, ge=0)
-    pin_memory: bool = False
-
-
-class DeepSpeedZeroOffloadOptimizerConfig(DeepSpeedConfigModel):
-    device: OffloadDeviceEnum = OffloadDeviceEnum.none
-    nvme_path: Path = None
-    buffer_count: int = Field(4, ge=0)
-    pin_memory: bool = False
-    pipeline_read: bool = False
-    pipeline_write: bool = False
-    fast_init: bool = False
-
-    @validator("pipeline_read", "pipeline_write", always=True)
-    def set_pipeline(cls, field_value, values):
-        values["pipeline"] = field_value or values.get("pipeline", False)
-        return field_value
 
 
 class DeepSpeedZeroConfig(DeepSpeedConfigModel):

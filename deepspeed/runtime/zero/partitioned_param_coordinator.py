@@ -14,7 +14,7 @@ from torch.nn import Module, Parameter
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
-from deepspeed.runtime.zero.config import OffloadDeviceEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
