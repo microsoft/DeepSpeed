@@ -4,3 +4,5 @@ psutil
 torch
 tqdm
 py-cpuinfo
+packaging
+pydantic
