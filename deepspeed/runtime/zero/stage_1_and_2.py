@@ -346,7 +346,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 assert (partitioned_data.data_ptr() %
                         (2 * self.nccl_start_alignment_factor) == 0)
 
-            # a partition of the fp32 master weights that will be updated by this process
+            # A partition of the fp32 master weights that will be updated by this process.
+            # Note that the params in single_partition_of_fp32_groups is cloned and detached
+            # from the origin params of the model.
             if not fp16_master_weights_and_gradients:
                 self.single_partition_of_fp32_groups.append(
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
@@ -356,7 +358,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
                         self.device).clone().half().detach())
 
-            # modify optimizer of have flat master weight
+            # Set local optimizer to have flat params of its own partition.
+            # After this, the local optimizer will only contain its own partition of params.
+            # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
             self.single_partition_of_fp32_groups[
                 i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.single_partition_of_fp32_groups[i]]
@@ -1426,7 +1430,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         partitions = []
 
         dp = dist.get_world_size(group=self.real_dp_process_group[group_id])
-        dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
+        # dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
 
         total_num_elements = tensor.numel()
 
@@ -1724,6 +1728,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 partition_id = dist.get_rank(group=self.real_dp_process_group[i])
                 # Step 1:- upscale
                 # free gradients for all the parameters that are not updated by this process
+
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
                 # create a flat gradients for parameters updated by this process
                 # If we are last partition, ensure we have same size grads and partition size, if not pad with zero tensors
@@ -1742,8 +1747,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
                 self.single_partition_of_fp32_groups[i].grad = single_grad_partition
-                # release all the gradient since we have already created a necessary copy in dp_grad_partition
-                #see_memory_usage('After Flatenning average gradients', force=True)
+
+                # release all the gradient since we have already created a necessary copy in dp_grad_partition(ZeRO stage2)
+
                 self.free_grad_in_param_list(self.params_in_partition[i])
                 self.averaged_gradients[i] = None
                 #see_memory_usage('After deleting fp16 gradients', force=True)
@@ -1793,13 +1799,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 for group_no, (bit16_partitions, fp32_partition) in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
                     partition_id = dist.get_rank(group=self.real_dp_process_group[group_no])
                     bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-
         # Stash unscaled gradient norm
         if self.cpu_offload:
             self.reset_cpu_buffers()
 
         self.start_timers([OPTIMIZER_ALLGATHER])
-        # gather the updated weights from everyone
+        # Gather the updated weights from everyone.
+        # Then all partitions of the model parameters are updated and ready for next round forward.
         all_gather_dp_groups(
             partitioned_param_groups=self.parallel_partitioned_bit16_groups,
             dp_process_group=self.real_dp_process_group,
