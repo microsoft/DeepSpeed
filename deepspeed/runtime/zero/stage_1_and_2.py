@@ -1731,7 +1731,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.start_timers([OPTIMIZER_STEP])
                 from deepspeed.ops.adam import DeepSpeedCPUAdam
                 if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                    self.optimizer.step(self.get_bit16_param_groups())
+                    self.optimizer.step(fp16_param_groups=self.get_bit16_param_groups())
                 else:
                     self.optimizer.step()
                     bit16_partitions = self.parallel_partitioned_bit16_groups[i]
