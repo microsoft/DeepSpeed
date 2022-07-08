@@ -1675,6 +1675,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 for i,
                 bit16_partitions in enumerate(self.parallel_partitioned_bit16_groups)]
 
+    def all_optim_grads_none(self):
+        ## for backwards compatibility with pytorch 1.8.0 adam and adamw
+        for group in self.optimizer.param_groups:
+            for p in group['params']:
+                if p.grad is not None:
+                    return False
+        return True
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1730,10 +1738,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.stop_timers([OPTIMIZER_GRADIENTS])
                 self.start_timers([OPTIMIZER_STEP])
                 from deepspeed.ops.adam import DeepSpeedCPUAdam
+
                 if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
                     self.optimizer.step(fp16_param_groups=self.get_bit16_param_groups())
                 else:
-                    self.optimizer.step()
+                    if not self.all_optim_grads_none(
+                    ):  # for pytorch 1.8.0 adam and adamw
+                        self.optimizer.step()
                     bit16_partitions = self.parallel_partitioned_bit16_groups[i]
                     fp32_partition = self.single_partition_of_fp32_groups[i]
                     bit16_partitions[partition_id].data.copy_(fp32_partition.data)
@@ -1774,7 +1785,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 # Step 3:- run the optimizer if no offloading
                 self.start_timers([OPTIMIZER_STEP])
-                self.optimizer.step()
+                if not self.all_optim_grads_none():  # for pytorch 1.8.0 adam and adamw
+                    self.optimizer.step()
                 # Step 4:- get rid of the fp32 gradients. Not needed anymore
                 self.single_partition_of_fp32_groups[i].grad = None
                 del single_grad_partition
