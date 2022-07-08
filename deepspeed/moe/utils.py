@@ -59,8 +59,9 @@ def split_params_grads_into_shared_and_expert_params(
     return shared_grads, expert_grads
 
 
-def split_params_into_different_moe_groups_for_optimizer(
-        param_groups: Tuple[Dict], max_group_size=178956971) -> Tuple[Dict]:
+def split_params_into_different_moe_groups_for_optimizer(param_groups: Tuple[Dict],
+                                                         max_group_size=178956971
+                                                         ) -> Tuple[Dict]:
     """Split parameters into different MoE groups for optimizer
 
     Args:
