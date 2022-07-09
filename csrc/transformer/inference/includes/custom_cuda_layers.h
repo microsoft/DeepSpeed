@@ -17,7 +17,7 @@
 #include <cassert>
 #include <iostream>
 
-#define MAX_OUT_TOKES 1024
+#define MAX_OUT_TOKES 128
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
 
@@ -28,6 +28,8 @@
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
+                            T* alibi,
+                            float layer_scale,
                             bool triangular,
                             bool recompute,
                             bool local_attention,

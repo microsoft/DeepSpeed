@@ -48,6 +48,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
 
             scale_attention: If true, both q and k are scaled by 1/sqrt(attention_heads) before attention computation.
             return_tuple: if True, returns the transformer output as a tuple, otherwise returns as a tensor
+            bigscience_bloom: This flag is added temporarily for supporting the BLOOM-176B model architecture.
     """
     def __init__(self,
                  hidden_size=-1,
@@ -70,7 +71,8 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  rotate_every_two=True,
                  return_tuple=True,
                  mlp_after_attn=True,
-                 training_mp_size=1):
+                 training_mp_size=1,
+                 bigscience_bloom=False):
         super(DeepSpeedInferenceConfig,
               self).__init__(
                   hidden_size,
@@ -95,6 +97,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.mlp_after_attn = mlp_after_attn
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
+        self.bigscience_bloom = bigscience_bloom
 
     @classmethod
     def from_dict(cls, json_object):
@@ -136,7 +139,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                 q_groups,
                 merge_count,
                 qkv_merging,
-                score_context_func):
+                score_context_func,
+                alibi):
         def _transpose_for_scores(x, key=False, reshape=False):
             attention_head_size = x.shape[-1] // num_attention_heads_per_partition
             new_x_shape = x.size()[:-1] + (num_attention_heads_per_partition,
@@ -155,6 +159,143 @@ class DeepSpeedSelfAttentionFunction(Function):
             new_x_layer_shape = x.size()[:-2] + \
                                       (hidden_size_per_partition,)
             return x.view(*new_x_layer_shape).contiguous()
+
+        ########### This part is taken/modified form the HF modeling_bloom.py ################
+        # Reference: https://github.com/huggingface/transformers/blob/main/src/transformers/models/bloom/modeling_bloom.py
+
+        def split_tensor_along_last_dim(tensor,
+                                        num_partitions,
+                                        contiguous_split_chunks=True):
+            """Split a tensor along its last dimension.
+
+            Args:
+                tensor: ([`torch.tensor`], *required*):
+                    input tensor to split
+                num_partitions ([`int`], *required*):
+                    number of partitions to split the tensor
+                contiguous_split_chunks ([`bool`], *optional*, default=`False`)::
+                    If True, make each chunk contiguous in memory.
+            """
+            # Get the size and dimension.
+            last_dim = tensor.dim() - 1
+            numerator, denominator = tensor.size()[last_dim], num_partitions
+            if not (numerator % denominator == 0):
+                raise ValueError(f"{numerator} is not divisible by {denominator}")
+            last_dim_size = numerator // denominator
+            # Split.
+            tensor_list = torch.split(tensor, last_dim_size, dim=last_dim)
+            # Note: torch.split does not create contiguous tensors by default.
+            if contiguous_split_chunks:
+                return tuple(chunk.contiguous() for chunk in tensor_list)
+
+            return tensor_list
+
+        def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
+            # [batch_size, seq_length, 3 x hidden_size] --> [batch_size, seq_length, num_heads, 3 x head_dim]
+            head_dim = hidden_size_per_partition // num_attention_heads_per_partition
+            new_tensor_shape = mixed_x_layer.size()[:-1] + (
+                num_attention_heads_per_partition,
+                3 * head_dim)
+            mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
+
+            # [batch_size, seq_length, num_heads, 3 x head_dim] --> 3  [batch_size, seq_length, num_heads, head_dim]
+            (query_layer,
+             key_layer,
+             value_layer) = split_tensor_along_last_dim(mixed_x_layer,
+                                                        3)
+
+            if layer_past is not None:
+                past_key, past_value = layer_past
+                key_layer = torch.cat((past_key.type_as(key_layer), key_layer), dim=1)
+                value_layer = torch.cat((past_value.type_as(value_layer),
+                                         value_layer),
+                                        dim=1)
+
+            presents = (key_layer, value_layer)
+            # [batch_size, head_dim, q_length, k_length]
+            output_size = (query_layer.size(0),
+                           query_layer.size(2),
+                           query_layer.size(1),
+                           key_layer.size(1))
+            # [batch_size, q_length, num_heads, head_dim] -> [q_length, batch_size * num_heads, head_dim]
+            query_layer = query_layer.transpose(1,
+                                                0).reshape(
+                                                    output_size[2],
+                                                    output_size[0] * output_size[1],
+                                                    -1)
+            # [batch_size, k_length, num_heads, head_dim] -> [k_length, batch_size * num_heads, head_dim]
+            key_layer = key_layer.transpose(1,
+                                            0).reshape(output_size[3],
+                                                       output_size[0] * output_size[1],
+                                                       -1)
+
+            # slice alibi tensor until the query length
+            batch_heads = output_size[0] * output_size[1]
+            offset = torch.distributed.get_rank(
+            ) * batch_heads if torch.distributed.is_initialized() else 0
+            sliced_alibi = alibi[offset:batch_heads + offset, :, :output_size[3]]
+
+            # Raw attention scores. [batch_size * num_heads, q_length, k_length]
+            layer_number = max(1, config.layer_id)
+            norm_factor = (1 / norm_factor) * (1 / norm_factor) / layer_number
+            matmul_result = torch.matmul(query_layer.transpose(1,
+                                                               0),
+                                         key_layer.transpose(1,
+                                                             0).transpose(
+                                                                 1,
+                                                                 2)) * norm_factor
+
+            # change view to [batch_size, num_heads, q_length, k_length]
+            attention_scores = matmul_result.view(*output_size)
+
+            attention_probs = inference_cuda_module.softmax_fp16(
+                attention_scores,
+                sliced_alibi,
+                (output_size[-2] > 1),
+                False,
+                False,
+                1,
+                False,
+                layer_number)
+
+            # context layer shape: [batch_size, num_heads, q_length, head_dim]
+            output_size = (value_layer.size(0),
+                           value_layer.size(2),
+                           query_layer.size(0),
+                           value_layer.size(3))
+            # change view [k_length, batch_size x num_heads, head_dim]
+            value_layer = value_layer.transpose(1,
+                                                0).reshape(
+                                                    value_layer.size(1),
+                                                    output_size[0] * output_size[1],
+                                                    -1)
+
+            # change view [batch_size x num_heads, q_length, k_length]
+            attention_probs_reshaped = attention_probs.view(
+                output_size[0] * output_size[1],
+                output_size[2],
+                -1)
+
+            # matmul: [batch_size * num_heads, q_length, head_dim]
+            context_layer = torch.bmm(attention_probs_reshaped,
+                                      value_layer.transpose(0,
+                                                            1))
+
+            # change view [batch_size, num_heads, q_length, head_dim]
+            context_layer = context_layer.view(*output_size)
+
+            # [batchs_size, num_heads, q_length, head_dim] --> [q_length, batch_size, num_heads, head_dim]
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+
+            # [q_length, batch_size, num_heads, head_dim] --> [q_length, batch_size, hidden_size]
+            new_context_layer_shape = context_layer.size()[:-2] + (
+                hidden_size_per_partition,
+            )
+            context_layer = context_layer.view(*new_context_layer_shape)
+
+            return context_layer, presents
+
+        ###################### End of HF modeling_bloom addition ########################
 
         def compute_attention(qkv_out, input_mask):
             no_masking = input_mask is None
@@ -244,23 +385,33 @@ class DeepSpeedSelfAttentionFunction(Function):
 
                 return context_layer, presents[0], presents[1] # atten_output, key_layer, value_layer
             else:
-                attn_key_value = score_context_func(
-                    qkv_out,
-                    input_mask,
-                    config.rotary_dim,
-                    config.rotate_half,
-                    config.rotate_every_two,
-                    num_attention_heads_per_partition,
-                    (1 / norm_factor if config.scale_attention else 1.0),
-                    config.triangular_masking,
-                    config.local_attention,
-                    config.window_size,
-                    no_masking,
-                    config.layer_id,
-                    DeepSpeedTransformerInference.layer_id)
-
-                context_layer, key_layer, value_layer = attn_key_value
-                return context_layer, key_layer, value_layer
+                # Note: This modification is added for the BLOOM-176B model and will be removed later!
+                if config.bigscience_bloom:
+                    context_layer, presents = backup_attention(qkv_out, layer_past, alibi, input_mask, norm_factor)
+                    return context_layer, presents[0], presents[1] #key_layer, value_layer
+                else:
+                    if alibi is not None:
+                        batch_heads = qkv_out.shape[0] * num_attention_heads_per_partition
+                        offset = torch.distributed.get_rank(
+                        ) * batch_heads if torch.distributed.is_initialized() else 0
+                        sliced_alibi = alibi[offset:batch_heads + offset, :, :]
+                    attn_key_value = score_context_func(
+                        qkv_out,
+                        input_mask,
+                        config.rotary_dim,
+                        config.rotate_half,
+                        config.rotate_every_two,
+                        num_attention_heads_per_partition,
+                        (1 / norm_factor if config.scale_attention else 1.0),
+                        config.triangular_masking,
+                        config.local_attention,
+                        config.window_size,
+                        no_masking,
+                        config.layer_id,
+                        DeepSpeedTransformerInference.layer_id,
+                        sliced_alibi if alibi is not None else torch.empty(1))
+                    context_layer, key_layer, value_layer = attn_key_value
+                    return context_layer, key_layer, value_layer
 
         def selfAttention_fp():
             vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
@@ -276,7 +427,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
-
                 qkv_out = qkv_func(input,
                                    attn_qkvw,
                                    (attn_qkvb if attn_qkvb is not None else norm_b),
@@ -285,7 +435,6 @@ class DeepSpeedSelfAttentionFunction(Function):
                                    config.epsilon,
                                    (attn_qkvb is not None),
                                    DeepSpeedTransformerInference.layer_id)
-
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
 
@@ -347,19 +496,29 @@ class DeepSpeedSelfAttention(nn.Module):
                  qkv_merging=False):
         super(DeepSpeedSelfAttention, self).__init__()
         self.config = config
+        data_type = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
         self.attn_qkvw = nn.Parameter(
-            torch.Tensor(self.config.hidden_size,
-                         (self.config.hidden_size // self.config.mp_size) * 3))
+            torch.empty(self.config.hidden_size,
+                        (self.config.hidden_size // self.config.mp_size) * 3,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
         self.attn_qkvb = nn.Parameter(
-            torch.Tensor((self.config.hidden_size // self.config.mp_size) * 3))
+            torch.empty((self.config.hidden_size // self.config.mp_size) * 3,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
 
         self.attn_ow = nn.Parameter(
-            torch.Tensor(self.config.hidden_size // self.config.mp_size,
-                         self.config.hidden_size))
+            torch.empty(self.config.hidden_size // self.config.mp_size,
+                        self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
 
-        self.attn_ob = nn.Parameter(torch.Tensor(self.config.hidden_size))
+        self.attn_ob = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
 
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
@@ -389,7 +548,8 @@ class DeepSpeedSelfAttention(nn.Module):
                 encoder_attention_mask=None,
                 output_attentions=False,
                 norm_w=None,
-                norm_b=None):
+                norm_b=None,
+                alibi=None):
         output = DeepSpeedSelfAttentionFunction.apply(
             input,
             input_mask,
@@ -414,7 +574,8 @@ class DeepSpeedSelfAttention(nn.Module):
             self.q_groups,
             self.merge_count,
             self.qkv_merging,
-            self.score_context_func)
+            self.score_context_func,
+            alibi)
 
         return output
 
@@ -482,6 +643,7 @@ class DeepSpeedMLPFunction(Function):
                                              config.pre_layer_norm,
                                              config.mlp_after_attn)
                 output = vector_matmul_func(intermediate, output_w, False)
+
         inference_cuda_module.residual_add(
             output,
             residual if config.pre_layer_norm else residual_add,
@@ -513,17 +675,33 @@ class DeepSpeedMLP(nn.Module):
         super(DeepSpeedMLP, self).__init__()
 
         self.config = config
-        self.attn_nw = nn.Parameter(torch.Tensor(self.config.hidden_size))
-        self.attn_nb = nn.Parameter(torch.Tensor(self.config.hidden_size))
+        data_type = torch.half if config.fp16 else torch.float
+        self.attn_nw = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
+        self.attn_nb = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
         self.inter_w = nn.Parameter(
-            torch.Tensor(self.config.hidden_size,
-                         self.config.intermediate_size // self.config.mp_size))
+            torch.empty(self.config.hidden_size,
+                        self.config.intermediate_size // self.config.mp_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
         self.inter_b = nn.Parameter(
-            torch.Tensor(self.config.intermediate_size // self.config.mp_size))
+            torch.empty(self.config.intermediate_size // self.config.mp_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
         self.output_w = nn.Parameter(
-            torch.Tensor((self.config.intermediate_size // self.config.mp_size),
-                         self.config.hidden_size))
-        self.output_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
+            torch.empty((self.config.intermediate_size // self.config.mp_size),
+                        self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
+        self.output_b = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
 
         # used for quantization
         self.q_scales = q_scales
@@ -595,6 +773,7 @@ class DeepSpeedTransformerInference(nn.Module):
         self.config.layer_id = DeepSpeedTransformerInference.layer_id
         DeepSpeedTransformerInference.layer_id += 1
 
+        data_type = torch.half if config.fp16 else torch.float
         global inference_cuda_module
         if inference_cuda_module is None:
             builder = op_builder.InferenceBuilder()
@@ -615,8 +794,14 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
-        self.norm_w = nn.Parameter(torch.Tensor(self.config.hidden_size))
-        self.norm_b = nn.Parameter(torch.Tensor(self.config.hidden_size))
+        self.norm_w = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
+        self.norm_b = nn.Parameter(
+            torch.empty(self.config.hidden_size,
+                        dtype=data_type,
+                        device=torch.cuda.current_device()))
         self.layer_past = None
 
     def forward(self,
@@ -632,7 +817,9 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_hidden_states=None,
                 encoder_attention_mask=None,
                 use_cache=False,
+                alibi=None,
                 output_attentions=False):
+        #import pdb;pdb.set_trace()
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
         layer_past = layer_past if layer_past is not None else self.layer_past
@@ -658,10 +845,11 @@ class DeepSpeedTransformerInference(nn.Module):
                                               encoder_attention_mask,
                                               output_attentions,
                                               self.norm_w,
-                                              self.norm_b)
+                                              self.norm_b,
+                                              alibi)
             presents = (key, value)
             self.layer_past = presents
-
+            #import pdb;pdb.set_trace()
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
@@ -673,8 +861,6 @@ class DeepSpeedTransformerInference(nn.Module):
                                       self.config.epsilon)
 
             output = output.to(input_type)
-        #print(f'[{deepspeed.comm.get_rank()}] {self.config.layer_id}: {output.norm()}')
-        #exit()
         if get_present:
             output = (output, presents)
 

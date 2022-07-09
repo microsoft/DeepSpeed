@@ -15,7 +15,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                       bool recompute,
                       bool local_attention,
                       int window_size,
-                      bool async_op)
+                      bool async_op,
+                      float layer_scale)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
@@ -32,6 +33,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
+                           (T*)attn_mask.data_ptr(),
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -145,7 +148,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
     attn_score = ds_softmax<T>(
-        attn_score, attn_mask, triangular, recompute, local_attention, window_size, false);
+        attn_score, attn_mask, triangular, recompute, local_attention, window_size, false, 1.0);
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 k,
@@ -225,6 +228,8 @@ std::vector<at::Tensor> ds_softmax_context1(at::Tensor& query,
 template <typename T>
 void ds_softmax_internal(T* attn_scores,
                          at::Tensor& attn_mask,
+                         at::Tensor& alibi,
+                         float& layer_scale,
                          bool triangular,
                          bool recompute,
                          bool local_attention,
@@ -236,6 +241,8 @@ void ds_softmax_internal(T* attn_scores,
 {
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
+                           (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -263,9 +270,12 @@ void attention_unfused(T* prev_key_cont,
                        bool triangular,
                        bool recompute,
                        bool local_attention,
-                       int window_size)
+                       int window_size,
+                       at::Tensor& alibi,
+                       int layer_id)
 {
-    float alpha = norm_factor * norm_factor;
+    float layer_scale = std::max(1, layer_id);
+    float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
     T* workspace = (T*)output + bsz * seq_len * heads * k;
 
@@ -292,6 +302,8 @@ void attention_unfused(T* prev_key_cont,
 #endif
     ds_softmax_internal<T>(workspace,
                            attn_mask,
+                           alibi,
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -336,7 +348,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            int window_size,
                                            bool no_masking,
                                            unsigned layer_id,
-                                           unsigned num_layers)
+                                           unsigned num_layers,
+                                           at::Tensor& alibi)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
@@ -410,7 +423,9 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                          (triangular && is_prompt),
                          is_prompt,
                          local_attention,
-                         window_size);
+                         window_size,
+                         alibi,
+                         layer_id);
     launch_transform4d_0213<T>((T*)output.data_ptr(),
                                temp_buf,
                                bsz,

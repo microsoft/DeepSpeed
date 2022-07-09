@@ -18,8 +18,11 @@ from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..moe.layer import MoE
+from ..runtime.zero import GatheredParameters
+from ..module_inject import LinearAllreduce, LinearLayer, GatherEmbedding, Normalize, ReplaceWithTensorSlicing
 
 DS_INFERENCE_ENABLED = False
+from torch import nn
 
 
 class InferenceEngine(Module):
@@ -124,7 +127,8 @@ class InferenceEngine(Module):
                                              moe,
                                              moe_experts,
                                              moe_type,
-                                             training_mp_size)
+                                             training_mp_size,
+                                             self.checkpoint)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -132,7 +136,8 @@ class InferenceEngine(Module):
                 moe=moe,
                 moe_experts=moe_experts,
                 moe_type=moe_type,
-                training_mp_size=training_mp_size)
+                training_mp_size=training_mp_size,
+                checkpoint=self.checkpoint)
 
         device = torch.cuda.current_device()
         logger.info(f"Place model to device: {device}")
@@ -230,6 +235,73 @@ class InferenceEngine(Module):
             raise ValueError(
                 f"injection_dict must be None or a dict, got: {self.injection_dict}")
 
+    def load_model_with_checkpoint(self, r_module):
+        self.mp_replace = ReplaceWithTensorSlicing(
+            mp_group=self.mp_group,
+            mp_size=self.mp_world_size)  #, out_dim=0, in_dim=1)
+        error_msgs = []
+
+        def load(module, state_dict, prefix):
+            args = (state_dict, prefix, {}, True, [], [], error_msgs)
+            if len(list(module.parameters())) > 0 and list(
+                    module.parameters())[0].numel() == 0:
+                with GatheredParameters(list(module.parameters(recurse=False)),
+                                        modifier_rank=0):
+                    if torch.distributed.get_rank() == 0:
+                        module._load_from_state_dict(*args)
+            else:
+                if hasattr(module, 'weight'):
+                    if 'query_key_value' in prefix:
+                        module.weight = self.mp_replace.qkv_copy(
+                            module.weight.data,
+                            state_dict[prefix + 'weight'])
+                    else:
+                        module.weight = self.mp_replace.copy(
+                            module.weight.data,
+                            state_dict[prefix + 'weight'])
+                else:
+                    module.norm.weight = self.mp_replace.copy(
+                        module.norm.weight.data,
+                        state_dict[prefix + 'weight'])
+                if prefix + 'bias' in self.key_list:
+                    if hasattr(module, 'norm'):
+                        module.norm.bias = self.mp_replace.copy(
+                            module.norm.bias,
+                            state_dict[prefix + 'bias'])
+                    else:
+                        data = state_dict[prefix + 'bias']
+                        data = data.to(torch.cuda.current_device())
+                        module.bias = self.mp_replace.copy(module.bias, data)
+
+        layer_policies = {
+            nn.Linear: load,
+            nn.Embedding: load,
+            nn.LayerNorm: load,
+            LinearLayer: load,
+            LinearAllreduce: load
+        }
+
+        def load_module_recursive(module, prefix='', level=0):
+            for name, child in module.named_children():
+                if child.__class__ in layer_policies:
+                    checking_key = prefix + name + '.'
+                    if not any(checking_key in item for item in self.key_list):
+                        continue
+                    if len(list(child.parameters())) > 0 and list(
+                            child.parameters())[0].numel() == 0:
+                        if len(child.weight.ds_shape) == 1:
+                            child = Normalize(dim=child.weight.ds_shape[-1],
+                                              dtype=child.weight.dtype,
+                                              eps=child.eps)
+                            setattr(module, name, child)
+                    load(child, self.sd, prefix + name + '.')
+                else:
+                    load_module_recursive(child,
+                                          prefix if level == 0 else prefix + name + '.',
+                                          level + 1)
+
+        load_module_recursive(r_module)
+
     def _apply_injection_policy(self,
                                 client_module=None,
                                 injection_policy=None,
@@ -238,8 +310,8 @@ class InferenceEngine(Module):
                                 moe=False,
                                 moe_experts=1,
                                 moe_type='standard',
-                                training_mp_size=1):
-
+                                training_mp_size=1,
+                                checkpoint=None):
         replace_transformer_layer(client_module,
                                   self.module,
                                   triangular_masking=self.triangular_masking,
@@ -303,34 +375,48 @@ class InferenceEngine(Module):
         else:
             sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
 
-        mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
+        if type(sd_loader) is list:
+            self.sd = torch.load(sd_loader[0], map_location='cpu')
+            self.key_list = list(self.sd.keys())
 
-        load_path, checkpoint, quantize_config = sd_loader.load(self.mp_world_size,
-                                                  mp_rank,
-                                                  is_pipe_parallel=is_pipe_parallel,
-                                                  quantize=(self.dtype is torch.int8),
-                                                  quantize_groups=self.quantize_groups,
-                                                  mlp_extra_grouping=self.mlp_extra_grouping)
+            self.load_model_with_checkpoint(self.module)
 
-        self.quantization_scales, self.quantize_merge_count = quantize_config
+            for i in range(1, len(sd_loader)):
+                if not torch.distributed.is_initialized() or torch.distributed.get_rank(
+                ) == 0:
+                    print(f"loading checkpoint ({i})")
+                self.sd = torch.load(sd_loader[i], map_location='cuda')
+                self.key_list = list(self.sd.keys())
+                self.load_model_with_checkpoint(self.module)
+        else:
+            mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
 
-        moe, _ = has_moe_layers(self.module)
-        if moe:
-            from deepspeed.runtime.engine import DeepSpeedEngine
-            old_moe_load = False
-            if not isinstance(checkpoint['num_experts'], list):
-                old_moe_load = True
-            DeepSpeedEngine.load_moe_state_dict(
-                load_dir,
-                tag,
+            load_path, checkpoint, quantize_config = sd_loader.load(self.mp_world_size,
+                                                    mp_rank,
+                                                    is_pipe_parallel=is_pipe_parallel,
+                                                    quantize=(self.dtype is torch.int8),
+                                                    quantize_groups=self.quantize_groups,
+                                                    mlp_extra_grouping=self.mlp_extra_grouping)
+
+            self.quantization_scales, self.quantize_merge_count = quantize_config
+
+            moe, _ = has_moe_layers(self.module)
+            if moe:
+                from deepspeed.runtime.engine import DeepSpeedEngine
+                old_moe_load = False
+                if not isinstance(checkpoint['num_experts'], list):
+                    old_moe_load = True
+                DeepSpeedEngine.load_moe_state_dict(
+                    load_dir,
+                    tag,
+                    state_dict=checkpoint[self._choose_module_key(checkpoint)],
+                    old_moe_load=old_moe_load,
+                    model=self.module,
+                    mpu=self.mpu)
+
+            self.module.load_state_dict(
                 state_dict=checkpoint[self._choose_module_key(checkpoint)],
-                old_moe_load=old_moe_load,
-                model=self.module,
-                mpu=self.mpu)
-
-        self.module.load_state_dict(
-            state_dict=checkpoint[self._choose_module_key(checkpoint)],
-            strict=load_module_strict)
+                strict=load_module_strict)
 
     def _choose_module_key(self, sd):
         assert not ('module' in sd and 'model' in sd), "checkpoint has both 'model' and 'module' keys, not sure how to proceed"

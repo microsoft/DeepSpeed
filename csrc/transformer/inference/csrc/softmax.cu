@@ -28,6 +28,8 @@ namespace cg = cooperative_groups;
 
 __global__ void attn_softmax_v2(__half* vals,
                                 __half* mask,
+                                __half* alibi,
+                                float layer_scale,
                                 bool triangular,
                                 bool recompute,
                                 bool local_attention,
@@ -64,7 +66,7 @@ __global__ void attn_softmax_v2(__half* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / (heads * num_seq)) * (sequence_length);
+        int mask_offset = (iter_offset / (num_seq)) * (sequence_length);
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -76,7 +78,7 @@ __global__ void attn_softmax_v2(__half* vals,
             (local_attention && real_seq_id >= window_size) ? real_seq_id - window_size : -1;
 
         float max_val = minus_infinity;
-
+        // if (lane == 0) printf("%d, %d: %d \n", wid, blockIdx.x, mask_offset);
         for (int i = 0; i < iterations; i++) {
             int data_id = i * (reduceWidth << 2) + (seq_lane << 2);
             if ((!triangular || ((data_id >> 2) <= seq_id4)) && (data_id >> 2) >= window_stride4 &&
@@ -102,6 +104,16 @@ __global__ void attn_softmax_v2(__half* vals,
                         high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
                         high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
                     }
+                    if (alibi) {
+                        low_data[i].x = low_data[i].x * layer_scale +
+                                        __half2float(alibi[data_id + mask_offset]);
+                        low_data[i].y = low_data[i].y * layer_scale +
+                                        __half2float(alibi[data_id + mask_offset + 1]);
+                        high_data[i].x = high_data[i].x * layer_scale +
+                                         __half2float(alibi[data_id + mask_offset + 2]);
+                        high_data[i].y = high_data[i].y * layer_scale +
+                                         __half2float(alibi[data_id + mask_offset + 3]);
+                    }
                 } else {
                     low_data[i].x = data_id > window_stride ? __half2float(vals[data_id])
                                                             : minus_infinity;
@@ -122,6 +134,16 @@ __global__ void attn_softmax_v2(__half* vals,
                             low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
                         if ((data_id + 2) < sequence_length)
                             high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
+                    }
+                    if (alibi) {
+                        low_data[i].x = low_data[i].x * layer_scale +
+                                        __half2float(alibi[data_id + mask_offset]);
+                        if ((data_id + 1) < sequence_length)
+                            low_data[i].y = low_data[i].y * layer_scale +
+                                            __half2float(alibi[data_id + mask_offset + 1]);
+                        if ((data_id + 2) < sequence_length)
+                            high_data[i].x = high_data[i].x * layer_scale +
+                                             __half2float(alibi[data_id + mask_offset + 2]);
                     }
                 }
                 // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
@@ -204,6 +226,8 @@ __global__ void attn_softmax_v2(__half* vals,
 
 __global__ void attn_softmax_v2(float* vals,
                                 float* attn_mask,
+                                float* alibi,
+                                float layer_scale,
                                 bool triangular,
                                 bool recompute,
                                 bool local_attention,
@@ -371,6 +395,8 @@ __global__ void attn_softmax_v2(float* vals,
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
+                            T* alibi,
+                            float layer_scale,
                             bool triangular,
                             bool recompute,
                             bool local_attention,
@@ -393,6 +419,8 @@ void launch_attn_softmax_v2(T* vals,
         attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(
             vals,
             mask,
+            alibi,
+            layer_scale,
             triangular,
             recompute,
             local_attention,
@@ -410,6 +438,8 @@ void launch_attn_softmax_v2(T* vals,
 
 template void launch_attn_softmax_v2(float* vals,
                                      float* mask,
+                                     float* alibi,
+                                     float layer_scale,
                                      bool triangular,
                                      bool recompute,
                                      bool local_attention,
@@ -422,6 +452,8 @@ template void launch_attn_softmax_v2(float* vals,
                                      cudaStream_t stream);
 template void launch_attn_softmax_v2(__half* vals,
                                      __half* mask,
+                                     __half* alibi,
+                                     float layer_scale,
                                      bool triangular,
                                      bool recompute,
                                      bool local_attention,
