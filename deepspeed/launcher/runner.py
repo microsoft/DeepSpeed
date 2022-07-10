@@ -14,7 +14,8 @@ import argparse
 import subprocess
 import collections
 from copy import deepcopy
-
+import signal
+import time
 import torch.cuda
 
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
@@ -490,10 +491,25 @@ def main(args=None):
                         key, val = var.split('=', maxsplit=1)
                         runner.add_export(key, val)
 
-        cmd = runner.get_cmd(env, active_resources)
+        if args.launcher == PDSH_LAUNCHER:
+            cmd, kill_cmd = runner.get_cmd(env, active_resources)
+        else:
+            cmd = runner.get_cmd(env, active_resources)
 
     logger.info(f"cmd = {' '.join(cmd)}")
     result = subprocess.Popen(cmd, env=env)
+
+    def sigkill_handler(signum, frame):
+        result.send_signal(signal.SIGINT)
+        time.sleep(0.1)
+        result.send_signal(signal.SIGTERM)
+        result_kill = subprocess.Popen(kill_cmd, env=env)
+        result_kill.wait()
+        time.sleep(1)
+        sys.exit(1)
+
+    if args.launcher == PDSH_LAUNCHER:
+        signal.signal(signal.SIGINT, sigkill_handler)
 
     result.wait()
 
