@@ -20,35 +20,14 @@ import torch.cuda
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..nebula.constants import NEBULA_EXPORT_ENVS
 from ..utils import logger
 
 from ..autotuning import Autotuner
 
 DLTS_HOSTFILE = "/job/hostfile"
-EXPORT_ENVS = [
-    'NCCL',
-    'PYTHON',
-    'MV2',
-    'UCX',
-    'DLTS_JOB_ID',
-    'DLTS_NUM_WORKER',
-    'NEBULA_PERSISTENT_STORAGE_PATH',
-    'NEBULA_PERSISTENT_TIME_INTERVAL',
-    'AML_RUN_ID',
-    'AZUREML_RUN_TOKEN',
-    'AZUREML_WORKSPACE_SCOPE',
-    'AZUREML_EXPERIMENT_SCOPE',
-    'AZUREML_RUN_HISTORY_SERVICE_ENDPOINT',
-    'AZUREML_RUN_ID',
-    'NEBULA_MEMORY_BUFFER_SIZE',
-    'AZUREML_PARAMETER_ITPJOB_NAME',
-    'FC_TASKROLE_NAME',
-    'FC_TASK_INDEX',
-    'MASTER_HOST',
-    'LOCAL_HOST',
-    'AZUREML_BLOB_ACCOUNT_NAME',
-    'AZUREML_BLOB_ACCOUNT_KEY'
-]
+EXPORT_ENVS = ['NCCL', 'PYTHON', 'MV2', 'UCX']
+EXPORT_ENVS += NEBULA_EXPORT_ENVS
 DEEPSPEED_ENVIRONMENT_NAME = ".deepspeed_env"
 DEEPSPEED_ENVIRONMENT_PATHS = [os.path.expanduser("~"), '.']
 PDSH_MAX_FAN_OUT = 1024

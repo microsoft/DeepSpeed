@@ -189,8 +189,6 @@ class DeepSpeedEngine(Module):
         config=None,
         config_params=None,
         dont_change_device=False,
-        enable_nebula=None,
-        nebula_config_params=None,
     ):
         super(DeepSpeedEngine, self).__init__()
         self.dont_change_device = dont_change_device
@@ -225,8 +223,6 @@ class DeepSpeedEngine(Module):
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         self.checkpoint_engine = None
-        self.enable_nebula = enable_nebula
-        self.nebula_config_params = nebula_config_params
 
         global dist
         from deepspeed import comm as dist
@@ -774,11 +770,11 @@ class DeepSpeedEngine(Module):
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
-        if self.enable_nebula:
+        if self.config.nebula_config.enabled:
             from deepspeed.runtime.checkpoint_engine.nebula_checkpoint_engine import \
                 NebulaCheckpointEngine
             self.checkpoint_engine = NebulaCheckpointEngine(
-                config_params=self.nebula_config_params)
+                config_params=self.config.nebula_config)
         else:
             self.checkpoint_engine = CheckpointEngine()
 
@@ -2488,7 +2484,7 @@ class DeepSpeedEngine(Module):
         before ``load_checkpoint()``.
         """
         checkpoint_engine_tmp = self.checkpoint_engine
-        if self.enable_nebula and enable_nebula_load == False:
+        if self.config.nebula_config.enabled and enable_nebula_load == False:
             self.checkpoint_engine = CheckpointEngine()
         self.persist_path = nebula_load_path_tier3
 
