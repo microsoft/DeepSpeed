@@ -37,6 +37,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.max_live_parameters = None
         self.max_reuse_distance = None
         self.gather_16bit_weights_on_model_save = None
+        self.model_persistence_threshold = None 
 
         self.ignore_unused_parameters = None
         self.round_robin_gradients = None
@@ -170,6 +171,12 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD,
             ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT)
+
+        self.model_persistence_threshold = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_MODEL_PERSISTENCE_THRESHOLD,
+            ZERO_OPTIMIZATION_MODEL_PERSISTENCE_THRESHOLD_DEFAULT
+        )
 
         # config key has been renamed to use "16bit" instead of "fp16." falling back
         # to old config name in order to preserve backwards compatibility

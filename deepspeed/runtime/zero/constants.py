@@ -3,6 +3,7 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
+import sys 
 from .offload_constants import *
 
 #########################################
@@ -110,6 +111,10 @@ ZERO_OPTIMIZATION_PREFETCH_BUCKET_SIZE_DEFAULT = 50000000
 #avoid tons of latency bound communication
 ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD = 'stage3_param_persistence_threshold'
 ZERO_OPTIMIZATION_PARAM_PERSISTENCE_THRESHOLD_DEFAULT = 100000
+
+# maximum number of model parameters that can be persisted.
+ZERO_OPTIMIZATION_MODEL_PERSISTENCE_THRESHOLD = 'stage3_model_persistence_threshold'
+ZERO_OPTIMIZATION_MODEL_PERSISTENCE_THRESHOLD_DEFAULT = sys.maxsize
 
 # gathers params for saving a model - inefficient but is required in certain situations
 ZERO_OPTIMIZATION_GATHER_FP16_WEIGHTS_ON_MODEL_SAVE = 'stage3_gather_fp16_weights_on_model_save'

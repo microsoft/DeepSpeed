@@ -665,6 +665,9 @@ class DeepSpeedEngine(Module):
     def zero_param_persistence_threshold(self):
         return self._config.zero_config.param_persistence_threshold
 
+    def zero_model_persistence_threshold(self):
+        return self._config.zero_config.model_persistence_threshold
+
     def zero_gather_16bit_weights_on_model_save(self):
         return self._config.zero_config.gather_16bit_weights_on_model_save
 
@@ -1311,7 +1314,6 @@ class DeepSpeedEngine(Module):
 
     def _configure_zero_optimizer(self, optimizer):
         zero_stage = self.zero_optimization_stage()
-        log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
         assert self.communication_data_type in (torch.float16, torch.bfloat16), "ZeRO supports only 'communication_data_type': ['fp16', 'bfp16']"
         timers = self.timers if self.wall_clock_breakdown() else None
 
@@ -1329,6 +1331,7 @@ class DeepSpeedEngine(Module):
             round_robin_gradients = self.zero_round_robin_gradients()
             assert not isinstance(optimizer, DummyOptim), "zero stage 2 requires an optimizer"
 
+            log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 overlap_comm = False
@@ -1374,10 +1377,8 @@ class DeepSpeedEngine(Module):
 
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
-            logger.info("Initializing ZeRO Stage 3") if dist.get_rank() == 0 else None
-            from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-
             if isinstance(optimizer, DummyOptim):
+                logger.info("Creating ZeRO Offload") if dist.get_rank() == 0 else None                
                 optimizer = DeepSpeedZeRoOffload(
                     self.module,
                     timers=timers,
@@ -1387,10 +1388,12 @@ class DeepSpeedEngine(Module):
                     max_reuse_distance=self.zero_max_reuse_distance(),
                     max_live_parameters=self.zero_max_live_parameters(),
                     param_persistence_threshold=self.zero_param_persistence_threshold(),
+                    model_persistence_threshold=self.zero_model_persistence_threshold(),
                     offload_param_config=self.zero_offload_param(),
                     mpu=self.mpu)
             else:
-
+                log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
+                from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
                     self.module,
                     optimizer,
@@ -1406,6 +1409,7 @@ class DeepSpeedEngine(Module):
                     max_reuse_distance=self.zero_max_reuse_distance(),
                     max_live_parameters=self.zero_max_live_parameters(),
                     param_persistence_threshold=self.zero_param_persistence_threshold(),
+                    model_persistence_threshold=self.zero_model_persistence_threshold(),
                     dp_process_group=self.data_parallel_group,
                     reduce_scatter=self.zero_reduce_scatter(),
                     overlap_comm=self.zero_overlap_comm(),
