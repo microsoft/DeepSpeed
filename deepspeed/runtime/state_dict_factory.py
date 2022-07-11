@@ -53,12 +53,12 @@ class SDLoaderBase(ABC):
                  checkpoint_engine=None):
         self.module_key = None
         self.ckpt_list = ckpt_list
-        self.check_ckpt_list()
         self.version = version
         self.tag = tag
         self.persist_path = persist_path
         self.checkpoint_engine = CheckpointEngine(
         ) if checkpoint_engine is None else checkpoint_engine
+        self.check_ckpt_list()
 
     def load(self,
              mp_world_size,

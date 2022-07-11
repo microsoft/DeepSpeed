@@ -4,7 +4,7 @@ from deepspeed.utils import logger
 
 class CheckpointEngine(object):
     def __init__(self):
-        return
+        pass
 
     def save(self, state_dict, path: str, tag: str):
         logger.info(f"Saving {path} under tag{tag}...")
