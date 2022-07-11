@@ -770,11 +770,11 @@ class DeepSpeedEngine(Module):
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
-        if self.config is not None and self.config.nebula_config.enabled:
+        if self._config is not None and self._config.nebula_config.enabled:
             from deepspeed.runtime.checkpoint_engine.nebula_checkpoint_engine import \
                 NebulaCheckpointEngine
             self.checkpoint_engine = NebulaCheckpointEngine(
-                config_params=self.config.nebula_config)
+                config_params=self._config.nebula_config)
         else:
             self.checkpoint_engine = CheckpointEngine()
 
@@ -2485,7 +2485,7 @@ class DeepSpeedEngine(Module):
         """
         checkpoint_engine_tmp = self.checkpoint_engine
         if not self.config is None and \
-                self.config.nebula_config.enabled and \
+                self._config.nebula_config.enabled and \
                 enable_nebula_load == False:
             self.checkpoint_engine = CheckpointEngine()
         self.persist_path = nebula_load_path_tier3
