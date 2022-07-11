@@ -28,15 +28,17 @@ class DeepSpeedNebulaConfig(DeepSpeedConfigObject):
                                         NEBULA_ENABLED,
                                         NEBULA_ENABLED_DEFAULT)
 
-        self.persistent_storage_path = get_scalar_param(nebula_dict,
-                                             NEBULA_PERSISTENT_STORAGE_PATH,
-                                             NEBULA_PERSISTENT_STORAGE_PATH_DEFAULT)
+        self.persistent_storage_path = get_scalar_param(
+            nebula_dict,
+            NEBULA_PERSISTENT_STORAGE_PATH,
+            NEBULA_PERSISTENT_STORAGE_PATH_DEFAULT)
 
-        self.persistent_time_interval = get_scalar_param(nebula_dict,
-                                             NEBULA_PERSISTENT_TIME_INTERVAL,
-                                             NEBULA_PERSISTENT_TIME_INTERVAL_DEFAULT)
+        self.persistent_time_interval = get_scalar_param(
+            nebula_dict,
+            NEBULA_PERSISTENT_TIME_INTERVAL,
+            NEBULA_PERSISTENT_TIME_INTERVAL_DEFAULT)
 
-        self.num_of_version_in_retention = get_scalar_param(nebula_dict,
-                                            NEBULA_NUM_OF_VERSION_IN_RETENTION,
-                                            NEBULA_NUM_OF_VERSION_IN_RETENTION_DEFAULT)
-
+        self.num_of_version_in_retention = get_scalar_param(
+            nebula_dict,
+            NEBULA_NUM_OF_VERSION_IN_RETENTION,
+            NEBULA_NUM_OF_VERSION_IN_RETENTION_DEFAULT)
