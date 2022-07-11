@@ -63,7 +63,7 @@ class GatherEmbedding(nn.Module):
     def forward(self, input):
         output = F.embedding(input, self.weight)
         out_list = [torch.empty_like(output) for _ in range(self.mp_size)]
-        torch.distributed.all_gather(out_list, output, group=self.mp_group)
+        dist.all_gather(out_list, output, group=self.mp_group)
         return torch.cat(out_list, dim=-1)
 
 
@@ -161,8 +161,6 @@ class ReplaceWithTensorSlicing:
             if src_shape[0] == dst_shape[0]:
                 dst.data.copy_(src)
             else:
-                #print(f'{torch.distributed.get_rank()}:{src.data.shape}, {dst_shape}\n')
-                #exit()
                 bias_split = torch.split(src.data, dst_shape[-1])
                 dst.data.copy_(bias_split[self.gpu_index].to(
                     torch.cuda.current_device()).contiguous())
@@ -255,7 +253,6 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
-        #print(f"********************* {torch.distributed.get_rank()}: {dense_b}")
         if not moe or moe_type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:

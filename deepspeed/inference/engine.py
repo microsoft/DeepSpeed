@@ -247,7 +247,7 @@ class InferenceEngine(Module):
                     module.parameters())[0].numel() == 0:
                 with GatheredParameters(list(module.parameters(recurse=False)),
                                         modifier_rank=0):
-                    if torch.distributed.get_rank() == 0:
+                    if dist.get_rank() == 0:
                         module._load_from_state_dict(*args)
             else:
                 if hasattr(module, 'weight'):
@@ -382,8 +382,7 @@ class InferenceEngine(Module):
             self.load_model_with_checkpoint(self.module)
 
             for i in range(1, len(sd_loader)):
-                if not torch.distributed.is_initialized() or torch.distributed.get_rank(
-                ) == 0:
+                if not dist.is_initialized() or dist.get_rank() == 0:
                     print(f"loading checkpoint ({i})")
                 self.sd = torch.load(sd_loader[i], map_location='cuda')
                 self.key_list = list(self.sd.keys())
