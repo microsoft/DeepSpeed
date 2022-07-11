@@ -1750,7 +1750,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     fp32_partition = self.single_partition_of_fp32_groups[i]
                     bit16_partitions[partition_id].data.copy_(fp32_partition.data)
 
-                self.single_partition_of_fp32_groups[i].grad = None
                 self.stop_timers([OPTIMIZER_STEP])
             else:
                 if dist.get_rank() == 0:
