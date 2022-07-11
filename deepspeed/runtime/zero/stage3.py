@@ -4,6 +4,7 @@ Licensed under the MIT license.
 """
 
 import gc
+import sys 
 from dataclasses import dataclass
 import functools
 import os
@@ -103,6 +104,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  max_reuse_distance=1000000000,
                  max_live_parameters=1000000000,
                  param_persistence_threshold=100000,
+                 model_persistence_threshold=sys.maxsize,
                  dp_process_group=None,
                  reduce_scatter=True,
                  overlap_comm=False,
