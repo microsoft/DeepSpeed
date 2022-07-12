@@ -10,61 +10,10 @@ from torch import nn
 from deepspeed import comm as dist
 from torch import nn
 from torch.nn import functional as F
-#from transformers.deepspeed import is_deepspeed_zero3_enabled
 
-
-class LinearAllreduce(nn.Module):
-    def __init__(self, weight, bias=None, mp_group=None):
-        super(LinearAllreduce, self).__init__()
-        self.weight = weight
-        self.bias = bias
-        self.mp_group = mp_group
-
-    def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.mp_group is not None:
-            dist.all_reduce(output, group=self.mp_group)
-        if self.bias is not None:
-            output += self.bias
-        return output
-
-
-class LinearLayer(nn.Module):
-    def __init__(self, weight, bias=None):
-        super(LinearLayer, self).__init__()
-        self.weight = weight
-        self.bias = bias
-
-    def forward(self, input):
-        output = torch.matmul(input, self.weight.transpose(-1, -2))
-        if self.bias is not None:
-            output += self.bias
-        return output
-
-
-class Normalize(nn.Module):
-    def __init__(self, dim, dtype=torch.float, eps=1e-5):
-        super(Normalize, self).__init__()
-        self.norm = nn.LayerNorm(dim, eps=eps).to(dtype).to(torch.cuda.current_device())
-        self.weight = self.norm.weight
-        self.bias = self.norm.bias
-
-    def forward(self, input):
-        return self.norm(input)
-
-
-class GatherEmbedding(nn.Module):
-    def __init__(self, weight_shape, dtype=torch.float, mp_size=1, mp_group=None):
-        super(GatherEmbedding, self).__init__()
-        self.weight = torch.empty(weight_shape).to(dtype).to(torch.cuda.current_device())
-        self.mp_size = mp_size
-        self.mp_group = mp_group
-
-    def forward(self, input):
-        output = F.embedding(input, self.weight)
-        out_list = [torch.empty_like(output) for _ in range(self.mp_size)]
-        torch.distributed.all_gather(out_list, output, group=self.mp_group)
-        return torch.cat(out_list, dim=-1)
+from ..runtime.zero import GatheredParameters
+from .layers import LinearAllreduce, LinearLayer, Normalize, EmbeddingLayer
+from .load_checkpoint import load_model_with_checkpoint
 
 
 class ReplaceWithTensorSlicing:
@@ -137,7 +86,6 @@ class ReplaceWithTensorSlicing:
     def copy(self, dst, src):
         if src is None:
             return src
-        #src = src.to(dst.dtype)
         src_shape = src.shape
         dst_shape = dst.shape
         if (len(src_shape) == 2 and len(dst_shape) == 2):
@@ -147,25 +95,27 @@ class ReplaceWithTensorSlicing:
             else:
                 if src_shape[self.in_dim] != dst_shape[self.in_dim]:
                     self.merge_assert(src_shape[self.in_dim], dst_shape[self.in_dim])
-                    weight_split = torch.split(src,
-                                               dst_shape[self.in_dim],
-                                               dim=self.in_dim)
+                    weight_split = torch.split(
+                        src,
+                        dst_shape[self.in_dim],
+                        dim=self.in_dim)[self.gpu_index].to(
+                            torch.cuda.current_device()).contiguous()
                 else:
                     self.merge_assert(src_shape[self.out_dim], dst_shape[self.out_dim])
-                    weight_split = torch.split(src.data,
-                                               dst_shape[self.out_dim],
-                                               dim=self.out_dim)
-                dst.data.copy_(weight_split[self.gpu_index].to(
-                    torch.cuda.current_device()).contiguous())
+                    weight_split = torch.split(
+                        src.data,
+                        dst_shape[self.out_dim],
+                        dim=self.out_dim)[self.gpu_index].to(
+                            torch.cuda.current_device()).contiguous()
+                dst.data.copy_(weight_split.contiguous())
         else:
             if src_shape[0] == dst_shape[0]:
                 dst.data.copy_(src)
             else:
-                #print(f'{torch.distributed.get_rank()}:{src.data.shape}, {dst_shape}\n')
-                #exit()
-                bias_split = torch.split(src.data, dst_shape[-1])
-                dst.data.copy_(bias_split[self.gpu_index].to(
-                    torch.cuda.current_device()).contiguous())
+                bias_split = torch.split(src.data,
+                                         dst_shape[-1])[self.gpu_index].to(
+                                             torch.cuda.current_device()).contiguous()
+                dst.data.copy_(bias_split)
 
         return torch.nn.parameter.Parameter(dst, requires_grad=False)
 
@@ -196,7 +146,8 @@ def replace_transformer_layer(orig_layer_impl,
                               linear_layer_setting=None,
                               moe=False,
                               moe_experts=1,
-                              moe_type='standard'):
+                              moe_type='standard',
+                              checkpoint=None):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -231,6 +182,9 @@ def replace_transformer_layer(orig_layer_impl,
     Returns:
         Updated nn.module with replaced transformer layers
     """
+    mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
+                                          mp_size=mp_size)  #, out_dim=0, in_dim=1)
+
     def replace_with_policy(child,
                             policy_cls,
                             triangular_masking,
@@ -293,8 +247,6 @@ def replace_transformer_layer(orig_layer_impl,
             _res_4hh_w = _res_4hh_w.half()
             _res_coef = _res_coef.half()
 
-        mp_replace = ReplaceWithTensorSlicing(mp_group=mp_group,
-                                              mp_size=mp_size)  #, out_dim=0, in_dim=1)
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
         if inference:
@@ -410,18 +362,23 @@ def replace_transformer_layer(orig_layer_impl,
                 data = data.reshape(data.shape[-1], data.shape[-2])
                 return data
 
-            from ..runtime.zero import GatheredParameters
+            attn_block = new_module.attention
+            mpl_block = new_module.mlp
+
             if attn_linear_layer:
                 if qkvw.numel() == 0:
-                    with GatheredParameters([qkvw,
-                                             dense_w,
-                                             qkvb,
-                                             dense_b],
-                                            modifier_rank=0):
-                        qkvw = transpose(qkvw.data)
-                        dense_w = transpose(dense_w.data)
-                        qkvb = qkvb.data
-                        dense_b = dense_b.data
+                    if qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
+                        pass
+                    else:
+                        with GatheredParameters([qkvw,
+                                                 dense_w,
+                                                 qkvb,
+                                                 dense_b],
+                                                modifier_rank=0):
+                            qkvw = transpose(qkvw.data)
+                            dense_w = transpose(dense_w.data)
+                            qkvb = qkvb.data
+                            dense_b = dense_b.data
                 else:
                     qkvw.data = transpose(qkvw.data)
                     dense_w.data = transpose(dense_w.data)
@@ -464,15 +421,18 @@ def replace_transformer_layer(orig_layer_impl,
 
             if mlp_linear_layer:
                 if not moe and _4hh_w.numel() == 0:
-                    with GatheredParameters([_h4h_w,
-                                             _4hh_w,
-                                             _4hh_b,
-                                             _h4h_b],
-                                            modifier_rank=0):
-                        _h4h_w = transpose(_h4h_w.data)
-                        _4hh_w = transpose(_4hh_w.data)
-                        _h4h_b = _h4h_b.data
-                        _4hh_b = _4hh_b.data
+                    if _4hh_w.ds_tensor.numel() < mpl_block.inter_w.numel():
+                        pass
+                    else:
+                        with GatheredParameters([_h4h_w,
+                                                 _4hh_w,
+                                                 _4hh_b,
+                                                 _h4h_b],
+                                                modifier_rank=0):
+                            _h4h_w = transpose(_h4h_w.data)
+                            _4hh_w = transpose(_4hh_w.data)
+                            _h4h_b = _h4h_b.data
+                            _4hh_b = _4hh_b.data
                 else:
                     _h4h_w = [transpose(moe_w1.data)
                               for moe_w1 in _h4h_w] if moe else transpose(_h4h_w.data)
@@ -484,19 +444,24 @@ def replace_transformer_layer(orig_layer_impl,
                 _res_4hh_w.data = transpose(_res_4hh_w.data)
                 _res_coef.data = transpose(_res_coef.data)
 
-            attn_block = new_module.attention
-
             if qkvw.numel() == 0:
-                with GatheredParameters([attn_qkvw,
-                                         attn_qkvb,
-                                         attn_ow,
-                                         attn_ob],
-                                        modifier_rank=0):
-                    attn_block.attn_qkvw = mp_replace.copy(attn_block.attn_qkvw, qkvw)
-                    attn_block.attn_qkvb = mp_replace.copy(attn_block.attn_qkvb, qkvb)
+                if qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
+                    pass
+                else:
+                    with GatheredParameters([attn_qkvw,
+                                             attn_qkvb,
+                                             attn_ow,
+                                             attn_ob],
+                                            modifier_rank=0):
+                        attn_block.attn_qkvw = mp_replace.copy(
+                            attn_block.attn_qkvw,
+                            qkvw)
+                        attn_block.attn_qkvb = mp_replace.copy(
+                            attn_block.attn_qkvb,
+                            qkvb)
 
-                    attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
-                    attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
+                        attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
+                        attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
             else:
                 attn_block.attn_qkvw = mp_replace.copy(attn_block.attn_qkvw, qkvw)
                 attn_block.attn_qkvb = mp_replace.copy(attn_block.attn_qkvb, qkvb)
@@ -504,7 +469,6 @@ def replace_transformer_layer(orig_layer_impl,
                 attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
                 attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
 
-            mpl_block = new_module.mlp
             if moe:
                 gpu_index = dist.get_rank()
                 gpu_index = 0
@@ -536,32 +500,46 @@ def replace_transformer_layer(orig_layer_impl,
             else:
 
                 if _4hh_w.numel() == 0:
-                    with GatheredParameters([_h4h_w,
-                                             _4hh_w,
-                                             _4hh_w,
-                                             _4hh_b],
-                                            modifier_rank=0):
-                        mpl_block.inter_w = mp_replace.copy(mpl_block.inter_w, _h4h_w)
-                        mpl_block.inter_b = mp_replace.copy(mpl_block.inter_b, _h4h_b)
-                        mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
-                        mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
+                    if _4hh_w.ds_tensor.numel() < mpl_block.inter_w.numel():
+                        pass
+                    else:
+                        with GatheredParameters([_h4h_w,
+                                                 _4hh_w,
+                                                 _4hh_w,
+                                                 _4hh_b],
+                                                modifier_rank=0):
+                            mpl_block.inter_w = mp_replace.copy(
+                                mpl_block.inter_w,
+                                _h4h_w)
+                            mpl_block.inter_b = mp_replace.copy(
+                                mpl_block.inter_b,
+                                _h4h_b)
+                            mpl_block.output_w = mp_replace.copy(
+                                mpl_block.output_w,
+                                _4hh_w)
+                            mpl_block.output_b = mp_replace.copy(
+                                mpl_block.output_b,
+                                _4hh_b)
                 else:
                     mpl_block.inter_w = mp_replace.copy(mpl_block.inter_w, _h4h_w)
                     mpl_block.inter_b = mp_replace.copy(mpl_block.inter_b, _h4h_b)
                     mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
                     mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
                 if attn_nw.numel() == 0:
-                    with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
-                        if attn_nw is None:
-                            new_module.mlp.attn_nw = attn_nw
-                        else:
-                            new_module.mlp.attn_nw.data.copy_(
-                                attn_nw.to(torch.cuda.current_device()))
-                        if attn_nb is None:
-                            new_module.mlp.attn_nb = attn_nb
-                        else:
-                            new_module.mlp.attn_nb.data.copy_(
-                                attn_nb.to(torch.cuda.current_device()))
+                    if attn_nw.ds_tensor.numel() < new_module.mlp.attn_nw.numel():
+                        pass
+                    else:
+                        with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
+                            if attn_nw is None:
+                                new_module.mlp.attn_nw = attn_nw
+                            else:
+                                new_module.mlp.attn_nw.data.copy_(
+                                    attn_nw.to(torch.cuda.current_device()))
+                            if attn_nb is None:
+                                new_module.mlp.attn_nb = attn_nb
+                            else:
+                                new_module.mlp.attn_nb.data.copy_(
+                                    attn_nb.to(torch.cuda.current_device()))
                 else:
                     if attn_nw is None:
                         new_module.mlp.attn_nw = attn_nw
@@ -574,11 +552,14 @@ def replace_transformer_layer(orig_layer_impl,
                         new_module.mlp.attn_nb.data.copy_(
                             attn_nb.to(torch.cuda.current_device()))
             if input_nw.numel() == 0:
-                with GatheredParameters([input_nw, input_nb], modifier_rank=0):
-                    new_module.norm_w.data.copy_(input_nw.to(
-                        torch.cuda.current_device()))
-                    new_module.norm_b.data.copy_(input_nb.to(
-                        torch.cuda.current_device()))
+                if input_nw.ds_tensor.numel() < new_module.norm_w.numel():
+                    pass
+                else:
+                    with GatheredParameters([input_nw, input_nb], modifier_rank=0):
+                        new_module.norm_w.data.copy_(
+                            input_nw.to(torch.cuda.current_device()))
+                        new_module.norm_b.data.copy_(
+                            input_nb.to(torch.cuda.current_device()))
             else:
                 new_module.norm_w.data.copy_(input_nw.to(torch.cuda.current_device()))
                 new_module.norm_b.data.copy_(input_nb.to(torch.cuda.current_device()))
@@ -643,6 +624,7 @@ def replace_transformer_layer(orig_layer_impl,
                         if conv_linear_layer:
                             data = data.transpose(-1, -2).contiguous()
                         data = mp_replace.copy(new_weight, data)
+                    child.weight.ds_tensor = torch.empty(1)
                 else:
                     if conv_linear_layer:
                         child.weight.data = child.weight.data.transpose(-1,
@@ -674,6 +656,7 @@ def replace_transformer_layer(orig_layer_impl,
                         if conv_linear_layer:
                             data = data.transpose(-1, -2).contiguous()
                         data = mp_replace.copy(new_weight, data)
+                    child.weight.ds_tensor = torch.empty(1)
                 else:
                     if conv_linear_layer:
                         child.weight.data = child.weight.data.transpose(-1,
@@ -776,10 +759,19 @@ def replace_transformer_layer(orig_layer_impl,
 
         return new_module
 
-    return replace_module(model=model,
-                          orig_class=orig_layer_impl,
-                          replace_fn=replace_fn,
-                          _replace_policy=policy)
+    replaced_module = replace_module(model=model,
+                                     orig_class=orig_layer_impl,
+                                     replace_fn=replace_fn,
+                                     _replace_policy=policy)
+
+    if checkpoint is not None:
+        for i in range(len(checkpoint)):
+            if not torch.distributed.is_initialized() or torch.distributed.get_rank(
+            ) == 0:
+                print(f"loading checkpoint ({i})")
+            sd = torch.load(checkpoint[i], map_location='cpu')
+            load_model_with_checkpoint(replaced_module, sd, mp_replace)
+    return replaced_module
 
 
 def revert_transformer_layer(orig_layer_impl, model, config, preln=False):

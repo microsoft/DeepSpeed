@@ -19,7 +19,7 @@ from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
 from ..moe.layer import MoE
 from ..runtime.zero import GatheredParameters
-from ..module_inject import LinearAllreduce, LinearLayer, GatherEmbedding, Normalize, ReplaceWithTensorSlicing
+from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 
 DS_INFERENCE_ENABLED = False
 from torch import nn
@@ -99,7 +99,7 @@ class InferenceEngine(Module):
             assert pkg_version.parse(torch.__version__) >= pkg_version.parse("1.10"), \
                 "If you want to use cuda graph, please upgrade torch to at least v1.10"
 
-        if self.checkpoint:
+        if self.checkpoint and not replace_with_kernel_inject:
             self._load_checkpoint(self.checkpoint)
 
         # convert model to intended dtype
@@ -120,15 +120,16 @@ class InferenceEngine(Module):
 
         if self.injection_dict:
             for client_module, injection_policy in self.injection_dict.items():
-                self._apply_injection_policy(client_module,
-                                             injection_policy,
-                                             return_tuple,
-                                             replace_with_kernel_inject,
-                                             moe,
-                                             moe_experts,
-                                             moe_type,
-                                             training_mp_size,
-                                             self.checkpoint)
+                self._apply_injection_policy(
+                    client_module,
+                    injection_policy,
+                    return_tuple,
+                    replace_with_kernel_inject,
+                    moe,
+                    moe_experts,
+                    moe_type,
+                    training_mp_size,
+                    self.checkpoint if replace_with_kernel_inject else None)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -137,7 +138,7 @@ class InferenceEngine(Module):
                 moe_experts=moe_experts,
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
-                checkpoint=self.checkpoint)
+                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None)
 
         device = torch.cuda.current_device()
         logger.info(f"Place model to device: {device}")
@@ -311,7 +312,8 @@ class InferenceEngine(Module):
                                 moe_experts=1,
                                 moe_type='standard',
                                 training_mp_size=1,
-                                checkpoint=None):
+                                checkpoint_dir=None):
+        checkpoint = SDLoaderFactory.get_sd_loader_json(checkpoint_dir)
         replace_transformer_layer(client_module,
                                   self.module,
                                   triangular_masking=self.triangular_masking,
@@ -333,7 +335,8 @@ class InferenceEngine(Module):
                                   moe=moe,
                                   moe_experts=moe_experts,
                                   moe_type=moe_type,
-                                  training_mp_size=training_mp_size)
+                                  training_mp_size=training_mp_size,
+                                  checkpoint=checkpoint)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -435,6 +438,8 @@ class InferenceEngine(Module):
                                                                         self.quantize_groups)
         elif self.dtype == torch.half:
             self.module.half()
+        elif self.dtype == torch.bfloat16:
+            self.module.bfloat16()
         elif self.dtype == torch.float:
             self.module.float()
 
