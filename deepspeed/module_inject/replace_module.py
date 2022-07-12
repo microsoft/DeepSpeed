@@ -765,8 +765,7 @@ def replace_transformer_layer(orig_layer_impl,
 
     if checkpoint is not None:
         for i in range(len(checkpoint)):
-            if not torch.distributed.is_initialized() or torch.distributed.get_rank(
-            ) == 0:
+            if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
                 print(f"loading checkpoint ({i})")
             sd = torch.load(checkpoint[i], map_location='cpu')
             load_model_with_checkpoint(replaced_module, sd, mp_replace)

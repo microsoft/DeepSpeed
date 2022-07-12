@@ -818,7 +818,6 @@ class DeepSpeedTransformerInference(nn.Module):
                 use_cache=False,
                 alibi=None,
                 output_attentions=False):
-        #import pdb;pdb.set_trace()
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
         layer_past = layer_past if layer_past is not None else self.layer_past

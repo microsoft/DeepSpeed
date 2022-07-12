@@ -313,7 +313,8 @@ class InferenceEngine(Module):
                                 moe_type='standard',
                                 training_mp_size=1,
                                 checkpoint_dir=None):
-        checkpoint = SDLoaderFactory.get_sd_loader_json(checkpoint_dir)
+        checkpoint = SDLoaderFactory.get_sd_loader_json(
+            checkpoint_dir) if checkpoint_dir is not None else None
         replace_transformer_layer(client_module,
                                   self.module,
                                   triangular_masking=self.triangular_masking,

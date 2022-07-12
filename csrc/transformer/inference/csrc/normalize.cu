@@ -100,7 +100,7 @@ __global__ void fused_bias_residual_layer_norm(__half* output,
     int gid = id >> 5;
     int warp_num = iteration_stride >> 5;
 
-    __half2 inp_reg[8];
+    __half2 inp_reg[NORM_REG];
 
     const __half2* vals_cast = reinterpret_cast<const __half2*>(vals);
     __half2* out_cast = reinterpret_cast<__half2*>(output);
