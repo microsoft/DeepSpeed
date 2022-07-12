@@ -288,7 +288,7 @@ def _get_max_expert_parallel_group():
 def _get_expert_parallel_group(group_name):
     """Get the expert parallel group the caller rank belongs to."""
     assert group_name in _EXPERT_PARALLEL_GROUP, \
-        f'{dist.get_rank()} expert parallel group - {group_name} is not initialized {_EXPERT_PARALLEL_GROUP}'
+        'expert parallel group is not initialized'
     return _EXPERT_PARALLEL_GROUP[group_name]
 
 
