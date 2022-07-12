@@ -2,8 +2,8 @@ import torch
 import deepspeed
 
 
-def _gather_first_dim(input_, dim=0):
-    """Gather tensors and concatinate along the first dimension."""
+def _all_gather(input_, dim=0):
+    """Gather tensors and concatinate them along a dimension"""
     mpu = deepspeed.utils.groups.mpu
     if mpu.get_tensor_model_parallel_world_size() == 1:
         return input_
@@ -43,12 +43,12 @@ class _AllGatherFromModelParallelRegion(torch.autograd.Function):
     """Reduce scatter output of self attention for MoE"""
     @staticmethod
     def symbolic(graph, input_, dim):
-        return _gather_first_dim(input_, dim)
+        return _all_gather(input_, dim)
 
     @staticmethod
     def forward(ctx, input_, dim):
         ctx.dim = dim
-        return _gather_first_dim(input_, dim)
+        return _all_gather(input_, dim)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -69,4 +69,4 @@ class _DropTokens(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, input_):
-        return _gather_first_dim(input_, ctx.dim), None
+        return _all_gather(input_, ctx.dim), None
