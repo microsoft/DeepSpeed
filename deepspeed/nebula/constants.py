@@ -25,6 +25,9 @@ NEBULA = "nebula"
 NEBULA_ENABLED = "enabled"
 NEBULA_ENABLED_DEFAULT = False
 
+NEBULA_LOAD_PATH = "persistent_storage_path"
+NEBULA_LOAD_PATH_DEFAULT = None
+
 NEBULA_PERSISTENT_STORAGE_PATH = "persistent_storage_path"
 NEBULA_PERSISTENT_STORAGE_PATH_DEFAULT = None
 

@@ -31,14 +31,10 @@ class SDLoaderFactory:
     def get_sd_loader(ckpt_list,
                       sd_type='Megatron',
                       version=None,
-                      tag=None,
-                      persist_path=None,
                       checkpoint_engine=None):
         if sd_type == 'Megatron':
             return MegatronSDLoader(ckpt_list,
                                     version,
-                                    tag,
-                                    persist_path,
                                     checkpoint_engine)
         else:
             assert False, '{} checkpoint type is not supported'.format(sd_type)
@@ -48,14 +44,10 @@ class SDLoaderBase(ABC):
     def __init__(self,
                  ckpt_list,
                  version,
-                 tag=None,
-                 persist_path=None,
                  checkpoint_engine=None):
         self.module_key = None
         self.ckpt_list = ckpt_list
         self.version = version
-        self.tag = tag
-        self.persist_path = persist_path
         self.checkpoint_engine = CheckpointEngine(
         ) if checkpoint_engine is None else checkpoint_engine
         self.check_ckpt_list()
@@ -101,7 +93,7 @@ class SDLoaderBase(ABC):
             assert os.path.exists(load_path)
             #logger.info(f'rank: {mp_rank} loading checkpoint: {load_path}')
             sd = self.checkpoint_engine.load(load_path, map_location=lambda storage, \
-                loc: storage, tag=self.tag, persist_path=self.persist_path)
+                loc: storage)
 
             if quantize:
                 quantizer = WeightQuantization(mlp_extra_grouping=mlp_extra_grouping,
@@ -131,8 +123,6 @@ class SDLoaderBase(ABC):
         logger.info(f"mp_rank: {mp_rank}, ckpt_list: {ckpt_list}")
         sd_list = [
             self.checkpoint_engine.load(ckpt,
-                                        tag=self.tag,
-                                        persist_path=self.persist_path,
                                         map_location=lambda storage,
                                         loc: storage) for ckpt in ckpt_list
         ]
@@ -151,8 +141,6 @@ class SDLoaderBase(ABC):
         )
 
         sd = self.checkpoint_engine.load(self.ckpt_list[ckpt_index],
-                                         tag=self.tag,
-                                         persist_path=self.persist_path,
                                          map_location=lambda storage,
                                          loc: storage)
 
@@ -188,8 +176,6 @@ class SDLoaderBase(ABC):
         assert len(self.ckpt_list) > 0
 
         sd = self.checkpoint_engine.load(self.ckpt_list[0],
-                                         tag=self.tag,
-                                         persist_path=self.persist_path,
                                          map_location=lambda storage,
                                          loc: storage)
 
@@ -226,10 +212,8 @@ class MegatronSDLoader(SDLoaderBase):
     def __init__(self,
                  ckpt_list,
                  version,
-                 tag=None,
-                 persist_path=None,
                  checkpoint_engine=None):
-        super().__init__(ckpt_list, version, tag, persist_path, checkpoint_engine)
+        super().__init__(ckpt_list, version, checkpoint_engine)
         """
         ## Q/K/V data need special processing
         key: transformer.layers.0.attention.query_key_value.weight, shape: torch.Size([3192, 4256])
@@ -467,8 +451,6 @@ class MegatronSDLoader(SDLoaderBase):
         ]
 
         sd = self.checkpoint_engine.load(ckpt_file_name,
-                                         tag=self.tag,
-                                         persist_path=self.persist_path,
                                          map_location=lambda storage,
                                          loc: storage)
 

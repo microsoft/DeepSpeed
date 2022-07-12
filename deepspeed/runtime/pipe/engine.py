@@ -1347,8 +1347,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.module.load_state_dir(load_dir=self._curr_ckpt_path,
                                    strict=strict,
-                                   tag=tag,
-                                   persist_path=self.persist_path,
                                    checkpoint_engine=self.checkpoint_engine)
 
     # A map of PipeInstruction types to methods. Each method will be executed with the

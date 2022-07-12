@@ -48,7 +48,7 @@ from deepspeed.runtime.zero.constants import \
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
 from deepspeed.runtime.sparse_tensor import SparseTensor
 
-from deepspeed.runtime import checkpoint_engine, lr_schedules
+from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
 from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
@@ -2298,7 +2298,6 @@ class DeepSpeedEngine(Module):
                             model=None,
                             mpu=None,
                             num_experts=1,
-                            persist_path=None,
                             checkpoint_engine=CheckpointEngine()):
         if old_moe_load:
             expp_rank = groups._get_expert_data_parallel_rank(
@@ -2315,9 +2314,7 @@ class DeepSpeedEngine(Module):
                     global_expert_id,
                     tag,
                     mpu),
-                    map_location=torch.device('cpu'),
-                    tag=tag,
-                    persist_path=persist_path)
+                    map_location=torch.device('cpu'))
 
                 # Updating global -> local expert ids
                 moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
@@ -2344,9 +2341,7 @@ class DeepSpeedEngine(Module):
                                 global_expert_id,
                                 tag,
                                 mpu),
-                            map_location=torch.device('cpu'),
-                            tag=tag,
-                            persist_path=persist_path)
+                            map_location=torch.device('cpu'))
                         # print(expert_state_dict.keys())
                         # Updating global -> local expert ids
                         moe_str_prefix = '.deepspeed_moe.experts.deepspeed_experts.'
@@ -2573,7 +2568,6 @@ class DeepSpeedEngine(Module):
                                                 model=self.module,
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts,
-                                                persist_path=self.persist_path,
                                                 checkpoint_engine=self.checkpoint_engine)
 
         self.load_module_state_dict(state_dict=checkpoint['module'],
@@ -2593,9 +2587,7 @@ class DeepSpeedEngine(Module):
                 optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
                 optim_checkpoint = self.checkpoint_engine.load(
                     optim_load_path,
-                    map_location=torch.device('cpu'),
-                    tag=tag,
-                    persist_path=self.persist_path)
+                    map_location=torch.device('cpu'))
             else:
                 optim_checkpoint = checkpoint
 
@@ -2753,9 +2745,7 @@ class DeepSpeedEngine(Module):
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
                 _state = self.checkpoint_engine.load(ckpt_name,
-                                                     map_location='cpu',
-                                                     tag=tag,
-                                                     persist_path=self.persist_path)
+                                                     map_location='cpu',)
             else:
                 _state = {OPTIMIZER_STATE_DICT: None}
             zero_sd_list.append(_state)
@@ -2926,8 +2916,7 @@ class DeepSpeedEngine(Module):
                         tag,
                         self.mpu)
                     self.checkpoint_engine.save(expert_state_dict,
-                                                moe_save_path,
-                                                tag=tag)
+                                                moe_save_path)
                 moe_layer_id += 1
 
         self._curr_ckpt_path = os.path.join(save_dir, tag)
@@ -2950,7 +2939,7 @@ class DeepSpeedEngine(Module):
         }
         # TODO: why use BufferedWriter not the path
         file_path = self._get_optimizer_ckpt_name(save_dir, tag, expp_rank)
-        self.checkpoint_engine.save(optimizer_state, file_path, tag=tag)
+        self.checkpoint_engine.save(optimizer_state, file_path)
 
         # get non-moe parameters
         model_state_dict = self._get_non_moe_state_dict(self.module_state_dict())
@@ -2980,7 +2969,7 @@ class DeepSpeedEngine(Module):
             }
             state.update(client_state)
             logger.info(f'Saving model checkpoint: {save_path}')
-            self.checkpoint_engine.save(state, save_path, tag=tag)
+            self.checkpoint_engine.save(state, save_path)
         self._curr_save_path = None
 
     def _create_checkpoint_file(self, save_dir, tag, zero_checkpoint):
@@ -3033,7 +3022,7 @@ class DeepSpeedEngine(Module):
         state.update(client_state)
 
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
-        self.checkpoint_engine.save(state, save_path, tag=tag)
+        self.checkpoint_engine.save(state, save_path)
         self._curr_save_path = None
 
     def _get_buffer_names(self):
@@ -3116,7 +3105,7 @@ class DeepSpeedEngine(Module):
         zero_sd = dict(optimizer_state_dict=self.optimizer.state_dict(),
                        ds_config=self.config,
                        ds_version=version)
-        self.checkpoint_engine.save(zero_sd, zero_checkpoint_name, tag=tag)
+        self.checkpoint_engine.save(zero_sd, zero_checkpoint_name)
 
         if self.global_rank == 0:
             self._copy_recovery_script(save_path)
@@ -3236,6 +3225,6 @@ class DeepSpeedEngine(Module):
         if dist.get_rank() == 0:
             os.makedirs(save_dir, exist_ok=True)
             logger.info(f"Saving model weights to {path}")
-            self.checkpoint_engine.save(state_dict, path, tag=tag)
+            self.checkpoint_engine.save(state_dict, path)
 
         return True

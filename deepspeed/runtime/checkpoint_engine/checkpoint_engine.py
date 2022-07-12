@@ -3,23 +3,20 @@ from deepspeed.utils import logger
 
 
 class CheckpointEngine(object):
+
     def __init__(self):
         pass
 
-    def save(self, state_dict, path: str, tag: str):
-        logger.info(f"Saving {path} under tag{tag}...")
+    def save(self, state_dict, path: str):
+        logger.info(f"Saving {path}...")
         torch.save(state_dict, path)
-        logger.info(f"Saved {path} under tag{tag}.")
+        logger.info(f"Saved {path}.")
         return None
 
-    def load(self,
-             path: str,
-             tag: str = None,
-             persist_path: str = None,
-             map_location=None):
-        logger.info(f"Loading {path} under tag{tag} from {persist_path}...")
+    def load(self, path: str, map_location=None):
+        logger.info(f"Loading checkpoint from {path}...")
         partition = torch.load(path, map_location=map_location)
-        logger.info(f"Loaded {path} under tag{tag} from {persist_path}.")
+        logger.info(f"Loaded checkpoint from {path}.")
         return partition
 
     def commit(self, tag):

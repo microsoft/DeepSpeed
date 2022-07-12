@@ -564,7 +564,7 @@ class PipelineModule(nn.Module):
         ckpt_files.sort()
         return ckpt_files
 
-    def save_state_dict(self, save_dir, tag=None, checkpoint_engine=None):
+    def save_state_dict(self, save_dir, checkpoint_engine=None):
         if self._grid.data_parallel_id != 0:
             return
 
@@ -585,13 +585,11 @@ class PipelineModule(nn.Module):
                 {k: v.clone()
                  for k,
                  v in orig_state_dict.items()})
-            checkpoint_engine.save(final_state_dict, model_ckpt_path, tag)
+            checkpoint_engine.save(final_state_dict, model_ckpt_path)
 
     def load_state_dir(self,
                        load_dir,
                        strict=True,
-                       tag=None,
-                       persist_path=None,
                        checkpoint_engine=CheckpointEngine()):
         for idx, layer in enumerate(self.forward_funcs):
             # Functions, etc. will not have state_dicts
@@ -603,8 +601,7 @@ class PipelineModule(nn.Module):
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0, tag=tag,\
-                persist_path=persist_path, checkpoint_engine=checkpoint_engine)
+            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0, checkpoint_engine=checkpoint_engine)
             load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
 
             layer.load_state_dict(checkpoint)
