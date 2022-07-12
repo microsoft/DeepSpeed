@@ -2746,8 +2746,10 @@ class DeepSpeedEngine(Module):
             # Fully load state for current rank
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
-                _state = self.checkpoint_engine.load(ckpt_name,
-                                                     map_location='cpu',)
+                _state = self.checkpoint_engine.load(
+                    ckpt_name,
+                    map_location='cpu',
+                )
             else:
                 _state = {OPTIMIZER_STATE_DICT: None}
             zero_sd_list.append(_state)
@@ -2917,8 +2919,7 @@ class DeepSpeedEngine(Module):
                         global_expert_id,
                         tag,
                         self.mpu)
-                    self.checkpoint_engine.save(expert_state_dict,
-                                                moe_save_path)
+                    self.checkpoint_engine.save(expert_state_dict, moe_save_path)
                 moe_layer_id += 1
 
         self._curr_ckpt_path = os.path.join(save_dir, tag)

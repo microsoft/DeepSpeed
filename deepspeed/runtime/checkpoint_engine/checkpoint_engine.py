@@ -3,7 +3,6 @@ from deepspeed.utils import logger
 
 
 class CheckpointEngine(object):
-
     def __init__(self):
         pass
 

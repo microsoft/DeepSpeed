@@ -28,10 +28,9 @@ class DeepSpeedNebulaConfig(DeepSpeedConfigObject):
                                         NEBULA_ENABLED,
                                         NEBULA_ENABLED_DEFAULT)
 
-        self.load_path = get_scalar_param(
-            nebula_dict,
-            NEBULA_LOAD_PATH,
-            NEBULA_LOAD_PATH_DEFAULT)
+        self.load_path = get_scalar_param(nebula_dict,
+                                          NEBULA_LOAD_PATH,
+                                          NEBULA_LOAD_PATH_DEFAULT)
 
         self.persistent_storage_path = get_scalar_param(
             nebula_dict,

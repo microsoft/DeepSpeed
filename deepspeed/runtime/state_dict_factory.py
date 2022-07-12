@@ -33,18 +33,13 @@ class SDLoaderFactory:
                       version=None,
                       checkpoint_engine=None):
         if sd_type == 'Megatron':
-            return MegatronSDLoader(ckpt_list,
-                                    version,
-                                    checkpoint_engine)
+            return MegatronSDLoader(ckpt_list, version, checkpoint_engine)
         else:
             assert False, '{} checkpoint type is not supported'.format(sd_type)
 
 
 class SDLoaderBase(ABC):
-    def __init__(self,
-                 ckpt_list,
-                 version,
-                 checkpoint_engine=None):
+    def __init__(self, ckpt_list, version, checkpoint_engine=None):
         self.module_key = None
         self.ckpt_list = ckpt_list
         self.version = version
@@ -209,10 +204,7 @@ class SDLoaderBase(ABC):
 
 
 class MegatronSDLoader(SDLoaderBase):
-    def __init__(self,
-                 ckpt_list,
-                 version,
-                 checkpoint_engine=None):
+    def __init__(self, ckpt_list, version, checkpoint_engine=None):
         super().__init__(ckpt_list, version, checkpoint_engine)
         """
         ## Q/K/V data need special processing

@@ -601,7 +601,10 @@ class PipelineModule(nn.Module):
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0, checkpoint_engine=checkpoint_engine)
+            sd_loader = SDLoaderFactory.get_sd_loader(
+                model_ckpt_list,
+                version=2.0,
+                checkpoint_engine=checkpoint_engine)
             load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
 
             layer.load_state_dict(checkpoint)
