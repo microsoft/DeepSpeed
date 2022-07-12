@@ -2739,7 +2739,7 @@ class DeepSpeedEngine(Module):
 
         return zero_ckpt_names
 
-    def _get_all_zero_checkpoint_state_dicts(self, zero_ckpt_names, tag=None):
+    def _get_all_zero_checkpoint_state_dicts(self, zero_ckpt_names):
         zero_sd_list = []
         for i, ckpt_name in enumerate(zero_ckpt_names):
             _state = None
@@ -2774,7 +2774,7 @@ class DeepSpeedEngine(Module):
                     logger.warn(
                         f'Loading {checkpoint_bit16} zero checkpoints into {engine_bit16} training engine'
                     )
-                return self._get_all_zero_checkpoint_state_dicts(zero_ckpt_names, tag)
+                return self._get_all_zero_checkpoint_state_dicts(zero_ckpt_names)
 
         return None
 
@@ -3186,12 +3186,12 @@ class DeepSpeedEngine(Module):
 
         return state_dict
 
-    def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin", tag=None):
+    def save_fp16_model(self, save_dir, save_filename="pytorch_model.bin"):
         """has been renamed to save_16bit_model, keeping this around for backwards
         compatibility"""
-        return self.save_16bit_model(save_dir, save_filename, tag=tag)
+        return self.save_16bit_model(save_dir, save_filename)
 
-    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin", tag=None):
+    def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
         r"""Save 16bit model weights
 
         This method saves the 16bit model weights at the desired destination.

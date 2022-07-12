@@ -1306,7 +1306,7 @@ class PipelineEngine(DeepSpeedEngine):
             f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)'
         )
 
-    def module_state_dict(self, tag=None):
+    def module_state_dict(self):
         """Override hack to save a pipe model and return the directory path of the save.
 
         This method should only be called by DeepSpeed's ``save_checkpoint()``. The
@@ -1321,15 +1321,10 @@ class PipelineEngine(DeepSpeedEngine):
             "PipelineEngine expects module_state_dict() to be called from save_checkpoint()"
 
         self.module.save_state_dict(self._curr_ckpt_path,
-                                    tag=tag,
                                     checkpoint_engine=self.checkpoint_engine)
         return None
 
-    def load_module_state_dict(self,
-                               state_dict,
-                               strict=True,
-                               custom_load_fn=None,
-                               tag=None):
+    def load_module_state_dict(self, state_dict, strict=True, custom_load_fn=None):
         """Override hack to instead use a directory path.
 
         This is important because pipeline models checkpoint by layer instead of rank.
