@@ -231,8 +231,7 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             # slice alibi tensor until the query length
             batch_heads = output_size[0] * output_size[1]
-            offset = torch.distributed.get_rank(
-            ) * batch_heads if torch.distributed.is_initialized() else 0
+            offset = dist.get_rank() * batch_heads if dist.is_initialized() else 0
             sliced_alibi = alibi[offset:batch_heads + offset, :, :output_size[3]]
 
             # Raw attention scores. [batch_size * num_heads, q_length, k_length]
@@ -392,8 +391,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                 else:
                     if alibi is not None:
                         batch_heads = qkv_out.shape[0] * num_attention_heads_per_partition
-                        offset = torch.distributed.get_rank(
-                        ) * batch_heads if torch.distributed.is_initialized() else 0
+                        offset = dist.get_rank() * batch_heads if dist.is_initialized(
+                        ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
                     attn_key_value = score_context_func(
                         qkv_out,

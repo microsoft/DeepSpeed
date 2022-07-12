@@ -209,7 +209,6 @@ def replace_transformer_layer(orig_layer_impl,
             moe = True
 
         attn_linear_layer, qkvw, qkvb, dense_w, dense_b, scale_attention, megatron_v2 = policy.attention()
-        #print(f"********************* {torch.distributed.get_rank()}: {dense_b}")
         if not moe or moe_type == 'standard':
             mlp_linear_layer, _h4h_w, _h4h_b, _4hh_w, _4hh_b = policy.mlp()
         else:
