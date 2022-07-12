@@ -29,6 +29,7 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import logger, log_dist
 from deepspeed.utils.exceptions import DeprecatedException
+from deepspeed.utils.mappings import _AllGatherFromModelParallelRegion, _DropTokens
 
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
@@ -38,6 +39,8 @@ _EXPERT_DATA_PARALLEL_GROUP = {}
 _WORLD_GROUP = None
 # global object to maintain mpu object if passed by a Megatron client
 mpu = None
+# global object that stores tensor parallel world size for experts
+expert_tensor_parallel_world_size = 1
 
 
 # Deprecated groups initialize function.
@@ -220,12 +223,15 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
         expert_data_parallel_group = [0,8],[2,10],[4,12],[6,14],    [1,9],[3,11],[5,13],[7,15]
     """
     assert dist.is_initialized(), "dist is not initialized"
-    model_parallel_size_ = 1  #mpu.get_expert_model_parallel_world_size()
+    model_parallel_size_ = mpu.get_model_parallel_world_size()
+
+    global expert_tensor_parallel_world_size
+    expert_tensor_parallel_world_size = model_parallel_size_
+
     world_size = dist.get_world_size()
     rank = dist.get_rank()
-
-    dp_world_size = world_size  # mpu.get_expert_data_parallel_world_size()
-    dp_rank = rank  # mpu.get_expert_data_parallel_rank()
+    dp_world_size = mpu.get_data_parallel_world_size()
+    dp_rank = mpu.get_data_parallel_rank()
 
     log_dist(
         f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
@@ -387,3 +393,22 @@ def _get_data_parallel_rank():
     if mpu is not None:
         return mpu.get_data_parallel_rank()
     return dist.get_rank(group=_get_data_parallel_group())
+
+
+def _get_expert_model_parallel_world_size():
+    global expert_tensor_parallel_world_size
+    return expert_tensor_parallel_world_size
+
+
+def all_gather_from_tensor_model_parallel_region(input_, dim=0):
+    global mpu
+    if mpu is None:  # no tensor parallelism for non-experts
+        return input_
+    return _AllGatherFromModelParallelRegion.apply(input_, dim)
+
+
+def drop_tokens(input_, dim=0):
+    global mpu
+    if mpu is None:  # no tensor parallelism for non-experts
+        return input_
+    return _DropTokens.apply(input_, dim)

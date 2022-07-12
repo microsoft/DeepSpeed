@@ -29,7 +29,8 @@ class MoE(torch.nn.Module):
                  noisy_gate_policy: typing.Optional[str] = None,
                  drop_tokens: bool = True,
                  use_rts=True,
-                 use_tutel: bool = False):
+                 use_tutel: bool = False,
+                 MoE_mp_size=1):
         """Initialize an MoE layer.
 
         Arguments:
@@ -54,6 +55,7 @@ class MoE(torch.nn.Module):
         self.ep_size = min(
             ep_size,
             num_experts)  # the ep size should be less than the number of experts
+        self.MoE_mp_size = MoE_mp_size
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
         self.num_local_experts = 1 if num_experts < ep_size else num_experts // ep_size
@@ -94,7 +96,7 @@ class MoE(torch.nn.Module):
             print(
                 f"No existing process group found, creating a new group named: {self.expert_group_name}"
             )
-            if groups.mpu is None:
+            if self.MoE_mp_size == 1:
                 groups._create_expert_and_data_parallel(self.ep_size)
             else:
                 groups._create_expert_data_and_model_parallel(self.ep_size,
