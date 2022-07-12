@@ -403,7 +403,7 @@ class PartitionedParameterCoordinator:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
                 self.__inflight_param_registry[param] = handle
 
-            # Release swap buffers for persisted params on nvme since they wil never be partitioned or evicted from GPU
+            # Release swap buffers for persisted params on nvme since they will never be partitioned or evicted from GPU
             swap_persisted_params = [
                 p for p in partitioned_params
                 if p.ds_persist and p.ds_tensor.final_location == OFFLOAD_NVME_DEVICE
