@@ -11,9 +11,10 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
     error_msgs = []
 
     def transpose(data):
-        data.reshape(-1).copy_(data.transpose(-1, -2).contiguous().reshape(-1))
-        data = data.reshape(data.shape[-1], data.shape[-2])
-        return data
+        data1 = data.transpose(-1, -2).reshape(-1)
+        data.reshape(-1).copy_(data1)
+        data1 = None
+        return data.reshape(data.shape[-1], data.shape[-2])
 
     def load(module, prefix):
         args = (sd, prefix, {}, True, [], [], error_msgs)
@@ -25,12 +26,10 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                 module._load_from_sd(*args)
         else:
             if hasattr(module, 'weight'):
-                weight_data = sd[prefix + 'weight']
-                module.weight = mp_replace.copy(module.weight.data, weight_data)
+                module.weight = mp_replace.copy(module.weight.data,
+                                                sd[prefix + 'weight'])
             if prefix + 'bias' in sd.keys():
-                data = sd[prefix + 'bias']
-                data = data.to(torch.cuda.current_device())
-                module.bias = mp_replace.copy(module.bias.data, data)
+                module.bias = mp_replace.copy(module.bias.data, sd[prefix + 'bias'])
 
     def load_transformer_layer(module, prefix):
         module.norm_w.data.copy_(sd[prefix + 'input_layernorm.' + 'weight'])
@@ -110,3 +109,5 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                                       level + 1)
 
     load_module_recursive(r_module)
+    del sd
+    sd = None
