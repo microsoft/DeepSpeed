@@ -4,7 +4,7 @@ Licensed under the MIT license.
 """
 
 import gc
-import sys 
+import sys
 from dataclasses import dataclass
 import functools
 import os

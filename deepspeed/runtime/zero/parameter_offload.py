@@ -3,7 +3,7 @@
 Licensed under the MIT license.
 """
 
-import sys 
+import sys
 import torch
 from torch.cuda import Stream
 from collections import OrderedDict
@@ -201,7 +201,9 @@ class DeepSpeedZeRoOffload(object):
 
         self.param_numel_persistence_threshold = int(param_persistence_threshold)
         self.model_persistence_threshold = int(model_persistence_threshold)
-        self.persistent_parameters = self.mark_persistent_parameters(self.param_numel_persistence_threshold, self.model_persistence_threshold)
+        self.persistent_parameters = self.mark_persistent_parameters(
+            self.param_numel_persistence_threshold,
+            self.model_persistence_threshold)
 
         self.param_coordinators = {}
         self._prefetch_bucket_sz = int(prefetch_bucket_size)
@@ -218,7 +220,6 @@ class DeepSpeedZeRoOffload(object):
             force=False)
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [end]", force=True)
-
 
     @instrument_w_nvtx
     def partition_all_parameters(self):

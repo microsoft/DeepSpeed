@@ -3,7 +3,7 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-import sys 
+import sys
 from .offload_constants import *
 
 #########################################

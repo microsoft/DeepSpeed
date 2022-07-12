@@ -1333,7 +1333,8 @@ class DeepSpeedEngine(Module):
             round_robin_gradients = self.zero_round_robin_gradients()
             assert not isinstance(optimizer, DummyOptim), "zero stage 2 requires an optimizer"
 
-            log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
+            log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
+                     ranks=[0])
             # Overlap and contiguous grads are meaningless in stage 1 and are ignored
             if zero_stage == ZERO_OPTIMIZATION_OPTIMIZER_STATES:
                 overlap_comm = False
@@ -1380,7 +1381,7 @@ class DeepSpeedEngine(Module):
         elif zero_stage == ZERO_OPTIMIZATION_WEIGHTS:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
             if isinstance(optimizer, DummyOptim):
-                logger.info("Creating ZeRO Offload") if dist.get_rank() == 0 else None                
+                logger.info("Creating ZeRO Offload") if dist.get_rank() == 0 else None
                 optimizer = DeepSpeedZeRoOffload(
                     self.module,
                     timers=timers,
@@ -1394,7 +1395,8 @@ class DeepSpeedEngine(Module):
                     offload_param_config=self.zero_offload_param(),
                     mpu=self.mpu)
             else:
-                log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage), ranks=[0])
+                log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
+                         ranks=[0])
                 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
                 optimizer = DeepSpeedZeroOptimizer_Stage3(
                     self.module,
