@@ -91,6 +91,13 @@ class FlopsProfiler(object):
                     module_flop_count.pop()
                     module.__macs__ += sum([elem[1] for elem in module_mac_count[-1]])
                     module_mac_count.pop()
+                    for i in input:
+                        if isinstance(i, torch.Tensor):
+                            module.__input__.append(i.size())
+
+                    for o in output:
+                        if isinstance(o, torch.Tensor):
+                            module.__output__.append(o.size())
 
             module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
@@ -148,10 +155,11 @@ class FlopsProfiler(object):
         def add_or_reset_attrs(module):
             module.__flops__ = 0
             module.__macs__ = 0
-            module.__params__ = sum(p.numel() for p in module.parameters()
-                                    if p.requires_grad)
+            module.__params__ = sum(p.numel() for p in module.parameters())
             module.__start_time__ = 0
             module.__duration__ = 0
+            module.__input__ = []
+            module.__output__ = []
 
         self.model.apply(add_or_reset_attrs)
 
@@ -176,6 +184,10 @@ class FlopsProfiler(object):
                 del module.__start_time__
             if hasattr(module, "__duration__"):
                 del module.__duration__
+            if hasattr(module, "__input__"):
+                del module.__input__
+            if hasattr(module, "__output__"):
+                del module.__output__
 
         self.model.apply(remove_profile_attrs)
 
@@ -334,10 +346,14 @@ class FlopsProfiler(object):
                                             samples_per_iter / iter_latency))
 
         def flops_repr(module):
+            input = 'input: ' + ','.join(str(i) for i in module.__input__)
+            output = 'output: ' + ','.join(str(o) for o in module.__output__)
             params = module.__params__
             flops = get_module_flops(module)
             macs = get_module_macs(module)
             items = [
+                input,
+                output,
                 params_to_string(params),
                 "{:.2%} Params".format(params / total_params),
                 macs_to_string(macs),
@@ -477,6 +493,7 @@ def _prod(dims):
 def _linear_flops_compute(input, weight, bias=None):
     out_features = weight.shape[0]
     macs = torch.numel(input) * out_features
+    # print(f"linear, input.shape: {input.shape}, weight.shape = {weight.shape}, macs = {macs}")
     return 2 * macs, macs
 
 
@@ -558,6 +575,8 @@ def _conv_flops_compute(input,
     bias_flops = 0
     if bias is not None:
         bias_flops = out_channels * active_elements_count
+
+    print(f"conv, input.shape: {input.shape}, weight.shape = {weight.shape}, output_dims = {output_dims}, out_channels = {out_channels}, kernel_dim = {kernel_dims}, stride = {stride}, dilation = {dilation} , group = {groups}, macs = {overall_conv_macs}")
 
     return int(overall_conv_flops + bias_flops), int(overall_conv_macs)
 
