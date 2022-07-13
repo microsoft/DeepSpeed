@@ -7,7 +7,8 @@ import torch.distributed as dist
 import time
 import numpy as np
 
-from deepspeed.ops.comm.nccl import build_op
+from deepspeed.ops.comm.nccl import build_nccl_op
+from deepspeed.ops.comm.mpi import build_mpi_op
 #from deepspeed.ops.comm.common import build_op
 #from deepspeed.ops.comm import ReduceOp
 
@@ -17,7 +18,8 @@ from .backend import *
 #from deepspeed.ops.comm.nccl import ReduceOp
 #from .comm import ReduceOp
 #from .utils import ReduceOp
-from deepspeed.ops.comm.nccl_comms import ReduceOp
+#from deepspeed.ops.comm.nccl import ReduceOp
+from .comm import ReduceOp
 from deepspeed.utils import logger
 
 cupy = None
@@ -26,11 +28,17 @@ cupy = None
 class NcclBackend(Backend):
     def __init__(self, name='nccl', rank=0, size=1, mpu=None):
         super(NcclBackend, self).__init__()
+        # has_allgather_base is needed for torch. Included here for compatibility with ds comms
+        self.has_allgather_base = True
         self.name = 'nccl'
-        self.comm_op = build_op()
-        self.reduce_op = build_op().ReduceOp
-        self.rank = rank
-        self.size = size
+        self.nccl_comm_op = build_nccl_op()
+        self.mpi_comm_op = build_mpi_op()
+        #self.reduce_op = build_op().ReduceOp
+        self.mpi_comm_op.initialize()
+        #self.rank = get_local_rank_from_launcher()
+        #self.size = get_world_size_from_launcher()
+        self.rank = self.mpi_comm_op.get_rank(0)
+        self.size = self.mpi_comm_op.get_world_size(0)
         self.enable_onebit = False
         self.init_process_group()
 
@@ -50,13 +58,13 @@ class NcclBackend(Backend):
         logger.info(
             f"Initializing DeepSpeed's {self.name} Communication Backend with rank = {self.rank} and size = {self.size}"
         )
-        if self.size <= 1:
+        if self.size <= 0:
             # Do not initialize torch distributed but only yourself
             self.initialized = True
             # Future functionality to support ds.initialize() on a single GPU
             self.single_gpu_mode = True
         else:
-            self.comm_op.initialize_nccl(self.rank, self.size)
+            self.nccl_comm_op.initialize(self.rank, self.size)
             self.initialized = True
             self.single_gpu_mode = False
 
@@ -72,20 +80,63 @@ class NcclBackend(Backend):
         return torch.distributed.new_group(ranks)
 
     def get_rank(self, group=None):
-        return self.comm_op.get_rank(0)
+        return self.mpi_comm_op.get_rank(0)
 
     def get_world_size(self, group=None):
-        return self.comm_op.get_world_size(0)
+        return self.mpi_comm_op.get_world_size(0)
 
     def is_initialized(self):
         return self.initialized
 
+    def barrier(self):
+        return self.mpi_comm_op.barrier()
+
     def broadcast(self, tensor, src, group=None, async_op=False):
         # TODO: Fix calls to op. Fix op to support groups and async
-        return self.comm_op.nccl_bcast(tensor, src)  #, group=group, async_op=async_op)
+        return self.nccl_comm_op.bcast(tensor, src)  #, group=group, async_op=async_op)
 
-    def all_reduce(self, tensor, op=reduce_op.SUM, group=None, async_op=False):
-        self.comm_op.nccl_allreduce(tensor, op, async_op)
+    def send(self, tensor, dst, group=None, tag=0):
+        self.nccl_comm_op.send(tensor, dst, tag)
+
+    def recv(self, tensor, src=None, group=None, tag=0):
+        self.nccl_comm_op.recv(tensor, src, tag)
+
+    def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False):
+        self.nccl_comm_op.allreduce(tensor, op, async_op)
+
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False):
+        self.nccl_comm_op.reduce(tensor, dst, op, async_op)
+
+    def reduce_scatter(self,
+                       output,
+                       input_list,
+                       op=ReduceOp.SUM,
+                       group=None,
+                       async_op=False):
+        self.nccl_comm_op.reduce_scatter(tensor, op, async_op)
+
+    def all_gather(self, tensor_list, tensor, group=None, async_op=False):
+        self.nccl_comm_op.allgather_list([tensor_list], [tensor], async_op)
+
+    def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False):
+        self.nccl_comm_op.allgather(output_tensor, input_tensor, async_op)
+
+    def all_to_all_single(self,
+                      output,
+                      input,
+                      output_split_sizes=None,
+                      input_split_sizes=None,
+                      group=None,
+                      async_op=False):
+        self.nccl_comm_op.alltoall(output,
+                                   input,
+                                   async_op)
+    def all_to_all(self,
+                   output_tensor_list,
+                   input_tensor_list,
+                   group=None,
+                   async_op=False):
+        self.nccl_comm_op.alltoall_list(output, input, async_op)
 
     def my_igather(self, rank, size, group, sendbuf, recvbuf, root):
         req = []

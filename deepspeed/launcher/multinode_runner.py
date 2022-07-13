@@ -134,9 +134,9 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl',
             '^openib',
-            '--mca',
-            'btl_tcp_if_include',
-            'eth0',
+            #'--mca',
+            #'btl_tcp_if_include',
+            #'eth0',
         ] + split(self.args.launcher_args)
 
         export_cmd = []

@@ -28,7 +28,6 @@
 from enum import Enum
 import torch
 import os
-import torch
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from .constants import *
@@ -46,8 +45,11 @@ class ReduceOp(Enum):
     UNUSED = 8
 
 
+
+#import deepspeed.comm.torch_backend
 from deepspeed.comm.backend import Backend
-from deepspeed.comm.torch import TorchBackend
+from deepspeed.comm.torch_backend import TorchBackend
+from deepspeed.comm.nccl import NcclBackend
 
 import deepspeed.utils as utils
 from datetime import timedelta
@@ -240,6 +242,14 @@ def all_to_all_single(
                                  group=group,
                                  async_op=async_op)
 
+def all_to_all(self,
+               output_tensor_list,
+               input_tensor_list,
+               group=None,
+               async_op=False):
+    global cdb
+    return cdb.all_to_all(output_tensor_list=output_tensor_list, input_tensor_list=input_tensor_list, group=group, async_op=async_op)
+
 
 def send(tensor, dst, group=None, tag=0):
     global cdb
@@ -307,8 +317,13 @@ def all_reduce(tensor, op=ReduceOp.SUM, group=None, async_op=False):
     # context of the timers?
     # timers.start()
     # TensorBoard logging for comm calls.?
+    #return torch.distributed.all_reduce(tensor=tensor,
+    #                                    op=torch.distributed.ReduceOp.SUM,
+    #                                    group=group,
+    #                                    async_op=async_op)
     global cdb
     #print(f'op = {op}, cdb= {cdb.name}')
+    #return
     return cdb.all_reduce(tensor, op, group, async_op)
 
 
@@ -379,7 +394,8 @@ def init_distributed(dist_backend="nccl",
                      verbose=True,
                      timeout=default_pg_timeout,
                      init_method=None,
-                     dist_init_required=None):
+                     dist_init_required=None,
+                     use_deepspeed=False):
     ''' Initialize dist backend, potentially performing MPI discovery if needed
 
     Arguments:
@@ -419,12 +435,19 @@ def init_distributed(dist_backend="nccl",
                 utils.logger.info('Distributed backend already initialized')
         else:
             assert isinstance(timeout, timedelta)
-            if int(os.getenv('RANK', '0')) == 0:
-                utils.logger.info(
-                    'Initializing TorchBackend in DeepSpeed with backend {}'.format(
-                        dist_backend))
-            # Create a torch backend object, initialize torch distributed, and assign to cdb
-            cdb = TorchBackend(dist_backend, timeout, init_method)
+            if use_deepspeed:
+                if dist_backend == 'nccl':
+                    if int(os.getenv('RANK', '0')) == 0:
+                        utils.logger.info(
+                            'Initializing NcclBackend in DeepSpeed')
+                    cdb = NcclBackend()
+            else:
+                # Create a torch backend object, initialize torch distributed, and assign to cdb
+                if int(os.getenv('RANK', '0')) == 0:
+                    utils.logger.info(
+                        'Initializing TorchBackend in DeepSpeed with backend {}'.format(
+                            dist_backend))
+                cdb = TorchBackend(dist_backend, timeout, init_method)
 
 
 def mpi_discovery(distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT, verbose=True):
