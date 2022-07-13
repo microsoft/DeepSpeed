@@ -846,8 +846,7 @@ class DeepSpeedTransformerInference(nn.Module):
                                               self.norm_b,
                                               alibi)
             presents = (key, value)
-            self.layer_past = presents
-            #import pdb;pdb.set_trace()
+            self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
 
             if not self.config.pre_layer_norm:
