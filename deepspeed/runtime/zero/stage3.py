@@ -163,15 +163,18 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.parameter_offload = DeepSpeedZeRoOffload(module,
-                                                      timers,
-                                                      ds_config,
-                                                      overlap_comm,
-                                                      prefetch_bucket_size,
-                                                      max_reuse_distance,
-                                                      max_live_parameters,
-                                                      param_persistence_threshold,
-                                                      offload_param_config)
+        self.parameter_offload = DeepSpeedZeRoOffload(
+            module=module,
+            timers=timers,
+            ds_config=ds_config,
+            overlap_comm=overlap_comm,
+            prefetch_bucket_size=prefetch_bucket_size,
+            max_reuse_distance=max_reuse_distance,
+            max_live_parameters=max_live_parameters,
+            param_persistence_threshold=param_persistence_threshold,
+            model_persistence_threshold=model_persistence_threshold,
+            offload_param_config=offload_optimizer_config)
+
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
