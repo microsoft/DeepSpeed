@@ -66,7 +66,7 @@ __global__ void attn_softmax_v2(__half* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / (num_seq)) * (sequence_length);
+        int mask_offset = ((iter_offset / num_seq) % heads) * (sequence_length);
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -416,22 +416,21 @@ void launch_attn_softmax_v2(T* vals,
     const int iterations = (sequence_length - 1) / (reduce_width << 2) + 1;
 
     if (sequence_length <= 32768)
-        attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(
-            vals,
-            mask,
-            alibi,
-            layer_scale,
-            triangular,
-            recompute,
-            local_attention,
-            window_size,
-            total_count,
-            (triangular ? (heads * batch_size) : heads),
-            sequence_length,
-            num_seq,
-            scale,
-            iterations,
-            reduce_width);
+        attn_softmax_v2<<<grid_dim, block_dim, 0, stream>>>(vals,
+                                                            mask,
+                                                            alibi,
+                                                            layer_scale,
+                                                            triangular,
+                                                            recompute,
+                                                            local_attention,
+                                                            window_size,
+                                                            total_count,
+                                                            heads,
+                                                            sequence_length,
+                                                            num_seq,
+                                                            scale,
+                                                            iterations,
+                                                            reduce_width);
     else
         throw std::runtime_error("Unsupport Seq_Length!");
 }

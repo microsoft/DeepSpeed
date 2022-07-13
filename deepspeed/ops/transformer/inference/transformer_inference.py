@@ -230,19 +230,15 @@ class DeepSpeedSelfAttentionFunction(Function):
                                                        -1)
 
             # slice alibi tensor until the query length
-            batch_heads = output_size[0] * output_size[1]
-            offset = dist.get_rank() * batch_heads if dist.is_initialized() else 0
-            sliced_alibi = alibi[offset:batch_heads + offset, :, :output_size[3]]
+            offset = dist.get_rank() * output_size[1] if dist.is_initialized() else 0
+            sliced_alibi = alibi[offset:output_size[1] + offset, :, :output_size[3]]
 
             # Raw attention scores. [batch_size * num_heads, q_length, k_length]
-            layer_number = max(1, config.layer_id)
-            norm_factor = (1 / norm_factor) * (1 / norm_factor) / layer_number
             matmul_result = torch.matmul(query_layer.transpose(1,
                                                                0),
                                          key_layer.transpose(1,
-                                                             0).transpose(
-                                                                 1,
-                                                                 2)) * norm_factor
+                                                             0).transpose(1,
+                                                                          2))
 
             # change view to [batch_size, num_heads, q_length, k_length]
             attention_scores = matmul_result.view(*output_size)
@@ -255,7 +251,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                 False,
                 1,
                 False,
-                layer_number)
+                1 / (norm_factor * norm_factor))
 
             # context layer shape: [batch_size, num_heads, q_length, head_dim]
             output_size = (value_layer.size(0),
