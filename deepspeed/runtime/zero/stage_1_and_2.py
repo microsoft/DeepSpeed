@@ -1756,9 +1756,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
                 self.stop_timers([OPTIMIZER_STEP])
             else:
-                if dist.get_rank() == 0:
-                    logger.info(f'Upscaling group {i}')
-
                 # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
@@ -1786,8 +1783,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 self.unscale_and_clip_grads([single_grad_partition],
                                             scaled_global_grad_norm)
                 self.stop_timers([OPTIMIZER_GRADIENTS])
-                if dist.get_rank() == 0:
-                    logger.info(f'Running optimizer on group {i}')
 
                 # Step 3:- run the optimizer if no offloading
                 self.start_timers([OPTIMIZER_STEP])

@@ -124,14 +124,11 @@ def split_params_into_different_moe_groups_for_optimizer(param_groups: Tuple[Dic
                         cur_group.append(param)
                         size_of_cur_group += param.numel()
                     else:
-                        print(f'1. Size of current group = {size_of_cur_group/1e9} B')
                         all_groups.append(cur_group)
                         cur_group = [param]
                         size_of_cur_group = param.numel()
                 if cur_group:
                     all_groups.append(cur_group)
-                    print(f'2. Size of current group = {size_of_cur_group/1e9} B')
-                #print(f'Size of MoE group is = {size_of_moe_group/1e9} B')
                 for group in all_groups:
                     new_dict = {}
                     for key, val in v1.items():
