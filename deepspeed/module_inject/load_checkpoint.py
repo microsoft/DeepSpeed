@@ -117,8 +117,8 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
 
     embedding_weight = None
     for n,p in r_module.named_parameters():
-        if "word_embeddings" in n:
-            print("FOUND embedding weight")
+        if "word_embeddings." in n:
+            print(f"FOUND embedding weight {n}")
             embedding_weight = p
 
     r_module.lm_head.weight = embedding_weight
