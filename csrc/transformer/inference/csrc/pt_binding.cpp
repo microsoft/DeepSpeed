@@ -11,6 +11,7 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
                       at::Tensor& attn_mask,
+                      at::Tensor& alibi,
                       bool triangular,
                       bool recompute,
                       bool local_attention,
@@ -32,8 +33,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     if (len > 3) heads = attn_scores_c.size(1);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
-                           (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
-                           (T*)attn_mask.data_ptr(),
+                           (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
+                           (T*)alibi.data_ptr(),
                            layer_scale,
                            triangular,
                            recompute,
@@ -147,8 +148,20 @@ void attention_unfused(at::Tensor& prev_key_cont,
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
-    attn_score = ds_softmax<T>(
-        attn_score, attn_mask, triangular, recompute, local_attention, window_size, false, 1.0);
+    launch_attn_softmax_v2((T*)attn_score.data_ptr(),
+                           (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
+                           (T*)nullptr,
+                           1.0,
+                           triangular,
+                           recompute,
+                           local_attention,
+                           window_size,
+                           bsz,
+                           heads,
+                           seq_len,
+                           soft_len,
+                           1.0,
+                           Context::Instance().GetCurrentStream(false));
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 k,

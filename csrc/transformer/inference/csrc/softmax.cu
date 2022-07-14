@@ -66,7 +66,8 @@ __global__ void attn_softmax_v2(__half* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = ((iter_offset / num_seq) % heads) * (sequence_length);
+        int alibi_offset = ((iter_offset / num_seq) % heads) * (sequence_length);
+        int mask_offset = ((iter_offset / (num_seq * heads))) * (sequence_length);
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -98,7 +99,7 @@ __global__ void attn_softmax_v2(__half* vals,
                                       (data_id + 3) > window_stride)
                                          ? __half2float(vals[data_id + 3])
                                          : minus_infinity;
-                    if (mask && recompute) {
+                    if (mask) {
                         low_data[i].x += __half2float(mask[data_id + mask_offset]);
                         low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
                         high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
@@ -106,13 +107,13 @@ __global__ void attn_softmax_v2(__half* vals,
                     }
                     if (alibi) {
                         low_data[i].x = low_data[i].x * layer_scale +
-                                        __half2float(alibi[data_id + mask_offset]);
+                                        __half2float(alibi[data_id + alibi_offset]);
                         low_data[i].y = low_data[i].y * layer_scale +
-                                        __half2float(alibi[data_id + mask_offset + 1]);
+                                        __half2float(alibi[data_id + alibi_offset + 1]);
                         high_data[i].x = high_data[i].x * layer_scale +
-                                         __half2float(alibi[data_id + mask_offset + 2]);
+                                         __half2float(alibi[data_id + alibi_offset + 2]);
                         high_data[i].y = high_data[i].y * layer_scale +
-                                         __half2float(alibi[data_id + mask_offset + 3]);
+                                         __half2float(alibi[data_id + alibi_offset + 3]);
                     }
                 } else {
                     low_data[i].x = data_id > window_stride ? __half2float(vals[data_id])
@@ -128,7 +129,7 @@ __global__ void attn_softmax_v2(__half* vals,
                                          ? __half2float(vals[data_id + 2])
                                          : minus_infinity;
                     high_data[i].y = minus_infinity;
-                    if (mask && recompute) {
+                    if (mask) {
                         low_data[i].x += __half2float(mask[data_id + mask_offset]);
                         if ((data_id + 1) < sequence_length)
                             low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
@@ -137,13 +138,13 @@ __global__ void attn_softmax_v2(__half* vals,
                     }
                     if (alibi) {
                         low_data[i].x = low_data[i].x * layer_scale +
-                                        __half2float(alibi[data_id + mask_offset]);
+                                        __half2float(alibi[data_id + alibi_offset]);
                         if ((data_id + 1) < sequence_length)
                             low_data[i].y = low_data[i].y * layer_scale +
-                                            __half2float(alibi[data_id + mask_offset + 1]);
+                                            __half2float(alibi[data_id + alibi_offset + 1]);
                         if ((data_id + 2) < sequence_length)
                             high_data[i].x = high_data[i].x * layer_scale +
-                                             __half2float(alibi[data_id + mask_offset + 2]);
+                                             __half2float(alibi[data_id + alibi_offset + 2]);
                     }
                 }
                 // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);

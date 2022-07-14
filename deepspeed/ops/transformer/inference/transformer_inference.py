@@ -243,8 +243,13 @@ class DeepSpeedSelfAttentionFunction(Function):
             # change view to [batch_size, num_heads, q_length, k_length]
             attention_scores = matmul_result.view(*output_size)
 
+            # Convert mask from 1/0 to 0/-inf, when dtype is int64
+            if input_mask.dtype == torch.int64:
+                input_mask = (1 - input_mask).half() * -10000.0
+
             attention_probs = inference_cuda_module.softmax_fp16(
                 attention_scores,
+                input_mask,
                 sliced_alibi,
                 (output_size[-2] > 1),
                 False,
