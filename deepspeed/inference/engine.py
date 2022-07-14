@@ -140,6 +140,8 @@ class InferenceEngine(Module):
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None)
 
+        import remote_pdb
+        remote_pdb.set_trace()
         device = torch.cuda.current_device()
         logger.info(f"Place model to device: {device}")
         self.module.to(device)

@@ -78,17 +78,22 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                 checking_key = prefix + name + '.'
                 if not any(checking_key in item for item in sd.keys()):
                     if hasattr(child, 'weight') and \
-                        hasattr(child.weight, 'ds_id') and \
-                        child.weight.ds_id in all_ds_ids:
+                        (hasattr(child.weight, 'ds_id') and \
+                        child.weight.ds_id in all_ds_ids):
                         prefix1 = all_ds_ids[child.weight.ds_id]
                         if child.__class__ is nn.Linear:
                             child = LinearLayer(weight=all_ds_ids[child.weight.ds_id])
                             setattr(module, name, child)
                     continue
-                if len(list(child.parameters())) > 0 and list(
-                        child.parameters())[0].numel() == 0:
+                child_params = list(child.parameters())
+                if len(child_params) > 0 and (child_params[0].numel() == 0 or child_params[0].is_meta):
+                    if child.weight.is_meta:
+                        ds_shape = child.weight.shape
+                    else:
+                        ds_shape = child.weight.ds_shape
+
                     if child.__class__ is nn.LayerNorm:
-                        child = Normalize(dim=child.weight.ds_shape[-1],
+                        child = Normalize(dim=ds_shape[-1],
                                           dtype=child.weight.dtype,
                                           eps=child.eps)
                         setattr(module, name, child)
@@ -96,7 +101,7 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                         ds_id = None
                         if hasattr(child.weight, 'ds_id'):
                             ds_id = child.weight.ds_id
-                        child = EmbeddingLayer(weight_shape=child.weight.ds_shape,
+                        child = EmbeddingLayer(weight_shape=ds_shape,
                                                dtype=child.weight.dtype)
                         if ds_id is not None:
                             all_ds_ids[ds_id] = child.weight
@@ -109,5 +114,20 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                                       level + 1)
 
     load_module_recursive(r_module)
+
+    embedding_weight = None
+    for n,p in r_module.named_parameters():
+        if "word_embeddings" in n:
+            print("FOUND embedding weight")
+            embedding_weight = p
+
+    r_module.lm_head.weight = embedding_weight
+
+    #import remote_pdb
+    #remote_pdb.set_trace()
+    #for n,p in r_module.named_parameters():
+    #    if "lm_head" in n:
+    #        print("REPLACED lm head weight")
+    #        p.data = embedding_weight.data
     del sd
     sd = None
