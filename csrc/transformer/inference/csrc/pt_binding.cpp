@@ -33,7 +33,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     if (len > 3) heads = attn_scores_c.size(1);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
-                           (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
+                           (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (T*)alibi.data_ptr(),
                            layer_scale,
                            triangular,

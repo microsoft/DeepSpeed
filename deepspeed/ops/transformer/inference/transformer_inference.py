@@ -234,6 +234,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             sliced_alibi = alibi[offset:output_size[1] + offset, :, :output_size[3]]
 
             # Raw attention scores. [batch_size * num_heads, q_length, k_length]
+
             matmul_result = torch.matmul(query_layer.transpose(1,
                                                                0),
                                          key_layer.transpose(1,
@@ -242,14 +243,11 @@ class DeepSpeedSelfAttentionFunction(Function):
 
             # change view to [batch_size, num_heads, q_length, k_length]
             attention_scores = matmul_result.view(*output_size)
-
             # Convert mask from 1/0 to 0/-inf, when dtype is int64
-            if input_mask.dtype == torch.int64:
-                input_mask = (1 - input_mask).half() * -10000.0
-
             attention_probs = inference_cuda_module.softmax_fp16(
                 attention_scores,
-                input_mask,
+                ((1 - input_mask).half() *
+                 -10000.0) if input_mask.dtype == torch.int64 else input_mask,
                 sliced_alibi,
                 (output_size[-2] > 1),
                 False,
