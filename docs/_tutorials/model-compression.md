@@ -162,10 +162,10 @@ Pruning aims to reduce the number of parameters and operations involved in gener
 
 | **Method**            | **Type**     |
 | --------------------- | ------------ |
-| [Sparse pruning](#141-sparse-pruning)  | unstructured |
-| [Row pruning](#142-row-pruning)     | Structure    |
-| [Head pruning](#143-head-pruning)     | Structure    |
-| [Channel pruning](#144-channel-pruning) | Structure    |
+| [Sparse pruning](#141-sparse-pruning)  | Unstructured |
+| [Row pruning](#142-row-pruning)     | Structured    |
+| [Head pruning](#143-head-pruning)     | Structured    |
+| [Channel pruning](#144-channel-pruning) | Structured    |
 
 #### 1.4.1 Sparse Pruning
 **What is sparse pruning**
@@ -368,7 +368,7 @@ pip install -r requirement.txt
 **Implementation of XTC methods:**
 To accommodate users who do not have a fine-tuned model or task-specific model for compression, with the arg `--model_name_or_path yoshitomo-matsubara/bert-base-uncased-${TASK_NAME}` our python script `run_glue_no_trainer.py` automatically downloads the models from Hugging Face. Users can also use their own models with better accuracy as the teacher and the student model initialization.
 
-#### 3.1  One-bit or Two-bit BERT-base (12-layer) with 8-bit activation quantization
+### 3.1  One-bit or Two-bit BERT-base (12-layer) with 8-bit activation quantization
 For the configurations, see `model_compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). In our paper, we used FP32 (`"fp16": {"enabled": false}`) to perform training, while directly applying 8-bit quantization (`"bits": 8`) to the activations and 1-bit quantization (`"start_bits": 1, "target_bits": 1`) to the attention (query, key, val) and feedforward weight matrices (`"modules": ["attention.self", "intermediate", "output.dense"]`) at the beginning of the training (`"schedule_offset": 0`).  In addition, we also apply 1-bit quantization to `word_embeddings` as weight quantization.
 
 One can run this example by:
@@ -391,7 +391,7 @@ With this config, we quantize the existing fined-tuned models downloaded from Hu
 
 ![XTC quantization results](/assets/images/xtc-1.png){: .align-center}
 
-#### 3.2 Compressing the 12-layer BERT-base to 1-bit or 2-bit 6/5-layer BERT
+### 3.2 Compressing the 12-layer BERT-base to 1-bit or 2-bit 6/5-layer BERT
 
 This section consists of two parts: (a) we first perform a light-weight layer reduction, and (b) based on the model in (a), we perform 1-bit or 2-bit quantization.
 
