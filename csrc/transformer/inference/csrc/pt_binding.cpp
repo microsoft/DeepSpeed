@@ -548,7 +548,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    workspace += (3 * input.size(0) * MAX_OUT_TOKES * input.size(2));
+    workspace += (3 * bsz * input.size(2));
     ds_layernorm_internal<T>(workspace, input, gamma, beta, epsilon);
     // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
