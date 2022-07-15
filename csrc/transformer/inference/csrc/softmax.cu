@@ -115,17 +115,10 @@ __global__ void attn_softmax_v2(__half* vals,
                             high_data[i].y + __half2float(alibi[data_id + alibi_offset + 3]);
                     }
                     if (mask) {
-                        low_data[i].x = __hlt(mask[data_id + mask_offset], zero_h) ? minus_infinity
-                                                                                   : low_data[i].x;
-                        low_data[i].y = __hlt(mask[data_id + mask_offset + 1], zero_h)
-                                            ? minus_infinity
-                                            : low_data[i].y;
-                        high_data[i].x = __hlt(mask[data_id + mask_offset + 2], zero_h)
-                                             ? minus_infinity
-                                             : high_data[i].x;
-                        high_data[i].y = __hlt(mask[data_id + mask_offset + 3], zero_h)
-                                             ? minus_infinity
-                                             : high_data[i].y;
+                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
+                        low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
+                        high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
+                        high_data[i].y += __half2float(mask[data_id + mask_offset + 3]);
                     }
                 } else {
                     low_data[i].x = data_id > window_stride
@@ -152,16 +145,11 @@ __global__ void attn_softmax_v2(__half* vals,
                     }
                     high_data[i].y = minus_infinity;
                     if (mask) {
-                        low_data[i].x = __hlt(mask[data_id + mask_offset], zero_h) ? minus_infinity
-                                                                                   : low_data[i].x;
+                        low_data[i].x += __half2float(mask[data_id + mask_offset]);
                         if ((data_id + 1) < sequence_length)
-                            low_data[i].y = __hlt(mask[data_id + mask_offset + 1], zero_h)
-                                                ? minus_infinity
-                                                : low_data[i].y;
+                            low_data[i].y += __half2float(mask[data_id + mask_offset + 1]);
                         if ((data_id + 2) < sequence_length)
-                            high_data[i].x = __hlt(mask[data_id + mask_offset + 2], zero_h)
-                                                 ? minus_infinity
-                                                 : high_data[i].x;
+                            high_data[i].x += __half2float(mask[data_id + mask_offset + 2]);
                     }
                 }
                 // if(lane == 0) printf("%f , %d, %d \n", low_data[i].x, data_id, seq_id);
