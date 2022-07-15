@@ -7,7 +7,7 @@ In this tutorial, we introduce how to apply DeepSpeed Mixture of Experts (MoE) t
 
 ## 1. Installation
 
-You would need to install DeepSpeed v0.6.0 or higher to use the MoE feature. The MoE for NLG model examples are in the [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed) repo under the MoE folder. 
+You would need to install DeepSpeed v0.6.0 or higher to use the MoE feature. The MoE for NLG model examples are in the [Megatron-DeepSpeed](https://github.com/microsoft/Megatron-DeepSpeed) repo under the MoE folder.
 
 ## 2. Training NLG+MoE models
 
