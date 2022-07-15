@@ -17,7 +17,7 @@
 #include <cassert>
 #include <iostream>
 
-#define MAX_OUT_TOKES 1024
+#define MAX_OUT_TOKES 128
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
 
