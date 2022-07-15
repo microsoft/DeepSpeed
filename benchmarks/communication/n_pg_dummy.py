@@ -16,6 +16,9 @@ def timed_allgather(input, output, args):
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
+    comm_id = int(dist.get_rank()/8)
+    print(f'comm_id: {comm_id}')
+
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
@@ -23,7 +26,7 @@ def timed_allgather(input, output, args):
         # use all_gather_base if available
         if args.dist == 'torch':
             if hasattr(torch.distributed, "_all_gather_base"):
-                dist._all_gather_base(output, input, group=None, async_op=args.async_op)
+                dist._all_gather_base(output, input, group=None, async_op=args.async_op, comm_id=comm_id)
             else:
                 output_tensors = list(
                     torch.chunk(output_tensor,
@@ -76,6 +79,12 @@ def run_allgather(local_rank, args):
     print_header(args, 'allgather')
     global_rank = dist.get_rank()
     world_size = dist.get_world_size()
+
+    group1 = [0,1,2,3,4,5,6,7]
+    group2 = [8,9,10,11,12,13,14,15]
+
+    create_comm_group(group1, global_rank, 0, 0)
+    create_comm_group(group2, global_rank, 1, 1)
 
     if args.scan:
         # Create list of message sizes

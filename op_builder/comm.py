@@ -24,7 +24,7 @@ class NCCLCommBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.comm.{self.NAME}_op'
 
     def sources(self):
-        return ['csrc/comm/nccl.cpp', 'csrc/comm/mpi.cpp']
+        return ['csrc/comm/nccl.cpp']
 
     def include_paths(self):
         includes = ['csrc/includes']
