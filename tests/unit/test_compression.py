@@ -234,7 +234,7 @@ class TestCompression:
         }
 
         model = get_gpt2_model(args_defaults)
-        compressed_model = init_compression(model, self.get_ds_config(), mpu)
+        compressed_model = init_compression(model, self.get_ds_config(), mpu=mpu)
 
         assert isinstance(
             compressed_model.module.language_model.transformer.layers[0].attention.
