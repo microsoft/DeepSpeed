@@ -17,20 +17,24 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                       bool local_attention,
                       int window_size,
                       bool async_op,
-                      float layer_scale)
+                      float layer_scale,
+                      int head_offset)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
 
     int seq_len = attn_scores_c.size(1);
     int len = attn_scores_c.sizes().size();
-    if (len > 3) seq_len = attn_scores_c.size(2);
+    if (len > 2) seq_len = attn_scores_c.size(2);
 
     int soft_len = attn_scores_c.size(2);
     if (len > 3) soft_len = attn_scores_c.size(3);
 
     int heads = 1;
-    if (len > 3) heads = attn_scores_c.size(1);
+    if (len > 1) heads = attn_scores_c.size(1);
+
+    int mask_stride = 1;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) > 1) mask_stride = attn_mask.size(2);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
@@ -44,6 +48,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            heads,
                            seq_len,
                            soft_len,
+                           head_offset,
+                           mask_stride,
                            1.0,
                            Context::Instance().GetCurrentStream(async_op));
 
@@ -127,6 +133,8 @@ void attention_unfused(at::Tensor& prev_key_cont,
     float gemm_beta = 0.0;
     auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
+    int mask_stride = heads;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 soft_len,
@@ -160,6 +168,8 @@ void attention_unfused(at::Tensor& prev_key_cont,
                            heads,
                            seq_len,
                            soft_len,
+                           0,
+                           mask_stride,
                            1.0,
                            Context::Instance().GetCurrentStream(false));
     alpha = 1.0;
@@ -252,6 +262,8 @@ void ds_softmax_internal(T* attn_scores,
                          int soft_len,
                          int heads)
 {
+    int mask_stride = heads;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -264,6 +276,8 @@ void ds_softmax_internal(T* attn_scores,
                            heads,
                            seq_len,
                            soft_len,
+                           0,
+                           mask_stride,
                            1.0,
                            at::cuda::getCurrentCUDAStream());
 }

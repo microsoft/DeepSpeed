@@ -38,6 +38,8 @@ void launch_attn_softmax_v2(T* vals,
                             int heads,
                             int num_seq,
                             int sequence_length,
+                            int offset,
+                            int mask_stride,
                             float scale,
                             cudaStream_t stream);
 

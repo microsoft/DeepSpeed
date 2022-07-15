@@ -38,6 +38,8 @@ __global__ void attn_softmax_v2(__half* vals,
                                 int heads,
                                 int sequence_length,
                                 int num_seq,
+                                int head_offset,
+                                int mask_stride,
                                 float scale,
                                 int iterations,
                                 int reduceWidth)
@@ -62,12 +64,15 @@ __global__ void attn_softmax_v2(__half* vals,
     __shared__ float partialSum[MAX_WARP_NUM];
 
     int iter_offset = blockIdx.x * (warp_num / reduce_blocks) + (wid / reduce_blocks);
+    int batch_idx = iter_offset / (num_seq * heads);
+    int alibi_offset = batch_idx * heads + head_offset;
+    int mask_offset = batch_idx * mask_stride + (iter_offset % mask_stride);
 
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int alibi_offset = ((iter_offset / num_seq) % heads) * (sequence_length);
-        int mask_offset = ((iter_offset / (num_seq * heads))) * (sequence_length);
+        alibi_offset = (alibi_offset + ((iter_offset / num_seq) % heads)) * sequence_length;
+        mask_offset = mask_offset * sequence_length;
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -251,6 +256,8 @@ __global__ void attn_softmax_v2(float* vals,
                                 int heads,
                                 int sequence_length,
                                 int num_seq,
+                                int head_offset,
+                                int mask_stride,
                                 float scale,
                                 int iterations,
                                 int reduceWidth)
@@ -273,7 +280,7 @@ __global__ void attn_softmax_v2(float* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / (heads * num_seq)) * (sequence_length);
+        int mask_offset = (iter_offset / mask_stride) * (sequence_length);
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
@@ -420,6 +427,8 @@ void launch_attn_softmax_v2(T* vals,
                             int heads,
                             int num_seq,
                             int sequence_length,
+                            int head_offset,
+                            int mask_stride,
                             float scale,
                             cudaStream_t stream)
 {
@@ -443,6 +452,8 @@ void launch_attn_softmax_v2(T* vals,
                                                             heads,
                                                             sequence_length,
                                                             num_seq,
+                                                            head_offset,
+                                                            mask_stride,
                                                             scale,
                                                             iterations,
                                                             reduce_width);
@@ -462,6 +473,8 @@ template void launch_attn_softmax_v2(float* vals,
                                      int heads,
                                      int num_seq,
                                      int sequence_length,
+                                     int head_offset,
+                                     int mask_stride,
                                      float scale,
                                      cudaStream_t stream);
 template void launch_attn_softmax_v2(__half* vals,
@@ -476,5 +489,7 @@ template void launch_attn_softmax_v2(__half* vals,
                                      int heads,
                                      int num_seq,
                                      int sequence_length,
+                                     int head_offset,
+                                     int mask_stride,
                                      float scale,
                                      cudaStream_t stream);
