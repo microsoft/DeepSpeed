@@ -159,12 +159,13 @@ Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.837595
 
 Pruning aims to reduce the number of parameters and operations involved in generating a prediction by removing network connections. With pruning, you can lower the overall parameter count in the network (see more in [this Coursera lecture](https://www.coursera.org/lecture/machine-learning-modeling-pipelines-in-production/pruning-uNSOG)). We can divide the pruning strategy into two types: structured and unstructured pruning (see more in [this paper](https://arxiv.org/abs/1506.02626)).
 
-| ---: | ---: |
-| **Method** | **Type** |
-| [Sparse pruning](#141-sparse-pruning) | Unstructured |
-| [Row pruning](#142-row-pruning) | Structured |
-| [Head pruning](#143-head-pruning) | Structured |
-| [Channel pruning](#144-channel-pruning) | Structured |
+
+| **Method**            | **Type**     |
+| --------------------- | ------------ |
+| [Sparse pruning](#141-sparse-pruning)  | unstructured |
+| [Row pruning](#142-row-pruning)     | Structure    |
+| [Head pruning](#143-head-pruning)     | Structure    |
+| [Channel pruning](#144-channel-pruning) | Structure    |
 
 #### 1.4.1 Sparse Pruning
 **What is sparse pruning**
@@ -367,7 +368,7 @@ pip install -r requirement.txt
 **Implementation of XTC methods:**
 To accommodate users who do not have a fine-tuned model or task-specific model for compression, with the arg `--model_name_or_path yoshitomo-matsubara/bert-base-uncased-${TASK_NAME}` our python script `run_glue_no_trainer.py` automatically downloads the models from Hugging Face. Users can also use their own models with better accuracy as the teacher and the student model initialization.
 
-### 1-bit or 2-bit BERT-base (12-layer) with 8-bit activation quantization
+#### 3.1  One-bit or Two-bit BERT-base (12-layer) with 8-bit activation quantization
 For the configurations, see `model_compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). In our paper, we used FP32 (`"fp16": {"enabled": false}`) to perform training, while directly applying 8-bit quantization (`"bits": 8`) to the activations and 1-bit quantization (`"start_bits": 1, "target_bits": 1`) to the attention (query, key, val) and feedforward weight matrices (`"modules": ["attention.self", "intermediate", "output.dense"]`) at the beginning of the training (`"schedule_offset": 0`).  In addition, we also apply 1-bit quantization to `word_embeddings` as weight quantization.
 
 One can run this example by:
@@ -390,11 +391,11 @@ With this config, we quantize the existing fined-tuned models downloaded from Hu
 
 ![XTC quantization results](/assets/images/xtc-1.png){: .align-center}
 
-### Compressing the 12-layer BERT-base to 1-bit or 2-bit 6/5-layer BERT
+#### 3.2 Compressing the 12-layer BERT-base to 1-bit or 2-bit 6/5-layer BERT
 
 This section consists of two parts: (a) we first perform a light-weight layer reduction, and (b) based on the model in (a), we perform 1-bit or 2-bit quantization.
 
-**Light-weight Layer Reduction**
+**3.2.1 Light-weight Layer Reduction**
 
 `model_compression/bert/config/XTC/ds_config_layer_reduction_fp16.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration for reducing the 12-layer BERT-base to a 6-layer one. The student’s layers are initialized from i-layer of the teacher with i= [1, 3 ,5 ,7 ,9 ,11] (note that the layer starts from 0), which is called `Skip-BERT_5` in our XTC paper. In addition, student’s modules including embedding, pooler and classifier are also initialized from teacher. For 5-layer layer reduction, one needs to change the configs in `ds_config_layer_reduction_fp16.json` to `"keep_number_layer": 5`, `"teacher_layer": [2, 4 ,6, 8, 10]`(like in `model_compression/bert/config/ds_config_TEMPLATE.json`).
 
@@ -417,7 +418,7 @@ For mnli/qqp, we set `--num_train_epochs 36`, `--learning_rate 5e-5`, and with t
 
 ![XTC layer reduction results](/assets/images/xtc-2.png){: .align-center}
 
-**1/2-bit quantization for 6-layer (5-layer) BERT**
+**3.2.2 One-bit or Two-bit quantization for 6-layer (5-layer) BERT**
 
 Given the above layer-reduced models ready, we now continue to compress the model with 1/2-bit quantization. `model_compression/bert/config/XTC/ds_config_layer_reduction_W1Q8_fp32.json` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) is the example configuration where we set the layer reduction to be true on top of `model_compression/bert/config/XTC/ds_config_W1A8_Qgroup1_fp32.json`. In addition to the configuration, we need to update the path for the student model using `--pretrained_dir_student` in the script `model_compression/bert/bash_script/XTC/layer_reduction_1bit.sh`. User can train with a different teacher model by adding `--pretrained_dir_teacher`.
 
