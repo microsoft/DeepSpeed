@@ -146,6 +146,7 @@ void create_comms(int number = 1)
     MPICHECK(MPI_Bcast(&ncclID, sizeof(ncclID), MPI_BYTE, 0, MPI_COMM_WORLD));
 
     NCCLCHECK(ncclCommInitRank(&ncclcomm, world_size, ncclID, world_rank));
+    std::cout << "INIT rank = " << world_rank << " nccl comm = " << ncclcomm << std::endl;
 }
 
 void print_comm_number() { std::cout << "Number of Comms:" << global_mpi_comms.size() << "\n"; }
@@ -264,9 +265,111 @@ void all_reduce(torch::Tensor& data, py::object op, bool block)
 
 inline ncclComm_t GetNCCLComm(int comm_id=0) { return _nccl_comms[comm_id]; }
 
+void create_comm_group_custom(std::vector<int> comm_ranks, int rank, int comm_id, int color)
+{
+    //MPICHECK(MPI_Finalize());
+    //exit(0);
+    if (rank == 0 && !_comm_created) {
+        NCCLCHECK(ncclCommDestroy(ncclcomm));
+    }
+    int world_rank, world_size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    ncclComm_t _nccl_comm;
+    MPI_Comm _comm;
+    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
+    MPI_Comm_group(_comm, &_group);
+    unsigned num_ranks = comm_ranks.size();
+    MPI_Comm _newcomm;
+    auto total_group = _group;
+    int local_world_rank, local_world_size;
+    MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
+    MPI_Comm_split(_comm, color, 0, &_newcomm);
+    //MPICHECK(MPI_Finalize());
+    //exit(0);
+    // printf("*************** number of ranks: %d, world size: %d ****************\n",
+    // num_ranks, world_size);
+    if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
+        //MPI_Bcast((void*)&_nccl_comm,
+        //          sizeof(_nccl_comm),
+        //          MPI_BYTE,
+        //          comm_ranks[0],
+        //          _newcomm);
+        printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(), comm_id, color);
+        if (num_ranks < world_size) {
+            //exit(0);
+            MPI_Comm_rank(_newcomm, &local_world_rank);
+            MPI_Comm_size(_newcomm, &local_world_size);
+            //MPICHECK(MPI_Finalize());
+            //exit(0);
+            // printf("************ CPP %d , %d, \t %d, %d **************\n",
+            // local_world_rank,local_world_size, world_rank, world_size);
+            // MPI_Group_free(&total_group);
+        } else if (num_ranks > world_size) {
+            auto message = std::string(
+                "Fail to create comm group (number of ranks is higher than world_size).");
+            std::cerr << message << std::endl;
+            throw std::runtime_error(message);
+        }
+        ncclUniqueId _nccl_uid;
+        if (rank == comm_ranks[0]) {
+            ncclGetUniqueId(&_nccl_uid);
+        }
+        MPI_Bcast((void*)&_nccl_uid,
+                  sizeof(ncclUniqueId),
+                  MPI_BYTE,
+                  comm_ranks[0],
+                  _newcomm);
+                //  num_ranks < world_size ? _newcomm : _comm);
+        //if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
+        ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
+        int nranks;
+        NCCLCHECK(ncclCommCount(_nccl_comm, &nranks));
+        //std::cout << "rank = " << rank << " " << " nranks = " << " " << nranks << std::endl;
+        //if (rank == comm_ranks[0]) {
+        _nccl_comms[comm_id] = _nccl_comm;
+        //exit(0);
+        //}
+        //std::cout << "rank = " << rank << " nccl comm = " << _nccl_comm << std::endl;
+        //}
+    }
+    //MPI_Bcast((void*)_nccl_comms[comm_id],
+    //          sizeof(ncclComm_t),
+    //          MPI_BYTE,
+    //          comm_ranks[0],
+    //          _comm);
+    //if (rank == comm_ranks[0]) {
+    //std::cout << "Number of NCCL comms: " << _nccl_comms.size() << "\n";
+    //std::cout << "rank = " << rank << " " << _nccl_comms[0] << std::endl;
+    //std::cout << "rank = " << rank << " " << _nccl_comms[1] << std::endl;
+    //int nranks;
+    //NCCLCHECK(ncclCommCount(_nccl_comms[comm_id], &nranks));
+    //std::cout << "rank = " << rank << " " << _nccl_comms[comm_id] << " " << nranks << std::endl;
+    //}
+    //MPI_Bcast((void*)&_world_sizes[comm_id],
+    //          1,
+    //          MPI_INT,
+    //          comm_ranks[0],
+    //          _comm);
+    //std::cout << "rank = " << rank << "OUT" << std::endl;
+    //MPI_Bcast(_nccl_comms[comm_id],
+    //          sizeof(_nccl_comm),
+    //          MPI_BYTE,
+    //          comm_ranks[0],
+    //          _comm);
+    _comm_created = true;
+    //_world_sizes[comm_id] = num_ranks;
+    //_nccl_comms[comm_id] = _nccl_comm;
+}
+
+
 void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
 {
-    printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(), comm_id, color);
+    // printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(),
+    // comm_id, color);
+    if (rank == 0 && !_comm_created) {
+        NCCLCHECK(ncclCommDestroy(ncclcomm));
+    }
     int world_rank, world_size;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -295,18 +398,67 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
         throw std::runtime_error(message);
     }
     ncclUniqueId _nccl_uid;
-    ncclGetUniqueId(&_nccl_uid);
+    if (rank == comm_ranks[0]) {
+        ncclGetUniqueId(&_nccl_uid);
+    }
     MPI_Bcast((void*)&_nccl_uid,
               sizeof(ncclUniqueId),
               MPI_BYTE,
-              0,
+              comm_ranks[0],
               num_ranks < world_size ? _newcomm : _comm);
-    ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank);
+    if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
+        ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
+    }
     std::cout << "nccl comm = " << _nccl_comm << std::endl;
     _comm_created = true;
     _world_sizes[comm_id] = num_ranks;
     _nccl_comms[comm_id] = _nccl_comm;
 }
+
+//void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
+//{
+//    // printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(),
+//    // comm_id, color);
+//    int world_rank, world_size;
+//    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+//    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+//    ncclComm_t _nccl_comm;
+//    MPI_Comm _comm;
+//    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
+//    MPI_Comm_group(_comm, &_group);
+//    unsigned num_ranks = comm_ranks.size();
+//    MPI_Comm _newcomm;
+//    // printf("*************** number of ranks: %d, world size: %d ****************\n",
+//    // num_ranks, world_size);
+//    if (num_ranks < world_size) {
+//        auto total_group = _group;
+//        MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
+//        MPI_Comm_split(_comm, color, 0, &_newcomm);
+//        int local_world_rank, local_world_size;
+//        MPI_Comm_rank(_newcomm, &local_world_rank);
+//        MPI_Comm_size(_newcomm, &local_world_size);
+//        // printf("************ CPP %d , %d, \t %d, %d **************\n",
+//        // local_world_rank,local_world_size, world_rank, world_size);
+//        // MPI_Group_free(&total_group);
+//    } else if (num_ranks > world_size) {
+//        auto message = std::string(
+//            "Fail to create comm group (number of ranks is higher than world_size).");
+//        std::cerr << message << std::endl;
+//        throw std::runtime_error(message);
+//    }
+//    ncclUniqueId _nccl_uid;
+//    ncclGetUniqueId(&_nccl_uid);
+//    MPI_Bcast((void*)&_nccl_uid,
+//              sizeof(ncclUniqueId),
+//              MPI_BYTE,
+//              0,
+//              num_ranks < world_size ? _newcomm : _comm);
+//    ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
+//    std::cout << "nccl comm = " << _nccl_comm << std::endl;
+//    _comm_created = true;
+//    _world_sizes[comm_id] = num_ranks;
+//    _nccl_comms[comm_id] = &_nccl_comm;
+//}
 
 //TODO: implement torch's async_op behavior, document it.
 void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, int comm_id)

@@ -198,7 +198,8 @@ def has_allgather_base():
 def allgather_fn(output_tensor: torch.Tensor,
                  input_tensor: torch.Tensor,
                  group,
-                 async_op):
+                 async_op,
+                 comm_id):
     global cdb
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
@@ -206,7 +207,8 @@ def allgather_fn(output_tensor: torch.Tensor,
         return cdb.all_gather_base(output_tensor,
                                    input_tensor,
                                    group=group,
-                                   async_op=True)
+                                   async_op=True,
+                                   comm_id=comm_id)
     else:
         if not has_warned_all_gather:
             utils.logger.warning(
@@ -348,6 +350,10 @@ def get_world_size(group=None) -> int:
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_world_size(group)
 
+def create_comm_group(comm_ranks, rank, comm_id, color):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    return cdb.create_comm_group(comm_ranks, rank, comm_id, color)
 
 def get_rank(group=None):
     """

@@ -143,7 +143,7 @@ class NcclBackend(Backend):
     def synchronize():
         self.nccl_comm_op.synchronize()
 
-    def create_comm_group(comm_ranks, rank, comm_id, color):
+    def create_comm_group(self, comm_ranks, rank, comm_id, color):
         self.nccl_comm_op.create_comm_group(comm_ranks, rank, comm_id, color)
 
     def my_igather(self, rank, size, group, sendbuf, recvbuf, root):
