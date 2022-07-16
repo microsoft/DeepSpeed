@@ -40,7 +40,7 @@ __global__ void attn_softmax_v2(__half* vals,
                                 int num_seq,
                                 int head_offset,
                                 int mask_stride,
-                                float scale,
+                                int mp_size,
                                 int iterations,
                                 int reduceWidth)
 {
@@ -52,7 +52,6 @@ __global__ void attn_softmax_v2(__half* vals,
     float2 low_data[MAX_REG_SIZE];
     float2 high_data[MAX_REG_SIZE];
     const __half zero_h = __float2half(0.f);
-    __half2 h_scale = __float2half2_rn(scale);
 
     int wid = threadIdx.x >> 5;
     int lane = threadIdx.x & 0x1f;
@@ -65,7 +64,7 @@ __global__ void attn_softmax_v2(__half* vals,
 
     int iter_offset = blockIdx.x * (warp_num / reduce_blocks) + (wid / reduce_blocks);
     int batch_idx = iter_offset / (num_seq * heads);
-    int alibi_offset = batch_idx * heads + head_offset;
+    int alibi_offset = batch_idx * heads * mp_size + head_offset;
     int mask_offset = batch_idx * mask_stride + (iter_offset % mask_stride);
 
     if (iter_offset < total_count) {
@@ -246,7 +245,7 @@ __global__ void attn_softmax_v2(float* vals,
                                 int num_seq,
                                 int head_offset,
                                 int mask_stride,
-                                float scale,
+                                int mp_size,
                                 int iterations,
                                 int reduceWidth)
 {
@@ -417,7 +416,7 @@ void launch_attn_softmax_v2(T* vals,
                             int sequence_length,
                             int head_offset,
                             int mask_stride,
-                            float scale,
+                            int mp_size,
                             cudaStream_t stream)
 {
     int total_count = batch_size * heads * num_seq;
@@ -442,7 +441,7 @@ void launch_attn_softmax_v2(T* vals,
                                                             num_seq,
                                                             head_offset,
                                                             mask_stride,
-                                                            scale,
+                                                            mp_size,
                                                             iterations,
                                                             reduce_width);
     else
@@ -463,7 +462,7 @@ template void launch_attn_softmax_v2(float* vals,
                                      int sequence_length,
                                      int head_offset,
                                      int mask_stride,
-                                     float scale,
+                                     int mp_size,
                                      cudaStream_t stream);
 template void launch_attn_softmax_v2(__half* vals,
                                      __half* mask,
@@ -479,5 +478,5 @@ template void launch_attn_softmax_v2(__half* vals,
                                      int sequence_length,
                                      int head_offset,
                                      int mask_stride,
-                                     float scale,
+                                     int mp_size,
                                      cudaStream_t stream);

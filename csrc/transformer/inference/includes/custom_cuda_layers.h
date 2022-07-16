@@ -40,7 +40,7 @@ void launch_attn_softmax_v2(T* vals,
                             int sequence_length,
                             int offset,
                             int mask_stride,
-                            float scale,
+                            int mp_size,
                             cudaStream_t stream);
 
 // Fused bias add with gelu activation

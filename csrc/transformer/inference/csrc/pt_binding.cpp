@@ -18,7 +18,8 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                       int window_size,
                       bool async_op,
                       float layer_scale,
-                      int head_offset)
+                      int head_offset,
+                      int mp_size)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
@@ -38,7 +39,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
-                           (T*)alibi.data_ptr(),
+                           (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
                            layer_scale,
                            triangular,
                            recompute,
@@ -50,7 +51,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            soft_len,
                            head_offset,
                            mask_stride,
-                           1.0,
+                           mp_size,
                            Context::Instance().GetCurrentStream(async_op));
 
     return attn_scores_c;
@@ -170,7 +171,7 @@ void attention_unfused(at::Tensor& prev_key_cont,
                            soft_len,
                            0,
                            mask_stride,
-                           1.0,
+                           1,
                            Context::Instance().GetCurrentStream(false));
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
@@ -278,7 +279,7 @@ void ds_softmax_internal(T* attn_scores,
                            soft_len,
                            0,
                            mask_stride,
-                           1.0,
+                           1,
                            at::cuda::getCurrentCUDAStream());
 }
 

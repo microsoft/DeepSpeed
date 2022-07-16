@@ -252,7 +252,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                 1,
                 False,
                 1 / (norm_factor * norm_factor),
-                offset)
+                offset,
+                config.mp_size)
             # change view [batch_size x num_heads, q_length, k_length]
             attention_probs_reshaped = attention_probs.view(*matmul_result.shape)
 
