@@ -38,6 +38,7 @@ To apply layer reduction for task-specific compression, we provide an example on
 One can run our layer reduction example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/layer_reduction.sh
 ```
 
@@ -80,7 +81,7 @@ Step 4 (optional): After distilling the model, one can also choose to further qu
 | Quantization only | 9.39 | 31.96 |
 | Pretraining distillation + quantization | 9.86 | 31.32 | -->
 
-<!-- TODO: @Minjia: is the PPL the validation PPL or wikitext PPL? And there is no description about which 10 tasks are used, maybe it's better to just show one common task result (e.g., WikiText-2). -->
+<!-- TODO: Is the PPL the validation PPL or wikitext PPL? And there is no description about which 10 tasks are used, maybe it's better to just show one common task result (e.g., WikiText-2). -->
 
 ### 1.2 Weight Quantization
 **What is weight quantization**
@@ -112,6 +113,7 @@ There are two changes to the client code (`model_compression/bert/run_glue_no_tr
 One can run our weight quantization example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/quant_weight.sh
 ```
 
@@ -144,6 +146,7 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our activation quantization example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/quant_activation.sh
 ```
 
@@ -193,6 +196,7 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our sparse pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_sparse.sh
 ```
 
@@ -227,6 +231,7 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our row pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_row.sh
 ```
 
@@ -263,6 +268,7 @@ The client code change is the same as [weight quantization](#12-weight-quantizat
 One can run our head pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_head.sh
 ```
 
@@ -288,6 +294,7 @@ Channel pruning can be enabled and configured using the DeepSpeed config JSON fi
 One can run our channel pruning example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+pip install torch torchvision
 DeepSpeedExamples/model_compression/cifar$ bash run_compress.sh
 ```
 
@@ -316,6 +323,7 @@ When you want to quantize the transformer-based model to INT8 or INT4/INT8 forma
 One can run our BERT example in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples) by:
 
 ```shell
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/bert$ bash bash_script/ZeroQuant/zero_quant.sh
 ```
 
@@ -328,6 +336,7 @@ Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.842791
 One can run our GPT example by:
 
 ```shell
+DeepSpeedExamples/model_compression/gpt2$ pip install -r requirements.txt
 DeepSpeedExamples/model_compression/gpt2$ bash bash_script/run_zero_quant.sh
 ```
 
@@ -362,7 +371,7 @@ If you want to significantly compress your models while retaining competitive pe
 **Installation:** Examples of XTC extreme compression for BERT models are at `model_compression/bert/bash_script/XTC` in [DeepSpeedExamples](https://github.com/microsoft/DeepSpeedExamples). You will need to install the requirements by:
 
 ```shell
-pip install -r requirement.txt
+DeepSpeedExamples/model_compression/bert$ pip install -r requirements.txt
 ```
 
 **Implementation of XTC methods:**
@@ -380,8 +389,6 @@ DeepSpeedExamples/model_compression/bert$ bash bash_script/XTC/quant_1bit.sh
 And the final result is:
 
 ```shell
-task mnli, teacher_result: acc/mm-acc:0.8419765664798777/0.846826688364524
-Previous best: acc/mm-acc:0.8231278655119715/0.8329943043124491
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8293428425878757/0.8396053702196908
 ```
 
