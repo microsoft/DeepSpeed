@@ -381,7 +381,7 @@ class DeepSpeedSelfAttentionFunction(Function):
 
                     attn_key_value = score_context_func(
                         qkv_out,
-                        ((1 - input_mask).half() *
+                        ((1 - input_mask).to(qkv_out.dype) *
                          minus_inf) if input_mask.dtype == torch.int64 else input_mask,
                         config.rotary_dim,
                         config.rotate_half,
@@ -392,7 +392,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         config.local_attention,
                         config.window_size,
                         no_masking,
-                        config.layer_id if config.bigscience_bloom else 1,
+                        config.layer_id,
                         DeepSpeedTransformerInference.layer_id,
                         sliced_alibi if alibi is not None else torch.empty(1))
                     context_layer, key_layer, value_layer = attn_key_value

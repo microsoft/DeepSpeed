@@ -35,7 +35,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     if (len > 1) heads = attn_scores_c.size(1);
 
     int mask_stride = 1;
-    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) > 1) mask_stride = attn_mask.size(2);
+    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
@@ -263,8 +263,8 @@ void ds_softmax_internal(T* attn_scores,
                          int soft_len,
                          int heads)
 {
-    int mask_stride = heads;
-    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
+    int mask_stride = 1;
+    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -302,7 +302,7 @@ void attention_unfused(T* prev_key_cont,
                        at::Tensor& alibi,
                        int layer_id)
 {
-    float layer_scale = std::max(1, layer_id);
+    float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
     float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
     T* workspace = (T*)output + bsz * seq_len * heads * k;
