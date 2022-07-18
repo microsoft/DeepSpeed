@@ -192,7 +192,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             return tensor_list
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
-            alibi = alibi.to(torch.cuda.current_device())
             # [batch_size, seq_length, 3 x hidden_size] --> [batch_size, seq_length, num_heads, 3 x head_dim]
             head_dim = hidden_size_per_partition // num_attention_heads_per_partition
             new_tensor_shape = mixed_x_layer.size()[:-1] + (

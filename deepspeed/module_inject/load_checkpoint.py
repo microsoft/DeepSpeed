@@ -86,7 +86,8 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
                             setattr(module, name, child)
                     continue
                 child_params = list(child.parameters())
-                if len(child_params) > 0 and (child_params[0].numel() == 0 or child_params[0].is_meta):
+                if len(child_params) > 0 and (child_params[0].numel() == 0
+                                              or child_params[0].is_meta):
                     if child.weight.is_meta:
                         ds_shape = child.weight.shape
                     else:
@@ -115,19 +116,13 @@ def load_model_with_checkpoint(r_module, sd, mp_replace):
 
     load_module_recursive(r_module)
 
+    #XXX: hack to tie embedding w. lm_head for BLOOM, need to revist soon
     embedding_weight = None
-    for n,p in r_module.named_parameters():
+    for n, p in r_module.named_parameters():
         if "word_embeddings." in n:
-            print(f"FOUND embedding weight {n}")
             embedding_weight = p
-
+    assert hasattr(r_module, 'lm_head'), "attempting to set lm_head but it doesn't exist"
     r_module.lm_head.weight = embedding_weight
 
-    #import remote_pdb
-    #remote_pdb.set_trace()
-    #for n,p in r_module.named_parameters():
-    #    if "lm_head" in n:
-    #        print("REPLACED lm head weight")
-    #        p.data = embedding_weight.data
     del sd
     sd = None

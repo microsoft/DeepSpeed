@@ -366,7 +366,8 @@ def replace_transformer_layer(orig_layer_impl,
 
             if attn_linear_layer:
                 if qkvw.numel() == 0 or qkvw.is_meta:
-                    if qkvw.is_meta or qkvw.ds_tensor.numel() < attn_block.attn_qkvw.numel():
+                    if qkvw.is_meta or qkvw.ds_tensor.numel(
+                    ) < attn_block.attn_qkvw.numel():
                         pass
                     else:
                         with GatheredParameters([qkvw,
@@ -420,7 +421,8 @@ def replace_transformer_layer(orig_layer_impl,
 
             if mlp_linear_layer:
                 if not moe and (_4hh_w.numel() == 0 or _4hh_w.is_meta):
-                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel() < mpl_block.inter_w.numel():
+                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel(
+                    ) < mpl_block.inter_w.numel():
                         pass
                     else:
                         with GatheredParameters([_h4h_w,
@@ -499,7 +501,8 @@ def replace_transformer_layer(orig_layer_impl,
             else:
 
                 if _4hh_w.numel() == 0 or _4hh_w.is_meta:
-                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel() < mpl_block.inter_w.numel():
+                    if _4hh_w.is_meta or _4hh_w.ds_tensor.numel(
+                    ) < mpl_block.inter_w.numel():
                         pass
                     else:
                         with GatheredParameters([_h4h_w,
@@ -525,7 +528,8 @@ def replace_transformer_layer(orig_layer_impl,
                     mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
                     mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
                 if attn_nw.is_meta or attn_nw.numel() == 0:
-                    if attn_nw.is_meta or attn_nw.ds_tensor.numel() < new_module.mlp.attn_nw.numel():
+                    if attn_nw.is_meta or attn_nw.ds_tensor.numel(
+                    ) < new_module.mlp.attn_nw.numel():
                         pass
                     else:
                         with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
@@ -551,7 +555,8 @@ def replace_transformer_layer(orig_layer_impl,
                         new_module.mlp.attn_nb.data.copy_(
                             attn_nb.to(torch.cuda.current_device()))
             if input_nw.is_meta or input_nw.numel() == 0:
-                if input_nw.is_meta or input_nw.ds_tensor.numel() < new_module.norm_w.numel():
+                if input_nw.is_meta or input_nw.ds_tensor.numel(
+                ) < new_module.norm_w.numel():
                     pass
                 else:
                     with GatheredParameters([input_nw, input_nb], modifier_rank=0):
