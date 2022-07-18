@@ -267,7 +267,10 @@ __global__ void attn_softmax_v2(float* vals,
     if (iter_offset < total_count) {
         vals += (iter_offset * sequence_length);
 
-        int mask_offset = (iter_offset / mask_stride) * (sequence_length);
+        int batch_idx = iter_offset / (num_seq * heads);
+        int alibi_offset = batch_idx * heads * mp_size + head_offset;
+        int mask_offset = batch_idx * mask_stride + (iter_offset % mask_stride);
+
         int seq_id = iter_offset % num_seq;
         int seq_id4 = seq_id >> 2;
 
