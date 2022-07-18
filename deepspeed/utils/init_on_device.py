@@ -54,7 +54,7 @@ class OnDevice(object):
 
     def get_new_tensor_fn_for_dtype(self, dtype: torch.dtype) -> Callable:
         def new_tensor(cls, *args) -> Tensor:
-            tensor = OnGPU._orig_torch_empty(0, device=self.device).new_empty(*args)
+            tensor = OnDevice._orig_torch_empty(0, device=self.device).new_empty(*args)
             if tensor.is_floating_point():
                 tensor = tensor.to(dtype)
             return tensor
