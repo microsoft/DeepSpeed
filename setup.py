@@ -61,7 +61,8 @@ extras_require = {
     'dev': fetch_requirements('requirements/requirements-dev.txt'),
     'autotuning': fetch_requirements('requirements/requirements-autotuning.txt'),
     'autotuning_ml': fetch_requirements('requirements/requirements-autotuning-ml.txt'),
-    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt')
+    'sparse_attn': fetch_requirements('requirements/requirements-sparse_attn.txt'),
+    'inf': fetch_requirements('requirements/requirements-inf.txt')
 }
 
 # Add specific cupy version to both onebit extension variants
@@ -234,7 +235,7 @@ if torch_available and torch.version.cuda is not None:
         nccl_version = ".".join(str(torch.cuda.nccl.version())[:2])
     else:
         nccl_version = ".".join(map(str, torch.cuda.nccl.version()[:2]))
-    if hasattr(torch.cuda, 'is_bf16_supported'):
+    if hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_available():
         bf16_support = torch.cuda.is_bf16_supported()
 if torch_available and hasattr(torch.version, 'hip') and torch.version.hip is not None:
     hip_version = ".".join(torch.version.hip.split('.')[:2])
@@ -280,10 +281,18 @@ setup(name='deepspeed',
       },
       install_requires=install_requires,
       extras_require=extras_require,
-      packages=find_packages(exclude=["docker",
-                                      "third_party",
-                                      "csrc",
-                                      "op_builder"]),
+      packages=find_packages(exclude=[
+          "azure",
+          "csrc",
+          "docker",
+          "docs",
+          "examples",
+          "op_builder",
+          "release",
+          "requirements",
+          "scripts",
+          "tests"
+      ]),
       include_package_data=True,
       scripts=[
           'bin/deepspeed',
@@ -291,6 +300,8 @@ setup(name='deepspeed',
           'bin/ds',
           'bin/ds_ssh',
           'bin/ds_report',
+          'bin/ds_bench',
+          'bin/dsr',
           'bin/ds_elastic'
       ],
       classifiers=[
