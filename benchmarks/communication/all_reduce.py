@@ -23,11 +23,11 @@ def timed_allreduce(input, args):
     # time the actual comm op trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
-        print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input}')
+        #print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input}')
         #pretime = time.perf_counter()
         dist.all_reduce(input)
         sync_all()
-        print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input}')
+        #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input}')
         #if dist.get_rank() == 0:
         #print(f"rank:{dist.get_rank()}, time={(time.perf_counter() - pretime)*1e3}")
     sync_all()

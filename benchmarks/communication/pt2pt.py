@@ -43,6 +43,7 @@ def timed_pt2pt(input, args):
                 dist.irecv(input, src=0)
             else:
                 dist.recv(input, src=0)
+        sync_all()
 
     sync_all()
     duration = time.perf_counter() - pre

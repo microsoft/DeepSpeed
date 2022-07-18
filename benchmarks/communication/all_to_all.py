@@ -24,6 +24,7 @@ def timed_alltoall(input, output, args):
     pre = time.perf_counter()
     for i in range(args.trials):
         dist.all_to_all_single(output, input, async_op=args.async_op)
+        sync_all()
     sync_all()
     duration = time.perf_counter() - pre
 

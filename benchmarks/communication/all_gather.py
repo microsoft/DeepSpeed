@@ -19,7 +19,7 @@ def timed_allgather(input, output, args):
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
-        print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
+        #print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
         # use all_gather_base if available
         if args.dist == 'torch':
             if hasattr(torch.distributed, "_all_gather_base"):
@@ -32,7 +32,7 @@ def timed_allgather(input, output, args):
         elif args.dist == 'deepspeed':
             dist.allgather_fn(output, input, group=None, async_op=args.async_op)
         sync_all()
-        print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
+        #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
     sync_all()
     
 

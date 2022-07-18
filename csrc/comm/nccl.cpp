@@ -5,6 +5,7 @@
 #include <torch/extension.h>
 #include <chrono>
 #include <pybind11/embed.h>
+#include <ATen/cuda/CUDAContext.h>
 namespace py = pybind11;
 
 #include <c10/util/irange.h>
@@ -141,7 +142,8 @@ void create_comms(int number = 1)
     CUDACHECK(cudaGetDeviceCount(&ngpus));
 
     CUDACHECK(cudaSetDevice(world_rank % ngpus));
-    CUDACHECK(cudaStreamCreate(&s));
+    //CUDACHECK(cudaStreamCreate(&s));
+    //CUDACHECK(cudaStreamCreate(&_comm_stream));
     if (world_rank == 0) { ncclGetUniqueId(&ncclID); }
     MPICHECK(MPI_Bcast(&ncclID, sizeof(ncclID), MPI_BYTE, 0, MPI_COMM_WORLD));
 
@@ -161,6 +163,27 @@ void initialize(int rank, int size)
 {
     //initialize_mpi();
     create_comms();
+    cudaEventCreate(&_comp_event, (cudaEventDisableTiming | cudaEventBlockingSync));
+    cudaEventCreate(&_comm_event, (cudaEventDisableTiming | cudaEventBlockingSync));
+}
+
+inline void SynchComp()
+{
+    cudaEventRecord(_comp_event, _comp_stream);
+    cudaStreamWaitEvent(_comm_stream, _comp_event, 0);
+}
+inline void SynchComm()
+{
+    cudaEventRecord(_comm_event, _comm_stream);
+    cudaStreamWaitEvent(_comp_stream, _comm_event, 0);
+}
+
+cudaStream_t GetCommStream(bool async_op = false)
+{
+    if (!_comm_stream)
+        _comm_stream = async_op ? at::cuda::getStreamFromPool(true)
+                                : at::cuda::getCurrentCUDAStream();
+    return _comm_stream;
 }
 
 void finalize()
@@ -220,23 +243,25 @@ ncclRedOp_t get_nccl_reduce_op(py::object op, at::Tensor& input)
     return nccl_op;
 }
 
-void send(torch::Tensor data, int rank, int tag, bool block)
+void send(torch::Tensor data, int rank, int tag, bool block, bool async_op)
 {
     NCCLCHECK(ncclSend(
-        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
 }
 
-void recv(torch::Tensor data, int rank, int tag, bool block)
+void recv(torch::Tensor data, int rank, int tag, bool block, bool async_op)
 {
     NCCLCHECK(ncclRecv(
-        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
 }
 
 
 //TODO: implement torch's async_op behavior, document it.
-void all_reduce(torch::Tensor& data, py::object op, bool block)
+void all_reduce(torch::Tensor& data, py::object op, bool block, bool async_op)
 {
 
     // std::chrono::steady_clock::time_point begin, end;
@@ -249,8 +274,9 @@ void all_reduce(torch::Tensor& data, py::object op, bool block)
                             get_nccl_datatype(data.scalar_type()),
                             get_nccl_reduce_op(op, data),
                             ncclcomm,
-                            s));
-    if (!block) { CUDACHECK(cudaStreamSynchronize(s)); }
+                            GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // if (is_prof) {
     //    end = std::chrono::steady_clock::now();
     //    if (get_rank(0) == 0) {
@@ -461,7 +487,7 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
 //}
 
 //TODO: implement torch's async_op behavior, document it.
-void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, int comm_id)
+void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, int comm_id, bool async_op)
 {
     // std::chrono::steady_clock::time_point begin, end;
     // void* sendbuff = data.data_ptr();
@@ -473,8 +499,9 @@ void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, in
                             input.numel(),
                             get_nccl_datatype(input.scalar_type()),
                             GetNCCLComm(comm_id),
-                            s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+                            GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // if (is_prof) {
     //    end = std::chrono::steady_clock::now();
     //    if (get_rank(0) == 0) {
@@ -568,10 +595,8 @@ std::vector<at::Tensor> flatten_for_scatter_gather(
 }
 
 
-//void coll_
-
 //TODO: implement torch's async_op behavior, document it.
-void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vector<torch::Tensor>& inputTensors, bool block)
+void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vector<torch::Tensor>& inputTensors, bool block, bool async_op)
 {
     //std::vector<at::Tensor> flattenOutputTensors;
     //flattenOutputTensors.resize(outputTensors.size());
@@ -594,7 +619,7 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
             inputTensors[i].numel(),
             get_nccl_datatype(inputTensors[i].scalar_type()),
             ncclcomm,
-            s));
+            GetCommStream(async_op)));
         }
 
     NCCLCHECK(ncclGroupEnd());
@@ -612,7 +637,8 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
     //                        get_nccl_datatype(data.scalar_type()),
     //                        ncclcomm,
     //                        s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // if (is_prof) {
     //    end = std::chrono::steady_clock::now();
     //    if (get_rank(0) == 0) {
@@ -633,7 +659,7 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
 }
 
 //TODO: implement torch's async_op behavior, document it.
-void reduce(torch::Tensor& data, int root, py::object op, bool block)
+void reduce(torch::Tensor& data, int root, py::object op, bool block, bool async_op)
 {
 
     // std::chrono::steady_clock::time_point begin, end;
@@ -647,8 +673,9 @@ void reduce(torch::Tensor& data, int root, py::object op, bool block)
                          get_nccl_reduce_op(op, data),
                          root,
                          ncclcomm,
-                         s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+                         GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // if (is_prof) {
     //    end = std::chrono::steady_clock::now();
     //    if (get_rank(0) == 0) {
@@ -662,7 +689,7 @@ void reduce(torch::Tensor& data, int root, py::object op, bool block)
 }
 
 //TODO: implement torch's async_op behavior, document it.
-void reduce_scatter(torch::Tensor& data, py::object op, bool block)
+void reduce_scatter(torch::Tensor& data, py::object op, bool block, bool async_op)
 {
     // std::chrono::steady_clock::time_point begin, end;
     // void* sendbuff = data.data_ptr();
@@ -674,8 +701,9 @@ void reduce_scatter(torch::Tensor& data, py::object op, bool block)
                                 get_nccl_datatype(data.scalar_type()),
                                 get_nccl_reduce_op(op, data),
                                 ncclcomm,
-                                s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+                                GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // if (is_prof) {
     //    end = std::chrono::steady_clock::now();
     //    if (get_rank(0) == 0) {
@@ -688,7 +716,7 @@ void reduce_scatter(torch::Tensor& data, py::object op, bool block)
     //}
 }
 
-void broadcast(torch::Tensor& data, int src, bool block)
+void broadcast(torch::Tensor& data, int src, bool block, bool async_op)
 {
     NCCLCHECK(ncclBroadcast(data.data_ptr(),
                             data.data_ptr(),
@@ -696,11 +724,12 @@ void broadcast(torch::Tensor& data, int src, bool block)
                             get_nccl_datatype(data.scalar_type()),
                             src,
                             ncclcomm,
-                            s));
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+                            GetCommStream(async_op)));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
 }
 
-void alltoall(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block)
+void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block, bool async_op)
 {
     //std::chrono::steady_clock::time_point begin, end;
     const auto* sendbuff = reinterpret_cast<char*>(inputTensor.data_ptr());
@@ -714,12 +743,13 @@ void alltoall(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block)
     ncclDataType_t type = get_nccl_datatype(inputTensor.scalar_type());
     for (int r = 0; r < nRanks; r++) {
         if (count != 0) {
-            NCCLCHECK(ncclSend(sendbuff + r * rankdiff, count, type, r, ncclcomm, s));
-            NCCLCHECK(ncclRecv(recvbuff + r * rankdiff, count, type, r, ncclcomm, s));
+            NCCLCHECK(ncclSend(sendbuff + r * rankdiff, count, type, r, ncclcomm, GetCommStream(async_op)));
+            NCCLCHECK(ncclRecv(recvbuff + r * rankdiff, count, type, r, ncclcomm, GetCommStream(async_op)));
         }
     }
     NCCLCHECK(ncclGroupEnd());
-    if (block) { CUDACHECK(cudaStreamSynchronize(s)); }
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
     // CUDACHECK(cudaStreamSynchronize(s));
     //if (is_prof) {
     //    end = std::chrono::steady_clock::now();
@@ -732,8 +762,8 @@ void alltoall(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block)
     //}
 }
 
-void alltoall_list(std::vector<torch::Tensor>& inputTensors,
-                        std::vector<torch::Tensor>& outputTensors)
+void all_to_all(std::vector<torch::Tensor>& inputTensors,
+                        std::vector<torch::Tensor>& outputTensors, bool block, bool async_op)
 {
     NCCLCHECK(ncclGroupStart());
     for (int t = 0; t < inputTensors.size(); t++) {
@@ -745,7 +775,7 @@ void alltoall_list(std::vector<torch::Tensor>& inputTensors,
                                get_nccl_datatype(input.scalar_type()),
                                t,
                                ncclcomm,
-                               s));
+                               GetCommStream(async_op)));
         }
         if (output.numel() != 0) {
             NCCLCHECK(ncclRecv(output.data_ptr(),
@@ -753,11 +783,12 @@ void alltoall_list(std::vector<torch::Tensor>& inputTensors,
                                get_nccl_datatype(output.scalar_type()),
                                t,
                                ncclcomm,
-                               s));
+                               GetCommStream(async_op)));
         }
     }
     NCCLCHECK(ncclGroupEnd());
-    CUDACHECK(cudaStreamSynchronize(s));
+    if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
+    if (async_op) { SynchComp(); }
 }
 
 void synchronize() {
@@ -771,8 +802,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("recv", &recv, "nccl recv");
     m.def("all_reduce", &all_reduce, "nccl all_reduce");
     m.def("broadcast", &broadcast, "nccl broadcast");
-    m.def("alltoall", &alltoall, "nccl alltoall");
-    m.def("alltoall_list", &alltoall_list, "nccl alltoall list");
+    m.def("all_to_all_single", &all_to_all_single, "nccl alltoall");
+    m.def("all_toall_list", &all_to_all, "nccl alltoall list");
     m.def("all_gather_base", &all_gather_base, "nccl all_gather_base");
     m.def("all_gather", &all_gather, "nccl all_gather");
     m.def("reduce", &reduce, "nccl reduce");
