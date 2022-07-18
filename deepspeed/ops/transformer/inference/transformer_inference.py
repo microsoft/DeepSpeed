@@ -192,7 +192,6 @@ class DeepSpeedSelfAttentionFunction(Function):
             return tensor_list
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
-            # [batch_size, seq_length, 3 x hidden_size] --> [batch_size, seq_length, num_heads, 3 x head_dim]
             head_dim = hidden_size_per_partition // num_attention_heads_per_partition
             new_tensor_shape = mixed_x_layer.size()[:-1] + (
                 num_attention_heads_per_partition,
@@ -379,6 +378,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         offset = dist.get_rank() * batch_heads if dist.is_initialized(
                         ) else 0
                         sliced_alibi = alibi[offset:batch_heads + offset, :, :]
+
                     attn_key_value = score_context_func(
                         qkv_out,
                         ((1 - input_mask).half() *
@@ -392,7 +392,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         config.local_attention,
                         config.window_size,
                         no_masking,
-                        config.layer_id,
+                        config.layer_id if config.bigscience_bloom else 1,
                         DeepSpeedTransformerInference.layer_id,
                         sliced_alibi if alibi is not None else torch.empty(1))
                     context_layer, key_layer, value_layer = attn_key_value

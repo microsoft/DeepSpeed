@@ -527,33 +527,27 @@ def replace_transformer_layer(orig_layer_impl,
                     mpl_block.inter_b = mp_replace.copy(mpl_block.inter_b, _h4h_b)
                     mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
                     mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
-                if attn_nw.is_meta or attn_nw.numel() == 0:
-                    if attn_nw.is_meta or attn_nw.ds_tensor.numel(
-                    ) < new_module.mlp.attn_nw.numel():
-                        pass
-                    else:
-                        with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
-                            if attn_nw is None:
-                                new_module.mlp.attn_nw = attn_nw
-                            else:
+
+                if attn_nw is None:
+                    new_module.mlp.attn_nw = attn_nw
+                    new_module.mlp.attn_nb = attn_nb
+                else:
+                    if attn_nw.is_meta or attn_nw.numel() == 0:
+                        if attn_nw.is_meta or attn_nw.ds_tensor.numel(
+                        ) < new_module.mlp.attn_nw.numel():
+                            pass
+                        else:
+                            with GatheredParameters([attn_nw, attn_nb], modifier_rank=0):
                                 new_module.mlp.attn_nw.data.copy_(
                                     attn_nw.to(torch.cuda.current_device()))
-                            if attn_nb is None:
-                                new_module.mlp.attn_nb = attn_nb
-                            else:
                                 new_module.mlp.attn_nb.data.copy_(
                                     attn_nb.to(torch.cuda.current_device()))
-                else:
-                    if attn_nw is None:
-                        new_module.mlp.attn_nw = attn_nw
                     else:
                         new_module.mlp.attn_nw.data.copy_(
                             attn_nw.to(torch.cuda.current_device()))
-                    if attn_nb is None:
-                        new_module.mlp.attn_nb = attn_nb
-                    else:
                         new_module.mlp.attn_nb.data.copy_(
                             attn_nb.to(torch.cuda.current_device()))
+
             if input_nw.is_meta or input_nw.numel() == 0:
                 if input_nw.is_meta or input_nw.ds_tensor.numel(
                 ) < new_module.norm_w.numel():
