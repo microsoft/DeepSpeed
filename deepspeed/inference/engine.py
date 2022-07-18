@@ -487,6 +487,7 @@ class InferenceEngine(Module):
             *inputs: Variable length input list
             **kwargs: variable length keyword arguments
         """
+
         if self.mp_world_size > 1:
             if self.mpu is None:
                 for input in inputs:
@@ -501,7 +502,6 @@ class InferenceEngine(Module):
                         if not kwargs[k].is_contiguous():
                             kwargs[k] = kwargs[k].contiguous()
                         dist.broadcast(kwargs[k], 0)
-
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:
             if self.enable_cuda_graph:

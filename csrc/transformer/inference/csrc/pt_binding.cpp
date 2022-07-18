@@ -11,29 +11,35 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
                       at::Tensor& attn_mask,
+                      at::Tensor& alibi,
                       bool triangular,
                       bool recompute,
                       bool local_attention,
                       int window_size,
                       bool async_op,
-                      float layer_scale)
+                      float layer_scale,
+                      int head_offset,
+                      int mp_size)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
 
     int seq_len = attn_scores_c.size(1);
     int len = attn_scores_c.sizes().size();
-    if (len > 3) seq_len = attn_scores_c.size(2);
+    if (len > 2) seq_len = attn_scores_c.size(2);
 
     int soft_len = attn_scores_c.size(2);
     if (len > 3) soft_len = attn_scores_c.size(3);
 
     int heads = 1;
-    if (len > 3) heads = attn_scores_c.size(1);
+    if (len > 1) heads = attn_scores_c.size(1);
+
+    int mask_stride = 1;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) > 1) mask_stride = attn_mask.size(2);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
-                           (T*)attn_mask.data_ptr(),
+                           (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
                            layer_scale,
                            triangular,
                            recompute,
@@ -43,7 +49,9 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            heads,
                            seq_len,
                            soft_len,
-                           1.0,
+                           head_offset,
+                           mask_stride,
+                           mp_size,
                            Context::Instance().GetCurrentStream(async_op));
 
     return attn_scores_c;
@@ -126,6 +134,8 @@ void attention_unfused(at::Tensor& prev_key_cont,
     float gemm_beta = 0.0;
     auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
+    int mask_stride = heads;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 soft_len,
@@ -147,8 +157,22 @@ void attention_unfused(at::Tensor& prev_key_cont,
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
-    attn_score = ds_softmax<T>(
-        attn_score, attn_mask, triangular, recompute, local_attention, window_size, false, 1.0);
+    launch_attn_softmax_v2((T*)attn_score.data_ptr(),
+                           (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
+                           (T*)nullptr,
+                           1.0,
+                           triangular,
+                           recompute,
+                           local_attention,
+                           window_size,
+                           bsz,
+                           heads,
+                           seq_len,
+                           soft_len,
+                           0,
+                           mask_stride,
+                           1,
+                           Context::Instance().GetCurrentStream(false));
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 k,
@@ -239,6 +263,8 @@ void ds_softmax_internal(T* attn_scores,
                          int soft_len,
                          int heads)
 {
+    int mask_stride = heads;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -251,7 +277,9 @@ void ds_softmax_internal(T* attn_scores,
                            heads,
                            seq_len,
                            soft_len,
-                           1.0,
+                           0,
+                           mask_stride,
+                           1,
                            at::cuda::getCurrentCUDAStream());
 }
 
@@ -521,7 +549,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    workspace += (3 * input.size(0) * MAX_OUT_TOKES * input.size(2));
+    workspace += (3 * bsz * input.size(2));
     ds_layernorm_internal<T>(workspace, input, gamma, beta, epsilon);
     // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
