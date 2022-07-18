@@ -486,26 +486,27 @@ class DeepSpeedSelfAttention(nn.Module):
         data_type = torch.half if config.fp16 else torch.float
         self.config.layer_id = DeepSpeedSelfAttention.num_layers
         DeepSpeedSelfAttention.num_layers = DeepSpeedSelfAttention.num_layers + 1
+        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_qkvw = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         (self.config.hidden_size // self.config.mp_size) * 3,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.attn_qkvb = nn.Parameter(
             torch.empty((self.config.hidden_size // self.config.mp_size) * 3,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
 
         self.attn_ow = nn.Parameter(
             torch.empty(self.config.hidden_size // self.config.mp_size,
                         self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
 
         self.attn_ob = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
 
         self.num_attention_heads_per_partition = self.config.heads // self.config.mp_size
         self.hidden_size_per_partition = self.config.hidden_size // self.config.mp_size
@@ -663,32 +664,33 @@ class DeepSpeedMLP(nn.Module):
 
         self.config = config
         data_type = torch.half if config.fp16 else torch.float
+        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.attn_nw = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.attn_nb = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.inter_w = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         self.config.intermediate_size // self.config.mp_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.inter_b = nn.Parameter(
             torch.empty(self.config.intermediate_size // self.config.mp_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.output_w = nn.Parameter(
             torch.empty((self.config.intermediate_size // self.config.mp_size),
                         self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.output_b = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
 
         # used for quantization
         self.q_scales = q_scales
@@ -781,14 +783,15 @@ class DeepSpeedTransformerInference(nn.Module):
                                 merge_count,
                                 mlp_extra_grouping)
 
+        device = torch.cuda.current_device() if config.bigscience_bloom else 'cpu'
         self.norm_w = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.norm_b = nn.Parameter(
             torch.empty(self.config.hidden_size,
                         dtype=data_type,
-                        device=torch.cuda.current_device()))
+                        device=device))
         self.layer_past = None
 
     def forward(self,
