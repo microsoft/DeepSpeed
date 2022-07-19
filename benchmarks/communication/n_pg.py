@@ -1,12 +1,14 @@
 import torch
-import torch.distributed as dist
+#import torch.distributed as dist
+import deepspeed.comm as dist
 import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--local_rank', type=int, default=-1)
 args = parser.parse_args()
 
-dist.init_process_group(backend='nccl')
+#dist.init_process_group(backend='nccl')
+deepspeed.init_distributed(dist_backend='nccl', use_deepspeed=True)
 
 torch.cuda.set_device(args.local_rank)
 device = torch.device("cuda", args.local_rank)
@@ -20,14 +22,14 @@ _MODEL_PARALLEL_GROUP = None
 rank = dist.get_rank()
 for i in range(model_parallel_size):
     ranks = range(i, world_size, model_parallel_size)
-    group = torch.distributed.new_group(ranks)
+    group = dist.new_group(ranks)
     if i == (rank % model_parallel_size):
         _DATA_PARALLEL_GROUP = group
 
 for i in range(world_size // model_parallel_size):
     ranks = range(i * model_parallel_size,
                   (i + 1) * model_parallel_size)
-    group = torch.distributed.new_group(ranks)
+    group = dist.new_group(ranks)
     if i == (rank // model_parallel_size):
         _MODEL_PARALLEL_GROUP = group
 
@@ -45,7 +47,7 @@ def get_model_parallel_group():
 
 def get_model_parallel_rank():
     """Return my rank for the model parallel group."""
-    return torch.distributed.get_rank(group=get_model_parallel_group())
+    return dist.get_rank(group=get_model_parallel_group())
 
 def ag_test():
     src_rank = get_model_parallel_rank()

@@ -88,6 +88,9 @@ cudaStream_t _comm_stream;
 MPI_Group _group;
 std::unordered_map<int, ncclComm_t> _nccl_comms;
 std::unordered_map<int, int> _world_sizes;
+std::set<int> _comm_ids;
+std::set<int> _colors;
+std::unordered_map<int, int> _color_map;
 MPI_Comm _comm;
 bool _comm_created;
 
@@ -148,7 +151,7 @@ void create_comms(int number = 1)
     MPICHECK(MPI_Bcast(&ncclID, sizeof(ncclID), MPI_BYTE, 0, MPI_COMM_WORLD));
 
     NCCLCHECK(ncclCommInitRank(&ncclcomm, world_size, ncclID, world_rank));
-    std::cout << "INIT rank = " << world_rank << " nccl comm = " << ncclcomm << std::endl;
+    //std::cout << "INIT rank = " << world_rank << " nccl comm = " << ncclcomm << std::endl;
 }
 
 void print_comm_number() { std::cout << "Number of Comms:" << global_mpi_comms.size() << "\n"; }
@@ -393,9 +396,11 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
 {
     // printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(),
     // comm_id, color);
-    if (rank == 0 && !_comm_created) {
-        NCCLCHECK(ncclCommDestroy(ncclcomm));
-    }
+
+    // If we have a global communicator, destroy it
+    //if (rank == 0 && !_comm_created) {
+    //    NCCLCHECK(ncclCommDestroy(ncclcomm));
+    //}
     int world_rank, world_size;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -435,10 +440,59 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
     if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
         ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
     }
-    std::cout << "nccl comm = " << _nccl_comm << std::endl;
+    //std::cout << "nccl comm = " << _nccl_comm << std::endl;
     _comm_created = true;
     _world_sizes[comm_id] = num_ranks;
     _nccl_comms[comm_id] = _nccl_comm;
+    _color_map[comm_id] = color;
+    _comm_ids.insert(comm_id);
+    _colors.insert(color);
+}
+
+
+// Find the next ordered, unique value to a set. E.g. <0,1,2,7> --> 3
+int next_unique_val(std::set<int> s) {
+    //std::cout << "GETTING CALLED" << std::endl;
+    std::set<int>::iterator itr;
+    // Edge cases
+    if (s.empty() || *s.begin() != 0) {
+        return 0;
+    } else if (s.size() == 1) {
+        return 1;
+    } else {
+        int prev_val = *s.begin();
+        for (itr = std::next(s.begin()); itr != s.end(); itr++) {
+            //if (get_rank() == 0) {
+            //    std::cout << "PREV_VAL: " << prev_val << "VAL: " << *itr << std::endl;
+            //}
+            if (*itr != prev_val + 1) {
+                return prev_val + 1;
+            }
+            prev_val = *itr;
+        }
+        return *(s.end()) + 1;
+    }
+}
+
+void test_set() {
+    std::set<int> val1 = {6, 5, 10, 1};
+    std::set<int> val2 = {};
+    std::set<int> val3 = {0};
+    std::set<int> val4 = {0,1,2,3,6,4};
+    //std::cout << next_unique_val(val1) << " " << next_unique_val(val2) << " " << next_unique_val(val3) << " " << next_unique_val(val4) << std::endl;
+    if (get_rank() == 0) {
+        std::cout << next_unique_val(val4) << std::endl;
+    }
+}
+
+py::object new_group(std::vector<int> ranks) {
+    //std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color << std::endl;
+    int comm_id = next_unique_val(_comm_ids);
+    int color = next_unique_val(_colors);
+    create_comm_group(ranks, get_rank(), comm_id, color);
+    py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+    py::object newPG = ProcessGroup(comm_id, ranks);
+    return newPG;
 }
 
 //void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
@@ -487,18 +541,28 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
 //}
 
 //TODO: implement torch's async_op behavior, document it.
-void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, int comm_id, bool async_op)
+void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, py::object group, bool async_op)
 {
     // std::chrono::steady_clock::time_point begin, end;
     // void* sendbuff = data.data_ptr();
     // torch::Tensor recvbuf = torch::empty_like(data);
     // if (is_prof) { begin = std::chrono::steady_clock::now(); }
-    std::cout << "Number of NCCL comms: " << _nccl_comms.size() << "\n";
+    //std::cout << "Number of NCCL comms: " << _nccl_comms.size() << "\n";
+    ncclComm_t comm;
+    if (group == Py_None) {
+        comm = ncclcomm;
+    } else {
+        py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+        if (!py::isinstance(group, ProcessGroup)) {
+            throw std::runtime_error ("Error: group must be of type ProcessGroup");
+        }
+        comm = GetNCCLComm(py::int_(group.attr("comm_id")));
+    }
     NCCLCHECK(ncclAllGather(input.data_ptr(),
                             output.data_ptr(),
                             input.numel(),
                             get_nccl_datatype(input.scalar_type()),
-                            GetNCCLComm(comm_id),
+                            comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
@@ -820,7 +884,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("print_counter", &print_counter, "mpi print counter");
     // m.def("create_comms", &create_comms, "nccl create comms");
     m.def("print_comm_number", &print_comm_number, "mpi print comm number");
-    m.def("create_comm_group", &create_comm_group, "create comm group");
+    m.def("create_comm_group", &create_comm_group, "manually create comm group");
+    m.def("test_set", &test_set, "manually create comm group");
+    m.def("new_group", &new_group, "automatically create comm group");
 }
 
 } // namespace nccl

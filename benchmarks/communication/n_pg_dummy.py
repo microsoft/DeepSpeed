@@ -10,7 +10,7 @@ import math
 
 
 # Run allgather and print metrics
-def timed_allgather(input, output, args):
+def timed_allgather(input, output, pg1, pg2, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
@@ -24,6 +24,12 @@ def timed_allgather(input, output, args):
     sync_all()
     # Warmup, establish connections, etc.
     for i in range(args.warmup):
+        if dist.get_rank() in pg1.ranks:
+            group = pg1
+        if dist.get_rank() in pg2.ranks:
+            group = pg2
+        #else:
+        #    group = None
         #print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
         # use all_gather_base if available
         if args.dist == 'torch':
@@ -44,6 +50,11 @@ def timed_allgather(input, output, args):
     # time the actual comm op trials times and average it
     pre = time.perf_counter()
     for i in range(args.trials):
+        if dist.get_rank() in pg1.ranks:
+            group = pg1
+        if dist.get_rank() in pg2.ranks:
+            group = pg2
+        print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
         # use all_gather_base if available
         if args.dist == 'torch':
             if hasattr(torch.distributed, "_all_gather_base"):
@@ -54,7 +65,9 @@ def timed_allgather(input, output, args):
                                 cdb.get_world_size(group)))
                 dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
         elif args.dist == 'deepspeed':
-            dist.allgather_fn(output, input, None, args.async_op, comm_id)
+            dist.allgather_fn(output, input, group, args.async_op)
+        print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
+        sync_all()
     sync_all()
     duration = time.perf_counter() - pre
 
@@ -90,8 +103,19 @@ def run_allgather(local_rank, args):
 
     #exit()
 
-    dist.create_comm_group(group1, global_rank, 0, 0)
-    dist.create_comm_group(group2, global_rank, 1, 1)
+    #dist.create_comm_group(group1, global_rank, 0, 0)
+    #dist.create_comm_group(group2, global_rank, 1, 1)
+
+    #dist.test_set()
+    #exit(0)
+
+    pg1 = dist.new_group(group1)
+    #print(pg1)
+    #dist.barrier()
+    pg2 = dist.new_group(group2)
+    #print(pg2)
+
+
 
     #exit()
 
@@ -125,7 +149,7 @@ def run_allgather(local_rank, args):
                     sync_all()
                     break
             sync_all()
-            timed_allgather(input, output, args)
+            timed_allgather(input, output, pg1, pg2, args)
     else:
         # all_gather_base saves memory
         if (args.dist == 'torch'
@@ -165,7 +189,7 @@ def run_allgather(local_rank, args):
                 return
 
         sync_all()
-        timed_allgather(input, output, args)
+        timed_allgather(input, output, pg1, pg2, args)
 
 
 if __name__ == "__main__":

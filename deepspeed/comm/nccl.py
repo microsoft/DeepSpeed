@@ -72,12 +72,16 @@ class NcclBackend(Backend):
         pass
 
     def new_group(self, ranks):
+        return self.nccl_comm_op.new_group(ranks)
         # TODO: Change this to use comm_op.new_group when the impl. is ready.
-        if not torch.distributed.is_initialized():
-            from deepspeed.comm.torch import TorchBackend
-            d = TorchBackend(rank=self.rank, size=self.size)
-        logger.info(f"new group called with {ranks}")
-        return torch.distributed.new_group(ranks)
+        #if not torch.distributed.is_initialized():
+        #    from deepspeed.comm.torch_backend import TorchBackend
+        #    d = TorchBackend(rank=self.rank, size=self.size)
+        #logger.info(f"new group called with {ranks}")
+        #return torch.distributed.new_group(ranks)
+
+    def test_set(self):
+        self.nccl_comm_op.test_set()
 
     def get_rank(self, group=None):
         return self.mpi_comm_op.get_rank(0)
@@ -89,11 +93,11 @@ class NcclBackend(Backend):
         return self.initialized
 
     def barrier(self):
-        return self.mpi_comm_op.barrier()
+        self.mpi_comm_op.barrier()
 
-    def broadcast(self, tensor, src, group=None, async_op=False, block=False, async_op=False):
+    def broadcast(self, tensor, src, group=None, async_op=False, block=False):
         # TODO: Fix calls to op. Fix op to support groups and async
-        return self.nccl_comm_op.broadcast(tensor, src, block, async_op)  #, group=group, async_op=async_op)
+        self.nccl_comm_op.broadcast(tensor, src, block, async_op)  #, group=group, async_op=async_op)
 
     def send(self, tensor, dst, group=None, tag=0, block=False, async_op=False):
         self.nccl_comm_op.send(tensor, dst, tag, block, async_op)
@@ -119,7 +123,7 @@ class NcclBackend(Backend):
         self.nccl_comm_op.all_gather([tensor_list], [tensor], block, async_op)
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False, block=False, comm_id=0):
-        self.nccl_comm_op.all_gather_base(output_tensor, input_tensor, block, comm_id, async_op)
+        self.nccl_comm_op.all_gather_base(output_tensor, input_tensor, block, group, async_op)
 
     def all_to_all_single(self,
                       output,

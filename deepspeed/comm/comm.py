@@ -44,6 +44,11 @@ class ReduceOp(Enum):
     AVG = 7
     UNUSED = 8
 
+class ProcessGroup():
+    def __init__(self, comm_id, ranks=[]):
+        self.ranks = ranks
+        self.comm_id = comm_id
+        self.size = len(ranks)
 
 
 #import deepspeed.comm.torch_backend
@@ -198,8 +203,7 @@ def has_allgather_base():
 def allgather_fn(output_tensor: torch.Tensor,
                  input_tensor: torch.Tensor,
                  group,
-                 async_op,
-                 comm_id):
+                 async_op):
     global cdb
     global has_warned_all_gather
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
@@ -207,8 +211,7 @@ def allgather_fn(output_tensor: torch.Tensor,
         return cdb.all_gather_base(output_tensor,
                                    input_tensor,
                                    group=group,
-                                   async_op=True,
-                                   comm_id=comm_id)
+                                   async_op=True)
     else:
         if not has_warned_all_gather:
             utils.logger.warning(
@@ -227,6 +230,10 @@ def all_gather_base(output_tensor, input_tensor, group=None, async_op=False):
                                group=group,
                                async_op=async_op)
 
+
+def test_set():
+    global cdb
+    return cdb.test_set()
 
 def all_to_all_single(
     output,
