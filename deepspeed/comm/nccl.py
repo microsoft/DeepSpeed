@@ -92,24 +92,27 @@ class NcclBackend(Backend):
     def is_initialized(self):
         return self.initialized
 
+    def get_world_group(self):
+        return self.nccl_comm_op.get_world_group()
+
     def barrier(self):
         self.mpi_comm_op.barrier()
 
     def broadcast(self, tensor, src, group=None, async_op=False, block=False):
         # TODO: Fix calls to op. Fix op to support groups and async
-        self.nccl_comm_op.broadcast(tensor, src, block, async_op)  #, group=group, async_op=async_op)
+        self.nccl_comm_op.broadcast(tensor, src, block, group, async_op)  #, group=group, async_op=async_op)
 
     def send(self, tensor, dst, group=None, tag=0, block=False, async_op=False):
-        self.nccl_comm_op.send(tensor, dst, tag, block, async_op)
+        self.nccl_comm_op.send(tensor, dst, tag, block, group, async_op)
 
     def recv(self, tensor, src=None, group=None, tag=0, block=False, async_op=False):
-        self.nccl_comm_op.recv(tensor, src, tag, block, async_op)
+        self.nccl_comm_op.recv(tensor, src, tag, block, group, async_op)
 
     def all_reduce(self, tensor, op=ReduceOp.SUM, group=None, async_op=False, block=False):
-        self.nccl_comm_op.all_reduce(tensor, op, block, async_op)
+        self.nccl_comm_op.all_reduce(tensor, op, block, group, async_op)
 
     def reduce(self, tensor, dst, op=ReduceOp.SUM, group=None, async_op=False, block=False):
-        self.nccl_comm_op.reduce(tensor, dst, op, block, async_op)
+        self.nccl_comm_op.reduce(tensor, dst, op, block, group, async_op)
 
     def reduce_scatter(self,
                        output,
@@ -117,10 +120,10 @@ class NcclBackend(Backend):
                        op=ReduceOp.SUM,
                        group=None,
                        async_op=False, block=False):
-        self.nccl_comm_op.reduce_scatter(tensor, op, block, async_op)
+        self.nccl_comm_op.reduce_scatter(tensor, op, block, group, async_op)
 
     def all_gather(self, tensor_list, tensor, group=None, async_op=False, block=False):
-        self.nccl_comm_op.all_gather([tensor_list], [tensor], block, async_op)
+        self.nccl_comm_op.all_gather([tensor_list], [tensor], block, group, async_op)
 
     def all_gather_base(self, output_tensor, input_tensor, group=None, async_op=False, block=False, comm_id=0):
         self.nccl_comm_op.all_gather_base(output_tensor, input_tensor, block, group, async_op)
@@ -135,14 +138,14 @@ class NcclBackend(Backend):
                       block=False):
         self.nccl_comm_op.all_to_all_single(output,
                                    input,
-                                   block, async_op)
+                                   block, group, async_op)
     def all_to_all(self,
                    output_tensor_list,
                    input_tensor_list,
                    group=None,
                    async_op=False,
                    block=False):
-        self.nccl_comm_op.all_to_all(output, input, block, async_op)
+        self.nccl_comm_op.all_to_all(output, input, block, group, async_op)
     
     def synchronize():
         self.nccl_comm_op.synchronize()

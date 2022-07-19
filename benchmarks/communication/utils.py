@@ -31,7 +31,6 @@ def init_processes(local_rank, args):
         init_torch_distributed(args.backend)
     else:
         print_rank_0(f"distributed framework {args.dist} not supported")
-        exit(0)
 
 
 def print_rank_0(message):

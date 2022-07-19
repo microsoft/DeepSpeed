@@ -49,7 +49,11 @@ def timed_allgather(input, output, args):
                                 cdb.get_world_size(group)))
                 dist.all_gather(output_tensors, input_tensor, group=group, async_op=True)
         elif args.dist == 'deepspeed':
+            #print(f'!!!BEFORE!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
             dist.allgather_fn(output, input, group=None, async_op=args.async_op)
+            #print(f'!!!AFTER!!!RANK {dist.get_rank()} INPUT: {input} OUTPUT: {output}')
+
+        sync_all()
     sync_all()
     duration = time.perf_counter() - pre
 
@@ -64,6 +68,7 @@ def timed_allgather(input, output, args):
     print_rank_0(
         f"{convert_size(size):<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
     )
+    sync_all()
 
 
 def run_allgather(local_rank, args):

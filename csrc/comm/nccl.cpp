@@ -60,9 +60,11 @@ namespace py = pybind11;
 
 namespace nccl {
 
-int counter = 0;
+void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
+ncclComm_t _get_comm_from_group(py::object group);
+
 cudaStream_t s;
-ncclComm_t ncclcomm;
+ncclComm_t _world_nccl_comm;
 
 //py::module_ dist = py::module_::import("deepspeed.comm");
 
@@ -93,6 +95,8 @@ std::set<int> _colors;
 std::unordered_map<int, int> _color_map;
 MPI_Comm _comm;
 bool _comm_created;
+//py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+//py::object world_group;
 
 int get_rank(int group = 0)
 {
@@ -135,7 +139,7 @@ std::string getNcclId()
 
 void barrier() { MPICHECK(MPI_Barrier(MPI_COMM_WORLD)); }
 
-void create_comms(int number = 1)
+void create_comms()
 {
     ncclUniqueId ncclID;
     int world_rank = get_rank(0);
@@ -147,24 +151,35 @@ void create_comms(int number = 1)
     CUDACHECK(cudaSetDevice(world_rank % ngpus));
     //CUDACHECK(cudaStreamCreate(&s));
     //CUDACHECK(cudaStreamCreate(&_comm_stream));
+    //std::vector<int> ranks(world_size);
+    //std::iota(ranks.begin(), ranks.end(), 0);
     if (world_rank == 0) { ncclGetUniqueId(&ncclID); }
     MPICHECK(MPI_Bcast(&ncclID, sizeof(ncclID), MPI_BYTE, 0, MPI_COMM_WORLD));
 
-    NCCLCHECK(ncclCommInitRank(&ncclcomm, world_size, ncclID, world_rank));
-    //std::cout << "INIT rank = " << world_rank << " nccl comm = " << ncclcomm << std::endl;
+    NCCLCHECK(ncclCommInitRank(&_world_nccl_comm, world_size, ncclID, world_rank));
+    _nccl_comms[0] = _world_nccl_comm;
+    // Create the world group
+    //py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+    //py::object world_group;
+    //world_group = py::none();
+    //world_group = ProcessGroup(0, ranks);
+    //std::cout << "RANK: " << get_rank() << " COMM_ID: " << py::int_(world_group.attr("comm_id")) << std::endl;
+    //world_group.attr("ranks") = ranks;
+    //NCCLCHECK(ncclCommDestroy(_world_nccl_comm));
 }
 
-void print_comm_number() { std::cout << "Number of Comms:" << global_mpi_comms.size() << "\n"; }
+py::object get_world_group() {
+    int world_size = get_world_size(0);
+    std::vector<int> ranks(world_size);
+    std::iota(ranks.begin(), ranks.end(), 0);
+    py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+    return ProcessGroup(0, ranks);
+}
 
-void increase_counter() { counter++; }
-
-void decrease_counter() { counter--; }
-
-void print_counter() { std::cout << "Counter is:" << counter << "\n"; }
+void _print_comm_number() { std::cout << "Number of Sub-Comms:" << _nccl_comms.size() + 1 << "\n"; }
 
 void initialize(int rank, int size)
 {
-    //initialize_mpi();
     create_comms();
     cudaEventCreate(&_comp_event, (cudaEventDisableTiming | cudaEventBlockingSync));
     cudaEventCreate(&_comm_event, (cudaEventDisableTiming | cudaEventBlockingSync));
@@ -191,8 +206,7 @@ cudaStream_t GetCommStream(bool async_op = false)
 
 void finalize()
 {
-    NCCLCHECK(ncclCommDestroy(ncclcomm));
-    //finalize_mpi();
+    NCCLCHECK(ncclCommDestroy(_world_nccl_comm));
 }
 
 
@@ -246,150 +260,41 @@ ncclRedOp_t get_nccl_reduce_op(py::object op, at::Tensor& input)
     return nccl_op;
 }
 
-void send(torch::Tensor data, int rank, int tag, bool block, bool async_op)
+void send(torch::Tensor data, int rank, int tag, bool block, py::object group, bool async_op)
 {
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclSend(
-        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, GetCommStream(async_op)));
+        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, comm, GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
 }
 
-void recv(torch::Tensor data, int rank, int tag, bool block, bool async_op)
+void recv(torch::Tensor data, int rank, int tag, bool block, py::object group, bool async_op)
 {
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclRecv(
-        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, ncclcomm, GetCommStream(async_op)));
+        data.data_ptr(), data.numel(), get_nccl_datatype(data.scalar_type()), rank, comm, GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
 }
 
 
 //TODO: implement torch's async_op behavior, document it.
-void all_reduce(torch::Tensor& data, py::object op, bool block, bool async_op)
+void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group, bool async_op)
 {
-
-    // std::chrono::steady_clock::time_point begin, end;
-    // void* sendbuff = data.data_ptr();
-    // torch::Tensor recvbuf = torch::empty_like(data);
-    // if (is_prof) { begin = std::chrono::steady_clock::now(); }
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclAllReduce(data.data_ptr(),
                             data.data_ptr(),
                             data.numel(),
                             get_nccl_datatype(data.scalar_type()),
                             get_nccl_reduce_op(op, data),
-                            ncclcomm,
+                            comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
-    // if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL allreduce time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end -
-    //                  begin).count()
-    //                  << "us, Size = " << data.numel() * data.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 }
 
 inline ncclComm_t GetNCCLComm(int comm_id=0) { return _nccl_comms[comm_id]; }
-
-void create_comm_group_custom(std::vector<int> comm_ranks, int rank, int comm_id, int color)
-{
-    //MPICHECK(MPI_Finalize());
-    //exit(0);
-    if (rank == 0 && !_comm_created) {
-        NCCLCHECK(ncclCommDestroy(ncclcomm));
-    }
-    int world_rank, world_size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    ncclComm_t _nccl_comm;
-    MPI_Comm _comm;
-    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
-    MPI_Comm_group(_comm, &_group);
-    unsigned num_ranks = comm_ranks.size();
-    MPI_Comm _newcomm;
-    auto total_group = _group;
-    int local_world_rank, local_world_size;
-    MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
-    MPI_Comm_split(_comm, color, 0, &_newcomm);
-    //MPICHECK(MPI_Finalize());
-    //exit(0);
-    // printf("*************** number of ranks: %d, world size: %d ****************\n",
-    // num_ranks, world_size);
-    if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
-        //MPI_Bcast((void*)&_nccl_comm,
-        //          sizeof(_nccl_comm),
-        //          MPI_BYTE,
-        //          comm_ranks[0],
-        //          _newcomm);
-        printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(), comm_id, color);
-        if (num_ranks < world_size) {
-            //exit(0);
-            MPI_Comm_rank(_newcomm, &local_world_rank);
-            MPI_Comm_size(_newcomm, &local_world_size);
-            //MPICHECK(MPI_Finalize());
-            //exit(0);
-            // printf("************ CPP %d , %d, \t %d, %d **************\n",
-            // local_world_rank,local_world_size, world_rank, world_size);
-            // MPI_Group_free(&total_group);
-        } else if (num_ranks > world_size) {
-            auto message = std::string(
-                "Fail to create comm group (number of ranks is higher than world_size).");
-            std::cerr << message << std::endl;
-            throw std::runtime_error(message);
-        }
-        ncclUniqueId _nccl_uid;
-        if (rank == comm_ranks[0]) {
-            ncclGetUniqueId(&_nccl_uid);
-        }
-        MPI_Bcast((void*)&_nccl_uid,
-                  sizeof(ncclUniqueId),
-                  MPI_BYTE,
-                  comm_ranks[0],
-                  _newcomm);
-                //  num_ranks < world_size ? _newcomm : _comm);
-        //if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
-        ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
-        int nranks;
-        NCCLCHECK(ncclCommCount(_nccl_comm, &nranks));
-        //std::cout << "rank = " << rank << " " << " nranks = " << " " << nranks << std::endl;
-        //if (rank == comm_ranks[0]) {
-        _nccl_comms[comm_id] = _nccl_comm;
-        //exit(0);
-        //}
-        //std::cout << "rank = " << rank << " nccl comm = " << _nccl_comm << std::endl;
-        //}
-    }
-    //MPI_Bcast((void*)_nccl_comms[comm_id],
-    //          sizeof(ncclComm_t),
-    //          MPI_BYTE,
-    //          comm_ranks[0],
-    //          _comm);
-    //if (rank == comm_ranks[0]) {
-    //std::cout << "Number of NCCL comms: " << _nccl_comms.size() << "\n";
-    //std::cout << "rank = " << rank << " " << _nccl_comms[0] << std::endl;
-    //std::cout << "rank = " << rank << " " << _nccl_comms[1] << std::endl;
-    //int nranks;
-    //NCCLCHECK(ncclCommCount(_nccl_comms[comm_id], &nranks));
-    //std::cout << "rank = " << rank << " " << _nccl_comms[comm_id] << " " << nranks << std::endl;
-    //}
-    //MPI_Bcast((void*)&_world_sizes[comm_id],
-    //          1,
-    //          MPI_INT,
-    //          comm_ranks[0],
-    //          _comm);
-    //std::cout << "rank = " << rank << "OUT" << std::endl;
-    //MPI_Bcast(_nccl_comms[comm_id],
-    //          sizeof(_nccl_comm),
-    //          MPI_BYTE,
-    //          comm_ranks[0],
-    //          _comm);
-    _comm_created = true;
-    //_world_sizes[comm_id] = num_ranks;
-    //_nccl_comms[comm_id] = _nccl_comm;
-}
 
 
 void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
@@ -454,17 +359,15 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
 int next_unique_val(std::set<int> s) {
     //std::cout << "GETTING CALLED" << std::endl;
     std::set<int>::iterator itr;
-    // Edge cases
+    // Base case. Add 0 to start of set.
     if (s.empty() || *s.begin() != 0) {
         return 0;
+    // second base case where s = {0} (the case of s = {n != 0} is caught above)
     } else if (s.size() == 1) {
         return 1;
     } else {
         int prev_val = *s.begin();
         for (itr = std::next(s.begin()); itr != s.end(); itr++) {
-            //if (get_rank() == 0) {
-            //    std::cout << "PREV_VAL: " << prev_val << "VAL: " << *itr << std::endl;
-            //}
             if (*itr != prev_val + 1) {
                 return prev_val + 1;
             }
@@ -495,62 +398,11 @@ py::object new_group(std::vector<int> ranks) {
     return newPG;
 }
 
-//void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
-//{
-//    // printf("creating comm : size: %d , comm_id: %d , color: %d\n", comm_ranks.size(),
-//    // comm_id, color);
-//    int world_rank, world_size;
-//    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-//    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-//    ncclComm_t _nccl_comm;
-//    MPI_Comm _comm;
-//    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
-//    MPI_Comm_group(_comm, &_group);
-//    unsigned num_ranks = comm_ranks.size();
-//    MPI_Comm _newcomm;
-//    // printf("*************** number of ranks: %d, world size: %d ****************\n",
-//    // num_ranks, world_size);
-//    if (num_ranks < world_size) {
-//        auto total_group = _group;
-//        MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
-//        MPI_Comm_split(_comm, color, 0, &_newcomm);
-//        int local_world_rank, local_world_size;
-//        MPI_Comm_rank(_newcomm, &local_world_rank);
-//        MPI_Comm_size(_newcomm, &local_world_size);
-//        // printf("************ CPP %d , %d, \t %d, %d **************\n",
-//        // local_world_rank,local_world_size, world_rank, world_size);
-//        // MPI_Group_free(&total_group);
-//    } else if (num_ranks > world_size) {
-//        auto message = std::string(
-//            "Fail to create comm group (number of ranks is higher than world_size).");
-//        std::cerr << message << std::endl;
-//        throw std::runtime_error(message);
-//    }
-//    ncclUniqueId _nccl_uid;
-//    ncclGetUniqueId(&_nccl_uid);
-//    MPI_Bcast((void*)&_nccl_uid,
-//              sizeof(ncclUniqueId),
-//              MPI_BYTE,
-//              0,
-//              num_ranks < world_size ? _newcomm : _comm);
-//    ncclCommInitRank(&_nccl_comm, num_ranks, _nccl_uid, rank % num_ranks);
-//    std::cout << "nccl comm = " << _nccl_comm << std::endl;
-//    _comm_created = true;
-//    _world_sizes[comm_id] = num_ranks;
-//    _nccl_comms[comm_id] = &_nccl_comm;
-//}
 
-//TODO: implement torch's async_op behavior, document it.
-void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, py::object group, bool async_op)
-{
-    // std::chrono::steady_clock::time_point begin, end;
-    // void* sendbuff = data.data_ptr();
-    // torch::Tensor recvbuf = torch::empty_like(data);
-    // if (is_prof) { begin = std::chrono::steady_clock::now(); }
-    //std::cout << "Number of NCCL comms: " << _nccl_comms.size() << "\n";
+ncclComm_t _get_comm_from_group(py::object group) {
     ncclComm_t comm;
     if (group == Py_None) {
-        comm = ncclcomm;
+        comm = _nccl_comms[0];
     } else {
         py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
         if (!py::isinstance(group, ProcessGroup)) {
@@ -558,24 +410,25 @@ void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, py
         }
         comm = GetNCCLComm(py::int_(group.attr("comm_id")));
     }
+    return comm;
+    //return _nccl_comms[0];
+}
+
+
+void all_gather_base(torch::Tensor& output, torch::Tensor& input, bool block, py::object group, bool async_op)
+{
+    // void* sendbuff = data.data_ptr();
+    // torch::Tensor recvbuf = torch::empty_like(data);
+    ncclComm_t comm = _get_comm_from_group(group);
+    //ncclComm_t comm = _world_nccl_comm;
     NCCLCHECK(ncclAllGather(input.data_ptr(),
                             output.data_ptr(),
                             input.numel(),
                             get_nccl_datatype(input.scalar_type()),
-                            comm,
+                            _world_nccl_comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
-    // if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL allreduce time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end -
-    //                  begin).count()
-    //                  << "us, Size = " << data.numel() * data.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 }
 
 inline at::Tensor newLikeFlat(
@@ -659,19 +512,10 @@ std::vector<at::Tensor> flatten_for_scatter_gather(
 }
 
 
-//TODO: implement torch's async_op behavior, document it.
-void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vector<torch::Tensor>& inputTensors, bool block, bool async_op)
+void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vector<torch::Tensor>& inputTensors, bool block, py::object group, bool async_op)
 {
-    //std::vector<at::Tensor> flattenOutputTensors;
-    //flattenOutputTensors.resize(outputTensors.size());
-//
-    //for (size_t i = 0; i < outputTensors.size(); ++i) {
-    //  // Flatten the output tensors (from all ranks) to a single big tensor
-    //  flattenOutputTensors[i] = newLikeFlat(outputTensors);
-    //}
-
-      auto outputFlattened = flatten_for_scatter_gather(outputTensors, inputTensors, get_world_size(0));
-
+    auto outputFlattened = flatten_for_scatter_gather(outputTensors, inputTensors, get_world_size(0));
+    ncclComm_t comm = _get_comm_from_group(group);
     
     NCCLCHECK(ncclGroupStart());
 
@@ -682,37 +526,14 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
             outputFlattened[i].data_ptr(),
             inputTensors[i].numel(),
             get_nccl_datatype(inputTensors[i].scalar_type()),
-            ncclcomm,
+            comm,
             GetCommStream(async_op)));
         }
 
     NCCLCHECK(ncclGroupEnd());
 
-
-
-
-    // std::chrono::steady_clock::time_point begin, end;
-    // void* sendbuff = data.data_ptr();
-    // torch::Tensor recvbuf = torch::empty_like(data);
-    // if (is_prof) { begin = std::chrono::steady_clock::now(); }
-    //NCCLCHECK(ncclAllGather(input.data_ptr(),
-    //                        output.data_ptr(),
-    //                        input.numel(),
-    //                        get_nccl_datatype(data.scalar_type()),
-    //                        ncclcomm,
-    //                        s));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
-    // if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL allreduce time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end -
-    //                  begin).count()
-    //                  << "us, Size = " << data.numel() * data.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 
     for (const auto i : c10::irange(outputTensors.size())) {
           //at::cuda::CUDAStreamGuard guard(ncclStreams[i]);
@@ -722,84 +543,62 @@ void all_gather(std::vector<std::vector<torch::Tensor>>& outputTensors, std::vec
         }
 }
 
-//TODO: implement torch's async_op behavior, document it.
-void reduce(torch::Tensor& data, int root, py::object op, bool block, bool async_op)
+void reduce(torch::Tensor& data, int root, py::object op, bool block, py::object group, bool async_op)
 {
 
-    // std::chrono::steady_clock::time_point begin, end;
     // void* sendbuff = data.data_ptr();
     // torch::Tensor recvbuf = torch::empty_like(data);
-    // if (is_prof) { begin = std::chrono::steady_clock::now(); }
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclReduce(data.data_ptr(),
                          data.data_ptr(),
                          data.numel(),
                          get_nccl_datatype(data.scalar_type()),
                          get_nccl_reduce_op(op, data),
                          root,
-                         ncclcomm,
+                         comm,
                          GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
-    // if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL allreduce time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end -
-    //                  begin).count()
-    //                  << "us, Size = " << data.numel() * data.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 }
 
-//TODO: implement torch's async_op behavior, document it.
-void reduce_scatter(torch::Tensor& data, py::object op, bool block, bool async_op)
+void reduce_scatter(torch::Tensor& data, py::object op, bool block, py::object group, bool async_op)
 {
-    // std::chrono::steady_clock::time_point begin, end;
     // void* sendbuff = data.data_ptr();
     // torch::Tensor recvbuf = torch::empty_like(data);
-    // if (is_prof) { begin = std::chrono::steady_clock::now(); }
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclReduceScatter(data.data_ptr(),
                                 data.data_ptr(),
                                 data.numel(),
                                 get_nccl_datatype(data.scalar_type()),
                                 get_nccl_reduce_op(op, data),
-                                ncclcomm,
+                                comm,
                                 GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
-    // if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL allreduce time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end -
-    //                  begin).count()
-    //                  << "us, Size = " << data.numel() * data.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 }
 
-void broadcast(torch::Tensor& data, int src, bool block, bool async_op)
+void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool async_op)
 {
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclBroadcast(data.data_ptr(),
                             data.data_ptr(),
                             data.numel(),
                             get_nccl_datatype(data.scalar_type()),
                             src,
-                            ncclcomm,
+                            comm,
                             GetCommStream(async_op)));
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
 }
 
-void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block, bool async_op)
+void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bool block, py::object group, bool async_op)
 {
     //std::chrono::steady_clock::time_point begin, end;
     const auto* sendbuff = reinterpret_cast<char*>(inputTensor.data_ptr());
     auto* recvbuff = reinterpret_cast<char*>(outputTensor.data_ptr());
     int nRanks;
-    NCCLCHECK(ncclCommCount(ncclcomm, &nRanks));
+    ncclComm_t comm = _get_comm_from_group(group);
+    NCCLCHECK(ncclCommCount(comm, &nRanks));
     size_t rankdiff = inputTensor.nbytes() / nRanks;
     //if (is_prof) { begin = std::chrono::steady_clock::now(); }
     NCCLCHECK(ncclGroupStart());
@@ -807,8 +606,8 @@ void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bo
     ncclDataType_t type = get_nccl_datatype(inputTensor.scalar_type());
     for (int r = 0; r < nRanks; r++) {
         if (count != 0) {
-            NCCLCHECK(ncclSend(sendbuff + r * rankdiff, count, type, r, ncclcomm, GetCommStream(async_op)));
-            NCCLCHECK(ncclRecv(recvbuff + r * rankdiff, count, type, r, ncclcomm, GetCommStream(async_op)));
+            NCCLCHECK(ncclSend(sendbuff + r * rankdiff, count, type, r, comm, GetCommStream(async_op)));
+            NCCLCHECK(ncclRecv(recvbuff + r * rankdiff, count, type, r, comm, GetCommStream(async_op)));
         }
     }
     NCCLCHECK(ncclGroupEnd());
@@ -827,8 +626,9 @@ void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bo
 }
 
 void all_to_all(std::vector<torch::Tensor>& inputTensors,
-                        std::vector<torch::Tensor>& outputTensors, bool block, bool async_op)
+                        std::vector<torch::Tensor>& outputTensors, bool block, py::object group, bool async_op)
 {
+    ncclComm_t comm = _get_comm_from_group(group);
     NCCLCHECK(ncclGroupStart());
     for (int t = 0; t < inputTensors.size(); t++) {
         torch::Tensor& input = inputTensors[t];
@@ -838,7 +638,7 @@ void all_to_all(std::vector<torch::Tensor>& inputTensors,
                                input.numel(),
                                get_nccl_datatype(input.scalar_type()),
                                t,
-                               ncclcomm,
+                               comm,
                                GetCommStream(async_op)));
         }
         if (output.numel() != 0) {
@@ -846,7 +646,7 @@ void all_to_all(std::vector<torch::Tensor>& inputTensors,
                                output.numel(),
                                get_nccl_datatype(output.scalar_type()),
                                t,
-                               ncclcomm,
+                               comm,
                                GetCommStream(async_op)));
         }
     }
@@ -879,14 +679,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("barrier", &barrier, "barrier");
     m.def("synchronize", &synchronize, "synchronize CUDA device");
     m.def("get_world_size", &get_world_size, "get world size");
-    m.def("increase_counter", &increase_counter, "mpi increase counter");
-    m.def("decrease_counter", &decrease_counter, "mpi decrease counter");
-    m.def("print_counter", &print_counter, "mpi print counter");
     // m.def("create_comms", &create_comms, "nccl create comms");
-    m.def("print_comm_number", &print_comm_number, "mpi print comm number");
     m.def("create_comm_group", &create_comm_group, "manually create comm group");
     m.def("test_set", &test_set, "manually create comm group");
     m.def("new_group", &new_group, "automatically create comm group");
+    m.def("get_world_group", &get_world_group, "Returns the WORLD process group");
 }
 
 } // namespace nccl
