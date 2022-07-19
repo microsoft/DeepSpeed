@@ -11,8 +11,7 @@ tags: model-compression
 **How to use DeepSpeed Compression:** The first section General Tutorial will describe the compression methods supported by the library. The following sections will describe our research work on how to compose different compression methods to perform [zero-cost quantization (ZeroQuant)](#2-tutorial-for-zeroquant-efficient-and-affordable-post-training-quantization) and [extreme compression (XTC)](#3-tutorial-for-xtc-simple-yet-effective-compression-pipeline-for-extreme-compression). Unless otherwise stated, experiment results listed below are based on NVIDIA A100 GPU, and we observe slightly different result numbers when using different GPU hardwares.
 
 ## 1. General Tutorial
-<!-- TODO: double check DeepSpeed version requirement after release. -->
-To use DeepSpeed Compression library, you need to install DeepSpeed >= 0.6.6 following the [installation guide](/tutorials/advanced-install/). Currently the DeepSpeed Compression includes seven compression methods: layer reduction via knowledge distillation, weight quantization, activation quantization, sparse pruning, row pruning, head pruning, and channel pruning. In the following subsections, we will describe what these methods are, when to use them, and how to use them via our library.
+To use DeepSpeed Compression library, you need to install DeepSpeed >= 0.7.0 following the [installation guide](/tutorials/advanced-install/). Currently the DeepSpeed Compression includes seven compression methods: layer reduction via knowledge distillation, weight quantization, activation quantization, sparse pruning, row pruning, head pruning, and channel pruning. In the following subsections, we will describe what these methods are, when to use them, and how to use them via our library.
 
 ### 1.1 Layer Reduction
 **What is layer reduction**
@@ -45,9 +44,8 @@ DeepSpeedExamples/model_compression/bert$ bash bash_script/layer_reduction.sh
 And the final result is:
 
 ```shell
-task mnli, teacher_result: acc/mm-acc:0.8419765664798777/0.846826688364524
-Previous best: acc/mm-acc:0.8340295466123281/0.8339096826688365
 Epoch: 18 | Time: 12m 38s
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8340295466123281/0.8339096826688365
 ```
 
 <!-- TODO: uncomment the below task-agnostic tutorial after the code example is fixed and released. -->
@@ -204,7 +202,7 @@ And the final result is:
 
 ```shell
 Epoch: 02 | Time: 26m 14s
-Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8140601120733572/0.8199755899104963
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8416709118695873/0.8447925142392189
 ```
 
 #### 1.4.2 Row Pruning
@@ -275,7 +273,7 @@ DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_head.sh
 And the final result is:
 
 ```shell
-Clean the best model, and the accuracy of the clean model is acc/mm-acc:8397350993377484/0.8377746135069162
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8397350993377484/0.8377746135069162
 ```
 
 #### 1.4.4 Channel Pruning
@@ -415,8 +413,7 @@ DeepSpeedExamples/model_compression/bert$ bash bash_script/XTC/layer_reduction.s
 And the final result is:
 
 ```shell
-task mnli, teacher_result: acc/mm-acc:0.8419765664798777/0.846826688364524
-Previous best: acc/mm-acc:0.8377992868059093/0.8365541090317331
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8377992868059093/0.8365541090317331
 ```
 
 Notably, when using one-stage knowledge distillation (`--distill_method one_stage`), the difference between the outputs of teacher and student models (att_loss and rep_loss) also need to be consistent with the initialization. See the function `_kd_function` under `forward_loss` in `model_compression/bert/util.py`.
@@ -442,7 +439,7 @@ Epoch: 18 | Time: 18m 11s
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8140601120733572/0.8199755899104963
 ```
 
-With the command above, one can now obtain the results of 1-bit 6-layer model. Now we list more results for 2-/1-bit 6/5-layer models in the following table. Note that the checkpoints we used for the compression below are from the above table in section 3.2.1. 
+With the command above, one can obtain the results of 1-bit 6-layer model. We list the results for 2-/1-bit 6/5-layer models in the following table. Note that when compressing 6-layer BERT, the training epoch we used is 18 instead of 36.
 
 ![XTC 6-layer and quantization](/assets/images/xtc-3.png){: .align-center}
 
