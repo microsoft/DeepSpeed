@@ -8,7 +8,9 @@ tags: training
 ## Introduction
 
 Large-scale transformer-based deep learning models trained on large amounts of data have shown great results in recent years in several cognitive tasks and are behind new products and features that augment human capabilities. These models have grown several orders of magnitude in size during the last five years. Starting from a few million parameters of the original transformer model all the way to the latest 530 billion-parameter Megatron-Turing model as shown in Figure 1. There is a growing need for customers to train and fine tune large models at an unprecedented scale.   
- 
+
+![Large Models](/assets/images/large-model-graph.png){: .align-center}
+
 Figure 1: Landscape of large models and hardware capabilities
 
 To train these models, users needed to set up and maintain a complex distributed training infrastructure that usually required several manual and error-prone steps. These lead to a subpar experience both in terms of usability and performance. We recently announced how we are making great strides to simplify this and enable easy-to-use and high-performance training at 1K+ GPU scale on Azure (update link to Azure blog). 
@@ -62,10 +64,13 @@ Figure 4: Organization of our VMSS-based experimental setup
 
 We ran our experiments with four different model sizes – 175B, 530B, 1T, and 2T – using the configurations shown in Table 2.
 
-Model Size	175 B	530 B	1 T	2 T
-Number of layers	96	105	128	160
-Hidden Dimension	12,288	20,480	25,600	32,768
-Attention Heads	96	128	160	128
+
+| Model Size   | 175B | 530B | 1T   | 2T   |
+| ----------:  | ---: | ---: | ---: | ---: |
+| Number of layers	| 96 | 105 | 128 | 160 |
+| Hidden Dimension	| 12,288 | 20,480 | 25,600 | 32,768 |
+| Attention Heads	| 96 | 128 | 160 | 128 |
+
 Table 2: Model configuration
 
 For each of these configurations, we report peak throughput of the system using TFLOPs/GPU as the main performance metric. To calculate TFLOPs, we use the formula used by the Megatron paper as shown below.
