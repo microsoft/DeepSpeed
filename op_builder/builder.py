@@ -193,8 +193,10 @@ class OpBuilder(ABC):
             if rocm_ver_file.isfile():
                 with open(rocm_ver_file, 'r') as file:
                     ROCM_VERSION_DEV_RAW = file.read()
-            else:
+            elif "rocm" in roch.__version__:
                 ROCM_VERSION_DEV_RAW = torch.__version__.split("rocm")[1]
+            else:
+                assert False, "Could not detect ROCm version"
             assert ROCM_VERSION_DEV_RAW is not "", "Could not detect ROCm version"
             ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
             ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
