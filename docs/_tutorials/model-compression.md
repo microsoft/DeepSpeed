@@ -204,7 +204,7 @@ And the final result is:
 
 ```shell
 Epoch: 02 | Time: 26m 14s
-Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8422822210901681/0.8492676973148902
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8140601120733572/0.8199755899104963
 ```
 
 #### 1.4.2 Row Pruning
@@ -275,7 +275,7 @@ DeepSpeedExamples/model_compression/bert$ bash bash_script/pruning_head.sh
 And the final result is:
 
 ```shell
-Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8364747834946511/0.8364524003254679
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:8397350993377484/0.8377746135069162
 ```
 
 #### 1.4.4 Channel Pruning
@@ -416,7 +416,7 @@ And the final result is:
 
 ```shell
 task mnli, teacher_result: acc/mm-acc:0.8419765664798777/0.846826688364524
-Previous best: acc/mm-acc:0.8352521650534895/0.8369609438567941
+Previous best: acc/mm-acc:0.8377992868059093/0.8365541090317331
 ```
 
 Notably, when using one-stage knowledge distillation (`--distill_method one_stage`), the difference between the outputs of teacher and student models (att_loss and rep_loss) also need to be consistent with the initialization. See the function `_kd_function` under `forward_loss` in `model_compression/bert/util.py`.
@@ -439,7 +439,7 @@ And the final result is:
 
 ```shell
 Epoch: 18 | Time: 18m 11s
-Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8154865002547121/0.8233319772172498
+Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8140601120733572/0.8199755899104963
 ```
 
 With the command above, one can obtain the results of 1-bit 6-layer model. We list the results for 2-/1-bit 6/5-layer models in the following table. Note that when compressing 6-layer BERT, the training epoch we used is 18 instead of 36.
