@@ -11,8 +11,12 @@ main:
     url: https://github.com/microsoft/DeepSpeed
 
 lnav:
-  - title: 'Feature Overview'
-    url: /features/
+  - title: 'Training'
+    url: /training/
+  - title: 'Inference'
+    url: /inference/
+  - title: 'Compression'
+    url: /compression/
   - title: 'Getting Started'
     url: /getting-started/
     children:
