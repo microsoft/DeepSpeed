@@ -554,9 +554,7 @@ class MOELayer(Base):
 
         if groups._get_expert_model_parallel_world_size() == 1:
             # no slicing for experts means we need to gather the dropped tokens
-            expert_output = groups.all_gather_from_tensor_model_parallel_region(
-                expert_output,
-                dim=1)
+            expert_output = groups.gather_tokens(expert_output, dim=1)
 
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
