@@ -439,7 +439,7 @@ Epoch: 18 | Time: 18m 11s
 Clean the best model, and the accuracy of the clean model is acc/mm-acc:0.8140601120733572/0.8199755899104963
 ```
 
-With the command above, one can obtain the results of 1-bit 6-layer model. We list the results for 2-/1-bit 6/5-layer models in the following table. Note that when compressing 6-layer BERT, the training epoch we used is 18 instead of 36.
+With the command above, one can now obtain the results of 1-bit 6-layer model. Now we list more results for 2-/1-bit 6/5-layer models in the following table. Note that the checkpoints we used for the compression below are from the above table in section 3.2.1.
 
 ![XTC 6-layer and quantization](/assets/images/xtc-3.png){: .align-center}
 
