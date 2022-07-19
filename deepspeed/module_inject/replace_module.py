@@ -766,7 +766,8 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     if checkpoint is not None:
-        pbar = tqdm.tqdm(total=len(checkpoint), desc=f"Loading {len(checkpoint)} checkpoint shards")
+        pbar = tqdm.tqdm(total=len(checkpoint),
+                         desc=f"Loading {len(checkpoint)} checkpoint shards")
         for i in range(len(checkpoint)):
             if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
                 pbar.update(1)
