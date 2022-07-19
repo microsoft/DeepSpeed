@@ -444,6 +444,7 @@ class DeepSpeedEngine(Module):
         """
         Pass through attributes defined in the model if they are not overridden by ds-engine.
         """
+
         _module = {}
         if "module" in self.__dict__:
             _module = self.__dict__['module']
@@ -948,6 +949,7 @@ class DeepSpeedEngine(Module):
 
     @staticmethod
     def __check_params(model: Module, dtype: torch.dtype) -> None:
+        return
         if not all(param.dtype == dtype
                    for param in model.parameters()) and dist.get_rank() == 0:
             raise ValueError(
