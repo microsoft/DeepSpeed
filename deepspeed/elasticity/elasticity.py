@@ -5,7 +5,7 @@ import os
 import re
 import json
 import numpy as np
-
+import math
 from packaging import version as pkg_version
 
 from .config import ElasticityConfig, ElasticityConfigError, ElasticityError, \
@@ -15,7 +15,7 @@ from .constants import ELASTICITY, ENABLED, ENABLED_DEFAULT, LATEST_ELASTICITY_V
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT, DEEPSPEED_ELASTICITY_CONFIG
 from ..git_version_info import version as __version__
 from ..utils import logger
-
+import subprocess
 # Thirty eight smallest highly composite numbers. The list should
 # be enough to support up to 720K batch size.
 HCN_LIST = [
@@ -93,7 +93,6 @@ def get_valid_gpus(batch_size, micro_batches, min_valid_gpus, max_valid_gpus):
                     valid_gpus.append(i)
     valid_gpus = set(valid_gpus)
     valid_gpus = sorted(list(valid_gpus))
-    logger.info(f"Valid GPUs: {valid_gpus}")
     return valid_gpus
 
 
@@ -173,6 +172,68 @@ def _get_compatible_gpus_v01(micro_batches,
     return final_batch_size, valid_gpus
 
 
+def _get_compatible_gpus_v02(micro_batches,
+                             max_acceptable_batch_size,
+                             current_num_gpus,
+                             min_gpus=None,
+                             max_gpus=None,
+                             prefer_larger=True,
+                             num_gpus_per_node=1,
+                             model_parallel_size=1):
+    '''
+    Returns:
+        final_batch_size
+        valid_gpus
+        micro-batch size
+    '''
+    assert num_gpus_per_node % model_parallel_size == 0, \
+            f"In Elasticity v0.2, number of GPUs per node:" \
+            f"{num_gpus_per_node} should be divisible by" \
+            f"model parallel size {model_parallel_size}"
+
+    def get_microbatch(final_batch_size):
+        candidate_microbatch = None
+
+        for micro_batch in micro_batches:
+            if final_batch_size // current_num_gpus % micro_batch == 0:
+                if candidate_microbatch == None:
+                    candidate_microbatch = micro_batch
+                if prefer_larger and candidate_microbatch < micro_batch:
+                    candidate_microbatch = micro_batch
+        return candidate_microbatch
+
+    dp_size_per_node = num_gpus_per_node // model_parallel_size
+
+    final_batch_size, valid_world_size = _get_compatible_gpus_v01(micro_batches,
+                             int(max_acceptable_batch_size/dp_size_per_node),
+                             int(min_gpus/num_gpus_per_node),
+                             int(max_gpus/num_gpus_per_node), # Passing number of max nodes as Elasticity v2 works at node level
+                             prefer_larger=prefer_larger)
+
+    final_batch_size = int(final_batch_size) * dp_size_per_node
+
+    if current_num_gpus // dp_size_per_node in valid_world_size:
+        candidate_microbatch = get_microbatch(final_batch_size)
+        return final_batch_size, valid_world_size, candidate_microbatch
+
+    current_dp_size = (current_num_gpus / num_gpus_per_node) * dp_size_per_node
+    candidate_batch_sizes = []
+    for micro_batch in micro_batches:
+        min_batch_size = micro_batch * current_dp_size
+
+        factor = math.floor(max_acceptable_batch_size / float(min_batch_size))
+        candidate_batch_sizes.append(factor * min_batch_size)
+
+    used_microbatch = None
+    if prefer_larger:
+        candidate_batch_size = max(candidate_batch_sizes)
+    else:
+        candidate_batch_size = min(candidate_batch_sizes)
+    candidate_microbatch = get_microbatch(candidate_batch_size)
+
+    return candidate_batch_size, [current_dp_size], candidate_microbatch
+
+
 def _compatible_ds_version_check(target_deepspeed_version: str):
     min_version = pkg_version.parse(MINIMUM_DEEPSPEED_VERSION)
     target_version = pkg_version.parse(target_deepspeed_version)
@@ -223,7 +284,10 @@ def ensure_immutable_elastic_config(runtime_elastic_config_dict: dict):
             "guarantee resource scheduler will scale this job using compatible GPU counts.")
 
 
-def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world_size=0):
+def compute_elastic_config(ds_config: dict,
+                           target_deepspeed_version: str,
+                           world_size=0,
+                           return_microbatch=False):
     """Core deepspeed elasticity API. Given an elastic config (similar to the example below)
     DeepSpeed will compute a total train batch size corresponding valid GPU count list that
     provides a high level of elasticity. Elasticity in this case means we are safe to scale
@@ -252,6 +316,7 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             compatible with the elasticity version used in the backend.
         world_size (int, optional): Intended/current world size, will do some sanity
             checks to ensure world size is actually valid with the config.
+        return_microbatch (bool, optional): whether to return micro batch size or not.
 
     Raises:
         ElasticityConfigError: Missing required elasticity config or elasticity disabled
@@ -277,6 +342,8 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             "('enabled':true) if running an elastic training job.")
 
     elastic_config = ElasticityConfig(elastic_config_dict)
+    model_parallel_size = elastic_config.model_parallel_size
+    num_gpus_per_node = elastic_config.num_gpus_per_node
 
     if float(elastic_config.version) > LATEST_ELASTICITY_VERSION:
         raise ElasticityConfigError("Attempting to run elasticity version " \
@@ -297,9 +364,25 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             prefer_larger=elastic_config.prefer_larger_batch_size)
         # ensure batch size is int dtype
         final_batch_size = int(final_batch_size)
+    elif float(elastic_config.version) == 0.2:
+        current_num_gpus = int(os.getenv('WORLD_SIZE'))
+
+        final_batch_size, valid_gpus, candidate_microbatch_size = _get_compatible_gpus_v02(
+            micro_batches=elastic_config.micro_batches,
+            max_acceptable_batch_size=elastic_config.max_acceptable_batch_size,
+            current_num_gpus=current_num_gpus,
+            min_gpus=elastic_config.min_gpus,
+            max_gpus=elastic_config.max_gpus,
+            prefer_larger=elastic_config.prefer_larger_batch_size,
+            num_gpus_per_node=num_gpus_per_node,
+            model_parallel_size=model_parallel_size)
+        # ensure batch size is int dtype
+        final_batch_size = int(final_batch_size)
     else:
         raise NotImplementedError(
             f"Unable to find elastic logic for version: {elastic_config.version}")
+
+    logger.info(f"Valid World Size (GPUs / Model Parallel Size): {valid_gpus}")
 
     if world_size > 0:
         if world_size not in valid_gpus:
@@ -316,5 +399,20 @@ def compute_elastic_config(ds_config: dict, target_deepspeed_version: str, world
             f" world_size={world_size}, final_batch_size={final_batch_size}, and " \
             f" micro_batches={elastic_config.micro_batches}."
         return final_batch_size, valid_gpus, micro_batch_size
+
+    if return_microbatch:
+        # Pick a valid micro batch size
+        if float(elastic_config.version) == 0.2:
+            return final_batch_size, valid_gpus, candidate_microbatch_size
+        else:
+            micro_batch_size = None
+            for mbsz in sorted(list(set(elastic_config.micro_batches)), reverse=True):
+                if final_batch_size // world_size % mbsz == 0:
+                    micro_batch_size = mbsz
+                    break
+            assert micro_batch_size is not None, "Unable to find divisible micro batch size" \
+                    f" world_size={world_size}, final_batch_size={final_batch_size}, and " \
+                    f" micro_batches={elastic_config.micro_batches}."
+            return final_batch_size, valid_gpus, micro_batch_size
 
     return final_batch_size, valid_gpus
