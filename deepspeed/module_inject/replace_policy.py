@@ -371,7 +371,6 @@ class GPTNEOXLayerPolicy(DSPolicy):
                 GPTNEOXLayerPolicy._orig_layer_class = None
             else:
                 try:
-                    import transformers
                     from transformers import GPTNeoXLayer
                     GPTNEOXLayerPolicy._orig_layer_class = GPTNeoXLayer
                 except ImportError:
