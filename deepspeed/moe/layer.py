@@ -30,7 +30,7 @@ class MoE(torch.nn.Module):
                  drop_tokens: bool = True,
                  use_rts=True,
                  use_tutel: bool = False,
-                 MoE_mp_size=1):
+                 enable_expert_tensor_parallelism: bool = False):
         """Initialize an MoE layer.
 
         Arguments:
@@ -47,6 +47,7 @@ class MoE(torch.nn.Module):
             drop_tokens (bool, optional): default=True, whether to drop tokens - (setting to False is equivalent to infinite capacity).
             use_rts (bool, optional): default=True, whether to use Random Token Selection.
             use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
+            enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
         """
 
         super(MoE, self).__init__()
@@ -55,7 +56,7 @@ class MoE(torch.nn.Module):
         self.ep_size = min(
             ep_size,
             num_experts)  # the ep size should be less than the number of experts
-        self.MoE_mp_size = MoE_mp_size
+        self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
         self.num_local_experts = 1 if num_experts < ep_size else num_experts // ep_size
@@ -96,9 +97,11 @@ class MoE(torch.nn.Module):
             print(
                 f"No existing process group found, creating a new group named: {self.expert_group_name}"
             )
-            if self.MoE_mp_size == 1:
+            if (groups.mpu is None) or (not self.enable_expert_tensor_parallelism):
+                # no mpu implies no tensor parallelism
                 groups._create_expert_and_data_parallel(self.ep_size)
             else:
+                print("creating expert data and model parallel")
                 groups._create_expert_data_and_model_parallel(self.ep_size,
                                                               mpu=groups.mpu)
         # Set the group handle for the MOELayer (deepspeed_moe) object
