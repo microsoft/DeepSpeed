@@ -6,6 +6,7 @@ import os
 
 from deepspeed import comm as dist
 from deepspeed.utils import groups
+from deepspeed.utils.logging import log_dist
 
 from torch.nn.modules import Module
 from packaging import version as pkg_version
