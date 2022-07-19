@@ -208,9 +208,11 @@ class InferenceEngine(Module):
             self.quantize_groups = quantization_setting
         elif quantization_setting is not None:
             self.quantize_groups = quantization_setting
-        log_dist(f"quantize_bits = {self.quantize_bits} "
-                 f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
-                 f"quantize_groups = {self.quantize_groups}", [0])
+        log_dist(
+            f"quantize_bits = {self.quantize_bits} "
+            f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
+            f"quantize_groups = {self.quantize_groups}",
+            [0])
 
     def _validate_args(self, mpu):
         if not isinstance(self.module, Module):

@@ -770,7 +770,8 @@ class DeepSpeedTransformerInference(nn.Module):
             builder = op_builder.InferenceBuilder()
             inference_cuda_module = builder.load()
 
-        log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
+        if DeepSpeedTransformerInference.layer_id == 1:
+            log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
 
         self.attention = DeepSpeedSelfAttention(self.config,
                                                 mp_group,
