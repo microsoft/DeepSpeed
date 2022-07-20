@@ -190,6 +190,20 @@ All DeepSpeed documentation can be found on our website: [deepspeed.ai](https://
 | [1Cycle Tutorial](https://www.deepspeed.ai/tutorials/one-cycle/)                               |  SOTA learning schedule in DeepSpeed         |
 
 
+## DeepSpeed Adoption
+ 
+DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
+
+<img src="docs/assets/images/transformers-light.png#gh-light-mode-only" width="300px">
+<img src="docs/assets/images/transformers-dark.png#gh-dark-mode-only" width="300px">
+
+<img src="docs/assets/images/accelerate-light.png#gh-light-mode-only" width="300px">
+<img src="docs/assets/images/accelerate-dark.png#gh-dark-mode-only" width="300px">
+
+![Lightning](docs/assets/images/lightning.png)
+
+* ![MosaicML](docs/assets/images/mosaicml.svg)
+
 
 # Contributing
 DeepSpeed welcomes your contributions! Please see our
