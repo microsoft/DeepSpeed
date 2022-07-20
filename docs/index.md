@@ -24,7 +24,7 @@ title: "Latest News"
 
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
 
-# DeepSpeed: Speed and Scale for Deep Learning Training and Inference
+# DeepSpeed: Extreme Speed and Scale for DL Training and Inference
 
 DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. 
 
