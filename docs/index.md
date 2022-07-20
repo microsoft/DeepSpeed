@@ -6,19 +6,17 @@ title: "Latest News"
 
 ---
 
-
-* [2022/06/22] DeepSpeed Compression: 50x model size reduction via [XTC](https://arxiv.org/abs/2206.01859) and 5000x compression cost reduction via [ZeroQuant](https://arxiv.org/abs/2206.01861). Stay tuned for upcoming code release!
+* [2022/07/20] [DeepSpeed Compression: A composable library for extreme compression and zero-cost quantization](https://www.microsoft.com/en-us/research/blog/deepspeed-compression-a-composable-library-for-extreme-compression-and-zero-cost-quantization/)
+    * [Tutorial](https://www.deepspeed.ai/tutorials/model-compression/) and [Code examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/model_compression).
+    * 50x model size reduction via [XTC](https://arxiv.org/abs/2206.01859) and 5000x compression cost reduction via [ZeroQuant](https://arxiv.org/abs/2206.01861).
 * [2022/03/21] [Supporting efficient large model training on AMD Instinct GPUs with DeepSpeed](https://cloudblogs.microsoft.com/opensource/2022/03/21/supporting-efficient-large-model-training-on-amd-instinct-gpus-with-deepspeed/)
 * [2022/03/07] [Maximizing Communication Efficiency for Large-scale Training via 0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/)
 * [2022/01/19] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
     * [Mixture of Experts (MoE) for NLG tutorial](https://www.deepspeed.ai/tutorials/mixture-of-experts-nlg/).
     * [Mixture of Experts (MoE) Inference tutorial](https://www.deepspeed.ai/tutorials/moe-inference-tutorial).
-
 * [2021/11/15] [Autotuning: Automatically discover the optimal DeepSpeed configuration that delivers good training speed](https://www.deepspeed.ai/2021/11/16/autotuning.html)
-
 * [2021/10/11] [Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B, the World’s Largest and Most Powerful Generative Language Model](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/)
-  
-* Read more on how to [train large models with DeepSpeed](https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/)
+    * Read more on how to [train large models with DeepSpeed](https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/)
 
 <b> DeepSpeed+Megatron trained the world's most powerful language model: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/) <b>
 
@@ -58,11 +56,11 @@ To further increase the infrence efficency, DeepSpeed provides a new feature, th
 
 ### DeepSpeed Library
 
-   DeepSpeed Library is an open-souced repository that implements and packages the innovations and technologies developed under the DeepSpeed pillars. Please check it out here: DeepSpeed Library 
+   The [DeepSpeed](https://github.com/microsoft/deepspeed) library is an open-sourced repository that implements and packages the innovations and technologies developed under the DeepSpeed pillars.
 
 ### Model Implementations for Inference (MII)
 
-   MII is an open-sourced repository that offers inference optimized implementations of thousands of widely used DL models. It is powered by optimizations from DeepSpeed-Inference. Out of box, MII supported models can be deployed with a few lines of code, while achieving significant latency reduction. Check it out here: DeepSpeed-MII
+   [MII is an open-sourced repository](https://github.com/microsoft/deepspeed-mii) that offers inference optimized implementations of thousands of widely used DL models. It is powered by optimizations from DeepSpeed-Inference. Out of box, MII supported models can be deployed with a few lines of code, while achieving significant latency reduction.
 
 ### DeepSpeed on Azure
 
@@ -70,10 +68,14 @@ To further increase the infrence efficency, DeepSpeed provides a new feature, th
 
 ## DeepSpeed Adoption
    
+    DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
 
-Brag sheet
+    * ![Transformers](/assets/images/hf-transformers.png)
+    * ![Lightning](/assets/images/lightning.png)
+    * ![MosaicML](/assets/images/mosaicml.png)
 
-DeepSpeed is an integral part of Microsoft’s AI at Scale initiative to enable next-generation AI capabilities at scale, where you can find more information here.
+
+DeepSpeed is an integral part of [Microsoft’s AI at Scale initiative](https://www.microsoft.com/en-us/research/project/ai-at-scale/) to enable next-generation AI capabilities at scale.
 
 
 # Contributing
