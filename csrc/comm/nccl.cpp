@@ -458,23 +458,6 @@ inline at::Tensor newLikeFlat(
 
 // Flatten each list in `tensor_lists' for a gather or scatter operation, and
 // ensure compatibility with the corresponding tensor in `other'.
-//std::vector<at::Tensor> flatten_for_scatter_gather(
-//    std::vector<std::vector<at::Tensor>>& tensor_lists,
-//    size_t world_size) {
-//  const auto num_devices = tensor_lists.size();
-//
-//  std::vector<at::Tensor> flattened;
-//  flattened.resize(num_devices);
-//
-//  for (const auto i : c10::irange(size_t{}, num_devices)) {
-//    // Flatten the tensors (from all ranks) into a single big tensor.
-//    flattened[i] = newLikeFlat(tensor_lists, i);
-//  }
-//  return flattened;
-//}
-
-// Flatten each list in `tensor_lists' for a gather or scatter operation, and
-// ensure compatibility with the corresponding tensor in `other'.
 std::vector<at::Tensor> flatten_for_scatter_gather(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
     std::vector<at::Tensor>& other,
@@ -614,15 +597,6 @@ void all_to_all_single(torch::Tensor outputTensor, torch::Tensor inputTensor, bo
     if (block) { CUDACHECK(cudaStreamSynchronize(GetCommStream(async_op))); }
     if (async_op) { SynchComp(); }
     // CUDACHECK(cudaStreamSynchronize(s));
-    //if (is_prof) {
-    //    end = std::chrono::steady_clock::now();
-    //    if (get_rank(0) == 0) {
-    //        std::cout << "NCCL alltoall time = "
-    //                  << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count()
-    //                  << " us, Size = " << inputTensor.numel() * inputTensor.element_size() << " B"
-    //                  << "\n";
-    //    }
-    //}
 }
 
 void all_to_all(std::vector<torch::Tensor>& inputTensors,
