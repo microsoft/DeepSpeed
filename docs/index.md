@@ -43,10 +43,12 @@ DeepSpeed has three main innovation pillars that together offer its users incred
 
 ### DeepSpeed-Training:  
 
-DeepSpeed offers a confluence of system innovations, that has made large scale DL training effective, and efficient, greatly improved ease of use, and redefined the DL training landscape in terms of scale that is possible. These innovations such as ZeRO, 3D-Parallelism, DeepSpeed-MoE, ZeRO-Infinity, etc fall under the DeepSpeed-Training pillar. (See here for more details) 
+DeepSpeed offers a confluence of system innovations, that has made large scale DL training effective, and efficient, greatly improved ease of use, and redefined the DL training landscape in terms of scale that is possible. These innovations such as ZeRO, 3D-Parallelism, DeepSpeed-MoE, ZeRO-Infinity, etc fall under the DeepSpeed-Training pillar. Learn more: DeepSpeed-Training
 
 ### DeepSpeed-Inference:
 
+DeepSpeed brings together innovations in parallelism technology such as tensor, pipeline, expert and ZeRO-parallelism, and combines them with high performance custom inference kernels, communication optimizations and heterogeneous memory technologies to enable inference at an unprecedented scale, while achieving unparalleled latency, thoughput and cost reduction. This systematic composition of system technologies for inference falls under the DeepSpeed-Inference. Learn more: DeepSpeed-Inference   
+   
 
 ### DeepSpeed-Compression:
 
@@ -56,11 +58,18 @@ To further increase the infrence efficency, DeepSpeed provides a new feature, th
 
 ### DeepSpeed Library
 
+   DeepSpeed Library is an open-souced repository that implements and packages the innovations and technologies developed under the DeepSpeed pillars. Please check it out here: DeepSpeed Library 
+
 ### Model Implementations for Inference (MII)
+
+   MII is an open-sourced repository that offers inference optimized implementations of thousands of widely used DL models. It is powered by optimizations from DeepSpeed-Inference. Out of box, MII supported models can be deployed with a few lines of code, while achieving significant latency reduction. Check it out here: DeepSpeed-MII
 
 ### DeepSpeed on Azure
 
+   
+
 ## DeepSpeed Adoption
+   
 
 Brag sheet
 
