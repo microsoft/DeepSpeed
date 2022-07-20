@@ -19,16 +19,7 @@ lnav:
     url: /compression/
   - title: 'Getting Started'
     url: /getting-started/
-    children:
-      - title: 'Installation'
-        url: /getting-started/#installation
-      - title: 'Writing models'
-        url: /getting-started/#writing-deepspeed-models
-      - title: 'Training'
-        url: /getting-started/#training
-      - title: 'Launching'
-        url: /getting-started/#launching-deepspeed-training
-  - title: 'Configuration'
+  - title: 'Config (ds_config)'
     url: /docs/config-json/
     children:
       - title: 'Autotuning'
