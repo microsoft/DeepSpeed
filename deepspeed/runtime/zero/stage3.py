@@ -14,18 +14,20 @@ from typing import Deque, Dict, Iterable, Set, Tuple
 import torch
 from torch.cuda import Event, Stream
 from torch.nn import Module, Parameter
-import torch.distributed as dist
+from deepspeed import comm as dist
 import math
 from torch._six import inf
 from torch.nn import Module
 from torch.nn.parameter import Parameter
 
+from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.comm.coalesced_collectives import reduce_scatter_coalesced
-from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter, DummyOptim
+from deepspeed.runtime.utils import get_global_norm, see_memory_usage, is_model_parallel_parameter
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.partition_parameters import _init_external_params
+from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
@@ -40,12 +42,11 @@ from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, FP32_FLAT_GROUP
 # with gradient partitioning and without
 pg_correctness_test = False
 
-FWD_MODULE_STACK = list()
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, debug_param2name_id_numel, debug_param2name_id_shape_device, debug_module2name_class, printflock, log_rank_file
 
 
 def print_rank_0(message, debug=False, force=False):
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
     if rank == 0 and (debug or force):
         print(message)
     # other variations
@@ -73,157 +74,10 @@ def move_to_cpu(tensor_list):
         tensor.data = tensor.data.cpu()
 
 
-def is_builtin_type(obj):
-    # https://stackoverflow.com/a/17795199
-    return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
-
-
-#apply torch.autograd.Function that calls a backward_function to tensors in output
-def _apply_to_tensors_only(module, functional, backward_function, outputs):
-    if isinstance(outputs, (tuple, list)):
-        touched_outputs = []
-        for output in outputs:
-            touched_output = _apply_to_tensors_only(module,
-                                                    functional,
-                                                    backward_function,
-                                                    output)
-            touched_outputs.append(touched_output)
-        return outputs.__class__(touched_outputs)
-    elif isinstance(outputs, dict):
-        # apply inplace to avoid recreating dict inherited objects
-        for key in outputs.keys():
-            outputs[key] = _apply_to_tensors_only(module,
-                                                  functional,
-                                                  backward_function,
-                                                  outputs[key])
-        return outputs
-    elif type(outputs) is torch.Tensor:
-        return functional.apply(module, backward_function, outputs)
-    else:
-        if not is_builtin_type(outputs):
-            logger.warning(
-                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
-                "output tensors and therefore may not get triggered properly.")
-        return outputs
-
-
-#for each tensor in outputs run the forward_function and register backward_function as hook
-def _apply_forward_and_backward_to_tensors_only(module,
-                                                forward_function,
-                                                backward_function,
-                                                outputs):
-    if type(outputs) is tuple:
-        touched_outputs = []
-        for output in outputs:
-            touched_output = _apply_forward_and_backward_to_tensors_only(
-                module,
-                forward_function,
-                backward_function,
-                output)
-            touched_outputs.append(touched_output)
-        return tuple(touched_outputs)
-    elif type(outputs) is torch.Tensor:
-        forward_function(outputs)
-        if outputs.requires_grad:
-            outputs.register_hook(backward_function)
-        return outputs
-    else:
-        return outputs
-
-
-class ZeROOrderedDict(OrderedDict):
-    def __init__(self, parent_module, *args, **kwargs):
-        """A replacement for ``collections.OrderedDict`` to detect external ZeRO params.
-
-        Args:
-            parent_module (``collections.OrderedDict``): the collection to replace
-        """
-
-        super().__init__(*args, **kwargs)
-        self._parent_module = parent_module
-        self._in_forward = False
-
-    def __getitem__(self, key):
-        param = super().__getitem__(key)
-
-        # Params can be registered as None (e.g., bias)
-        if param is None:
-            return param
-
-        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
-            if self._parent_module._parameters._in_forward:
-                register_external_parameter(FWD_MODULE_STACK[-1], param)
-                param.all_gather()
-                print_rank_0(
-                    f'Registering external parameter from getter {key} ds_id = {param.ds_id}',
-                    force=False)
-
-        return param
-
-
-def _inject_parameters(module, cls):
-    for module in module.modules():
-        if cls == ZeROOrderedDict:
-            new_param = cls(parent_module=module)
-        else:
-            new_param = cls()
-
-        for key, param in module._parameters.items():
-            new_param[key] = param
-        module._parameters = new_param
-
-
-class PreBackwardFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, module, pre_backward_function, outputs):
-        ctx.module = module
-        ctx.pre_backward_function = pre_backward_function
-        if not hasattr(module, "applied_pre_backward_ref_cnt"):
-            module.applied_pre_backward_ref_cnt = 0
-        module.applied_pre_backward_ref_cnt += 1
-        #print(f"After Forward: {ctx.module.__class__.__name__}")
-        outputs = outputs.detach()
-        return outputs
-
-    @staticmethod
-    def backward(ctx, *args):
-        #print(f"Before Backward: {ctx.module.__class__.__name__}")
-        ctx.pre_backward_function(ctx.module)
-        return (None, None) + args
-
-
-class PostBackwardFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, module, pre_backward_function, output):
-        ctx.module = module
-        if output.requires_grad:
-            #TODO SOME TIMES post backward does not seem to be triggered debug in detail
-            #Should only cause increase in memory not correctness issue
-            #if output.grad_fn.__class__.__name__ == 'ViewBackward':
-            #    ctx.view=True
-            #    print(f"Warning view tensor for input to module : {module.__class__.__name__}. Backward hooks may not trigger properly")
-            #assert len(module.parameters(recurse=False)), "The input tensor to the module is a view, and autograd Function or register_hook is not triggered with view tensors."
-            #if module.ds_grads_remaining == 0:
-            #    print(f"Before Forward: {ctx.module.__class__.__name__}")
-            module.ds_grads_remaining += 1
-            ctx.pre_backward_function = pre_backward_function
-        output = output.detach()
-        return output
-
-    @staticmethod
-    def backward(ctx, *args):
-        ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
-        if ctx.module.ds_grads_remaining == 0:
-            ctx.pre_backward_function(ctx.module)
-            #print(f"After Backward: {ctx.module.__class__.__name__}")
-        return (None, None) + args
-
-
 INITIAL_MICRO_STEP_ID = -1
 
 
-class DeepSpeedZeroOptimizer_Stage3(object):
+class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
@@ -264,14 +118,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                  elastic_checkpoint=False,
                  aio_config=None):
 
-        see_memory_usage("Stage 3 initialize beginning", force=False)
+        see_memory_usage("Stage 3 initialize beginning", force=True)
 
         print_rank_0(f"initialized {__class__.__name__} with args: {locals()}",
                      force=False)
 
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
-            logger.info(f"Allgather bucket size {prefetch_bucket_size}")
+            logger.info(f"Prefetch bucket size {prefetch_bucket_size}")
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -283,8 +137,8 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         # - master grad and unflat master weight never exist. TODO: a way to save out unflat master?
         if not torch.cuda.is_available:
             raise SystemError("Cannot use fp16 without CUDA.")
+
         self.optimizer = init_optimizer
-        self.using_real_optimizer = not isinstance(self.optimizer, DummyOptim)
 
         # Load pre-built or JIT compile (un)flatten ops
         util_ops = UtilsBuilder().load()
@@ -292,6 +146,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.unflatten = util_ops.unflatten
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
         self._global_grad_norm = 0.
+
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
 
         self.optimizer_swapper = None
         self.swap_optimizer = False
@@ -304,19 +161,20 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
+        self.parameter_offload = DeepSpeedZeRoOffload(module,
+                                                      timers,
+                                                      ds_config,
+                                                      overlap_comm,
+                                                      prefetch_bucket_size,
+                                                      max_reuse_distance,
+                                                      max_live_parameters,
+                                                      param_persistence_threshold,
+                                                      offload_param_config)
+        self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
-
-        self._convert_to_zero_parameters(ds_config, module, mpu)
-
-        for m in module.modules():
-            _init_external_params(m)
 
         self.module = module
         self.elastic_checkpoint = elastic_checkpoint
-
-        # Replace ._parameters with a new class to enable auto-registration of
-        # external parameters
-        _inject_parameters(module, ZeROOrderedDict)
 
         self.__inf_or_nan_tracker: Tensor = torch.zeros(
             1,
@@ -330,36 +188,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.device = torch.cuda.current_device(
         ) if not self.offload_optimizer else OFFLOAD_CPU_DEVICE
         ### streams used for overlapping computation with communication
-        self.__allgather_stream = Stream(
-        ) if overlap_comm else torch.cuda.default_stream()
         self.__reduce_and_partition_stream = Stream(
         ) if overlap_comm else torch.cuda.default_stream()
 
         ############################################################################
 
-        see_memory_usage("Before Partitioned Parameter Coordinator", force=False)
-        self.param_coordinators = {}
-        self._prefetch_bucket_sz = int(prefetch_bucket_size)
-        self._max_reuse_distance_in_numel = int(max_reuse_distance)
-        self._max_available_parameters_in_numel = int(max_live_parameters)
-        see_memory_usage("After Partitioned Parameter Coordinator", force=False)
-
         self.__n_caching_allocator_flushes = 0
 
         #-------------Stage 3 Setup-------------------#
-        # parameters smaller than the threshold will be collectively gathered at the
-        # end of the optimizer step and will be kept till the end of the backward pass
-        # TODO maybe worth just replicating these parameters and doing all reduce for them
-        self.persistence_threshold = int(param_persistence_threshold)
-
-        self.persistent_parameters = self.persistent_parameters()
-
-        self.setup_zero_stage3_hooks()
-
-        #resetting ds_tensor just in case parameters have been changed after initialization
-        #example .half() or .to()
-        #self.reset_ds_tensor()
-        #---------------------------------------------#
 
         self.timers = timers
 
@@ -416,6 +252,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self.all_reduce_print = False
 
         self.prefetch_elements = int(prefetch_bucket_size)
+
         self.contiguous_gradients = contiguous_gradients
 
         # padding on each partition for alignment purposes
@@ -478,10 +315,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             f'Largest partitioned param numel = {largest_partitioned_param_numel}',
             force=False)
 
+        self._setup_for_real_optimizer()
         self.grad_position = {}
-        if self.using_real_optimizer:
-            self._setup_for_real_optimizer()
-            self.set_grad_positions()
+        self.set_grad_positions()
 
         if self.offload_optimizer:
             self.norm_for_param_grads = {}
@@ -507,7 +343,6 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
             self.dynamic_loss_scale = False
             self.loss_scaler = LossScaler(scale=loss_scale_value)
-            cur_iter = 0
         else:
             if dynamic_loss_args is None:
                 self.loss_scaler = DynamicLossScaler()
@@ -520,6 +355,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         if dist.get_rank(group=self.dp_process_group) == 0:
             see_memory_usage(f"After initializing ZeRO optimizer", force=True)
+
+    def destroy(self):
+        self.parameter_offload.destroy()
 
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
@@ -552,7 +390,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         all_params = list(itertools.chain.from_iterable(self.fp16_groups))
 
         grad_partitions_flat_buffer: Tensor = torch.zeros(
-            sum(p.ds_tensor.ds_numel for p in all_params),
+            sum(p.partition_numel() for p in all_params),
             dtype=self.dtype,
             device=self.device,
             pin_memory=self.offload_optimizer_pin_memory)
@@ -563,8 +401,17 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 param.ds_id] = grad_partitions_flat_buffer.narrow(
                     0,
                     offset,
-                    param.ds_tensor.numel())
-            offset += param.ds_tensor.numel()
+                    param.partition_numel())
+            offset += param.partition_numel()
+
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
 
     # TODO. factor out to a utility outside of stage3
     @staticmethod
@@ -605,17 +452,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         return device_buffer
 
     def _get_param_coordinator(self, training):
-        if not training in self.param_coordinators:
-            self.param_coordinators[training] = PartitionedParameterCoordinator(
-                prefetch_bucket_sz=self._prefetch_bucket_sz,
-                max_reuse_distance_in_numel=self._max_reuse_distance_in_numel,
-                max_available_parameters_in_numel=self.
-                _max_available_parameters_in_numel,
-                allgather_stream=self.__allgather_stream,
-                prefetch_nvme=self.params_in_nvme_and_cpu,
-            )
-
-        return self.param_coordinators[training]
+        return self.parameter_offload.get_param_coordinator(training)
 
     def _configure_offloading(self, offload_optimizer_config, offload_param_config):
         ###################### offload optimizer setup ##################################
@@ -630,8 +467,6 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         ###################### offload param setup ##################################
         if offload_param_config is not None:
-            if self.using_real_optimizer:
-                assert self.offload_optimizer, "parameter offload is only available with optimizer state offload"
             self.offload_param = True
             self.offload_param_pin_memory = offload_param_config[
                 OFFLOAD_PARAM_PIN_MEMORY]
@@ -642,38 +477,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
                 force=False)
 
-    def _convert_to_zero_parameters(self, ds_config, module, mpu):
-        non_zero_params = [p for p in module.parameters() if not is_zero_param(p)]
-        if non_zero_params:
-            zero_params = [p for p in module.parameters() if is_zero_param(p)]
-            if zero_params:
-                zero_params[0].convert_to_zero_parameters(param_list=non_zero_params)
-            else:
-                group = None
-                if mpu:
-                    group = mpu.get_data_parallel_group()
-
-                if self.params_in_nvme_and_cpu:
-                    remote_device = OFFLOAD_NVME_DEVICE
-                elif self.offload_param:
-                    remote_device = OFFLOAD_CPU_DEVICE
-                else:
-                    remote_device = None
-
-                Init(module=module,
-                     data_parallel_group=group,
-                     dtype=self.dtype,
-                     config_dict_or_path=ds_config,
-                     remote_device=remote_device,
-                     pin_memory=self.offload_param_pin_memory,
-                     mpu=mpu)
-
     def _configure_tensor_swapping(self, offload_optimizer_config, aio_config):
         nvme_swap_folder = os.path.join(
             offload_optimizer_config[OFFLOAD_OPTIMIZER_NVME_PATH],
             'zero_stage_3')
         os.makedirs(nvme_swap_folder, exist_ok=True)
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             logger.info(f'Tensor Swapping: Adding optimizer tensors')
 
         swapper_type = PipelinedOptimizerSwapper if offload_optimizer_config[
@@ -712,7 +521,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             '''if the parameter was initialized in nvme then bring it to the destination buffer directly'''
             if src.status == PartitionedParamStatus.NOT_AVAILABLE:
                 print_rank_0(
-                    f"Swapping in {param.ds_id} with partition size {param.ds_tensor.ds_numel} permanently to CPU"
+                    f"Swapping in {param.ds_id} with partition size {param.partition_numel()} permanently to CPU"
                 )
                 param.nvme_swapper.swap_into_buffer(param, dest)
                 src.data = dest.data
@@ -731,7 +540,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         aggregate_params_count = 0
 
         for j, param_group in enumerate(self.optimizer.param_groups):
-            params_in_group = sum([p.ds_tensor.ds_numel for p in param_group['params']])
+            params_in_group = sum([p.partition_numel() for p in param_group['params']])
 
             flat_buffer_size = params_in_group
 
@@ -780,7 +589,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
                 # record total elements of parameter partitions in sub group
                 self.fp16_partitioned_groups_flat_numel.append(
-                    sum(p.ds_tensor.ds_numel for p in sub_group))
+                    sum(p.partition_numel() for p in sub_group))
 
                 # record padding required to align group to world size (only applies to last rank)
                 rank_requires_padding = dist.get_rank(
@@ -803,7 +612,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             # contiguous flat buffer for all parameters that we created earlier
             offset = 0
             for sub_group in self.fp16_groups:
-                sub_group_numel = sum(param.ds_tensor.ds_numel for param in sub_group)
+                sub_group_numel = sum(param.partition_numel() for param in sub_group)
                 self.fp16_partitioned_groups_flat.append(
                     device_buffer.narrow(0,
                                          offset,
@@ -815,7 +624,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             for param_group_idx, param_group in enumerate(param_groups):
                 flat_offset = 0
                 for i, sub_group in enumerate(param_group):
-                    total_elements = sum(p.ds_tensor.ds_numel for p in sub_group)
+                    total_elements = sum(p.partition_numel() for p in sub_group)
                     print_rank_0(f"Params in nvme and cpu {self.params_in_nvme_and_cpu}")
                     #Flat buffer may not be available for parameters that reside in NVME
                     if not self.params_in_nvme_and_cpu or flat_offset + total_elements <= self.param_groups_fp16_flat_cpu_memory[
@@ -851,7 +660,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         if should_create_fp16_flat_reuse_buffer:
             max_partition_numel, largest_partition_numel = 0, None
             for sub_group in self.fp16_groups:
-                total_elements = sum(t.ds_tensor.ds_numel for t in sub_group)
+                total_elements = sum(t.partition_numel() for t in sub_group)
                 if total_elements > max_partition_numel:
                     largest_partition_numel = [t.ds_numel for t in sub_group]
                     max_partition_numel = total_elements
@@ -869,7 +678,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             dest = flat_buffer.narrow(0, offset, partitioned_param.ds_numel)
             if partitioned_param.status == PartitionedParamStatus.NOT_AVAILABLE:
                 print_rank_0(
-                    f"Swapping in {param.ds_id} with elements {param.ds_numel} and partition {param.ds_tensor.ds_numel}"
+                    f"Swapping in {param.ds_id} with elements {param.ds_numel} and partition {param.partition_numel()}"
                 )
                 param.nvme_swapper.swap_in([param], async_op=False)
                 dest.data.copy_(partitioned_param.data)
@@ -899,7 +708,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             if partitioned_param.status == PartitionedParamStatus.NOT_AVAILABLE:
                 swap_path = param.nvme_swapper.get_path(param, True)
                 sub_group_partitions.append((partitioned_param,
-                                             param.ds_tensor.ds_numel,
+                                             param.partition_numel(),
                                              swap_path))
             else:
                 sub_group_partitions.append((partitioned_param,
@@ -1015,7 +824,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     def _create_fp16_sub_groups(self, params_group):
 
-        params_group_numel = sum([param.partitioned_size() for param in params_group])
+        params_group_numel = sum([param.partition_numel() for param in params_group])
         sub_group_size = self.sub_group_size
 
         if sub_group_size is None or sub_group_size >= params_group_numel:
@@ -1027,7 +836,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         for param in params_group:
 
             sub_group.append(param)
-            local_sub_group_size += param.partitioned_size()
+            local_sub_group_size += param.partition_numel()
 
             if local_sub_group_size >= sub_group_size or id(param) == id(
                     params_group[-1]):
@@ -1038,219 +847,6 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 local_sub_group_size = 0
 
         return sub_groups
-
-    # def reset_ds_tensor(self):
-    #     for name, param in self.module.named_parameters(recurse=True):
-    #         assert hasattr(param,'ds_id'), "Parameters have not been converted to be Zero 3 compatible"
-    #         assert (param.ds_status == ZeroParamStatus.NOT_AVAILABLE), "All the parameters must have been partitioned by now"
-    #         param.ds_tensor.data = param.data
-
-    def setup_zero_stage3_hooks(self):
-        self.hierarchy = 0
-
-        #reset step if in inference mode
-        @instrument_w_nvtx
-        def _end_of_forward_hook(module, *args):
-
-            if not torch._C.is_grad_enabled():
-                self._get_param_coordinator(training=False).reset_step()
-
-        #likely one of them should be enough but just to be safe
-        self._register_hooks_recursively(self.module)
-        self.module.register_forward_hook(_end_of_forward_hook)
-
-        # Add top module to stack trace
-        global FWD_MODULE_STACK
-        FWD_MODULE_STACK.append(self.module)
-
-    def persistent_parameters(self):
-        persistent_params = []
-        total_persistent_parameters = 0
-        params_count = 0
-        for _, param in self.module.named_parameters(recurse=True):
-            if param.ds_numel < self.persistence_threshold:
-                params_count += 1
-                param.ds_persist = True
-                persistent_params.append(param)
-                total_persistent_parameters += param.ds_numel
-
-        print_rank_0(
-            f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
-            force=False)
-        return persistent_params
-
-    def _register_hooks_recursively(self, module, count=[0]):
-        my_count = count[0]
-        module.id = my_count
-
-        #print(f"{module.__class__} : {module.id}")
-
-        for child in module.children():
-            count[0] = count[0] + 1
-            self._register_hooks_recursively(child, count=count)
-
-        @instrument_w_nvtx
-        def _pre_forward_module_hook(module, *args):
-            self.pre_sub_module_forward_function(module)
-
-        @instrument_w_nvtx
-        def _post_forward_module_hook(module, input, output):
-            global FWD_MODULE_STACK
-            FWD_MODULE_STACK.pop()
-            if output is None:
-                output = []
-            elif not isinstance(output, (list, tuple)):
-                if torch.is_tensor(output):
-                    output = [output]
-                else:
-                    #print(f'got UNKNOWN type {type(output)}')
-                    outputs = []
-                    output = output if isinstance(output, dict) else vars(output)
-                    for name, val in output.items():
-                        if not name.startswith('__') and torch.is_tensor(val):
-                            outputs.append(val)
-                    output = outputs
-                    #print(f'convert output to {output}')
-
-            for item in filter(lambda item: is_zero_param(item), output):
-                if not any(id(item) in m._external_params for m in FWD_MODULE_STACK):
-                    item.is_external_param = True
-                    module_to_register = FWD_MODULE_STACK[-1]
-                    register_external_parameter(module_to_register, item)
-                    print_rank_0(
-                        f'Registering dangling parameter for module {module_to_register.__class__.__name__}, ds_id = {item.ds_id}.',
-                        force=False)
-
-                    # It's possible that the parameter was already external to the completed module. If so, remove it the
-                    # registration as it will be covered by the outer module instead.
-                    if id(item) in module._external_params:
-                        print_rank_0(
-                            f'  Unregistering nested dangling parameter from module {module.__class__.__name__}, ds_id = {item.ds_id}',
-                            force=False)
-                        unregister_external_parameter(module, item)
-
-                    item.all_gather()
-
-            self.post_sub_module_forward_function(module)
-
-        def _pre_backward_module_hook(module, inputs, output):
-            @instrument_w_nvtx
-            def _run_before_backward_function(sub_module):
-                # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
-                # before doing backwards, so each backward will need a pre-fetch - using reference
-                # counting to support this scenario
-                #print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
-                if sub_module.applied_pre_backward_ref_cnt > 0:
-                    self.pre_sub_module_backward_function(sub_module)
-                    sub_module.applied_pre_backward_ref_cnt -= 1
-                #print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
-
-            return _apply_to_tensors_only(module,
-                                          PreBackwardFunction,
-                                          _run_before_backward_function,
-                                          output)
-
-        #This is an alternate to doing _post_backward_module_hook
-        #it uses tensor.register_hook instead of using torch.autograd.Function
-        def _alternate_post_backward_module_hook(module, inputs):
-            module.ds_grads_remaining = 0
-
-            #print(f"Before Forward {module.__class__.__name__}")
-
-            def _run_after_backward_hook(*unused):
-                module.ds_grads_remaining = module.ds_grads_remaining - 1
-                if module.ds_grads_remaining == 0:
-                    #print(f"After backward {module.__class__.__name__}")
-                    self.post_sub_module_backward_function(module)
-
-            def _run_before_forward_function(input):
-                if input.requires_grad:
-                    module.ds_grads_remaining += 1
-
-            return _apply_forward_and_backward_to_tensors_only(
-                module,
-                _run_before_forward_function,
-                _run_after_backward_hook,
-                inputs)
-
-        def _post_backward_module_hook(module, inputs):
-            module.ds_grads_remaining = 0
-
-            @instrument_w_nvtx
-            def _run_after_backward_function(sub_module):
-                if sub_module.ds_grads_remaining == 0:
-                    self.post_sub_module_backward_function(sub_module)
-
-            return _apply_to_tensors_only(module,
-                                          PostBackwardFunction,
-                                          _run_after_backward_function,
-                                          inputs)
-
-        # Pre forward hook
-        module.register_forward_pre_hook(_pre_forward_module_hook)
-        # Post forward hook
-        module.register_forward_hook(_post_forward_module_hook)
-
-        # Pre backward hook
-        module.register_forward_hook(_pre_backward_module_hook)
-
-        # post backward hook
-        module.register_forward_pre_hook(_post_backward_module_hook)
-
-    @torch.no_grad()
-    def pre_sub_module_forward_function(self, sub_module):
-        see_memory_usage(f"Before sub module function {sub_module.__class__.__name__}",
-                         force=False)
-
-        global FWD_MODULE_STACK
-        FWD_MODULE_STACK.append(sub_module)
-
-        param_coordinator = self._get_param_coordinator(training=sub_module.training)
-        param_coordinator.trace_prologue(sub_module)
-        if param_coordinator.is_record_trace():
-            param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
-
-        see_memory_usage(
-            f"Before sub module function {sub_module.__class__.__name__} after fetch",
-            force=False)
-
-    @torch.no_grad()
-    def post_sub_module_forward_function(self, sub_module):
-        see_memory_usage(
-            f"After sub module function {sub_module.__class__.__name__} {sub_module.id} before release",
-            force=False)
-
-        param_coordinator = self._get_param_coordinator(training=sub_module.training)
-        if param_coordinator.is_record_trace():
-            param_coordinator.record_parameters(sub_module)
-        param_coordinator.release_sub_module(sub_module)
-
-        see_memory_usage(
-            f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release",
-            force=False)
-
-    @torch.no_grad()
-    def pre_sub_module_backward_function(self, sub_module):
-        param_coordinator = self._get_param_coordinator(training=sub_module.training)
-        param_coordinator.trace_prologue(sub_module)
-        if param_coordinator.is_record_trace():
-            param_coordinator.record_module(sub_module)
-            param_coordinator.record_parameters(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
-
-    @torch.no_grad()
-    def post_sub_module_backward_function(self, sub_module):
-        see_memory_usage(
-            f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release",
-            force=False)
-
-        self._get_param_coordinator(
-            training=sub_module.training).release_sub_module(sub_module)
-
-        see_memory_usage(
-            f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release",
-            force=False)
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -1595,7 +1191,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             current_offset = 0
             for param in group:
                 param_id = self.get_param_id(param)
-                num_elements = param.ds_tensor.ds_numel
+                num_elements = param.partition_numel()
 
                 self.grad_position[param_id] = [
                     int(i),
@@ -1642,12 +1238,11 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
 
-        torch.distributed.all_reduce(total_norm_cuda,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=self.dp_process_group)
+        dist.all_reduce(total_norm_cuda,
+                        op=dist.ReduceOp.SUM,
+                        group=self.dp_process_group)
 
-        self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.SUM)
+        self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
@@ -1662,7 +1257,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                           params_to_release: List[Parameter],
                           grad_partitions: List[Tensor]) -> None:
         for param, grad_partition in zip(params_to_release, grad_partitions):
-            if param.ds_tensor.ds_numel * dist.get_rank(
+            if param.partition_numel() * dist.get_rank(
                     self.dp_process_group) > param.ds_numel:
                 # this grad partition is empty - don't need to do anything
                 continue
@@ -1828,7 +1423,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             #    "All Reducing"
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
-            global_rank = _get_global_rank(self.dp_process_group, rank)
+            global_rank = dist.get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -1944,9 +1539,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         if self.model_parallel_group is None:
             pass
         else:
-            torch.distributed.all_reduce(tensor=tensor,
-                                         op=op,
-                                         group=self.model_parallel_group)
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     @instrument_w_nvtx
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
@@ -1970,13 +1563,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         if norm_type == inf:
             total_norm = max(g.data.abs().max() for g in gradients)
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.MAX)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
             total_norm = total_norm_cuda[0].item()
         else:
             # if dist.get_rank() == 0:
@@ -1989,12 +1581,11 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.sum(torch.pow(torch.stack(grad_norms), 2))
 
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=self.dp_process_group)
 
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.SUM)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
             total_norm = total_norm_cuda.item()**(1. / norm_type)
 
@@ -2239,7 +1830,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage('After overflow after clearing gradients', force=False)
 
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             logger.info(
                 "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                 "reducing to {}".format(dist.get_rank(),
@@ -2288,6 +1879,14 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             self._unflatten_partitioned_parameters(sub_group_id)
         else:
             self._partitioned_params_swap_out(sub_group_id)
+
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
 
     @instrument_w_nvtx
     def step(self, closure=None):
@@ -2426,9 +2025,9 @@ class DeepSpeedZeroOptimizer_Stage3(object):
             overflow = self.local_overflow
             #overflow = self.has_overflow_partitioned_grads_serial()
             overflow_gpu = torch.cuda.ByteTensor([overflow])
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
         else:
             params = []
@@ -2441,8 +2040,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        self._model_parallel_all_reduce(tensor=overflow_gpu,
-                                        op=torch.distributed.ReduceOp.MAX)
+        self._model_parallel_all_reduce(tensor=overflow_gpu, op=dist.ReduceOp.MAX)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -2483,7 +2081,11 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
         see_memory_usage(f"Before backward", force=False)
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
         self._get_param_coordinator(training=True).reset_step()
 
@@ -2514,14 +2116,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     @instrument_w_nvtx
     def _partition_all_parameters(self):
-        """Partitioning Parameters that were not partitioned usually if parameters
-        of modules whose input parameters do not require grad computation do not
-        trigger post call and will therefore will remain unpartitioned"""
-        self._get_param_coordinator(training=self.module.training).release_and_reset_all(
-            self.module)
-        for param in iter_params(self.module, recurse=True):
-            if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
-                raise RuntimeError(f"{param.ds_summary()} expected to be released")
+        self.parameter_offload.partition_all_parameters()
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
@@ -2550,7 +2145,10 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value
@@ -2813,7 +2411,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
 
 def _handle_overflow(cpu_sum, x, i):
     import math
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
     if rank == 0:
         t_i = -1
         for v_i, v in enumerate(x.data.contiguous().view(-1)):

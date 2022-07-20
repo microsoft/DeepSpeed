@@ -8,6 +8,7 @@ import time
 import torch
 from numpy import mean
 from deepspeed.utils.logging import log_dist
+from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 
@@ -44,7 +45,7 @@ class SynchronizedWallClockTimer:
 
         def start(self):
             """Start the timer."""
-            assert not self.started_, f"{self.name} timer has already been started"
+            assert not self.started_, f"{self.name_} timer has already been started"
             self.start_event = torch.cuda.Event(enable_timing=True)
             self.start_event.record()
             self.started_ = True
@@ -87,6 +88,7 @@ class SynchronizedWallClockTimer:
             return elapsed_
 
         def mean(self):
+            self.elapsed(reset=False)
             return trim_mean(self.elapsed_records, 0.1)
 
     def __init__(self):
@@ -112,7 +114,7 @@ class SynchronizedWallClockTimer:
     def log(self, names, normalizer=1.0, reset=True, memory_breakdown=False, ranks=None):
         """Log a group of timers."""
         assert normalizer > 0.0
-        string = f"rank={torch.distributed.get_rank()} time (ms)"
+        string = f"rank={dist.get_rank()} time (ms)"
         for name in names:
             if name in self.timers:
                 elapsed_time = (self.timers[name].elapsed(reset=reset) / normalizer)

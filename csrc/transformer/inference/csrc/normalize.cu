@@ -1,7 +1,9 @@
 #include <limits>
 #include "custom_cuda_layers.h"
 
+#ifndef __HIP_PLATFORM_HCC__
 #include <cuda_profiler_api.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -86,6 +88,7 @@ __global__ void fused_bias_residual_layer_norm(__half* output,
                                                int row_stride)
 {
 #ifdef HALF_PRECISION_AVAILABLE
+
     int iteration_stride = blockDim.x;
     int iterations = row_stride / iteration_stride;
 

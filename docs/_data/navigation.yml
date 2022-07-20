@@ -61,8 +61,10 @@ lnav:
         url: /docs/config-json/#activation-checkpointing
       - title: 'Sparse Attention'
         url: /docs/config-json/#sparse-attention
-      - title: 'Logging to TensorBoard'
-        url: /docs/config-json/#tensorboard-options
+      - title: 'Monitoring'
+        url: /docs/config-json/#monitoring-module-tensorboard-wandb-csv
+      - title: 'Model Compression'
+        url: /docs/config-json/#compression
   - title: 'Tutorials'
     url: /tutorials/
     children:
@@ -98,8 +100,12 @@ lnav:
         url: /tutorials/mixture-of-experts-nlg/
       - title: 'MoE Inference'
         url: /tutorials/mixture-of-experts-inference/
+      - title: 'Model Compression'
+        url: /tutorials/model-compression/
       - title: 'Mixture-of-Quantization'
         url: /tutorials/MoQ-tutorial/
+      - title: 'Monitoring'
+        url: /tutorials/monitor
       - title: 'One-Cycle Schedule'
         url: /tutorials/one-cycle/
       - title: 'One-Bit Adam'

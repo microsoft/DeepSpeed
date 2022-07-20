@@ -17,14 +17,19 @@
 #include <cassert>
 #include <iostream>
 
+#define MAX_OUT_TOKES 128
 #define MAX_WARP_NUM 32
 #define WARP_SIZE 32
+
+#define MAX_THREADS 1024
 #define SMs 80
 
 #define MAX_REGISTERS 256
 template <typename T>
 void launch_attn_softmax_v2(T* vals,
                             T* mask,
+                            T* alibi,
+                            float layer_scale,
                             bool triangular,
                             bool recompute,
                             bool local_attention,
@@ -33,7 +38,9 @@ void launch_attn_softmax_v2(T* vals,
                             int heads,
                             int num_seq,
                             int sequence_length,
-                            float scale,
+                            int offset,
+                            int mask_stride,
+                            int mp_size,
                             cudaStream_t stream);
 
 // Fused bias add with gelu activation
@@ -55,6 +62,7 @@ void launch_bias_residual(T* input,
                           int batch,
                           int hidden_dim,
                           int mp_size,
+                          bool preln,
                           cudaStream_t stream);
 
 template <typename T>
@@ -122,3 +130,31 @@ void launch_moe_res_matmul(T* residual,
                            int seq_len,
                            int hidden_dim,
                            cudaStream_t stream);
+
+// 4D transform [0, 1, 2, 3] -> [0, 2, 1, 3]
+template <typename T>
+void launch_transform4d_0213(T* out,
+                             const T* in,
+                             int batch_size,
+                             int heads,
+                             int seq_length,
+                             int hidden_dim,
+                             cudaStream_t stream,
+                             int trans_count);
+template <typename T>
+void launch_bias_add_transform_0213(T* outputs,
+                                    T* vals,
+                                    T* vals1,
+                                    const T* vals2,
+                                    const T* bias,
+                                    int batch_size,
+                                    int seq_length,
+                                    unsigned seq_offset,
+                                    int seq_length1,
+                                    int hidden_dim,
+                                    int heads,
+                                    int rotary_dim,
+                                    bool rotate_half,
+                                    bool rotate_every_two,
+                                    cudaStream_t stream,
+                                    int trans_count);

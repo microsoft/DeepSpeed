@@ -24,6 +24,9 @@ from .config_utils import (
 from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..monitor.config import DeepSpeedMonitorConfig
+
+from deepspeed import comm as dist
 
 from ..git_version_info import version as __version__
 from ..utils import logger
@@ -42,7 +45,8 @@ from ..elasticity.constants import (
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
-
+from ..compression.config import get_compression_config, get_quantize_enabled
+from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
 TENSOR_CORE_ALIGN_SIZE = 8
@@ -267,73 +271,6 @@ def get_gradient_predivide_factor(param_dict):
     return get_scalar_param(param_dict,
                             GRADIENT_PREDIVIDE_FACTOR,
                             GRADIENT_PREDIVIDE_FACTOR_DEFAULT)
-
-
-def get_quantize_enabled(param_dict):
-    if QUANTIZE_TRAINING in param_dict.keys():
-        return get_scalar_param(
-            param_dict[QUANTIZE_TRAINING],
-            QUANTIZE_TRAINING_ENABLED,
-            QUANTIZE_TRAINING_ENABLED_DEFAULT,
-        )
-    else:
-        return False
-
-
-def get_quantize_training(param_dict):
-    if QUANTIZE_TRAINING in param_dict.keys():
-        return (
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][TARGET_BITS]),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][START_BITS]
-             if START_BITS in param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS].keys() else
-             QUANTIZE_START_BITS_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][QUANTIZE_PERIOD]
-             if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() else
-             QUANTIZE_PERIOD_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][SCHEDULE_OFFSET]
-             if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() and
-             SCHEDULE_OFFSET in param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE].keys()
-             else QUANTIZE_OFFSET_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_GROUPS] if QUANTIZE_GROUPS
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_GROUPS_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE]
-             [FP16_MIXED_QUANTIZE_ENABLED]
-             if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and FP16_MIXED_QUANTIZE_ENABLED
-             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
-             FP16_MIXED_QUANTIZE_ENABLED_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE][QUANTIZE_CHANGE_RATIO]
-             if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and QUANTIZE_CHANGE_RATIO
-             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
-             QUANTIZE_CHANGE_RATIO_DEFAULT),
-            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING]
-             and QUANTIZE_TYPE in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_TYPE]
-             == QUANTIZE_ASYMMETRIC else QUANTIZE_TYPE_DEFAULT),
-            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and QUANTIZE_ROUNDING
-             in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_ROUNDING]
-             == STOCHASTIC_ROUNDING else QUANTIZE_ROUNDING_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_VERBOSE] if QUANTIZE_VERBOSE
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_VERBOSE_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZER_KERNEL] if QUANTIZER_KERNEL
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZER_KERNEL_DEFAULT),
-        )
-    else:
-        return (
-            QUANTIZE_TARGET_BITS_DEFAULT,
-            QUANTIZE_START_BITS_DEFAULT,
-            QUANTIZE_PERIOD_DEFAULT,
-            QUANTIZE_OFFSET_DEFAULT,
-            QUANTIZE_GROUPS_DEFAULT,
-            FP16_MIXED_QUANTIZE_ENABLED_DEFAULT,
-            QUANTIZE_CHANGE_RATIO_DEFAULT,
-            QUANTIZE_TYPE_DEFAULT,
-            QUANTIZE_ROUNDING_DEFAULT,
-            QUANTIZE_VERBOSE_DEFAULT,
-            QUANTIZER_KERNEL_DEFAULT,
-        )
 
 
 def get_steps_per_print(param_dict):
@@ -623,18 +560,10 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
-def get_tensorboard_enabled(param_dict):
-    if TENSORBOARD in param_dict.keys():
-        return get_scalar_param(param_dict[TENSORBOARD],
-                                TENSORBOARD_ENABLED,
-                                TENSORBOARD_ENABLED_DEFAULT)
-    else:
-        return False
-
-
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):
         param_dict = param_dict[QUANTIZE_TRAINING]
+        assert not get_eigenvalue_enabled(param_dict), "Eigenvalue based MoQ is temporarily disabled"
         return (
             get_eigenvalue_enabled(param_dict),
             get_eigenvalue_verbose(param_dict),
@@ -732,26 +661,6 @@ def get_eigenvalue_layer_num(param_dict):
         return EIGENVALUE_LAYER_NUM_DEFAULT
 
 
-def get_tensorboard_output_path(param_dict):
-    if get_tensorboard_enabled(param_dict):
-        return get_scalar_param(
-            param_dict[TENSORBOARD],
-            TENSORBOARD_OUTPUT_PATH,
-            TENSORBOARD_OUTPUT_PATH_DEFAULT,
-        )
-    else:
-        return TENSORBOARD_OUTPUT_PATH_DEFAULT
-
-
-def get_tensorboard_job_name(param_dict):
-    if get_tensorboard_enabled(param_dict):
-        return get_scalar_param(param_dict[TENSORBOARD],
-                                TENSORBOARD_JOB_NAME,
-                                TENSORBOARD_JOB_NAME_DEFAULT)
-    else:
-        return TENSORBOARD_JOB_NAME_DEFAULT
-
-
 def get_checkpoint_params(param_dict):
     return param_dict.get(CHECKPOINT, {})
 
@@ -811,9 +720,9 @@ class DeepSpeedConfig(object):
                 f"Expected a string path to an existing deepspeed config, or a dictionary. Received: {config}"
             )
         try:
-            self.global_rank = torch.distributed.get_rank()
+            self.global_rank = dist.get_rank()
             if mpu is None:
-                self.world_size = torch.distributed.get_world_size()
+                self.world_size = dist.get_world_size()
             else:
                 self.world_size = mpu.get_data_parallel_world_size()
         except:
@@ -905,6 +814,8 @@ class DeepSpeedConfig(object):
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
 
+        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
         self.bfloat16_enabled = get_bfloat16_enabled(param_dict)
@@ -918,20 +829,7 @@ class DeepSpeedConfig(object):
         self.dynamic_loss_scale_args = get_dynamic_loss_scale_args(param_dict)
         self.fp16_fused_mode = get_fp16_fused_mode(param_dict)
 
-        self.quantize_training_enabled = get_quantize_enabled(param_dict)
-        (
-            self.quantize_target_bits,
-            self.quantize_start_bits,
-            self.quantize_period,
-            self.quantize_offset,
-            self.quantize_groups,
-            self.fp16_mixed_quantize,
-            self.quantize_change_rate,
-            self.quantize_type,
-            self.quantize_rounding,
-            self.quantize_verbose,
-            self.use_quantizer_kernel,
-        ) = get_quantize_training(param_dict)
+        self.compression_config = get_compression_config(param_dict)
 
         self.optimizer_name = get_optimizer_name(param_dict)
         if (self.optimizer_name is not None
@@ -952,9 +850,6 @@ class DeepSpeedConfig(object):
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)
         self.autotuning_config = DeepSpeedAutotuningConfig(param_dict)
-        self.tensorboard_enabled = get_tensorboard_enabled(param_dict)
-        self.tensorboard_output_path = get_tensorboard_output_path(param_dict)
-        self.tensorboard_job_name = get_tensorboard_job_name(param_dict)
 
         (
             self.eigenvalue_enabled,
