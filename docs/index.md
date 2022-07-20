@@ -6,7 +6,7 @@ title: "Latest News"
 
 ---
 
-* [2022/07/20] [DeepSpeed Compression: A composable library for extreme compression and zero-cost quantization](BLOGLINK)
+* [2022/07/20] [DeepSpeed Compression: A composable library for extreme compression and zero-cost quantization](https://www.microsoft.com/en-us/research/blog/deepspeed-compression-a-composable-library-for-extreme-compression-and-zero-cost-quantization/)
     * [Tutorial](https://www.deepspeed.ai/tutorials/model-compression/) and [Code examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/model_compression).
     * 50x model size reduction via [XTC](https://arxiv.org/abs/2206.01859) and 5000x compression cost reduction via [ZeroQuant](https://arxiv.org/abs/2206.01861).
 * [2022/03/21] [Supporting efficient large model training on AMD Instinct GPUs with DeepSpeed](https://cloudblogs.microsoft.com/opensource/2022/03/21/supporting-efficient-large-model-training-on-amd-instinct-gpus-with-deepspeed/)
