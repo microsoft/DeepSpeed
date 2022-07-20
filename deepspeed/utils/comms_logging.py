@@ -23,12 +23,37 @@ def convert_size(size_bytes):
 
 # Helper function to calculate algbw and busbw.
 # See https://gist.github.com/jeffra/b5e80466b4c86be00ea3b6f130fb7a36 and https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
-def calc_bw(msg_size, lat):
+def calc_bw_log(comm_op, size, duration):
     import deepspeed.comm as dist
+
     n = dist.get_world_size()
-    algbw = ((msg_size * 8 * 2) / lat) / 1e6
-    busbw = algbw * ((n - 1) / n)
-    return algbw, busbw
+    tput = 0
+    busbw = 0
+    if comm_op == "all_to_all_single":
+        tput = (size / duration)
+        busbw = (size / duration) * ((n - 1) / n)
+    elif comm_op == "all_gather" or comm_op == "all_gather_base" or comm_op == "reduce_scatter" or comm_op == "reduce_scatter_base":
+        size *= n
+        tput = (size / duration)
+        busbw = (size / duration) * ((n - 1) / n)
+    elif comm_op == "all_reduce":
+        tput = (size * 2 / duration)
+        busbw = (size / duration) * (2 * (n - 1) / n)
+    elif comm_op == "send" or comm_op == "recv" or comm_op == "isend" or comm_op == "irecv" or comm_op == "broadcast" or comm_op == "reduce" or comm_op == "gather" or comm_op == "scatter" or comm_op == "barrier":
+        tput = (size / duration)
+        busbw = tput
+    else:
+        print_rank_0("wrong comm_op specified")
+        exit(0)
+
+    # convert to Gbps
+    tput *= 8
+    busbw *= 8
+
+    tput /= 1e6
+    busbw /= 1e6
+
+    return tput, busbw
 
 
 class CommsLogger:
@@ -67,9 +92,9 @@ class CommsLogger:
         self.prof_ops = [op for op in comms_logger.prof_ops if op not in op_name_list]
 
     # Add log entry
-    def append(self, record_name, latency, msg_size):
+    def append(self, raw_name, record_name, latency, msg_size):
         import deepspeed.comm as dist
-        algbw, busbw = calc_bw(msg_size, latency)
+        algbw, busbw = calc_bw_log(raw_name, msg_size, latency)
         if record_name in self.comms_dict.keys():
             # If this comm_op has already been logged with this message size, just add to existing record
             if msg_size in self.comms_dict[record_name].keys():

@@ -128,14 +128,18 @@ def timed_op(func):
             return func(*args, **kwargs)
         finally:
             if comms_logger.enabled:
+                # Need to make op blocking for accurate logging
+                torch.cuda.synchronize()
+                cdb.barrier()
                 if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                         'log_name' in kwargs
                         and kwargs['log_name'] in comms_logger.prof_ops):
                     log_name = get_debug_log_name(func_args, comms_logger.debug)
+                    raw_name = func.__name__
                     timers(log_name).stop()
                     # need temp var since 'elapsed' resets events
                     time_elapsed = timers(log_name).elapsed(reset=False)
-                    comms_logger.append(log_name, time_elapsed, msg_size)
+                    comms_logger.append(raw_name, log_name, time_elapsed, msg_size)
 
     return log_wrapper
 
