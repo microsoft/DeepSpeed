@@ -71,8 +71,9 @@ To further increase the infrence efficency, DeepSpeed provides a new feature, th
 DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
 
 * ![Transformers](/assets/images/hf-transformers.png)
+* ![Accelerate](/assets/images/accelerate.png)
 * ![Lightning](/assets/images/lightning.png)
-* ![MosaicML](/assets/images/mosaicml.png)
+* ![MosaicML](/assets/images/mosaicml.svg)
 
 
 DeepSpeed is an integral part of [Microsoft’s AI at Scale initiative](https://www.microsoft.com/en-us/research/project/ai-at-scale/) to enable next-generation AI capabilities at scale.
