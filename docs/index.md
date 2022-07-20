@@ -32,7 +32,7 @@ DeepSpeed is an easy-to-use deep learning optimization suite that enables unprec
 - Achieve excellent system throughput and efficiently scale to thousands of GPUs
 - Train/Inference on resource constrained GPU systems
 - Achieve unprecedented low latency and high thoughput for inference
-- Achieve extreme compression for an unparalleled inference latency and model size reduction
+- Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs
 
 
 ## Three main innovation pillars
@@ -49,6 +49,8 @@ DeepSpeed offers a confluence of system innovations, that has made large scale D
 
 
 ### DeepSpeed-Compression:
+
+To further increase the infrence efficency, DeepSpeed provides a new feature, that offers an easy-to-use and flexible-to-compose compression library for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Meanwhile, new innovations, like ZeroQuant and XTC, are included under the DeepSpeed-Compression pillar. (See [here](https://www.deepspeed.ai/tutorials/model-compression/) for more details)  
 
 ## DeepSpeed Software Suite
 
