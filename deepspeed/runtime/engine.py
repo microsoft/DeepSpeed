@@ -16,7 +16,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 from typing import Callable, Dict, Union, Iterable
-from deepspeed.checkpoint.utils import get_zero_ckpt_name_for_rank
 
 import deepspeed
 
