@@ -103,19 +103,6 @@ DeepSpeed has been integrated with several different popular open-source DL fram
 | Integrations | [![nv-transformers-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml) [![nv-lightning-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml) |
 | Misc | [![Formatting](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml) [![pages-build-deployment](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment) [![Documentation Status](https://readthedocs.org/projects/deepspeed/badge/?version=latest)](https://deepspeed.readthedocs.io/en/latest/?badge=latest)|
 
-
-# Table of Contents
-| Section                                 | Description                                 |
-| --------------------------------------- | ------------------------------------------- |
-| [Why DeepSpeed?](#why-deepspeed)        |  DeepSpeed overview                         |
-| [Install](#installation)                |  Installation details                       |
-| [Features](#features)                   |  Feature list and overview                  |
-| [Further Reading](#further-reading)     |  Documentation, tutorials, etc.             |
-| [Contributing](#contributing)           |  Instructions for contributing              |
-| [Publications](#publications)           |  Publications related to DeepSpeed          |
-| [Videos](#videos)                       |  Videos related to DeepSpeed                |
-
-
 # Installation
 
 The quickest way to get started with DeepSpeed is via pip, this will install
