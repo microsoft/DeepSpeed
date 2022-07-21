@@ -24,8 +24,6 @@ title: "Latest News"
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
 ---
 # Extreme Speed and Scale for DL Training and Inference
-
-DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference. With DeepSpeed you can:
    
 <p style="text-align: center;"><em>Train/Inference dense or sparse models with billions or trillions of parameters</em></p>
 <p style="text-align: center;"><em>Achieve excellent system throughput and efficiently scale to thousands of GPUs</em></p>
@@ -33,9 +31,7 @@ DeepSpeed is an easy-to-use deep learning optimization software suite that enabl
 <p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
 <p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
 
-   ---
-   
-# DeepSpeed has three innovation pillars
+DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference though innovations along three main areas:
    
 ![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
 
