@@ -53,13 +53,13 @@ DeepSpeed is an important part of Microsoft’s new
 initiative to enable next-generation AI capabilities at scale, where you can find more
 information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale).
 
-## DeepSpeed Library
+# DeepSpeed Library
 
    The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use repository. It allows for easy composition of multitude of features within a single training, infernece or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see [DeepSpeed Adoption](#deepspeed-adoption)).
 
 **_For further documentation, tutorials, and technical deep-dives please see [deepspeed.ai](https://www.deepspeed.ai/)!_**
 
-## DeepSpeed Adoption
+# DeepSpeed Adoption
 
 DeepSpeed has been used to train many different large-scale models, below is a list of several examples that we are aware of (if you'd like to include your model please submit a PR):
 
@@ -103,15 +103,6 @@ DeepSpeed has been integrated with several different popular open-source DL fram
 | [Publications](#publications)           |  Publications related to DeepSpeed          |
 | [Videos](#videos)                       |  Videos related to DeepSpeed                |
 
-# Why DeepSpeed?
-Training advanced deep learning models is challenging. Beyond model design,
-model scientists also need to set up the state-of-the-art training techniques
-such as distributed training, mixed precision, gradient accumulation, and
-checkpointing. Yet still, scientists may not achieve the desired system
-performance and convergence rate. Large model sizes are even more challenging:
-a large model easily runs out of memory with pure data parallelism and it is
-difficult to use model parallelism. DeepSpeed addresses these challenges to
-accelerate model development *and* training.
 
 # Installation
 
