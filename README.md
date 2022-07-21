@@ -142,59 +142,8 @@ On Windows you can build wheel with following steps, currently only inference mo
 4. Run `python setup.py bdist_wheel` to build wheel in `dist` folder
 
 # Features
-Below we provide a brief feature list, see our detailed [feature
-overview](https://www.deepspeed.ai/features/) for descriptions and usage.
 
-* [Distributed Training with Mixed Precision](https://www.deepspeed.ai/features/#distributed-training-with-mixed-precision)
-  * 16-bit mixed precision
-  * Single-GPU/Multi-GPU/Multi-Node
-* [Model Parallelism](https://www.deepspeed.ai/features/#model-parallelism)
-  * Support for Custom Model Parallelism
-  * Integration with Megatron-LM
-* [Pipeline Parallelism](https://www.deepspeed.ai/tutorials/pipeline/)
-  * 3D Parallelism
-* [The Zero Redundancy Optimizer (ZeRO)](https://www.deepspeed.ai/tutorials/zero/)
-  * Optimizer State and Gradient Partitioning
-  * Activation Partitioning
-  * Constant Buffer Optimization
-  * Contiguous Memory Optimization
-* [ZeRO-Offload](https://www.deepspeed.ai/tutorials/zero-offload/)
-  * Leverage both CPU/GPU memory for model training
-  * Support 10B model training on a single GPU
-* [Ultra-fast dense transformer kernels](https://www.deepspeed.ai/2020/05/18/bert-record.html)
-* [Sparse attention](https://www.deepspeed.ai/2020/09/08/sparse-attention-news.html)
-  * Memory- and compute-efficient sparse kernels
-  * Support 10x longer sequences than dense
-  * Flexible support to different sparse structures
-* [1-bit Adam](https://www.deepspeed.ai/2020/09/08/onebit-adam-blog-post.html), [0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/) and [1-bit LAMB](https://www.deepspeed.ai/tutorials/onebit-lamb/)
-  * Custom communication collective
-  * Up to 26x communication volume saving
-* [Additional Memory and Bandwidth Optimizations](https://www.deepspeed.ai/features/#additional-memory-and-bandwidth-optimizations)
-  * Smart Gradient Accumulation
-  * Communication/Computation Overlap
-* [Training Features](https://www.deepspeed.ai/features/#training-features)
-  * Simplified training API
-  * Gradient Clipping
-  * Automatic loss scaling with mixed precision
-* [Training Optimizers](https://www.deepspeed.ai/features/#training-optimizers)
-  * Fused Adam optimizer and arbitrary `torch.optim.Optimizer`
-  * Memory bandwidth optimized FP16 Optimizer
-  * Large Batch Training with LAMB Optimizer
-  * Memory efficient Training with ZeRO Optimizer
-  * CPU-Adam
-* [Training Agnostic Checkpointing](https://www.deepspeed.ai/features/#training-agnostic-checkpointing)
-* [Advanced Parameter Search](https://www.deepspeed.ai/features/#advanced-parameter-search)
-  * Learning Rate Range Test
-  * 1Cycle Learning Rate Schedule
-* [Simplified Data Loader](https://www.deepspeed.ai/features/#simplified-data-loader)
-* [Curriculum Learning](https://www.deepspeed.ai/tutorials/curriculum-learning/)
-  * A curriculum learning-based data pipeline that presents easier or simpler examples earlier during training
-  * Stable and 3.3x faster GPT-2 pre-training with 8x/4x larger batch size/learning rate while maintaining token-wise convergence speed
-  * Complementary to many other DeepSpeed features
-* [Performance Analysis and Debugging](https://www.deepspeed.ai/features/#performance-analysis-and-debugging)
-* [Mixture of Experts (MoE)](https://www.deepspeed.ai/tutorials/mixture-of-experts/)
-
-
+Please checkout [DeepSpeed-Training](https://www.deepspeed.ai/docs/traning), [DeepSpeed-Inference](https://www.deepspeed.ai/docs/inference) and [DeepSpeed-Compression](https://www.deepspeed.ai/docs/compression) pages for full set of features offered along each of these three pillars.
 # Further Reading
 
 All DeepSpeed documentation can be found on our website: [deepspeed.ai](https://www.deepspeed.ai/)
