@@ -124,7 +124,7 @@ We recognize that DeepSpeed users are diverse and have different environments. I
 
 > The easiest way to do model training on Azure is via the Azure ML recipes. The job submission and data preparation scripts have been made available [here](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml). Users simply need to setup their Azure ML workspace following the [guide](https://github.com/Azure/azureml-examples/tree/main/python-sdk#set-up) and submit experiment using the aml_submit.py file.
 
-Some users have customized environments built on top of Azure VMs and VMSS based clusters. To simplify training on such setups, we are working on an easy-to-use cluster setup script that will be published in the next few weeks. Existing [VM-based cluster setup scripts](https://github.com/microsoft/DeepSpeed/tree/master/azure) can be used in the meantime. Once the users have a running cluster, the next step is to use the [azure recipes](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azure) already made available for the 175B and the 1T model. The recipes can easily be modified to train other model configurations.
+Some users have customized environments built on top of Azure VMs and VMSS based clusters. To simplify training on such setups, we are working on an easy-to-use cluster setup script that will be published in the next few weeks. If you already have a cluster setup running, you can use the [azure recipes](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azure) for the 175B and the 1T model. The recipes can easily be modified to train other model configurations.
 
 ## Acknowledgement
 
