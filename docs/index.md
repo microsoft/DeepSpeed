@@ -30,7 +30,7 @@ title: "Latest News"
 <p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
 <p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
 
-   DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. It has innovation pillars.
+   DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference through innovations along three major areas:
    
 ### DeepSpeed-Training:  
 
@@ -47,6 +47,8 @@ To further increase the inference efficency, DeepSpeed offers easy-to-use and fl
 
 ## DeepSpeed Software Suite
 
+The innovations and technology developed by the DeepSpeed Team are implemented and packaged into the following software artifacts:
+   
 ### DeepSpeed Library
 
    The [DeepSpeed](https://github.com/microsoft/deepspeed) library is an open-sourced repository that implements and packages the innovations and technologies developed under the DeepSpeed pillars.
