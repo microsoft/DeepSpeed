@@ -9,12 +9,8 @@
  <img src="docs/assets/images/DeepSpeed_dark_transparent.svg#gh-dark-mode-only" width="400px">
 </div>
 
-<!--
-Remove until pypi issue is resolved: https://status.python.org/incidents/2jj696st6yn5
-[![Downloads](https://pepy.tech/badge/deepspeed/month)](https://pepy.tech/project/deepspeed)
--->
 ## Latest News
-<b> DeepSpeed trained the world's most powerful language models: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed) <b>
+<b> DeepSpeed trained the world's most powerful language models: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed) </b>
 * [2022/06/22] DeepSpeed Compression: 50x model size reduction via [XTC](https://arxiv.org/abs/2206.01859) and 5000x compression cost reduction via [ZeroQuant](https://arxiv.org/abs/2206.01861). Stay tuned for upcoming code release!
 * [2022/03/21] [Supporting efficient large model training on AMD Instinct GPUs with DeepSpeed](https://cloudblogs.microsoft.com/opensource/2022/03/21/supporting-efficient-large-model-training-on-amd-instinct-gpus-with-deepspeed/)
 * [2022/03/07] [Maximizing Communication Efficiency for Large-scale Training via 0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/)
