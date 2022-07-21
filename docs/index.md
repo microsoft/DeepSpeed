@@ -1,5 +1,3 @@
-<b> DeepSpeed trained the world's most powerful language models: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed) <b>
-
 ---
 layout: single
 toc: true
@@ -7,6 +5,8 @@ toc_label: "Contents"
 title: "Latest News"
 
 ---
+
+<b> DeepSpeed trained the world's most powerful language models: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed) <b>
 
 * [2022/07/20] [DeepSpeed Compression: A composable library for extreme compression and zero-cost quantization](https://www.microsoft.com/en-us/research/blog/deepspeed-compression-a-composable-library-for-extreme-compression-and-zero-cost-quantization/)
     * [Tutorial](https://www.deepspeed.ai/tutorials/model-compression/) and [Code examples](https://github.com/microsoft/DeepSpeedExamples/tree/master/model_compression).
@@ -47,8 +47,6 @@ DeepSpeed brings together innovations in parallelism technology such as tensor, 
 To further increase the inference efficency, DeepSpeed offers easy-to-use and flexible-to-compose compression techniques for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Moreover, SoTA innovations on compression like ZeroQuant and XTC are included under the DeepSpeed-Compression pillar. (See [here](https://www.deepspeed.ai/tutorials/model-compression/) for more details)  
 
 ## DeepSpeed Software Suite
-
-The innovations and technology developed by the DeepSpeed Team are implemented and packaged into the following software artifacts:
    
 ### DeepSpeed Library
 
