@@ -932,13 +932,13 @@ def _reload_tensor_methods():
     torch.mul = old_functions[torch.mul.__str__]
     torch.Tensor.mul = old_functions[torch.Tensor.mul.__str__]
     torch.add = old_functions[torch.add.__str__]
-    torch.Tensor.add = old_functions[torch.Tensor.add.__str__]    
+    torch.Tensor.add = old_functions[torch.Tensor.add.__str__]
 
     torch.einsum = old_functions[torch.einsum.__str__]
 
     torch.baddbmm = old_functions[torch.baddbmm.__str__]
 
-    
+
 def _rnn_flops(flops, rnn_module, w_ih, w_hh, input_size):
     # matrix matrix mult ih state and internal state
     flops += w_ih.shape[0] * w_ih.shape[1]
