@@ -15,6 +15,8 @@ class DeepSpeedNebulaConfig(DeepSpeedConfigObject):
         self.persistent_storage_path = None
         self.persistent_time_interval = None
         self.num_of_version_in_retention = None
+        self.enable_nebula_load = None
+        self.load_path_tier3 = None
 
         if NEBULA in param_dict.keys():
             nebula_dict = param_dict[NEBULA]
@@ -46,3 +48,11 @@ class DeepSpeedNebulaConfig(DeepSpeedConfigObject):
             nebula_dict,
             NEBULA_NUM_OF_VERSION_IN_RETENTION,
             NEBULA_NUM_OF_VERSION_IN_RETENTION_DEFAULT)
+
+        self.enable_nebula_load = get_scalar_param(nebula_dict,
+                                                   NEBULA_ENABLE_NEBULA_LOAD,
+                                                   NEBULA_ENABLE_NEBULA_LOAD_DEFAULT)
+
+        self.nebula_load_path_tier3 = get_scalar_param(nebula_dict,
+                                                       NEBULA_LOAD_PATH_TIER3,
+                                                       NEBULA_LOAD_PATH_TIER3_DEFAULT)

@@ -801,10 +801,16 @@ class DeepSpeedEngine(Module):
 
     def _configure_checkpointing(self, dist_init_required):
         if self._config is not None and self._config.nebula_config.enabled:
-            from deepspeed.runtime.checkpoint_engine.nebula_checkpoint_engine import \
-                NebulaCheckpointEngine
-            self.checkpoint_engine = NebulaCheckpointEngine(
-                config_params=self._config.nebula_config)
+            try:
+                from deepspeed.runtime.checkpoint_engine.nebula_checkpoint_engine import \
+                    NebulaCheckpointEngine
+                self.checkpoint_engine = NebulaCheckpointEngine(
+                    config_params=self._config.nebula_config)
+            except ImportError as err:
+                logger.error(
+                    f"No torch_nebula was found! Will fall back to torch.save. Details: {err}"
+                )
+                self.checkpoint_engine = CheckpointEngine()
         else:
             self.checkpoint_engine = CheckpointEngine()
 
@@ -2496,9 +2502,7 @@ class DeepSpeedEngine(Module):
                         load_optimizer_states=True,
                         load_lr_scheduler_states=True,
                         load_module_only=False,
-                        custom_load_fn=None,
-                        enable_nebula_load=True,
-                        nebula_load_path_tier3=None):
+                        custom_load_fn=None):
         """Load training checkpoint
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
@@ -2520,9 +2524,9 @@ class DeepSpeedEngine(Module):
         checkpoint_engine_tmp = self.checkpoint_engine
         if not self.config is None and \
                 self._config.nebula_config.enabled and \
-                enable_nebula_load == False:
+                self._config.nebula_config.enable_nebula_load == False:
             self.checkpoint_engine = CheckpointEngine()
-        self.persist_path = nebula_load_path_tier3
+        self.persist_path = self._config.nebula_config.load_path_tier3
 
         if tag is None:
             latest_tag = "latest_universal" if self.load_universal_checkpoint(
