@@ -10,4 +10,4 @@ DeepSpeed-Inference introduces several features to efficiently serve transformer
 
 DeepSpeed provides a seamless inference mode for compatible transformer based models trained using DeepSpeed, Megatron, and HuggingFace, meaning that we don’t require any change on the modeling side such as exporting the model or creating a different checkpoint from your trained checkpoints. To run inference on multi-GPU for compatible models, provide the model parallelism degree and the checkpoint information or the model which is already loaded from a checkpoint, and DeepSpeed will do the rest. It will automatically partition the model as necessary, inject compatible high performance kernels into your model and manage the inter-gpu communication. For list of compatible models please see [here](https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/module_inject/replace_policy.py).
 
-To get started with DeepSpeed-Inference, please checkout our [tutorial](/_tutorials/inference-tutorial)
+To get started with DeepSpeed-Inference, please checkout our [tutorial](https://www.deepspeed.ai/tutorials/inference-tutorial/).
