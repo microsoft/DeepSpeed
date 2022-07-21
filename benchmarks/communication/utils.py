@@ -132,6 +132,7 @@ def convert_size(size_bytes):
     s = round(size_bytes / p, 2)
     return "%s %s" % (s, size_name[i])
 
+
 # Copied from torch. Need to add the func here for old torch compatibility.
 def _element_size(dtype):
     """
@@ -149,6 +150,7 @@ def _element_size(dtype):
         return 1
     else:
         return torch.iinfo(dtype).bits >> 3
+
 
 def benchmark_parser():
     parser = argparse.ArgumentParser()
@@ -187,21 +189,11 @@ def benchmark_parser():
     parser.add_argument("--scan",
                         action="store_true",
                         help='Enables scanning all message sizes')
-    parser.add_argument("--all-reduce",
-                        action="store_true",
-                        help='Run all_reduce')
-    parser.add_argument("--all-gather",
-                        action="store_true",
-                        help='Run all_gather')
-    parser.add_argument("--all-to-all",
-                        action="store_true",
-                        help='Run all_to_all')
-    parser.add_argument("--pt2pt",
-                        action="store_true",
-                        help='Run pt2pt')
-    parser.add_argument("--broadcast",
-                        action="store_true",
-                        help='Run broadcast')
+    parser.add_argument("--all-reduce", action="store_true", help='Run all_reduce')
+    parser.add_argument("--all-gather", action="store_true", help='Run all_gather')
+    parser.add_argument("--all-to-all", action="store_true", help='Run all_to_all')
+    parser.add_argument("--pt2pt", action="store_true", help='Run pt2pt')
+    parser.add_argument("--broadcast", action="store_true", help='Run broadcast')
     parser.add_argument("--dtype",
                         type=str,
                         default=DEFAULT_TYPE,
