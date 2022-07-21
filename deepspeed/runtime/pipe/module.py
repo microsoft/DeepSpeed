@@ -564,7 +564,7 @@ class PipelineModule(nn.Module):
         ckpt_files.sort()
         return ckpt_files
 
-    def save_state_dict(self, save_dir, checkpoint_engine=None):
+    def save_state_dict(self, save_dir, checkpoint_engine):
         if self._grid.data_parallel_id != 0:
             return
 
@@ -587,10 +587,7 @@ class PipelineModule(nn.Module):
                  v in orig_state_dict.items()})
             checkpoint_engine.save(final_state_dict, model_ckpt_path)
 
-    def load_state_dir(self,
-                       load_dir,
-                       strict=True,
-                       checkpoint_engine=CheckpointEngine()):
+    def load_state_dir(self, load_dir, checkpoint_engine, strict=True):
         for idx, layer in enumerate(self.forward_funcs):
             # Functions, etc. will not have state_dicts
             if not hasattr(layer, 'load_state_dict'):

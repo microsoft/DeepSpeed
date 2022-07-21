@@ -19,19 +19,19 @@ AUTO_MODULE_KEY = 'auto'
 
 class SDLoaderFactory:
     @staticmethod
-    def get_sd_loader_json(json_file):
+    def get_sd_loader_json(json_file, checkpoint_engine):
         with open(json_file) as f:
             data = json.load(f)
             sd_type = data['type']
             ckpt_list = data['checkpoints']
             version = data['version']
-            return SDLoaderFactory.get_sd_loader(ckpt_list, sd_type, version)
+            return SDLoaderFactory.get_sd_loader(ckpt_list,
+                                                 checkpoint_engine,
+                                                 sd_type,
+                                                 version)
 
     @staticmethod
-    def get_sd_loader(ckpt_list,
-                      sd_type='Megatron',
-                      version=None,
-                      checkpoint_engine=None):
+    def get_sd_loader(ckpt_list, checkpoint_engine, sd_type='Megatron', version=None):
         if sd_type == 'Megatron':
             return MegatronSDLoader(ckpt_list, version, checkpoint_engine)
         else:
@@ -39,7 +39,7 @@ class SDLoaderFactory:
 
 
 class SDLoaderBase(ABC):
-    def __init__(self, ckpt_list, version, checkpoint_engine=None):
+    def __init__(self, ckpt_list, version, checkpoint_engine):
         self.module_key = None
         self.ckpt_list = ckpt_list
         self.version = version
@@ -204,7 +204,7 @@ class SDLoaderBase(ABC):
 
 
 class MegatronSDLoader(SDLoaderBase):
-    def __init__(self, ckpt_list, version, checkpoint_engine=None):
+    def __init__(self, ckpt_list, version, checkpoint_engine):
         super().__init__(ckpt_list, version, checkpoint_engine)
         """
         ## Q/K/V data need special processing

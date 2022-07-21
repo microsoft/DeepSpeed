@@ -9,6 +9,7 @@ from deepspeed.utils import groups
 
 from torch.nn.modules import Module
 from packaging import version as pkg_version
+from deepspeed.runtime.checkpoint_engine.checkpoint_engine import CheckpointEngine
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
@@ -90,6 +91,7 @@ class InferenceEngine(Module):
         self.expert_mp_group = expert_mp_group
         self.enable_cuda_graph = enable_cuda_graph
         self.cuda_graph_created = False
+        self.checkpoint_engine = CheckpointEngine()
         self._init_quantization_setting(quantization_setting)
 
         if enable_cuda_graph:
@@ -299,9 +301,10 @@ class InferenceEngine(Module):
                         tag = fd.read().strip()
 
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
-            sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
+            sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
-            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir,
+                                                           self.checkpoint_engine)
 
         mp_rank = 0 if self.mpu is None else self.mpu.get_model_parallel_rank()
 
