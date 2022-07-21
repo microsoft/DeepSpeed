@@ -2398,7 +2398,9 @@ class DeepSpeedEngine(Module):
         if custom_load_fn:
             custom_load_fn(src=state_dict, dst=self.module)
         else:
-            self.module.load_state_dict(state_dict, strict=strict)
+            self.module.load_state_dict(state_dict,
+                                        checkpoint_engine=self.checkpoint_engine,
+                                        strict=strict)
 
     def _get_zero_ckpt_prefix(self, dp_rank, bf16_mode):
         return f'{"bf16_" if bf16_mode else ""}zero_pp_rank_{dp_rank}'

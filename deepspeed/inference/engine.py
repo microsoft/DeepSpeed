@@ -1,6 +1,7 @@
 '''
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
+from deepspeed.runtime.checkpoint_engine import checkpoint_engine
 import torch
 import os
 
@@ -421,10 +422,12 @@ class InferenceEngine(Module):
                     state_dict=checkpoint[self._choose_module_key(checkpoint)],
                     old_moe_load=old_moe_load,
                     model=self.module,
-                    mpu=self.mpu)
+                    mpu=self.mpu,
+                    checkpoint_engine=self.checkpoint_engine)
 
             self.module.load_state_dict(
                 state_dict=checkpoint[self._choose_module_key(checkpoint)],
+                checkpoint_engine=self.checkpoint_engine,
                 strict=load_module_strict)
 
     def _choose_module_key(self, sd):
