@@ -31,7 +31,7 @@ title: "Latest News"
 <p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
 <p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
 
-DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference though innovations along three main areas:
+DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference though innovations along three main pillars:
    
 ![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
 
