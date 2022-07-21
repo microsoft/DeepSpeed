@@ -22,7 +22,7 @@ title: "Latest News"
 
 
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
----
+   
 # Extreme Speed and Scale for DL Training and Inference
 
    DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference. With DeepSpeed you can:
@@ -32,7 +32,6 @@ title: "Latest News"
 <p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
 <p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
 
----
    
 # DeepSpeed has three innovation pillars:
    
@@ -50,9 +49,7 @@ DeepSpeed brings together innovations in parallelism technology such as tensor, 
 ## DeepSpeed-Compression
    
 To further increase the inference efficency, DeepSpeed offers easy-to-use and flexible-to-compose compression techniques for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Moreover, SoTA innovations on compression like ZeroQuant and XTC are included under the DeepSpeed-Compression pillar. Learn more: [DeepSpeed-Compression](/_pages/compression)
-   
----
-   
+      
 # DeepSpeed Software Suite
    
 ## DeepSpeed Library
@@ -67,8 +64,6 @@ To further increase the inference efficency, DeepSpeed offers easy-to-use and fl
    
    DeepSpeed users are diverse and have access to different environments. We recommend to try DeepSpeed on Azure as it is the simplest and easiest method. The recommended method to try DeepSpeed on Azure is through AzureML [recipes](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed). The job submission and data preparation scripts have been made available [here](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml). For more details on how to use DeepSpeed on Azure, please follow the [Azure tutorial](https://www.deepspeed.ai/tutorials/azure/). 
    
----
-
 # DeepSpeed Adoption
 
 DeepSpeed has been used to train many different large-scale models, below is a list of several examples that we are aware of (if you'd like to include your model please submit a PR):
