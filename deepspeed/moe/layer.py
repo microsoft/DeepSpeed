@@ -47,7 +47,7 @@ class MoE(torch.nn.Module):
             drop_tokens (bool, optional): default=True, whether to drop tokens - (setting to False is equivalent to infinite capacity).
             use_rts (bool, optional): default=True, whether to use Random Token Selection.
             use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
-            enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
+            moe_mp_world_size(int, optional): default=1, numbers of ranks in expert tensor parallel world or group
         """
 
         super(MoE, self).__init__()
