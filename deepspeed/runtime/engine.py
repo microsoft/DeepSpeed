@@ -245,6 +245,7 @@ class DeepSpeedEngine(Module):
         self.use_ds_comm = False  # False --> Use torch.dist, True --> Use ds.comm backend.
 
         self.checkpoint_engine = None
+        self.checkpoint_load_engine = None
 
         global dist
         from deepspeed import comm as dist
@@ -800,19 +801,22 @@ class DeepSpeedEngine(Module):
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
+        self.checkpoint_engine = CheckpointEngine()
+        self.checkpoint_load_engine = self.checkpoint_engine
+
         if self._config is not None and self._config.nebula_config.enabled:
             try:
                 from deepspeed.runtime.checkpoint_engine.nebula_checkpoint_engine import \
                     NebulaCheckpointEngine
                 self.checkpoint_engine = NebulaCheckpointEngine(
                     config_params=self._config.nebula_config)
+                if self._config.nebula_config.enable_nebula_load:
+                    self.checkpoint_load_engine = self.checkpoint_engine
             except ImportError as err:
                 logger.error(
                     f"No torch_nebula was found! Will fall back to torch.save. Details: {err}"
                 )
                 self.checkpoint_engine = CheckpointEngine()
-        else:
-            self.checkpoint_engine = CheckpointEngine()
 
         dp_rank = self.global_rank
         if self.mpu:
@@ -2520,11 +2524,6 @@ class DeepSpeedEngine(Module):
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
         before ``load_checkpoint()``.
         """
-        checkpoint_engine_tmp = self.checkpoint_engine
-        if not self.config is None and \
-                self._config.nebula_config.enabled and \
-                self._config.nebula_config.enable_nebula_load == False:
-            self.checkpoint_engine = CheckpointEngine()
         self.persist_path = self._config.nebula_config.load_path_tier3
 
         if tag is None:
@@ -2570,7 +2569,6 @@ class DeepSpeedEngine(Module):
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
 
-        self.checkpoint_engine = checkpoint_engine_tmp
         self.persist_path = None
 
         return load_path, client_states
@@ -2589,7 +2587,7 @@ class DeepSpeedEngine(Module):
         ckpt_list = self._get_all_ckpt_names(load_dir, tag)
         sd_loader = SDLoaderFactory.get_sd_loader(
             ckpt_list,
-            checkpoint_engine=self.checkpoint_engine)
+            checkpoint_engine=self.checkpoint_load_engine)
 
         is_pipe_parallel = isinstance(self.module, PipelineModule)
 
@@ -2617,7 +2615,7 @@ class DeepSpeedEngine(Module):
                                                 model=self.module,
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts,
-                                                checkpoint_engine=self.checkpoint_engine)
+                                                checkpoint_engine=self.checkpoint_load_engine)
         if not self.load_universal_checkpoint():
             self.load_module_state_dict(state_dict=checkpoint['module'],
                                         strict=load_module_strict,
@@ -2634,7 +2632,7 @@ class DeepSpeedEngine(Module):
                 largest_group_name = groups._get_max_expert_size_name()
                 expp_rank = groups._get_expert_parallel_rank(largest_group_name)
                 optim_load_path = self._get_optimizer_ckpt_name(load_dir, tag, expp_rank)
-                optim_checkpoint = self.checkpoint_engine.load(
+                optim_checkpoint = self.checkpoint_load_engine.load(
                     optim_load_path,
                     map_location=torch.device('cpu'))
             else:
@@ -2803,7 +2801,7 @@ class DeepSpeedEngine(Module):
             # Fully load state for current rank
             if self.zero_elastic_checkpoint() or dist.get_rank(
                     group=self.optimizer.dp_process_group) == i:
-                _state = self.checkpoint_engine.load(
+                _state = self.checkpoint_load_engine.load(
                     ckpt_name,
                     map_location='cpu',
                 )
