@@ -17,7 +17,7 @@ title: "Latest News"
 # Extreme Speed and Scale for DL Training and Inference
 
    DeepSpeed is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference. With DeepSpeed you can:
-   
+
 * Train/Inference dense or sparse models with billions or trillions of parameters
 * Achieve excellent system throughput and efficiently scale to thousands of GPUs
 * Train/Inference on resource constrained GPU systems
