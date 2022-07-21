@@ -30,7 +30,7 @@ class MoE(torch.nn.Module):
                  drop_tokens: bool = True,
                  use_rts=True,
                  use_tutel: bool = False,
-                 enable_expert_tensor_parallelism: bool = False):
+                 moe_mp_world_size=1):
         """Initialize an MoE layer.
 
         Arguments:
@@ -53,13 +53,16 @@ class MoE(torch.nn.Module):
         super(MoE, self).__init__()
 
         self.use_residual = use_residual
+        self.enable_expert_tensor_parallelism = (moe_mp_world_size > 1)
         self.ep_size = min(
             ep_size,
-            num_experts)  # the ep size should be less than the number of experts
-        self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
+            num_experts,
+            dist.get_world_size() //
+            moe_mp_world_size)  # the ep size should be less than the number of experts
+
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
-        self.num_local_experts = 1 if num_experts < ep_size else num_experts // ep_size
+        self.num_local_experts = 1 if num_experts < self.ep_size else num_experts // self.ep_size
 
         log_dist(
             f'Creating MoE layer with num_experts: {num_experts} | num_local_experts: {self.num_local_experts} | expert_parallel_size: {ep_size}',
