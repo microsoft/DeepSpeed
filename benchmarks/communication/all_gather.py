@@ -9,16 +9,16 @@ import os
 import math
 
 
-# Run allgather and print metrics
-def timed_allgather(input, output, args):
+# Run all_gather and print metrics
+def timed_all_gather(input, output, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
     sync_all()
-    # Warmup, establish connections, etc.
-    for i in range(args.warmup):
+    # Warmups, establish connections, etc.
+    for i in range(args.warmups):
         # use all_gather_base if available
         if args.dist == 'torch':
             if hasattr(torch.distributed, "_all_gather_base"):
@@ -53,7 +53,7 @@ def timed_allgather(input, output, args):
     avg_duration = duration / args.trials
     size = input.element_size() * input.nelement()
     n = dist.get_world_size()
-    tput, busbw = get_bw('allgather', size, avg_duration, args)
+    tput, busbw = get_bw('all_gather', size, avg_duration, args)
     tput_str, busbw_str, duration_str = get_metric_strings(args, tput, busbw, avg_duration)
     desc = f'{input.nelement()}x{input.element_size()}'
 
@@ -62,14 +62,14 @@ def timed_allgather(input, output, args):
     )
 
 
-def run_allgather(local_rank, args):
+def run_all_gather(local_rank, args):
     if args.dist == 'torch':
         import torch.distributed as dist
     elif args.dist == 'deepspeed':
         import deepspeed.comm as dist
 
     # Prepare benchmark header
-    print_header(args, 'allgather')
+    print_header(args, 'all_gather')
     global_rank = dist.get_rank()
     world_size = dist.get_world_size()
 
@@ -103,7 +103,7 @@ def run_allgather(local_rank, args):
                     sync_all()
                     break
             sync_all()
-            timed_allgather(input, output, args)
+            timed_all_gather(input, output, args)
     else:
         # all_gather_base saves memory
         if (args.dist == 'torch'
@@ -115,7 +115,7 @@ def run_allgather(local_rank, args):
             mem_factor = args.mem_factor
         # Send the biggest message size our GPUs can fit. If you're facing OOM errors, reduce the mem_factor
         sync_all()
-        elements_per_gpu = max_numel(comm_op='allgather',
+        elements_per_gpu = max_numel(comm_op='all_gather',
                                      dtype=getattr(torch,
                                                    args.dtype),
                                      mem_factor=mem_factor,
@@ -143,11 +143,11 @@ def run_allgather(local_rank, args):
                 return
 
         sync_all()
-        timed_allgather(input, output, args)
+        timed_all_gather(input, output, args)
 
 
 if __name__ == "__main__":
     args = benchmark_parser().parse_args()
     rank = args.local_rank
     init_processes(local_rank=rank, args=args)
-    run_allgather(local_rank=rank, args=args)
+    run_all_gather(local_rank=rank, args=args)
