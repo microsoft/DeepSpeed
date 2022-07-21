@@ -77,8 +77,7 @@ defaults:
       sidebar:
         nav: "lnav"
   - scope:
-      path: ""
-      type: pages
+      path: "_pages"
     values:
       permalink: /docs/:basename/
       toc: true
