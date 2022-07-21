@@ -65,12 +65,11 @@ The innovations and technology developed by the DeepSpeed Team are implemented a
 
 DeepSpeed has been used to train many different large-scale models, below is a list of several examples that we are aware of (if you'd like to include your model please submit a PR):
 
-  * Megatron-Turing NLG (530B)
-  * Jurassic-1 (178B)
-  * BLOOM (176B)
-  * YaLM (100B)
-  * GPT-NeoX (20B)
-  * CogView2
+  * [Megatron-Turing NLG (530B)](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/)
+  * [Jurassic-1 (178B)](https://uploads-ssl.webflow.com/60fd4503684b466578c0d307/61138924626a6981ee09caf6_jurassic_tech_paper.pdf)
+  * [BLOOM (176B)](https://huggingface.co/blog/bloom-megatron-deepspeed)
+  * [YaLM (100B)](https://github.com/yandex/YaLM-100B)
+  * [GPT-NeoX (20B)](https://github.com/EleutherAI/gpt-neox)
    
 DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
 
