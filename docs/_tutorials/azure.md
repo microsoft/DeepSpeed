@@ -3,18 +3,21 @@ title: "Getting Started with DeepSpeed on Azure"
 tags: getting-started
 ---
 
-This tutorial will help you get started running DeepSpeed on [Azure virtual
-machines](https://azure.microsoft.com/en-us/services/virtual-machines/).
-Looking forward, we will be integrating these techniques and additional enhancements
-into the [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/) platform to
-benefit all your large model training jobs.
+This tutorial will help you get started with DeepSpeed on Azure.
 
 If you don't already have an Azure account please see more details here: [https://azure.microsoft.com/](https://azure.microsoft.com/).
 
-To use DeepSpeed on [Azure ML](https://azure.microsoft.com/en-us/services/machine-learning/), please take a look at easy-to-use examples for Transformers and CIFAR training from [AzureML Examples GitHub](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed).
+# DeepSpeed on Azure via AzureML
 
-To help with launching Azure instances we suggest using the [Azure
-CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest). We have created
+The recommended and simplest method to try DeepSpeed on Azure is through [AzureML](https://azure.microsoft.com/en-us/services/machine-learning/). Please take a look at easy-to-use examples for Megatron-DeepSpeed, Transformers and CIFAR training [here](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed).
+
+> Our [Megatron-DeepSpeed](https://github.com/microsoft/megatron-deepspeed) contains the most up to date [recipe](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml) for end-to-end training on AzureML.
+
+# DeepSpeed on Azure VMs
+
+If you don't have access to AzureML or if want to build a custom environments using Azure virtual machines](https://azure.microsoft.com/en-us/services/virtual-machines/), please follow the steps below.
+
+To help with launching Azure instances we suggest using the [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/?view=azure-cli-latest). We have created
 several helper scripts to get you quickly started using DeepSpeed with Azure.
  * Install Azure CLI on your local box: [https://docs.microsoft.com/en-us/cli/azure/install-azure-cli](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli).
  * Alternatively, you can use the Azure in-browser shell: [https://shell.azure.com/](https://shell.azure.com/).
@@ -124,11 +127,3 @@ the first DeepSpeed container:
   ```bash
   deepspeed cifar10_deepspeed.py --deepspeed --deepspeed_config ds_config.json
   ```
-
-## Megatron-LM GPT2
-DeepSpeed includes an example model using Megatron-LM's GPT2. Please refer to the full
-[Megatron tutorial](/tutorials/megatron/) for more details.
- * In order to fully train GPT2 with DeepSpeed and ZeRO we recommend using 8 instances of
-   Azure's Standard_ND40rs_v2 SKU for a total of 64 NVIDIA V100 GPUs. With this setup and
-   a batch size of 1536 you should be able to complete 100k training steps (153.6 million
-   samples) in less than 2 weeks of training.
