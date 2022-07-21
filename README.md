@@ -47,15 +47,15 @@ DeepSpeed brings together innovations in parallelism technology such as tensor, 
 ### DeepSpeed-Compression:
 
 To further increase the inference efficency, DeepSpeed offers easy-to-use and flexible-to-compose compression techniques for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Moreover, SoTA innovations on compression like ZeroQuant and XTC are included under the DeepSpeed-Compression pillar. Learn more: [DeepSpeed-Compression](/_pages/compression) 
-      
-## DeepSpeed Library
-
-   The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use repository. It allows for easy composition of multitude of features within a single training, infernece or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see [DeepSpeed Adoption](#deepspeed-adoption)).
 
 DeepSpeed is an important part of Microsoft’s new
 [AI at Scale](https://www.microsoft.com/en-us/research/project/ai-at-scale/)
 initiative to enable next-generation AI capabilities at scale, where you can find more
 information [here](https://innovation.microsoft.com/en-us/exploring-ai-at-scale).
+
+## DeepSpeed Library
+
+   The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use repository. It allows for easy composition of multitude of features within a single training, infernece or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see [DeepSpeed Adoption](#deepspeed-adoption)).
 
 **_For further documentation, tutorials, and technical deep-dives please see [deepspeed.ai](https://www.deepspeed.ai/)!_**
 
