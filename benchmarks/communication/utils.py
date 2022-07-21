@@ -99,7 +99,7 @@ def sync_all():
 
 
 def max_numel(comm_op, dtype, mem_factor, local_rank, args):
-    dtype_size = torch._utils._element_size(dtype)
+    dtype_size = _element_size(dtype)
     max_memory_per_gpu = torch.cuda.get_device_properties(
         local_rank).total_memory * mem_factor
     if comm_op == 'all_reduce' or comm_op == 'pt2pt' or comm_op == 'broadcast':
@@ -132,6 +132,23 @@ def convert_size(size_bytes):
     s = round(size_bytes / p, 2)
     return "%s %s" % (s, size_name[i])
 
+# Copied from torch. Need to add the func here for old torch compatibility.
+def _element_size(dtype):
+    """
+    Returns the element size for a dtype, in bytes
+    """
+    if not isinstance(dtype, torch.dtype):
+        raise RuntimeError(f'expected torch.dtype, but got {type(dtype)}')
+
+    if dtype.is_complex:
+        return torch.finfo(dtype).bits >> 2
+    elif dtype.is_floating_point:
+        return torch.finfo(dtype).bits >> 3
+    elif dtype == torch.bool:
+        # NOTE: torch.bool is not supported in torch.iinfo()
+        return 1
+    else:
+        return torch.iinfo(dtype).bits >> 3
 
 def benchmark_parser():
     parser = argparse.ArgumentParser()
