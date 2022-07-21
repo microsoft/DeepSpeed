@@ -24,13 +24,13 @@ title: "Latest News"
 
 # DeepSpeed: Extreme Speed and Scale for DL Training and Inference
 
-DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. 
+DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. With DeepSpeed, you can: 
 
-- DeepSpeed empowers data scientists to Train/Inference dense or sparse models with billions or trillions of parameters
-- Achieve excellent system throughput and efficiently scale to thousands of GPUs
-- Train/Inference on resource constrained GPU systems
-- Achieve unprecedented low latency and high thoughput for inference
-- Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs
+<p style="text-align: center;">Train/Inference dense or sparse models with billions or trillions of parameters</p>
+<p style="text-align: center;">Achieve excellent system throughput and efficiently scale to thousands of GPUs</p>
+<p style="text-align: center;">Train/Inference on resource constrained GPU systems</p>
+<p style="text-align: center;">Achieve unprecedented low latency and high thoughput for inference</p>
+<p style="text-align: center;">Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</p>
 
 
 ## Three main innovation pillars
@@ -50,7 +50,7 @@ DeepSpeed brings together innovations in parallelism technology such as tensor, 
 
 ### DeepSpeed-Compression:
 
-To further increase the infrence efficency, DeepSpeed provides a new feature, that offers an easy-to-use and flexible-to-compose compression library for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Meanwhile, new innovations, like ZeroQuant and XTC, are included under the DeepSpeed-Compression pillar. (See [here](https://www.deepspeed.ai/tutorials/model-compression/) for more details)  
+To further increase the inference efficency, DeepSpeed offers easy-to-use and flexible-to-compose compression techniques for researchers and practitioners to compress their models while delivering faster speed, smaller model size, and significantly reduced compression cost. Moreover, SoTA innovations on compression like ZeroQuant and XTC are included under the DeepSpeed-Compression pillar. (See [here](https://www.deepspeed.ai/tutorials/model-compression/) for more details)  
 
 ## DeepSpeed Software Suite
 
