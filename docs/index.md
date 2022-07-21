@@ -1,3 +1,5 @@
+<b> DeepSpeed trained the world's most powerful language models: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed) <b>
+
 ---
 layout: single
 toc: true
@@ -18,7 +20,6 @@ title: "Latest News"
 * [2021/10/11] [Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B, the World’s Largest and Most Powerful Generative Language Model](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/)
     * Read more on how to [train large models with DeepSpeed](https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/)
 
-<b> DeepSpeed+Megatron trained the world's most powerful language model: [MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/) <b>
 
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
 
@@ -51,11 +52,11 @@ The innovations and technology developed by the DeepSpeed Team are implemented a
    
 ### DeepSpeed Library
 
-   The [DeepSpeed](https://github.com/microsoft/deepspeed) library is an open-sourced repository that implements and packages the innovations and technologies developed under the DeepSpeed pillars.
+   The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use, open-sourced repository. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see DeepSpeed Adoption).
 
 ### Model Implementations for Inference (MII)
 
-   [MII is an open-sourced repository](https://github.com/microsoft/deepspeed-mii) that offers inference optimized implementations of thousands of widely used DL models. It is powered by optimizations from DeepSpeed-Inference. Out of box, MII supported models can be deployed with a few lines of code, while achieving significant latency reduction.
+   [MII](https://github.com/microsoft/deepspeed-mii) is an open-sourced repository of inference optimized model implementations designed for low-latency and high-throughput. Out-of-box, MII supports thousands of widely used DL models, optimized using DeepSpeed-Inference, that can be deployed with a few lines of code, while achieving significant latency reduction compared to their vanilla open-sourced versions. The goal of MII is to make low latency, and high throughput inference  of powerful DL models accessible to all data-scientists by alleviating the need to apply complex system optimization techniques themselves. 
 
 ### DeepSpeed on Azure
 
