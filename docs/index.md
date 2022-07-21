@@ -50,12 +50,12 @@ To further increase the inference efficency, DeepSpeed offers easy-to-use and fl
    
 ### DeepSpeed Library
 
-   The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use, open-sourced repository. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see DeepSpeed Adoption).
+   The [DeepSpeed](https://github.com/microsoft/deepspeed) library implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use, open-sourced repository. It allows for easy composition of multitude of features within a single training, infernece or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see DeepSpeed Adoption).
 
 ### Model Implementations for Inference (MII)
 
-   [MII](https://github.com/microsoft/deepspeed-mii) is an open-sourced repository of inference optimized model implementations designed for low-latency and high-throughput. Out-of-box, MII supports thousands of widely used DL models, optimized using DeepSpeed-Inference, that can be deployed with a few lines of code, while achieving significant latency reduction compared to their vanilla open-sourced versions. The goal of MII is to make low latency, and high throughput inference  of powerful DL models accessible to all data-scientists by alleviating the need to apply complex system optimization techniques themselves. 
-
+   [Model Implementations for Inference (MII)](https://github.com/microsoft/deepspeed-mii) is an open-sourced repository for making low-latency and high-throughput inference accessible to all data scientists by alleviating the need to apply complex system optimization techniques themselves. Out-of-box, MII offers support for thousands of widely used DL models, optimized using DeepSpeed-Inference, that can be deployed with a few lines of code, while achieving significant latency reduction compared to their vanilla open-sourced versions.
+   
 ### DeepSpeed on Azure
 
    DeepSpeed users are diverse and have access to different environments. We recommend to try DeepSpeed on Azure as it is the simplest and easiest method. The recommended method to try DeepSpeed on Azure is through AzureML [recipes](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed). The job submission and data preparation scripts have been made available [here](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml). For more details on how to use DeepSpeed on Azure, please follow the [Azure tutorial](https://www.deepspeed.ai/tutorials/azure/). 
