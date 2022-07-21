@@ -62,7 +62,16 @@ The innovations and technology developed by the DeepSpeed Team are implemented a
    
 
 ## DeepSpeed Adoption
- 
+
+DeepSpeed has been used to train many different large-scale models, below is a list of several examples that we are aware of (if you'd like to include your model please submit a PR):
+
+  * Megatron-Turing NLG (530B)
+  * Jurassic-1 (178B)
+  * BLOOM (176B)
+  * YaLM (100B)
+  * GPT-NeoX (20B)
+  * CogView2
+   
 DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
 
 |                                                                                                | Documentation                                |
