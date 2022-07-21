@@ -23,7 +23,7 @@ title: "Latest News"
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
 
 # Extreme Speed and Scale for DL Training and Inference
-
+![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
 <p style="text-align: center;"><em>Train/Inference dense or sparse models with billions or trillions of parameters</em></p>
 <p style="text-align: center;"><em>Achieve excellent system throughput and efficiently scale to thousands of GPUs</em></p>
 <p style="text-align: center;"><em>Train/Inference on resource constrained GPU systems</em></p>
@@ -32,8 +32,6 @@ title: "Latest News"
 
    DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. It has innovation pillars.
    
-![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
-
 ### DeepSpeed-Training:  
 
 DeepSpeed offers a confluence of system innovations, that has made large scale DL training effective, and efficient, greatly improved ease of use, and redefined the DL training landscape in terms of scale that is possible. These innovations such as ZeRO, 3D-Parallelism, DeepSpeed-MoE, ZeRO-Infinity, etc fall under the DeepSpeed-Training pillar. Learn more: DeepSpeed-Training
