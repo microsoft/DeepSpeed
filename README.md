@@ -26,12 +26,14 @@ Remove until pypi issue is resolved: https://status.python.org/incidents/2jj696s
 ---
 
 # Extreme Speed and Scale for DL Training and Inference
-![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
+<div align="center">
+<img src="docs/assets/images/3pillars.png" width="800px">
 <p style="text-align: center;"><em>Train/Inference dense or sparse models with billions or trillions of parameters</em></p>
 <p style="text-align: center;"><em>Achieve excellent system throughput and efficiently scale to thousands of GPUs</em></p>
 <p style="text-align: center;"><em>Train/Inference on resource constrained GPU systems</em></p>
 <p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
 <p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
+</div>
 
    [DeepSpeed](https://www.deepspeed.ai/) is an easy-to-use deep learning optimization software suite that enables unprecedented scale and speed for Deep Learning Training and Inference through innovations along three major areas:
    
@@ -73,10 +75,10 @@ DeepSpeed has been integrated with several different popular open-source DL fram
 
 |                                                                                                | Documentation                                |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| <img src="assets/images/transformers-light.png" width="300px"> | [Transformers with DeepSpeed](https://huggingface.co/docs/transformers/main/main_classes/deepspeed) |
-| <img src="assets/images/accelerate-light.png" width="300px">| [Accelerate with DeepSpeed](https://huggingface.co/docs/accelerate/main/en/deepspeed) | 
-| <img src="assets/images/lightning-light.svg" width="250px"> | [Lightning with DeepSpeed](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html) | 
-| <img src="assets/images/mosaicml.svg" width="250px"> | [MosaicML with DeepSpeed](https://docs.mosaicml.com/en/v0.8.0/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration) | 
+<img src="docs/assets/images/transformers-light.png#gh-light-mode-only" width="300px"><img src="docs/assets/images/transformers-dark.png#gh-dark-mode-only" width="300px"> | [Transformers with DeepSpeed](https://huggingface.co/docs/transformers/main/main_classes/deepspeed) |
+| <img src="docs/assets/images/accelerate-light.png#gh-light-mode-only" width="300px"><img src="docs/assets/images/accelerate-dark.png#gh-dark-mode-only" width="300px"> | [Accelerate with DeepSpeed](https://huggingface.co/docs/accelerate/main/en/deepspeed) | 
+| <img src="docs/assets/images/lightning-light.svg#gh-light-mode-only" width="250px"><img src="docs/assets/images/lightning-dark.svg#gh-dark-mode-only" width="250px"> | [Lightning with DeepSpeed](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html) | 
+| <img src="docs/assets/images/mosaicml.svg" width="250px"> | [MosaicML with DeepSpeed](https://docs.mosaicml.com/en/v0.8.0/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration) | 
 
 
 
@@ -208,19 +210,6 @@ All DeepSpeed documentation can be found on our website: [deepspeed.ai](https://
 | [BERT Pre-training Tutorial](https://www.deepspeed.ai/tutorials/bert-pretraining/)             |  Pre-train BERT with DeepSpeed               |
 | [Learning Rate Range Test Tutorial](https://www.deepspeed.ai/tutorials/lrrt/)                  |  Faster training with large learning rates   |
 | [1Cycle Tutorial](https://www.deepspeed.ai/tutorials/one-cycle/)                               |  SOTA learning schedule in DeepSpeed         |
-
-
-## DeepSpeed Adoption
- 
-DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
-
-|                                                                                                | Documentation                                |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
-<img src="docs/assets/images/transformers-light.png#gh-light-mode-only" width="300px"><img src="docs/assets/images/transformers-dark.png#gh-dark-mode-only" width="300px"> | [Transformers with DeepSpeed](https://huggingface.co/docs/transformers/main/main_classes/deepspeed) |
-| <img src="docs/assets/images/accelerate-light.png#gh-light-mode-only" width="300px"><img src="docs/assets/images/accelerate-dark.png#gh-dark-mode-only" width="300px"> | [Accelerate with DeepSpeed](https://huggingface.co/docs/accelerate/main/en/deepspeed) | 
-| <img src="docs/assets/images/lightning-light.svg#gh-light-mode-only" width="250px"><img src="docs/assets/images/lightning-dark.svg#gh-dark-mode-only" width="250px"> | [Lightning with DeepSpeed](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html) | 
-| <img src="docs/assets/images/mosaicml.svg" width="250px"> | [MosaicML with DeepSpeed](https://docs.mosaicml.com/en/v0.8.0/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration) | 
-
 
 # Contributing
 DeepSpeed welcomes your contributions! Please see our
