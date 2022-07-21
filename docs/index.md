@@ -22,21 +22,16 @@ title: "Latest News"
 
 <!-- <b> DeepSpeed is hiring, [come join us!](https://careers.microsoft.com/us/en/search-results?keywords=http:%2F%2Fdeepspeed.ai) </b> -->
 
-# DeepSpeed: Extreme Speed and Scale for DL Training and Inference
+# Extreme Speed and Scale for DL Training and Inference
 
-DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. With DeepSpeed, you can: 
+<p style="text-align: center;"><em>Train/Inference dense or sparse models with billions or trillions of parameters</em></p>
+<p style="text-align: center;"><em>Achieve excellent system throughput and efficiently scale to thousands of GPUs</em></p>
+<p style="text-align: center;"><em>Train/Inference on resource constrained GPU systems</em></p>
+<p style="text-align: center;"><em>Achieve unprecedented low latency and high thoughput for inference</em></p>
+<p style="text-align: center;"><em>Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</em></p>
 
-<p style="text-align: center;">Train/Inference dense or sparse models with billions or trillions of parameters</p>
-<p style="text-align: center;">Achieve excellent system throughput and efficiently scale to thousands of GPUs</p>
-<p style="text-align: center;">Train/Inference on resource constrained GPU systems</p>
-<p style="text-align: center;">Achieve unprecedented low latency and high thoughput for inference</p>
-<p style="text-align: center;">Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs</p>
-
-
-## Three main innovation pillars
-
-DeepSpeed has three main innovation pillars that together offer its users incredible speed and scale for DL Training and Inference. 
-
+   DeepSpeed is an easy-to-use deep learning optimization suite that enables unprecedented scale and speed for Deep Learning Training and Inference. It has innovation pillars.
+   
 ![Three innovation pillars](/assets/images/3pillars.png){: .align-center}
 
 ### DeepSpeed-Training:  
