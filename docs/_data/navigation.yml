@@ -65,6 +65,8 @@ lnav:
         url: /docs/config-json/#monitoring-module-tensorboard-wandb-csv
       - title: 'Communication Logging'
         url: /docs/config-json/#communication-logging
+      - title: 'Model Compression'
+        url: /docs/config-json/#compression
   - title: 'Tutorials'
     url: /tutorials/
     children:
@@ -100,6 +102,8 @@ lnav:
         url: /tutorials/mixture-of-experts-nlg/
       - title: 'MoE Inference'
         url: /tutorials/mixture-of-experts-inference/
+      - title: 'Model Compression'
+        url: /tutorials/model-compression/
       - title: 'Mixture-of-Quantization'
         url: /tutorials/MoQ-tutorial/
       - title: 'Monitoring'

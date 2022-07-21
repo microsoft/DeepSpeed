@@ -16,15 +16,17 @@ from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
                                      align_dense_tensors,
                                      all_gather_dp_groups)
 
-from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
+from deepspeed.runtime.zero.constants import ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_OPTIMIZER_STATES
 from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
+
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            GROUP_PADDINGS,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             BASE_OPTIMIZER_STATE,
@@ -278,15 +280,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             ]
             self.bit16_groups.append(trainable_parameters)
 
-            # Record padding required to align group to world size
-            if partition_id == dist.get_world_size(
-                    group=self.real_dp_process_group[i]) - 1:
-                padding = get_alignment_padding(self.bit16_groups[i],
-                                                self.partition_count[i])
-            else:
-                padding = 0
-            self.groups_padding.append(padding)
-
             # not sure why apex was cloning the weights before flattening
             # removing cloning here
 
@@ -321,6 +314,15 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
 
+            # Record padding required for alignment
+            if partition_id == dist.get_world_size(
+                    group=self.real_dp_process_group[i]) - 1:
+                padding = self.bit16_groups_flat[i].numel() - sum(
+                    [t.numel() for t in self.round_robin_bit16_groups[i]])
+            else:
+                padding = 0
+            self.groups_padding.append(padding)
+
             if dist.get_rank(group=self.real_dp_process_group[i]) == 0:
                 see_memory_usage(
                     f"After Flattening and after emptying param group {i} cache",
@@ -346,7 +348,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                 assert (partitioned_data.data_ptr() %
                         (2 * self.nccl_start_alignment_factor) == 0)
 
-            # a partition of the fp32 master weights that will be updated by this process
+            # A partition of the fp32 master weights that will be updated by this process.
+            # Note that the params in single_partition_of_fp32_groups is cloned and detached
+            # from the origin params of the model.
             if not fp16_master_weights_and_gradients:
                 self.single_partition_of_fp32_groups.append(
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
@@ -356,7 +360,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
                         self.device).clone().half().detach())
 
-            # modify optimizer of have flat master weight
+            # Set local optimizer to have flat params of its own partition.
+            # After this, the local optimizer will only contain its own partition of params.
+            # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
             self.single_partition_of_fp32_groups[
                 i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.single_partition_of_fp32_groups[i]]
@@ -1426,7 +1432,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         partitions = []
 
         dp = dist.get_world_size(group=self.real_dp_process_group[group_id])
-        dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
+        # dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
 
         total_num_elements = tensor.numel()
 
@@ -1649,6 +1655,44 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.custom_loss_scaler = True
         self.external_loss_scale = loss_scale
 
+    def scaled_global_norm(self, norm_type=2):
+        assert norm_type == 2, "only L2 norm supported"
+        norm_groups = []
+        for i, group in enumerate(self.bit16_groups):
+            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+            if self.cpu_offload:
+                norm_groups.append(
+                    self.complete_grad_norm_calculation_for_cpu_offload(
+                        self.params_in_partition[i]))
+                single_grad_partition = self.single_partition_of_fp32_groups[i].grad
+            else:
+                norm_groups.append(
+                    self.get_grad_norm_direct(self.averaged_gradients[i],
+                                              self.params_in_partition[i]))
+
+        if self.has_moe_layers:
+            self._average_expert_grad_norms(norm_groups)
+
+        # note that the get_global_norm function only supports l2 norm
+        return get_global_norm(norm_list=norm_groups)
+
+    def get_bit16_param_group(self, group_no):
+        bit16_partitions = self.parallel_partitioned_bit16_groups[group_no]
+        partition_id = dist.get_rank(group=self.real_dp_process_group[group_no])
+        return [
+            bit16_partitions[dist.get_rank(group=self.real_dp_process_group[group_no])]
+        ]
+
+    def _optimizer_step(self, group_no):
+        original_param_groups = self.optimizer.param_groups
+        self.optimizer.param_groups = [original_param_groups[group_no]]
+        from deepspeed.ops.adam import DeepSpeedCPUAdam
+        if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
+            self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
+        else:
+            self.optimizer.step()
+        self.optimizer.param_groups = original_param_groups
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1667,7 +1711,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
         if self.overflow:
-
             if dist.get_rank() == 0:
                 logger.info(
                     "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
@@ -1688,23 +1731,34 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.stop_timers(timer_names)
             return
 
-        self.start_timers([OPTIMIZER_GRADIENTS])
-        norm_groups = []
-        single_partition_grad_groups = []
-        skip = False
+        # Step 1:- Calculate gradient norm using fp-16 grads
+        see_memory_usage('Before norm calculation')
+        scaled_global_grad_norm = self.scaled_global_norm()
+        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
+
+        see_memory_usage('After norm before optimizer')
+        # Step 2:- run optimizer and upscaling simultaneously
         for i, group in enumerate(self.bit16_groups):
+            self.start_timers([OPTIMIZER_GRADIENTS])
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             if self.cpu_offload:
-                norm_groups.append(
-                    self.complete_grad_norm_calculation_for_cpu_offload(
-                        self.params_in_partition[i]))
                 single_grad_partition = self.single_partition_of_fp32_groups[i].grad
-            else:
-                norm_groups.append(
-                    self.get_grad_norm_direct(self.averaged_gradients[i],
-                                              self.params_in_partition[i]))
+                self.unscale_and_clip_grads([single_grad_partition],
+                                            scaled_global_grad_norm)
+                self.stop_timers([OPTIMIZER_GRADIENTS])
+                self.start_timers([OPTIMIZER_STEP])
+                self._optimizer_step(i)
 
-                # free gradients for all the parameters that are not updated by this process
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                if not (type(self.optimizer) == DeepSpeedCPUAdam
+                        and self.dtype == torch.half):
+                    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                    fp32_partition = self.single_partition_of_fp32_groups[i]
+                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+
+                self.stop_timers([OPTIMIZER_STEP])
+            else:
+                # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
                 # create a flat gradients for parameters updated by this process
@@ -1723,56 +1777,33 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
                         single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
                 self.single_partition_of_fp32_groups[i].grad = single_grad_partition
-                # release all the gradient since we have already created a necessary copy in dp_grad_partition
+                # release all the gradient since we have already created a necessary copy in dp_grad_partition(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_in_partition[i])
 
                 self.averaged_gradients[i] = None
 
-            single_partition_grad_groups.append(single_grad_partition)
+                self.unscale_and_clip_grads([single_grad_partition],
+                                            scaled_global_grad_norm)
+                self.stop_timers([OPTIMIZER_GRADIENTS])
 
-        if self.has_moe_layers:
-            self._average_expert_grad_norms(norm_groups)
-
-        scaled_global_grad_norm = get_global_norm(norm_list=norm_groups)
-        self.unscale_and_clip_grads(single_partition_grad_groups,
-                                    scaled_global_grad_norm)
-
-        # Stash unscaled gradient norm
-        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
-
-        self.stop_timers([OPTIMIZER_GRADIENTS])
-
-        self.start_timers([OPTIMIZER_STEP])
-        if self.deepspeed_adam_offload:
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
-            if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                bit16_param_groups = [[
-                    bit16_partitions[partition_id]
-                ] for bit16_partitions in self.parallel_partitioned_bit16_groups]
-                self.optimizer.step(fp16_param_groups=bit16_param_groups)
-            else:
-                self.optimizer.step()
-                for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
-                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-        else:
-            self.optimizer.step()
-
-            # get rid of the fp32 gradients. Not needed anymore
-            if not self.cpu_offload:
-                for group in self.single_partition_of_fp32_groups:
-                    group.grad = None  # in step
-
-            for group_id, (bit16_partitions, fp32_partition) in enumerate(zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups)):
-                partition_id = dist.get_rank(group=self.real_dp_process_group[group_id])
+                # Step 3:- run the optimizer if no offloading
+                self.start_timers([OPTIMIZER_STEP])
+                self._optimizer_step(i)
+                # Step 4:- get rid of the fp32 gradients. Not needed anymore
+                self.single_partition_of_fp32_groups[i].grad = None
+                del single_grad_partition
+                bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                fp32_partition = self.single_partition_of_fp32_groups[i]
                 bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                self.stop_timers([OPTIMIZER_STEP])
 
-        self.stop_timers([OPTIMIZER_STEP])
-
+        see_memory_usage('After optimizer before all-gather')
         if self.cpu_offload:
             self.reset_cpu_buffers()
 
         self.start_timers([OPTIMIZER_ALLGATHER])
-        # gather the updated weights from everyone
+        # Gather the updated weights from everyone.
+        # Then all partitions of the model parameters are updated and ready for next round forward.
         all_gather_dp_groups(
             partitioned_param_groups=self.parallel_partitioned_bit16_groups,
             dp_process_group=self.real_dp_process_group,
@@ -1782,7 +1813,7 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         self.stop_timers([OPTIMIZER_ALLGATHER])
 
         # TODO: we probably don't need this? just to be safe
-        for i in range(len(norm_groups)):
+        for i in range(len(self.bit16_groups)):
             self._update_model_bit16_weights(i)
 
         self.log_timers(timer_names)
@@ -2016,7 +2047,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             self.single_partition_of_fp32_groups)
         state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
 
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict[
+            ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS if self.partition_gradients else ZERO_OPTIMIZATION_OPTIMIZER_STATES
+        state_dict[GROUP_PADDINGS] = self.groups_padding
         state_dict[PARTITION_COUNT] = self.partition_count
 
         state_dict[DS_VERSION] = version
@@ -2129,7 +2162,8 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        checkpoint_folder=None):
         r"""Loading ZeRO checkpoint
 
         Arguments:
@@ -2178,6 +2212,16 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
         ckpt_is_rigid = isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict)
+
+        # padding is always at the last rank/partition
+        # if DP=1024 and param-group elems=16 -> padding will be 1024-16 across all but one rank
+        # scenario-1 (shrink): saving w. 4 gpus -> loading w. 2 gpus
+        # scenario-2 (expand): saving w. 2 gpus -> loading w. 4 gpus
+        # if load_optimizer_states:
+        #     if new_dp_size:
+        #         self.strip_padding()
+        #         self.add_padding_w_new_dp_size()
+        #     self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
 
         if load_optimizer_states:
             if ckpt_is_rigid:
