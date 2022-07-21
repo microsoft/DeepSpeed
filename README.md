@@ -34,6 +34,8 @@
 
 ---
 
+# DeepSpeed's three innovation pillars
+
 <img src="docs/assets/images/3pillars.png" width="800px">
 
    
@@ -66,6 +68,8 @@ To further increase the inference efficency, DeepSpeed offers easy-to-use and fl
 
    DeepSpeed users are diverse and have access to different environments. We recommend to try DeepSpeed on Azure as it is the simplest and easiest method. The recommended method to try DeepSpeed on Azure is through AzureML [recipes](https://github.com/Azure/azureml-examples/tree/main/python-sdk/workflows/train/deepspeed). The job submission and data preparation scripts have been made available [here](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml). For more details on how to use DeepSpeed on Azure, please follow the [Azure tutorial](https://www.deepspeed.ai/tutorials/azure/). 
 
+---
+
 # DeepSpeed Adoption
 
 DeepSpeed is an important part of Microsoft’s new
@@ -89,7 +93,6 @@ DeepSpeed has been integrated with several different popular open-source DL fram
 | <img src="docs/assets/images/accelerate-light.png#gh-light-mode-only" width="250px"><img src="docs/assets/images/accelerate-dark.png#gh-dark-mode-only" width="250px"> | [Accelerate with DeepSpeed](https://huggingface.co/docs/accelerate/main/en/deepspeed) | 
 | <img src="docs/assets/images/lightning-light.svg#gh-light-mode-only" width="200px"><img src="docs/assets/images/lightning-dark.svg#gh-dark-mode-only" width="200px"> | [Lightning with DeepSpeed](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DeepSpeedStrategy.html) | 
 | <img src="docs/assets/images/mosaicml.svg" width="200px"> | [MosaicML with DeepSpeed](https://docs.mosaicml.com/en/v0.8.0/trainer/using_the_trainer.html?highlight=deepspeed#deepspeed-integration) | 
-
 
 ---
 
