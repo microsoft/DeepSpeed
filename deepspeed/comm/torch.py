@@ -4,7 +4,7 @@ Copyright 2021 The Microsoft DeepSpeed Team
 import os
 import torch
 
-import deepspeed.utils as utils
+from deepspeed import utils
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
 from datetime import timedelta
 
@@ -35,9 +35,10 @@ class TorchBackend(Backend):
         self.init_process_group(backend, timeout, init_method)
 
     def init_process_group(self, backend, timeout, init_method):
-        return torch.distributed.init_process_group(backend,
-                                                    timeout=timeout,
-                                                    init_method=init_method)
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend,
+                                                 timeout=timeout,
+                                                 init_method=init_method)
 
     def all_reduce(self,
                    tensor,
@@ -163,7 +164,6 @@ class TorchBackend(Backend):
         return torch.distributed.get_backend(group=group)
 
     def new_group(self, ranks):
-        utils.logger.info(f"new group called with {ranks}")
         return torch.distributed.new_group(ranks)
 
     def get_global_rank(self, group, group_rank):
