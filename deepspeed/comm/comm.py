@@ -130,7 +130,9 @@ def timed_op(func):
             if comms_logger.enabled:
                 # Need to make op blocking for accurate logging
                 torch.cuda.synchronize()
-                cdb.barrier()
+                # If we're using MPI, we can't simply sync the stream
+                if cdb.using_mpi:
+                    cdb.barrier()
                 if ('prof' in kwargs and kwargs['prof']) or comms_logger.prof_all or (
                         'log_name' in kwargs
                         and kwargs['log_name'] in comms_logger.prof_ops):

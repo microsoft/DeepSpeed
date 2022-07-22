@@ -39,6 +39,7 @@ class TorchBackend(Backend):
             torch.distributed.init_process_group(backend,
                                                  timeout=timeout,
                                                  init_method=init_method)
+        self.using_mpi = torch.distributed.get_backend() == 'mpi'
 
     def all_reduce(self,
                    tensor,
