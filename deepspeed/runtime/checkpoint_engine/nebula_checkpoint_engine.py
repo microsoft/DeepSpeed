@@ -12,7 +12,6 @@ def _get_tag_from_path(path):
 
 
 class NebulaCheckpointEngine(CheckpointEngine):
-
     def __init__(self, config_params=None):
         self.checkpoint = None
         self.nebula_load_path = config_params.load_path
@@ -64,9 +63,12 @@ class NebulaCheckpointEngine(CheckpointEngine):
 
     def commit(self, tag):
         # nebula commit will be call when all files under give tag are ready to be persisted in the async way.
-        logger.info(f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting")
+        logger.info(
+            f"[Nebula] all files for {tag} are saved in tier1. It is ready to start persisting"
+        )
         commit_rls = self.checkpoint.commit()
         if not commit_rls:
-            logger.error(f"[Nebula] failed to commit the checkpoint, please check the log.")
+            logger.error(
+                f"[Nebula] failed to commit the checkpoint, please check the log.")
             return False
         return commit_rls

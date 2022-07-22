@@ -5,7 +5,6 @@ from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
 
 
 class TorchCheckpointEngine(CheckpointEngine):
-
     def __init__(self, config_params=None):
         super().__init__(self, config_params)
 
