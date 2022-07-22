@@ -211,10 +211,10 @@ def _get_compatible_gpus_v02(micro_batches,
                              prefer_larger=prefer_larger)
 
     final_batch_size = int(final_batch_size) * dp_size_per_node
-
-    if current_num_gpus // dp_size_per_node in valid_world_size:
+    valid_dp_world_size = [i * dp_size_per_node for i in valid_world_size]
+    if current_num_gpus // model_parallel_size in valid_dp_world_size:
         candidate_microbatch = get_microbatch(final_batch_size)
-        return final_batch_size, valid_world_size, candidate_microbatch
+        return final_batch_size, valid_dp_world_size, candidate_microbatch
 
     current_dp_size = (current_num_gpus / num_gpus_per_node) * dp_size_per_node
     candidate_batch_sizes = []
@@ -229,9 +229,10 @@ def _get_compatible_gpus_v02(micro_batches,
         candidate_batch_size = max(candidate_batch_sizes)
     else:
         candidate_batch_size = min(candidate_batch_sizes)
+
     candidate_microbatch = get_microbatch(candidate_batch_size)
 
-    return candidate_batch_size, [current_dp_size], candidate_microbatch
+    return candidate_batch_size, [int(current_dp_size)], candidate_microbatch
 
 
 def _compatible_ds_version_check(target_deepspeed_version: str):
