@@ -243,9 +243,10 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     _DATA_PARALLEL_GROUP = mpu.get_data_parallel_group()
     _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
 
-    group_name = f"ep_size_{expert_parallel_size_}"
     expert_parallel_size_ = min(expert_parallel_size_, dp_world_size)
     _ensure_divisibility(world_size, expert_parallel_size_)
+
+    group_name = f"ep_size_{expert_parallel_size_}"
 
     # Only create groups if they don't already exist
     # Need to check conditions outside the group creation loop because of the way torch.dist group creation works
