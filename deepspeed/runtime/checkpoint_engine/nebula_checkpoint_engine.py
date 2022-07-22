@@ -13,6 +13,7 @@ def _get_tag_from_path(path):
 
 class NebulaCheckpointEngine(CheckpointEngine):
     def __init__(self, config_params=None):
+        super().__init__(config_params)
         self.checkpoint = None
         self.nebula_load_path = config_params.load_path
         if self.nebula_load_path is None:
