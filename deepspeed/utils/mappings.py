@@ -3,7 +3,7 @@ import deepspeed
 
 
 def _gather_tokens(input_, dim=0):
-    """Gather tensors and concatinate them along a dimension"""
+    """Gather tensors and concatenate them along a dimension"""
     mpu = deepspeed.utils.groups.mpu
     if mpu.get_tensor_model_parallel_world_size() == 1:
         return input_
@@ -28,6 +28,7 @@ def _gather_tokens(input_, dim=0):
 
 
 def _drop_tokens(input_, dim=0):
+    """Divide a tensor among the tensor parallel ranks"""
     mpu = deepspeed.utils.groups.mpu
     if mpu.get_tensor_model_parallel_world_size() == 1:
         return input_
@@ -40,7 +41,7 @@ def _drop_tokens(input_, dim=0):
 
 
 class _GatherTokens(torch.autograd.Function):
-    """Reduce scatter output of self attention for MoE"""
+    """All gather tokens among the tensor parallel ranks"""
     @staticmethod
     def symbolic(graph, input_, dim):
         return _gather_tokens(input_, dim)
@@ -56,7 +57,7 @@ class _GatherTokens(torch.autograd.Function):
 
 
 class _DropTokens(torch.autograd.Function):
-    "Drop tokens (this is a hacky approach until we can do reduce scatter)"
+    "Divide tokens equally among the tensor parallel ranks"
 
     @staticmethod
     def symbolic(graph, input_, dim):
