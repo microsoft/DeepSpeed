@@ -665,13 +665,17 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.world_size = dist.get_world_size(group=self.ds_process_group)
 
-        self.zero_param_parallel_group = zero_param_parallel_group
+        self.zero_param_parallel_group = zero_param_parallel_group #revise
+        ###num_ranks_in_group
+        self.param_group_size = num_ranks_in_group = 4##pass as argument
+        ##TODO: get from group
+        self.param_group_rank = math.floor(self.rank/self.param_group_size)
 
         if self.zero_param_parallel_group is not None: 
             logger.info(
-                     "SAJ Test Group in partition parameter Rank {} rank in my group: {}, group world size: {}, group ranks: {} "
+                     "SAGE Test Group in partition parameter Rank {} rank in my group: {}, group world size: {} "
                      .format(dist.get_rank(), groups._get_zero_param_parallel_rank_in_mygroup(),
-                     groups._get_zero_param_parallel_group_world_size())
+                     groups._get_zero_param_parallel_group_world_size()))
                      #groups._get_zero_param_parallel_allranks_in_group()))
             
 
@@ -710,11 +714,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             logger.info(
                 f"_all_gather_base API is not available in torch {torch.__version__}")
 
+    ###End of Init.__init__
+
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
             if is_zero_param(param):
                 continue
-            self._convert_to_deepspeed_param(param)
+            self._convert_to_deepspeed_param(param) ##SAGE, initial all_gather before partition
             param.partition()
 
     def _validate_remote_device(self, remote_device, ds_config):
@@ -761,6 +767,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f"Param count {param_count}. After converting and partitioning parmas in {module.__class__.__name__}",
             force=False)
 
+    ##SAGE First allgather here before partition
     def _convert_to_deepspeed_param(self, param):
 
         # Partitioned, Normal, Remote
@@ -777,6 +784,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Stores the partitioned copy of the tensor
         param.ds_tensor = None
+
+        # Stores the secondary partitioned copy of the tensor
+        param.ds_secondary_tensor = None
 
         # Keeps track of how many active sub-modules need this param at any given point in time
         param.ds_active_sub_modules = set()
@@ -798,6 +808,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.ds_id = Init.param_id
         Init.param_id += 1
 
+        ###SAGE secondary not available
         def all_gather(param_list=None, async_op=False, hierarchy=0):
             cls = param
             if param_list is None:
@@ -871,6 +882,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 instrument_w_nvtx(torch.cat)(
                     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                     out=partitions[self.rank])
+                    #out, #in
+                logger.info(
+                     "SAGE ALLGather Rank : {}, IN (size) : {}, OUT (size): {}, IN : {}, OUT : {} "
+                     .format(self.rank,partitions[self.rank].size(),flat_tensor.size(), partitions[self.rank],flat_tensor))
+
                 handle = _dist_allgather_fn(partitions[self.rank],
                                             flat_tensor,
                                             self.ds_process_group)
@@ -1031,15 +1047,21 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            #print_rank_0(f"Before Partitioning Param {param.ds_id}")
-            # self._param_status(param)
+            #print_rank_0(f"Before Partitioning Param {param.ds_id} {param.ds_tensor} sec: {param.ds_secondary_tensor}",force=True)
+            logger.info(
+                     "SAGE Before partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
+                     .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
+            #self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
             param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             # if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
-            #print_rank_0(f"After Partitioning Param {param.ds_id}")
-            # self._param_status(param)
+            #print_rank_0(f"After Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=True)
+            logger.info(
+                     "SAGE After partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
+                     .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
+            #self._param_status(param)
 
     @instrument_w_nvtx
     def _partition_param(self, param, buffer=None, has_been_updated=False):
@@ -1062,7 +1084,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             # if deepspeed.comm.get_rank():
             #    print(f"Releasing {param.data.numel()}")
-            if param.ds_tensor is not None and not has_been_updated:
+            if param.ds_tensor is not None and not has_been_updated: ##param already partitioned
 
                 #param.data = param.ds_tensor.data
 
@@ -1085,7 +1107,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             tensor_size = self._aligned_size(param)
             partition_size = tensor_size // self.world_size
 
-            if param.ds_tensor is None:
+            ###per_rank_partition*num_ranks_in_group
+            secondary_partition_size = partition_size*self.param_group_size
+
+            if param.ds_tensor is None: ##assumption, invalid primary assumes invalid secondary, here create both!!!
                 final_location = None
                 if self.remote_device == OFFLOAD_NVME_DEVICE and self.param_swapper.swappable_tensor(
                         numel=partition_size):
@@ -1095,6 +1120,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                      dtype=param.dtype,
                                                      device=buffer.device)
                     partitioned_tensor.data = buffer.data
+
+                    secondary_buffer = self.param_swapper.get_buffer(param, secondary_partition_size)
+                    secondary_partitioned_tensor = torch.empty(0,
+                                                     dtype=param.dtype,
+                                                     device=secondary_buffer.device)
+                    secondary_partitioned_tensor.data = secondary_buffer.data
                     print_rank_0(
                         f"ID {param.ds_id} Initializing partition for the first time for nvme offload."
                     )
@@ -1105,8 +1136,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         dtype=param.dtype,
                         device=OFFLOAD_CPU_DEVICE if self.remote_device
                         == OFFLOAD_NVME_DEVICE else self.remote_device)
+                    ##TODO: add option flag
+                    secondary_partitioned_tensor = torch.empty(
+                        secondary_partition_size,
+                        dtype=param.dtype,
+                        device=OFFLOAD_CPU_DEVICE if self.remote_device
+                        == OFFLOAD_NVME_DEVICE else self.remote_device)
+
                     if self.pin_memory:
                         partitioned_tensor = partitioned_tensor.pin_memory()
+                        secondary_partitioned_tensor = partitioned_tensor.pin_memory()
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor
@@ -1114,18 +1153,38 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
                 param.ds_tensor.final_location = final_location
 
+                secondary_partitioned_tensor.requires_grad = False
+                param.ds_secondary_tensor = secondary_partitioned_tensor
+                param.ds_secondary_tensor.ds_numel = secondary_partition_size
+                param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
+                param.ds_secondary_tensor.final_location = final_location
+
+                logger.info(
+                     "SAGE End raw partititioning (Initializing)  Rank {}, primary part: {}, sec part {} "
+                     .format(dist.get_rank(), param.ds_tensor, param.ds_secondary_tensor))
+
             start = partition_size * self.rank
             end = start + partition_size
+
+            ##compute start and end for secondary partition copy
+            #floor(rank in world/num of ranks in group) ==== group_rank
+
+            secondary_start = secondary_partition_size * (math.floor(self.rank/self.param_group_size))
+            secondary_end = secondary_start + secondary_partition_size
 
             one_dim_param = param.contiguous().view(-1)
 
             if start < param.ds_numel and end <= param.ds_numel:
                 src_tensor = one_dim_param.narrow(0, start, partition_size)
+                sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
 
                 param.ds_tensor.copy_(src_tensor)
+                param.ds_secondary_tensor.copy_(sec_src_tensor)
                 #partitioned_tensor = src_tensor.clone().detach().to(self.remote_device)
 
             else:
+                logger.info("SAGE PARAM NOT IN BETWEEN WHY ......? Rank {} , start {}, end {}, numel {} " 
+                            .format(dist.get_rank(), start, end, param.ds_numel))
                 # partitioned_tensor = torch.zeros(partition_size,
                 #                                  dtype=param.dtype,
                 #                                  device=self.remote_device )
@@ -1160,10 +1219,10 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     f"ID {param.ds_id} Offloaded to nvme offload and buffers released.")
                 see_memory_usage(
                     f"ID {param.ds_id} Offloaded to nvme offload and buffers released.",
-                    force=False)
+                    force=True)
 
             print_rank_0(
-                f"ID {param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}"
+                f"ID {param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}", force=True
             )
 
     def _param_status(self, param):
