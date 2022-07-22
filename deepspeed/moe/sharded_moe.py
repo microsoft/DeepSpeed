@@ -521,7 +521,12 @@ class MOELayer(Base):
             self.timers('falltoall').start()
 
         if groups._get_expert_model_parallel_world_size() == 1:
-            # no slicing for experts means we need to drop tokens
+            # If the non-expert is tensor-parallel, it will create
+            # duplicate tokens on the tensor-parallel ranks.
+            # Since our experts are not tensor-parallel, these duplicates
+            # need to be dropped to ensure correctness.
+            # this also doubles up as a communication optimization as we are
+            # reducing the all-to-all communication volume.
             dispatched_input = groups.drop_tokens(dispatched_input, dim=1)
 
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
@@ -553,7 +558,9 @@ class MOELayer(Base):
                                               d_model)
 
         if groups._get_expert_model_parallel_world_size() == 1:
-            # no slicing for experts means we need to gather the dropped tokens
+            # the dropped duplicate tokens need to be gathered on each
+            # tensor parallel rank again for the tensor-parallel
+            # non-expert of the next layer.
             expert_output = groups.gather_tokens(expert_output, dim=1)
 
         if self.use_tutel:
