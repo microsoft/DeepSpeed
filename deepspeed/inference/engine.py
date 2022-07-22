@@ -498,13 +498,13 @@ class InferenceEngine(Module):
                         input = input.to(torch.cuda.current_device())
                         if not input.is_contiguous():
                             input = input.contiguous()
-                        dist.broadcast(input, 0)
+                        #dist.broadcast(input, 0)
                 for k in kwargs:
                     if torch.is_tensor(kwargs[k]):
                         kwargs[k] = kwargs[k].to(torch.cuda.current_device())
                         if not kwargs[k].is_contiguous():
                             kwargs[k] = kwargs[k].contiguous()
-                        dist.broadcast(kwargs[k], 0)
+                        #dist.broadcast(kwargs[k], 0)
             outputs = self.model_orig_fwd(*inputs, **kwargs)
         else:
             if self.enable_cuda_graph:
