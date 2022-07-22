@@ -30,7 +30,7 @@ class MoE(torch.nn.Module):
                  drop_tokens: bool = True,
                  use_rts=True,
                  use_tutel: bool = False,
-                 moe_mp_world_size=1):
+                 enable_expert_tensor_parallelism: bool = False):
         """Initialize an MoE layer.
 
         Arguments:
@@ -47,18 +47,16 @@ class MoE(torch.nn.Module):
             drop_tokens (bool, optional): default=True, whether to drop tokens - (setting to False is equivalent to infinite capacity).
             use_rts (bool, optional): default=True, whether to use Random Token Selection.
             use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
-            moe_mp_world_size(int, optional): default=1, numbers of ranks in expert tensor parallel world or group
+            enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
         """
 
         super(MoE, self).__init__()
 
         self.use_residual = use_residual
-        self.enable_expert_tensor_parallelism = (moe_mp_world_size > 1)
+        self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
         self.ep_size = min(
             ep_size,
-            num_experts,
-            dist.get_world_size() //
-            moe_mp_world_size)  # the ep size should be less than the number of experts
+            num_experts)  # the ep size should be less than the number of experts
 
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
@@ -101,10 +99,11 @@ class MoE(torch.nn.Module):
                 f"No existing process group found, creating a new group named: {self.expert_group_name}"
             )
             if (groups.mpu is None) or (not self.enable_expert_tensor_parallelism):
-                # no mpu implies no tensor parallelism
+                # Condition 1 - no groups.mpu means no tensor parallelism
+                # Condition 2 - disabling expert tensor parallelism on purpose
                 groups._create_expert_and_data_parallel(self.ep_size)
             else:
-                print("creating expert data and model parallel")
+                # expert tensor parallelism is enabled
                 groups._create_expert_data_and_model_parallel(self.ep_size,
                                                               mpu=groups.mpu)
         # Set the group handle for the MOELayer (deepspeed_moe) object
