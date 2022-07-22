@@ -78,7 +78,7 @@ def test_invalid_world_size():
 
 def test_future_elastic_version():
     ds_config = base_ds_config.copy()
-    ds_config['elasticity']['version'] = '0.2'
+    ds_config['elasticity']['version'] = '0.3'
     with pytest.raises(deepspeed.elasticity.config.ElasticityError):
         deepspeed.elasticity.compute_elastic_config(ds_config=ds_config,
                                                     target_deepspeed_version=ds_version)
