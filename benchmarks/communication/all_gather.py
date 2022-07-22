@@ -61,8 +61,7 @@ def timed_all_gather(input, output, args):
         size = convert_size(size)
 
     print_rank_0(
-        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
-    )
+        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
 def run_all_gather(local_rank, args):

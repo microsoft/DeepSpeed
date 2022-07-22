@@ -39,8 +39,7 @@ def timed_broadcast(input, args):
         size = convert_size(size)
 
     print_rank_0(
-        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
-    )
+        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}")
 
 
 def run_broadcast(local_rank, args):
