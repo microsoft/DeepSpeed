@@ -10,7 +10,7 @@ import json
 from abc import ABC, abstractmethod
 
 from deepspeed.utils import logger
-from deepspeed.runtime.checkpoint_engine.checkpoint_engine import CheckpointEngine
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from .weight_quantizer import WeightQuantization
 
@@ -45,7 +45,7 @@ class SDLoaderBase(ABC):
         self.module_key = None
         self.ckpt_list = ckpt_list
         self.version = version
-        self.checkpoint_engine = CheckpointEngine(
+        self.checkpoint_engine = TorchCheckpointEngine(
         ) if checkpoint_engine is None else checkpoint_engine
         self.check_ckpt_list()
 

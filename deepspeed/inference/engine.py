@@ -11,7 +11,7 @@ from deepspeed.utils.logging import log_dist
 
 from torch.nn.modules import Module
 from packaging import version as pkg_version
-from deepspeed.runtime.checkpoint_engine.checkpoint_engine import CheckpointEngine
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
@@ -96,7 +96,7 @@ class InferenceEngine(Module):
         self.expert_mp_group = expert_mp_group
         self.enable_cuda_graph = enable_cuda_graph
         self.cuda_graph_created = False
-        self.checkpoint_engine = CheckpointEngine()
+        self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
 
         if enable_cuda_graph:

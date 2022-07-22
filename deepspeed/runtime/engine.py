@@ -82,7 +82,7 @@ from deepspeed.runtime.progressive_layer_drop import ProgressiveLayerDrop
 from deepspeed.runtime.utils import clip_grad_norm_
 from deepspeed.runtime.eigenvalue import Eigenvalue
 from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumScheduler
-from deepspeed.runtime.checkpoint_engine.checkpoint_engine import CheckpointEngine
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
@@ -801,7 +801,7 @@ class DeepSpeedEngine(Module):
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
 
     def _configure_checkpointing(self, dist_init_required):
-        self.checkpoint_engine = CheckpointEngine()
+        self.checkpoint_engine = TorchCheckpointEngine()
         self.checkpoint_load_engine = self.checkpoint_engine
 
         if self._config is not None and self._config.nebula_config.enabled:
@@ -816,7 +816,7 @@ class DeepSpeedEngine(Module):
                 logger.error(
                     f"No torch_nebula was found! Will fall back to torch.save. Details: {err}"
                 )
-                self.checkpoint_engine = CheckpointEngine()
+                self.checkpoint_engine = TorchCheckpointEngine()
 
         dp_rank = self.global_rank
         if self.mpu:
@@ -2349,7 +2349,7 @@ class DeepSpeedEngine(Module):
                             model=None,
                             mpu=None,
                             num_experts=1,
-                            checkpoint_engine=CheckpointEngine()):
+                            checkpoint_engine=TorchCheckpointEngine()):
         if old_moe_load:
             expp_rank = groups._get_expert_data_parallel_rank(
                 groups._get_max_expert_size_name())
@@ -2881,6 +2881,7 @@ class DeepSpeedEngine(Module):
 
         # Ensure tag is a string
         tag = str(tag)
+        self.checkpoint_engine.create(tag)
 
         # Ensure checkpoint tag is consistent across ranks
         self._checkpoint_tag_validation(tag)

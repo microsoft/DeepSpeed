@@ -6,7 +6,7 @@ import re as regex
 
 from collections import defaultdict
 from functools import partial
-from deepspeed.runtime.checkpoint_engine.checkpoint_engine import CheckpointEngine
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 import torch
 import torch.nn as nn
