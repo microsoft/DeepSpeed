@@ -36,6 +36,8 @@ _EXPERT_PARALLEL_GROUP = {}
 _EXPERT_DATA_PARALLEL_GROUP = {}
 # dist world group needs to be cloned for some cases
 _WORLD_GROUP = None
+# ZeRO parameter partitioning group that the current rank belongs to.
+_ZERO_PARAM_PARALLEL_GROUP = None
 # global object to maintain mpu object if passed by a Megatron client
 mpu = None
 
@@ -156,6 +158,20 @@ def _create_expert_and_data_parallel(ep_size):
                 [0])
             if i == (rank // expert_parallel_size_):
                 _EXPERT_PARALLEL_GROUP[group_name] = group
+
+
+def get_zero_param_parallel_group():
+    """Get the ZeRO parameter partitioning group the caller rank belongs to."""
+    assert _ZERO_PARAM__PARALLEL_GROUP is not None, \
+        'ZeRO paramter partitioning group is not initialized'
+    return _ZERO_PARAM__PARALLEL_GROUP
+
+def zero_param_parallel_is_initialized():
+    """Check if ZeRO data parallel with parameter partititioning groups are initialized."""
+    ###TODO: assert that MPU is not set
+    if _ZERO_PARAM_PARALLEL_GROUP is None and _DATA_PARALLEL_GROUP is None:
+        return False
+    return True
 
 
 def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel_size_):
@@ -387,3 +403,62 @@ def _get_data_parallel_rank():
     if mpu is not None:
         return mpu.get_data_parallel_rank()
     return dist.get_rank(group=_get_data_parallel_group())
+
+def _create_zero_param_parallel_group(group_size):
+    """
+        Create parameter partitioning group within ZeRO data parallel groups.
+
+        Example - E + D parallel
+        world_size = 16
+        zero_param_group_size = 2 # number of experts in same group
+        zero_param_parallel_group = [0, 1], [2,3], [4,5], [6,7], [8,9] - segmented (subgroup) allgather 
+        data_parallel_group = [0,1,...,15] - all reduce is on ZeRO model
+    """
+    assert dist.is_initialized()
+    global _ZERO_PARAM_PARALLEL_GROUP
+    # Only create group if it does not already exist
+    assert _ZERO_PARAM_PARALLEL_GROUP is None, \
+        'ZeRO parameter parallel group is already initialized'
+
+    log_dist(f'Creating param partitioning group in ZeRO with size {group_size}', ranks=[0])
+    world_size = dist.get_world_size()
+    rank = dist.get_rank()
+
+    zero_param_parallel_size_ = min(group_size, world_size)
+    _ensure_divisibility(world_size, zero_param_parallel_size_)
+
+    # Build the ZeRO param parallel groups.
+
+    for i in range(world_size // zero_param_parallel_size_):
+        ranks = range(i * zero_param_parallel_size_, (i + 1) * zero_param_parallel_size_)
+        group = dist.new_group(ranks)
+        log_dist(
+            f'creating ZeRO parameter parallel process group with ranks: {list(ranks)}',
+            [0])
+        if i == (rank // zero_param_parallel_size_):
+            _ZERO_PARAM_PARALLEL_GROUP = group
+
+def _get_zero_param_parallel_group():
+    """Get the ZeRO parameter partitioning group the caller rank belongs to."""
+    assert _ZERO_PARAM_PARALLEL_GROUP is not None, \
+        'ZeRO paramter partitioning group is not initialized'
+    return _ZERO_PARAM_PARALLEL_GROUP
+
+def _zero_param_parallel_is_initialized():
+    """Check if ZeRO data parallel with parameter partititioning groups are initialized."""
+    ###TODO: assert that MPU is not set
+    if _ZERO_PARAM_PARALLEL_GROUP is None and _DATA_PARALLEL_GROUP is None:
+        return False
+
+def _get_zero_param_parallel_rank_in_mygroup():
+    """Return my rank for the ZeRO parameter parallel group."""
+    return dist.get_rank(group=_get_zero_param_parallel_group())
+
+def _get_zero_param_parallel_group_world_size():
+    """Return world size for the ZeRO parameter parallel group."""
+    return dist.get_world_size(group=_get_zero_param_parallel_group())
+
+def _get_zero_param_parallel_allranks_in_group():
+    """Return all ranks for the ZeRO parameter parallel group."""
+    ##TODO
+

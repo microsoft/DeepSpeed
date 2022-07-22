@@ -20,6 +20,8 @@ from torch._six import inf
 from torch.nn import Module
 from torch.nn.parameter import Parameter
 
+from deepspeed.utils import groups
+
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils.logging import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
@@ -161,6 +163,19 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
+        self.zero_param_group_size = 4
+
+        if self.zero_param_group_size > 1:
+            self._set_zero_group_parallelism()
+       
+
+        logger.info(
+                "Test Group in STAGE3! Rank {} group dict: {}, "
+                  .format(dist.get_rank(), groups._get_zero_param_parallel_ranks_in_group()))
+            
+
+        zpg = groups._get_zero_param_parallel_group()
+
         self.parameter_offload = DeepSpeedZeRoOffload(module,
                                                       timers,
                                                       ds_config,
@@ -169,7 +184,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                                                       max_reuse_distance,
                                                       max_live_parameters,
                                                       param_persistence_threshold,
-                                                      offload_param_config)
+                                                      offload_param_config,
+                                                      zero_param_parallel_group=zpg)
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -211,7 +227,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         else:
             self.model_parallel_group = mpu.get_model_parallel_group()
             self.model_parallel_rank = mpu.get_model_parallel_rank()
-
+        
+        
         self.overflow = False
         self.clip_grad = clip_grad
         self.communication_data_type = communication_data_type
@@ -358,6 +375,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
+
+    def _set_zero_group_parallelism(self):
+        groups._create_zero_param_parallel_group(self.zero_param_group_size)
 
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
@@ -2357,7 +2377,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        checkpoint_folder=None):
         r"""Loading a ZeRO checkpoint
         Arguments:
             state_dict_list: List of all saved ZeRO checkpoints, one for each saved partition.

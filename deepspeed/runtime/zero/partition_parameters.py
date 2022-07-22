@@ -22,6 +22,8 @@ from torch.nn import Parameter
 from .linear import LinearModuleForZeroStage3, zero3_linear_wrap
 from .offload_constants import *
 
+from deepspeed.utils import groups ##for debugging???
+
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
@@ -539,7 +541,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  config=None,
                  enabled=True,
                  dtype=None,
-                 mpu=None):
+                 mpu=None,
+                 zero_param_parallel_group=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -661,6 +664,16 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.world_size = dist.get_world_size(group=self.ds_process_group)
+
+        self.zero_param_parallel_group = zero_param_parallel_group
+
+        if self.zero_param_parallel_group is not None: 
+            logger.info(
+                     "SAJ Test Group in partition parameter Rank {} rank in my group: {}, group world size: {}, group ranks: {} "
+                     .format(dist.get_rank(), groups._get_zero_param_parallel_rank_in_mygroup(),
+                     groups._get_zero_param_parallel_group_world_size())
+                     #groups._get_zero_param_parallel_allranks_in_group()))
+            
 
         # Local device is the device where the parameters are consumed, must be default device.
         # It is the device where parameters are fully instantiated using allgather
