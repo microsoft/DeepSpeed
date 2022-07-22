@@ -47,7 +47,10 @@ def print_header(args, comm_op):
     tput = f'Throughput ({args.bw_unit})'
     busbw = f'BusBW ({args.bw_unit})'
     header = f"\n---- Performance of {comm_op} on {world_size} devices ---------------------------------------------------------\n"
-    header += f"{'Size (Bytes)':20s} {'Description':25s} {'Duration':20s} {tput:20s} {busbw:20s}\n"
+    duration_str = 'Duration'
+    if args.raw:
+        duration_str += ' (us)'
+    header += f"{'Size (Bytes)':20s} {'Description':25s} {duration_str:20s} {tput:20s} {busbw:20s}\n"
     header += "----------------------------------------------------------------------------------------------------"
     print_rank_0(header)
 
@@ -86,8 +89,10 @@ def get_metric_strings(args, tput, busbw, duration):
     tput = f'{tput / 1e9:.3f}'
     busbw = f'{busbw /1e9:.3f}'
 
-    if duration_us < 1e3:
-        duration = f'{duration_us:.3f} us'
+    if duration_us < 1e3 or args.raw:
+        duration = f'{duration_us:.3f}'
+        if not args.raw:
+            duration += ' us'
     else:
         duration = f'{duration_ms:.3f} ms'
     return tput, busbw, duration
@@ -189,6 +194,9 @@ def benchmark_parser():
     parser.add_argument("--scan",
                         action="store_true",
                         help='Enables scanning all message sizes')
+    parser.add_argument("--raw",
+                action="store_true",
+                help='Print the message size and latency without units')
     parser.add_argument("--all-reduce", action="store_true", help='Run all_reduce')
     parser.add_argument("--all-gather", action="store_true", help='Run all_gather')
     parser.add_argument("--all-to-all", action="store_true", help='Run all_to_all')

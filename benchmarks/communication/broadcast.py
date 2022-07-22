@@ -35,8 +35,11 @@ def timed_broadcast(input, args):
     tput_str, busbw_str, duration_str = get_metric_strings(args, tput, busbw, avg_duration)
     desc = f'{input.nelement()}x{input.element_size()}'
 
+    if not args.raw:
+        size = convert_size(size)
+
     print_rank_0(
-        f"{convert_size(size):<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
+        f"{size:<20} {desc:25s} {duration_str:20s} {tput_str:20s} {busbw_str:20s}"
     )
 
 

@@ -24,8 +24,8 @@ deepspeed run_all.py
 Like the individual benchmarks, `run_all.py` supports scanning arguments for the max message size, bw-unit, etc. Simply pass the desired arguments to `run_all.py` and they'll be propagated to each comm op.
 
 <pre>
-usage: run_all.py [-h] [--local_rank LOCAL_RANK] [--trials TRIALS] [--warmups WARMUPS] [--maxsize MAXSIZE] [--async-op] [--bw-unit {Gbps,GBps}] [--backend {nccl}] [--dist {deepspeed,torch}] [--scan] [--all-reduce] [--all-gather] [--all-to-all] [--pt2pt]
-                  [--broadcast] [--dtype DTYPE] [--mem-factor MEM_FACTOR] [--debug]
+usage: ds_bench [-h] [--local_rank LOCAL_RANK] [--trials TRIALS] [--warmups WARMUPS] [--maxsize MAXSIZE] [--async-op] [--bw-unit {Gbps,GBps}] [--backend {nccl}] [--dist {deepspeed,torch}] [--scan] [--raw] [--all-reduce] [--all-gather] [--all-to-all]
+                [--pt2pt] [--broadcast] [--dtype DTYPE] [--mem-factor MEM_FACTOR] [--debug]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -39,6 +39,7 @@ optional arguments:
   --dist {deepspeed,torch}
                         Distributed DL framework to use
   --scan                Enables scanning all message sizes
+  --raw                 Print the message size and latency without units
   --all-reduce          Run all_reduce
   --all-gather          Run all_gather
   --all-to-all          Run all_to_all
