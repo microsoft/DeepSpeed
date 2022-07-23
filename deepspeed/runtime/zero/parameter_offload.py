@@ -20,6 +20,9 @@ def is_builtin_type(obj):
     return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
 
 
+warned = False
+
+
 #apply torch.autograd.Function that calls a backward_function to tensors in output
 def _apply_to_tensors_only(module, functional, backward_function, outputs):
     if isinstance(outputs, (tuple, list)):
@@ -44,10 +47,13 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
-            logger.warning(
-                f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
-                "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
-                "output tensors and therefore may not get triggered properly.")
+            global warned
+            if not warned:
+                logger.warning(
+                    f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
+                    "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
+                    "output tensors and therefore may not get triggered properly.")
+                warned = True
         return outputs
 
 
