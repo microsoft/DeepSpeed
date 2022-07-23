@@ -315,7 +315,7 @@ def compute_elastic_config(ds_config: dict,
         target_deepspeed_version (str): When called from scheduling
             infrastructure we want to ensure that the target deepspeed version is
             compatible with the elasticity version used in the backend.
-        world_size (int, optional): Intended/current world size, will do some sanity
+        world_size (int, optional): Intended/current DP world size, will do some sanity
             checks to ensure world size is actually valid with the config.
         return_microbatch (bool, optional): whether to return micro batch size or not.
 
@@ -346,6 +346,11 @@ def compute_elastic_config(ds_config: dict,
     model_parallel_size = elastic_config.model_parallel_size
     num_gpus_per_node = elastic_config.num_gpus_per_node
 
+    if model_parallel_size > 1 and float(elastic_config.version) != 0.2:
+        raise ElasticityConfigError(f"Elasticity V{elastic_config.version} " \
+            f"does not support model-parallel training. Given model-parallel size: " \
+            f"{model_parallel_size}")
+
     if float(elastic_config.version) > LATEST_ELASTICITY_VERSION:
         raise ElasticityConfigError("Attempting to run elasticity version " \
             f"{elastic_config.version} but runtime only supports up " \
@@ -366,7 +371,20 @@ def compute_elastic_config(ds_config: dict,
         # ensure batch size is int dtype
         final_batch_size = int(final_batch_size)
     elif float(elastic_config.version) == 0.2:
-        current_num_gpus = int(os.getenv('WORLD_SIZE'))
+        if world_size != 0 and False:
+            current_num_gpus = world_size
+        else:
+            if "WORLD_SIZE" in os.environ and \
+                os.getenv('WORLD_SIZE').isnumeric():
+                current_num_gpus = int(os.getenv('WORLD_SIZE'))
+            else:
+                WORLD_SIZE = os.getenv('WORLD_SIZE')
+                raise ElasticityConfigError(
+                    'Elasticity V 0.2 needs WORLD_SIZE '\
+                    'to compute valid batch size. '\
+                    'Either give it as argument to function compute_elastic_config '\
+                    'or set it as an environment variable. '\
+                    f'Value of WORLD_SIZE as environment variable is {WORLD_SIZE}')
 
         final_batch_size, valid_gpus, candidate_microbatch_size = _get_compatible_gpus_v02(
             micro_batches=elastic_config.micro_batches,
