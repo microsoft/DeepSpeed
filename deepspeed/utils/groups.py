@@ -108,7 +108,7 @@ def _create_model_parallel(model_parallel_size_):
     return _DATA_PARALLEL_GROUP, _MODEL_PARALLEL_GROUP
 
 
-def _create_expert_and_data_parallel(ep_size):
+def _create_expert_and_data_parallel(expert_parallel_size_):
     """
         Create expert and data parallel groups.
 
@@ -123,7 +123,9 @@ def _create_expert_and_data_parallel(ep_size):
     """
     assert dist.is_initialized()
 
-    log_dist(f'Creating expert and data parallel groups with size {ep_size}', ranks=[0])
+    log_dist(
+        f'Creating expert and data parallel groups with size {expert_parallel_size_}',
+        ranks=[0])
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
