@@ -1,7 +1,7 @@
 # Checkpoint Engine
 
 
-The `CheckpointEngine` was designed to modularized the checkpoint serialization. In this way, we can simply replace/refine the checkpoint serialization methods. 
+The `CheckpointEngine` was designed to modularized the checkpoint serialization. In this way, we can simply replace/refine the checkpoint serialization methods.
 
 ### Interface for `CheckpointEngine`
 
@@ -12,7 +12,7 @@ Basically, for checkpoint management(save/load by deepspeed with the given tag),
 	2. After the `create(tag)`, deepspeed can call `save/load` to persist files into disk/memory/etc.
 
 	3. When all the files for a tag are ready, deepspeed engine will call `commit()` to tell the checkpoint engine current checkpoint is complete. For original torch, it also plays the role of logger.
-	
+
 
 ```python
 class CheckpointEngine(object):
