@@ -184,18 +184,31 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
 
     # Generate data parallel groups
 
+    #expert_parallel_groups = []
+    data_parallel_groups = []
+    for i in range(0, model_parallel_size_):
+        data_parallel_groups.append(list(range(i, world_size, model_parallel_size_)))
+
     expert_parallel_groups = []
-
-    for i in range(0, world_size, expert_parallel_size_):
-        expert_parallel_groups.append(list(range(i, i + expert_parallel_size_)))
-
     expert_data_parallel_groups = []
 
-    for i in range(0, model_parallel_size_ * expert_parallel_size_):
-        expert_data_parallel_groups.append(
-            list(range(i,
-                       world_size,
-                       model_parallel_size_ * expert_parallel_size_)))
+    for dp_group in data_parallel_groups:
+        for i in range(0, len(dp_group), expert_parallel_size_):
+            expert_parallel_groups.append(dp_group[i:i + expert_parallel_size_])
+        for i in range(expert_parallel_size_):
+            expert_data_parallel_groups.append(
+                dp_group[i:len(dp_group):expert_parallel_size_])
+
+    #for i in range(0, world_size, expert_parallel_size_):
+    #    expert_parallel_groups.append(list(range(i, i + expert_parallel_size_)))
+
+    #expert_data_parallel_groups = []
+
+    #for i in range(0, model_parallel_size_ * expert_parallel_size_):
+    #    expert_data_parallel_groups.append(
+    #        list(range(i,
+    #                   world_size,
+    #                   model_parallel_size_ * expert_parallel_size_)))
 
     return expert_parallel_groups, expert_data_parallel_groups
 
