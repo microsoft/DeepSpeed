@@ -2524,7 +2524,6 @@ class DeepSpeedEngine(Module):
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
         before ``load_checkpoint()``.
         """
-        self.persist_path = self._config.nebula_config.load_path_tier3
 
         if tag is None:
             latest_tag = "latest_universal" if self.load_universal_checkpoint(
@@ -2568,8 +2567,6 @@ class DeepSpeedEngine(Module):
 
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
-
-        self.persist_path = None
 
         return load_path, client_states
 
