@@ -50,7 +50,8 @@ class InferenceEngine(Module):
                  moe_experts=1,
                  moe_type='standard',
                  config=None,
-                 enable_cuda_graph=False):
+                 enable_cuda_graph=False,
+                 save_mp_checkpoint=False):
         """
         Args:
             model: torch.nn.Module
@@ -129,7 +130,8 @@ class InferenceEngine(Module):
                     moe_experts,
                     moe_type,
                     training_mp_size,
-                    self.checkpoint if replace_with_kernel_inject else None)
+                    self.checkpoint if replace_with_kernel_inject else None,
+                    save_mp_checkpoint=save_mp_checkpoint)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -138,11 +140,17 @@ class InferenceEngine(Module):
                 moe_experts=moe_experts,
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
-                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None)
+                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
+                save_mp_checkpoint=save_mp_checkpoint)
 
         device = torch.cuda.current_device()
-        logger.info(f"Place model to device: {device}")
+        # logger.info(f"Place model to device: {device}")
         self.module.to(device)
+
+        if self.mp_world_size > 1:
+            _rng_state = torch.cuda.get_rng_state().to(torch.cuda.current_device())
+            dist.broadcast(_rng_state, 0)
+            torch.cuda.set_rng_state(_rng_state.cpu())
 
         if self.mp_world_size > 1:
             self.model_orig_fwd = self.module.forward
@@ -312,8 +320,9 @@ class InferenceEngine(Module):
                                 moe_experts=1,
                                 moe_type='standard',
                                 training_mp_size=1,
-                                checkpoint_dir=None):
-        checkpoint = SDLoaderFactory.get_sd_loader_json(
+                                checkpoint_dir=None,
+                                save_mp_checkpoint=False):
+        checkpoint, ckpt_type = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir) if checkpoint_dir is not None else None
         replace_transformer_layer(client_module,
                                   self.module,
@@ -337,7 +346,9 @@ class InferenceEngine(Module):
                                   moe_experts=moe_experts,
                                   moe_type=moe_type,
                                   training_mp_size=training_mp_size,
-                                  checkpoint=checkpoint)
+                                  checkpoint=checkpoint,
+                                  ckpt_type=ckpt_type,
+                                  save_mp_checkpoint=save_mp_checkpoint)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -377,7 +388,7 @@ class InferenceEngine(Module):
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
             sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
         else:
-            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader, _ = SDLoaderFactory.get_sd_loader_json(load_dir)
 
         if type(sd_loader) is list:
             self.sd = torch.load(sd_loader[0], map_location='cpu')

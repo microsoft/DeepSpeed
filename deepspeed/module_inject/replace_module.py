@@ -15,6 +15,7 @@ from torch.nn import functional as F
 from ..runtime.zero import GatheredParameters
 from .layers import LinearAllreduce, LinearLayer, Normalize, EmbeddingLayer
 from .load_checkpoint import load_model_with_checkpoint
+import time
 
 
 class ReplaceWithTensorSlicing:
@@ -148,7 +149,9 @@ def replace_transformer_layer(orig_layer_impl,
                               moe=False,
                               moe_experts=1,
                               moe_type='standard',
-                              checkpoint=None):
+                              checkpoint=None,
+                              ckpt_type='pp',
+                              save_mp_checkpoint=False):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -765,14 +768,39 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
+    start_time = time.time()
     if checkpoint is not None:
-        pbar = tqdm.tqdm(total=len(checkpoint),
-                         desc=f"Loading {len(checkpoint)} checkpoint shards")
-        for i in range(len(checkpoint)):
-            if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                pbar.update(1)
-            sd = torch.load(checkpoint[i], map_location='cpu')
-            load_model_with_checkpoint(replaced_module, sd, mp_replace)
+        rank = dist.get_rank() if dist.is_initialized() else 0
+
+        if ckpt_type == 'pp':
+            pbar = tqdm.tqdm(total=len(checkpoint),
+                             desc=f"Loading {len(checkpoint)} checkpoint shards")
+            for i in range(len(checkpoint)):
+                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
+                    pbar.update(1)
+                sd = torch.load(checkpoint[i], map_location='cpu')
+                load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
+        else:
+            world_size = dist.get_world_size() if dist.is_initialized() else 1
+            num_checkpoints = len(checkpoint) // world_size
+            assert world_size >= len(checkpoint),\
+                "Currently, merging checkpoints is not supported (when world_size is smaller than #checkpoints)!"
+            checkpoint_stride = world_size // len(checkpoint)
+            pbar = tqdm.tqdm(total=num_checkpoints,
+                             desc=f"Loading {num_checkpoints} checkpoint shards")
+            for i in range(num_checkpoints):
+                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
+                    pbar.update(1)
+                sd = torch.load(checkpoint[i * world_size + (rank // checkpoint_stride)],
+                                map_location='cpu')
+                load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
+
+    if save_mp_checkpoint:
+        if dist.is_initialized():
+            dist.barrier()
+        torch.save(replaced_module.state_dict(), f'/tmp/bloom-mp_0{rank}.pt')
+
+    print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
     return replaced_module
 
 
