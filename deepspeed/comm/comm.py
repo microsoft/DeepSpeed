@@ -212,7 +212,9 @@ def allgather_fn(output_tensor: torch.Tensor,
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             has_warned_all_gather = True
+        print("Rank in COMM ALLGATHER [", get_rank(), " ] world size group ", cdb.get_world_size(group), " inp size ", input_tensor.size(), " out size ", output_tensor.size())
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
+        print("Rank in COMM ALLGATHER [", get_rank(), " ] world size group ", cdb.get_world_size(group), " inp size ", input_tensor.size(), " out size ", output_tensor.size(), " out_list ", len(output_tensors))
         return cdb.all_gather(output_tensors, input_tensor, group=group, async_op=True)
 
 
@@ -370,6 +372,20 @@ def get_global_rank(group=None, group_rank=0):
     global cdb
     assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
     return cdb.get_global_rank(group, group_rank)
+    
+
+def get_all_ranks_from_group(group=None):
+    global cdb
+    assert cdb is not None and cdb.is_initialized(), 'DeepSpeed backend not set, please initialize it using init_process_group()'
+    rank=0
+    group_ranks=[]
+    try:
+        while True:
+            group_ranks.append(cdb.get_global_rank(group,rank))
+            rank +=1
+    except RuntimeError:
+        pass
+    return group_ranks
 
 
 # Main DeepSpeed Comms. public API.
