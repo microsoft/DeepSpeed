@@ -127,7 +127,6 @@ def _create_expert_and_data_parallel(ep_size):
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
-    expert_parallel_size_ = min(ep_size, world_size)
     _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
@@ -181,9 +180,6 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     Returns:
         Expert parallel group ranks and Expert data parallel group ranks list.
     """
-    _ensure_divisibility(world_size, model_parallel_size_)
-    dp_world_size = world_size // model_parallel_size_
-    _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     # Generate data parallel groups
     data_parallel_groups = []
@@ -233,6 +229,10 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     dp_world_size = mpu.get_data_parallel_world_size()
     dp_rank = mpu.get_data_parallel_rank()
 
+    _ensure_divisibility(world_size, model_parallel_size_)
+    dp_world_size = world_size // model_parallel_size_
+    _ensure_divisibility(dp_world_size, expert_parallel_size_)
+
     log_dist(
         f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
         [0])
@@ -242,9 +242,6 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     # Get world size and rank. Ensure some consistencies.
     _DATA_PARALLEL_GROUP = mpu.get_data_parallel_group()
     _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
-
-    expert_parallel_size_ = min(expert_parallel_size_, dp_world_size)
-    _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
 

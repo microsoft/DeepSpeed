@@ -54,13 +54,11 @@ class MoE(torch.nn.Module):
 
         self.use_residual = use_residual
         self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
-        self.ep_size = min(
-            ep_size,
-            num_experts)  # the ep size should be less than the number of experts
-
+        assert num_experts % ep_size == 0, f"Number of experts ({num_experts}) should be divisible by expert parallel size ({ep_size})"
+        self.ep_size = ep_size
         self.expert_group_name = f"ep_size_{self.ep_size}"
         self.num_experts = num_experts
-        self.num_local_experts = 1 if num_experts < self.ep_size else num_experts // self.ep_size
+        self.num_local_experts = num_experts // self.ep_size
 
         log_dist(
             f'Creating MoE layer with num_experts: {num_experts} | num_local_experts: {self.num_local_experts} | expert_parallel_size: {self.ep_size}',
