@@ -1,12 +1,7 @@
 '''
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
-import os
-import torch
-
 from deepspeed import utils
-from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
-from datetime import timedelta
 
 from .utils import *
 from .backend import *
@@ -35,9 +30,11 @@ class TorchBackend(Backend):
         self.init_process_group(backend, timeout, init_method)
 
     def init_process_group(self, backend, timeout, init_method):
-        return torch.distributed.init_process_group(backend,
-                                                    timeout=timeout,
-                                                    init_method=init_method)
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend,
+                                                 timeout=timeout,
+                                                 init_method=init_method)
+        self.using_mpi = torch.distributed.get_backend() == 'mpi'
 
     def all_reduce(self,
                    tensor,
@@ -95,11 +92,16 @@ class TorchBackend(Backend):
                 "please consider upgrading your pytorch installation.")
             pass
 
-    def reduce_scatter_base(self, output_tensor, input_tensor, group=None):
+    def reduce_scatter_base(self,
+                            output_tensor,
+                            input_tensor,
+                            group=None,
+                            async_op=False):
         if self.has_reduce_scatter_base:
             return torch.distributed._reduce_scatter_base(output_tensor,
                                                           input_tensor,
-                                                          group=group)
+                                                          group=group,
+                                                          async_op=async_op)
         else:
             utils.logger.warning(
                 "unable to find torch.distributed._reduce_scatter_base. will fall back to "
@@ -163,7 +165,6 @@ class TorchBackend(Backend):
         return torch.distributed.get_backend(group=group)
 
     def new_group(self, ranks):
-        utils.logger.info(f"new group called with {ranks}")
         return torch.distributed.new_group(ranks)
 
     def get_global_rank(self, group, group_rank):

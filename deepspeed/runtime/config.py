@@ -24,6 +24,7 @@ from .config_utils import (
 from .zero.config import DeepSpeedZeroConfig
 from .zero.constants import *
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import DeepSpeedMonitorConfig
 
 from deepspeed import comm as dist
@@ -806,6 +807,7 @@ class DeepSpeedConfig(object):
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
 
+        self.comms_config = DeepSpeedCommsConfig(param_dict)
         self.monitor_config = DeepSpeedMonitorConfig(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
@@ -867,6 +869,9 @@ class DeepSpeedConfig(object):
         self.checkpoint_tag_validation_enabled = (validation_mode !=
                                                   ValidationMode.IGNORE)
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
+        self.load_universal_checkpoint = checkpoint_params.get(
+            LOAD_UNIVERSAL_CHECKPOINT,
+            LOAD_UNIVERSAL_CHECKPOINT_DEFAULT)
 
         self.aio_config = get_aio_config(param_dict)
 

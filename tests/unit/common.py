@@ -9,9 +9,6 @@ import deepspeed.comm as dist
 from torch.multiprocessing import Process
 
 import pytest
-from functools import wraps
-import unittest
-from pathlib import Path
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
