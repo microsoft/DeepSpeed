@@ -31,7 +31,8 @@ ZeRO optimization should be enabled as:
     "offload_param": {...},
     "offload_optimizer": {...},
     "ignore_unused_parameters": [true|false],
-    "round_robin_gradients": [true|false]
+    "round_robin_gradients": [true|false],
+    "zero_param_group_size": 1
     }
 }
 '''
@@ -130,6 +131,10 @@ ZERO_OPTIMIZATION_LEGACY_STAGE1_DEFAULT = False
 ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS = 'round_robin_gradients'
 ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT = False
 
+# Stage 3, group size (i.e., number of ranks) for dual (heirarchical) parameter partitioning
+# Default value 1 => no dual partitioning
+ZERO_OPTIMIZATION_PARAM_GROUP_SIZE = 'zero_param_group_size'
+ZERO_OPTIMIZATION_PARAM_GROUP_SIZE_DEFAULT = 1
 #yapf: disable
 ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_STAGE:
@@ -169,5 +174,7 @@ ZERO_OPTIMIZATION_DEFAULT = {
     ZERO_OPTIMIZATION_LEGACY_STAGE1:
     ZERO_OPTIMIZATION_LEGACY_STAGE1_DEFAULT,
     ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS:
-    ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT
+    ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT,
+    ZERO_OPTIMIZATION_PARAM_GROUP_SIZE:
+    ZERO_OPTIMIZATION_PARAM_GROUP_SIZE_DEFAULT
 }

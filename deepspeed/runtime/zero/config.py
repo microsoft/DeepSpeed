@@ -37,6 +37,7 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
         self.max_live_parameters = None
         self.max_reuse_distance = None
         self.gather_16bit_weights_on_model_save = None
+        self.zero_param_group_size = None
 
         self.ignore_unused_parameters = None
         self.round_robin_gradients = None
@@ -195,3 +196,9 @@ class DeepSpeedZeroConfig(DeepSpeedConfigObject):
             zero_config_dict,
             ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS,
             ZERO_OPTIMIZATION_ROUND_ROBIN_GRADIENTS_DEFAULT)
+        
+        self.zero_param_group_size = get_scalar_param(
+            zero_config_dict,
+            ZERO_OPTIMIZATION_PARAM_GROUP_SIZE,
+            ZERO_OPTIMIZATION_PARAM_GROUP_SIZE_DEFAULT)
+

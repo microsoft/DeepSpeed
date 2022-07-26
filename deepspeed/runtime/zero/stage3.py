@@ -118,7 +118,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
                  elastic_checkpoint=False,
-                 aio_config=None):
+                 aio_config=None,
+                 zero_param_group_size=1):
 
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -128,6 +129,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if dist.get_rank() == 0:
             logger.info(f"Reduce bucket size {reduce_bucket_size}")
             logger.info(f"Prefetch bucket size {prefetch_bucket_size}")
+            logger.info(f"Param partitioning group size {zero_param_group_size}")
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
@@ -163,8 +165,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        ##SAGE: TODO: pass as argument
-        self.zero_param_group_size = 2 
+        #num of ranks in a ZeRO param partitioning group
+        self.zero_param_group_size = zero_param_group_size
+
 
         if self.zero_param_group_size > 1:
             self._set_zero_group_parallelism()

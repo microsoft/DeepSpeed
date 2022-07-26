@@ -697,6 +697,9 @@ class DeepSpeedEngine(Module):
 
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
+    
+    def zero_param_group_size(self):
+        return self._config.zero_config.zero_param_group_size
 
     @property
     def communication_data_type(self):
@@ -1419,7 +1422,8 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
-                    communication_data_type=self.communication_data_type)
+                    communication_data_type=self.communication_data_type,
+                    zero_param_group_size=self.zero_param_group_size())
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))
