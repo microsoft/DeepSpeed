@@ -52,7 +52,7 @@ class InferenceEngine(Module):
                  moe_type='standard',
                  config=None,
                  enable_cuda_graph=False,
-                 save_mp_checkpoint=False):
+                 save_mp_checkpoint_path=False):
         """
         Args:
             model: torch.nn.Module
@@ -132,7 +132,7 @@ class InferenceEngine(Module):
                     moe_type,
                     training_mp_size,
                     self.checkpoint if replace_with_kernel_inject else None,
-                    save_mp_checkpoint=save_mp_checkpoint)
+                    save_mp_checkpoint_path=save_mp_checkpoint_path)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -142,7 +142,7 @@ class InferenceEngine(Module):
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
-                save_mp_checkpoint=save_mp_checkpoint)
+                save_mp_checkpoint_path=save_mp_checkpoint_path)
 
         device = torch.cuda.current_device()
         # logger.info(f"Place model to device: {device}")
@@ -324,7 +324,7 @@ class InferenceEngine(Module):
                                 moe_type='standard',
                                 training_mp_size=1,
                                 checkpoint_dir=None,
-                                save_mp_checkpoint=False):
+                                save_mp_checkpoint_path=False):
         checkpoint, ckpt_type = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir) if checkpoint_dir is not None else (None, None)
         replace_transformer_layer(client_module,
@@ -351,7 +351,7 @@ class InferenceEngine(Module):
                                   training_mp_size=training_mp_size,
                                   checkpoint=checkpoint,
                                   ckpt_type=ckpt_type,
-                                  save_mp_checkpoint=save_mp_checkpoint)
+                                  save_mp_checkpoint_path=save_mp_checkpoint_path)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,

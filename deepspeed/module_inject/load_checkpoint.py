@@ -32,7 +32,7 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type):
                 module.bias = mp_replace.copy(module.bias.data, sd[prefix + 'bias'])
 
     def load_transformer_layer(module, prefix):
-        if ckpt_type == "mp":
+        if ckpt_type == "tp":
 
             def load_parameters(module, prefix):
                 for n, p in module.named_parameters():

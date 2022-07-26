@@ -151,7 +151,7 @@ def replace_transformer_layer(orig_layer_impl,
                               moe_type='standard',
                               checkpoint=None,
                               ckpt_type='pp',
-                              save_mp_checkpoint=False):
+                              save_mp_checkpoint_path=None):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -795,10 +795,11 @@ def replace_transformer_layer(orig_layer_impl,
                                 map_location='cpu')
                 load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
 
-    if save_mp_checkpoint:
+    if save_mp_checkpoint_path is not None:
         if dist.is_initialized():
             dist.barrier()
-        torch.save(replaced_module.state_dict(), f'/tmp/bloom-mp_0{rank}.pt')
+        torch.save(replaced_module.state_dict(),
+                   f'{save_mp_checkpoint_path}/bloom-tp_0{rank}.pt')
 
     print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
     return replaced_module
