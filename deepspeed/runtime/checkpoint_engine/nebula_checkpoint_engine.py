@@ -16,6 +16,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
     def __init__(self, config_params=None):
         super().__init__(config_params)
         self.checkpoint = None
+        self.tag_flag = None
         self.enable_nebula_load = config_params.enable_nebula_load
         self.nebula_load_path = config_params.load_path
         if self.nebula_load_path is None:
@@ -44,7 +45,10 @@ class NebulaCheckpointEngine(CheckpointEngine):
         return None
 
     def load(self, path: str, map_location=None):
-        if not self.enable_nebula_load:
+        tag = _get_tag_from_path(path)
+        first_load_flag = self.tag_flag is None or self.tag_flag == tag
+        if not self.enable_nebula_load and first_load_flag:
+            self.tag_flag = tag
             logger.info(
                 f"[Nebula] Disable nebula load. Loading checkpoint from {path}...")
             partition = torch.load(path, map_location=map_location)
@@ -52,7 +56,6 @@ class NebulaCheckpointEngine(CheckpointEngine):
                 f"[Nebula] Disable nebula load. Loaded checkpoint from {path}...")
             return partition
 
-        tag = _get_tag_from_path(path)
         partititon_name = os.path.basename(path)
         logger.info(
             f"[Nebula] Loading {path} under tag{tag} from {self.nebula_load_path}...")
