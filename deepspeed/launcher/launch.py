@@ -18,7 +18,8 @@ import signal
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
-from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, DLTS_POD_ENV_PATH
+from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..nebula.constants import DLTS_POD_ENV_PATH
 from ..utils import logger
 
 PID_FILE_BASEPATH = "/tmp"

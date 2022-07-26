@@ -17,4 +17,3 @@ default_pg_timeout = timedelta(minutes=30)
 
 INFERENCE_GENERIC_MODE = 'generic'
 INFERENCE_SPECIALIZED_MODE = 'specialized'
-DLTS_POD_ENV_PATH = '/dlts-runtime/env/pod.env'

@@ -81,3 +81,6 @@ NEBULA_EXPORT_ENVS = [
     'AZUREML_BLOB_ACCOUNT_NAME',
     'AZUREML_BLOB_ACCOUNT_KEY'
 ]
+
+# ITP env files
+DLTS_POD_ENV_PATH = '/dlts-runtime/env/pod.env'

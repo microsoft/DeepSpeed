@@ -1,9 +1,10 @@
 import os
+import torch
 import torch_nebula
 
 from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
     CheckpointEngine
-from deepspeed.utils import logger
+from deepspeed.utils import logger, log_dist
 from deepspeed.nebula.constants import *
 
 
@@ -15,6 +16,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
     def __init__(self, config_params=None):
         super().__init__(config_params)
         self.checkpoint = None
+        self.enable_nebula_load = config_params.enable_nebula_load
         self.nebula_load_path = config_params.load_path
         if self.nebula_load_path is None:
             self.nebula_load_path = config_params.persistent_storage_path
@@ -28,7 +30,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         torch_nebula.init(**nebula_config_params)
 
     def create(self, tag):
-        logger.info(f"[Nebula] Start Checkpoint for tag:{tag}")
+        log_dist(f"[Nebula] Start Checkpoint for tag:{tag}", ranks=[0])
         # -2 means: customer needs to  explicitly tell nebula
         # current checkpoint is complete by commit methond.
         self.checkpoint = torch_nebula.Checkpoint(tag, -2)
@@ -42,6 +44,12 @@ class NebulaCheckpointEngine(CheckpointEngine):
         return None
 
     def load(self, path: str, map_location=None):
+        if not self.enable_nebula_load:
+            logger.info(f"[Nebula] Disable nebula load. Loading checkpoint from {path}...")
+            partition = torch.load(path, map_location=map_location)
+            logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path}...")
+            return partition
+
         tag = _get_tag_from_path(path)
         partititon_name = os.path.basename(path)
         logger.info(
