@@ -680,7 +680,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.zero_param_process_group = zero_param_parallel_group #revise
         
         self.use_secondary_tensor = False
-
+        self.num_ranks_in_param_group = 1
+        self.num_param_groups = self.world_size
         if self.zero_param_process_group is not None: 
 
             self.num_ranks_in_param_group = groups._get_zero_param_intra_parallel_group_world_size() # of ranks within a parameter (intra) group
@@ -1121,7 +1122,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             # if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
-            print_rank_0(f"After Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=True)
+            print_rank_0(f"After Primary Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor}",force=True)
+            if self.use_secondary_tensor:
+                print_rank_0(f"After Secondary Partitioning Param {param.ds_id} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=True)
             #logger.info(
             #         "SAGE After partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
             #         .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
@@ -1201,27 +1204,30 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                         device=OFFLOAD_CPU_DEVICE if self.remote_device
                         == OFFLOAD_NVME_DEVICE else self.remote_device)
                     ##TODO: add option flag
-                    secondary_partitioned_tensor = torch.empty(
-                        secondary_partition_size,
-                        dtype=param.dtype,
-                        device=OFFLOAD_CPU_DEVICE if self.remote_device
-                        == OFFLOAD_NVME_DEVICE else self.remote_device)
+                    if self.zero_param_process_group is not None:
+                        secondary_partitioned_tensor = torch.empty(
+                            secondary_partition_size,
+                            dtype=param.dtype,
+                            device=OFFLOAD_CPU_DEVICE if self.remote_device
+                            == OFFLOAD_NVME_DEVICE else self.remote_device)
 
                     if self.pin_memory:
                         partitioned_tensor = partitioned_tensor.pin_memory()
-                        secondary_partitioned_tensor = partitioned_tensor.pin_memory()
+                        if self.zero_param_process_group is not None:
+                            secondary_partitioned_tensor = partitioned_tensor.pin_memory()
 
                 partitioned_tensor.requires_grad = False
                 param.ds_tensor = partitioned_tensor
                 param.ds_tensor.ds_numel = partition_size
                 param.ds_tensor.status = PartitionedParamStatus.AVAILABLE
                 param.ds_tensor.final_location = final_location
-
-                secondary_partitioned_tensor.requires_grad = False
-                param.ds_secondary_tensor = secondary_partitioned_tensor
-                param.ds_secondary_tensor.ds_numel = secondary_partition_size
-                param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
-                param.ds_secondary_tensor.final_location = final_location
+                
+                if self.zero_param_process_group is not None:
+                    secondary_partitioned_tensor.requires_grad = False
+                    param.ds_secondary_tensor = secondary_partitioned_tensor
+                    param.ds_secondary_tensor.ds_numel = secondary_partition_size
+                    param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
+                    param.ds_secondary_tensor.final_location = final_location
 
                 #logger.info(
                 #     "SAGE End raw partititioning (Initializing)  Rank {}, primary part: {}, sec part {} "
@@ -1243,10 +1249,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 sec_src_tensor = one_dim_param.narrow(0, secondary_start, secondary_partition_size)
 
                 param.ds_tensor.copy_(src_tensor)
-                param.ds_secondary_tensor.copy_(sec_src_tensor)
+                if self.zero_param_process_group is not None:
+                    param.ds_secondary_tensor.copy_(sec_src_tensor)
+                    self.use_secondary_tensor=True
                 #partitioned_tensor = src_tensor.clone().detach().to(self.remote_device)
-                ##SAGE: secondary partition is now available use, revisit
-                self.use_secondary_tensor=True
+                
+                
 
             else:
                 logger.info("SAGE PARAM NOT IN BETWEEN .REVISE.....? Rank {} , start {}, end {}, numel {} " 

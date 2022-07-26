@@ -82,7 +82,7 @@ config_dict = {
     },
     "zero_optimization": {
         "stage": 0,
-        "reduce_bucket_size": 20
+        "reduce_bucket_size": 20,
         "zero_param_group_size": 1
     }
 }
