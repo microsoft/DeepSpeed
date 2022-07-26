@@ -1,12 +1,10 @@
 import os
-import sys
 import time
 import torch
 import pytest
 import itertools
 import deepspeed
 from deepspeed.git_version_info import torch_info
-from collections import defaultdict
 from .common import distributed_test
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
@@ -52,6 +50,7 @@ _gpt_models = [
     "distilgpt2",
     "Norod78/hebrew-bad_wiki-gpt_neo-tiny",
     "EleutherAI/gpt-j-6B",
+    "bigscience/bloom-350m",
 ]
 _all_models = HfApi().list_models()
 
