@@ -185,6 +185,7 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     # Generate data parallel groups
     data_parallel_groups = []
     dp_group_size = model_parallel_size_
+    dp_world_size = mpu.get_data_parallel_world_size()
     for i in range(dp_group_size):
         data_parallel_groups.append(list(range(i, world_size, dp_group_size)))
 
@@ -231,7 +232,6 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     dp_rank = mpu.get_data_parallel_rank()
 
     _ensure_divisibility(world_size, model_parallel_size_)
-    dp_world_size = world_size // model_parallel_size_
     _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     log_dist(
