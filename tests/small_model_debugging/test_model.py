@@ -46,9 +46,11 @@ def get_args(tmpdir, config_dict):
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument('--zero', type=int, default=0)
+    parser.add_argument('--zero_param_group_size', type=int, default=1)
     args = parser.parse_args()  #args=''
 
     config_dict["zero_optimization"]["stage"] = args.zero
+    config_dict["zero_optimization"]["zero_param_group_size"] = args.zero_param_group_size
     print('config_dict["zero_optimization"]', config_dict["zero_optimization"])
     config_path = create_config_from_dict(tmpdir, config_dict)
 
@@ -81,6 +83,7 @@ config_dict = {
     "zero_optimization": {
         "stage": 0,
         "reduce_bucket_size": 20
+        "zero_param_group_size": 1
     }
 }
 #        "initial_scale_power": 15

@@ -942,7 +942,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 if self.use_secondary_tensor:
                   src_rank = groups._get_zero_param_intra_broadcast_src_rank()
                   ds_intra_group = groups._get_zero_param_intra_parallel_group()
-                  handles.append(_dist_broadcast_fn(flat_tensor,src_rank,ds_intra_group))
+                  handles.append(_dist_broadcast_fn(flat_tensor,src_rank,ds_intra_group)) #sync?
 
                 ##SAGE
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
