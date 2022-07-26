@@ -5,7 +5,6 @@ Licensed under the MIT license.
 
 import math
 import os
-import time
 import types
 from typing import Callable, Iterable
 from enum import Enum
@@ -19,7 +18,7 @@ from deepspeed import comm as dist
 from torch.nn import Module
 from torch.nn import Parameter
 
-from .linear import LinearModuleForZeroStage3, zero3_linear_wrap
+from .linear import zero3_linear_wrap
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
@@ -30,11 +29,8 @@ from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape,
                                    debug_param2name_id_shape_device,
                                    debug_module2name,
-                                   debug_param2name,
                                    debug_param2name_id,
-                                   debug_param2name_id_shape_status,
-                                   printflock,
-                                   log_rank_file)
+                                   debug_param2name_id_shape_status)
 from deepspeed.utils.logging import logger
 
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
@@ -43,7 +39,7 @@ param_count = 0
 partitioned_param_data_shape = [0]
 
 
-def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
+def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
     return instrument_w_nvtx(dist.allgather_fn)(output_tensor,
                                                 input_tensor,
                                                 group=group,
@@ -833,8 +829,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 handle = _dist_allgather_fn(
                     param.ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
-                    self.ds_process_group,
-                )
+                    self.ds_process_group)
                 param.data = param_buffer.narrow(0,
                                                  0,
                                                  param.ds_numel).view(param.ds_shape).to(

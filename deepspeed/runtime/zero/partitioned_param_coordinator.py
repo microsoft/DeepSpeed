@@ -4,13 +4,10 @@ Licensed under the MIT license.
 """
 
 from dataclasses import dataclass
-import functools
 import collections
-from collections import OrderedDict, UserDict
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
+from collections import UserDict
+from typing import Deque, Set
 from torch.cuda import Event, Stream
-from torch.nn import Module, Parameter
 
 from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
