@@ -45,7 +45,7 @@ We share the details of our experimental setup and some of the best practices we
 
 ### Hardware (Azure instances)
 
-The NDv4 A100 series in Azure exposes the SXM-based NVIDIA A100 40GB and 80GB Tensor Core GPUs. In our experiments, each NDv4 instance includes two socket AMD EPYC 7V12 64-Core CPUs, 1.7TB main memory and eight A100 80GB GPUs. The system has a balanced PCIe topology connecting 4 GPU devices to each CPU socket. Each GPU within the VM is provided with its own dedicated, topology-agnostic 200 Gb/s NVIDIA Mellanox HDR InfiniBand connection providing an accelerated 200 Gbps high speed fabric. The DeepSpeed library exploits offload capabilities where the activation and optimizer states are allocated in the main memory. Hence, 1.7TB memory capacity per node helps us to scale to large model sizes.
+We used [NDm A100 v4-series](https://docs.microsoft.com/en-us/azure/virtual-machines/ndm-a100-v4-series) instances in our experiments. Each instance includes two socket AMD EPYC 7V12 64-Core CPUs, 1.7TB main memory and eight A100 80GB GPUs. The system has a balanced PCIe topology connecting 4 GPU devices to each CPU socket. Each GPU within the VM is provided with its own dedicated, topology-agnostic 200 Gb/s NVIDIA Mellanox HDR InfiniBand connection providing an accelerated 200 Gbps high speed fabric. The DeepSpeed library exploits offload capabilities where the activation and optimizer states are allocated in the main memory. Hence, 1.7TB memory capacity per node helps us to scale to large model sizes.
 
 ### Training setup using AzureML
 Users can directly use the AzureML studio and use our published [recipes](https://github.com/microsoft/Megatron-DeepSpeed/tree/main/examples/azureml) to run experiments without any additional setup. This is the easiest and recommended way of running experiments on Azure.
@@ -100,7 +100,7 @@ B is batch size, s is sequence length, l is the number of layers, h is hidden si
 
 *Figure 5: Performance characteristics of 175B model on 512 and 1K GPUs respectively. The colored columns signify different micro batch sizes.*
 
-Next, we report the 530B model scaling. Previous results on the 530B MT-NLG model using DeepSpeed and Megatron-LM on 280 DGX A100 servers on the Selene supercomputer showed the peak throughput of 126 TFLOPS/GPU. However, we were able to surpass that throughput and achieved up to **171.37 TFLOPs/GPU** on 128 NDv4 A100 systems (i.e., 1024 GPUs) as shown in *Figure 6*.
+Next, we report the 530B model scaling. Previous results on the 530B MT-NLG model using DeepSpeed and Megatron-LM on 280 DGX A100 servers on the Selene supercomputer showed the peak throughput of 126 TFLOPS/GPU. However, we were able to surpass that throughput and achieved up to **171.37 TFLOPs/GPU** on 128 NDm A100 v4-series A100 systems (i.e., 1024 GPUs) as shown in *Figure 6*.
 
 The benefit of this 530B model is its simpler parallelization configuration as there is no tensor/pipeline parallelism. With ZeRO powered data parallelism, there are fewer heuristics required to optimally configure the distributed model. In addition, the consistent steady state performance of more than 140 TFLOPs/GPU for micro batch sizes >1 demonstrates a robust software and hardware platform.
 
