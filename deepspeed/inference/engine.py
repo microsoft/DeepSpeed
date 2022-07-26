@@ -13,7 +13,6 @@ from packaging import version as pkg_version
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer
-from ..utils import logger
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
@@ -143,7 +142,6 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path)
 
         device = torch.cuda.current_device()
-        # logger.info(f"Place model to device: {device}")
         self.module.to(device)
 
         if self.mp_world_size > 1:
