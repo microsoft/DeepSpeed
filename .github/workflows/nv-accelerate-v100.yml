@@ -1,4 +1,4 @@
-name: nv-transformers-v100
+name: nv-accelerate-v100
 
 on:
   push:
