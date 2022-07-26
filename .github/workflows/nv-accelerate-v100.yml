@@ -50,7 +50,7 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           git clone https://github.com/huggingface/accelerate
           cd accelerate
-          # instaling dependencies
+          # installing dependencies
           pip install .[testing]
           # force protobuf version due to issues
           pip install "protobuf<4.21.0"
