@@ -1,5 +1,5 @@
 import torch
-from deepspeed.utils import logger
+from deepspeed.utils import logger, log_dist
 from deepspeed.runtime.checkpoint_engine.checkpoint_engine import \
     CheckpointEngine
 
@@ -9,7 +9,7 @@ class TorchCheckpointEngine(CheckpointEngine):
         super().__init__(config_params)
 
     def create(self, tag):
-        print(f"[Torch] Checkpoint {tag} is begin to save!")
+        log_dist(f"[Torch] Checkpoint {tag} is begin to save!", ranks=[0])
 
     def save(self, state_dict, path: str):
         logger.info(f"[Torch] Saving {path}...")
@@ -24,5 +24,5 @@ class TorchCheckpointEngine(CheckpointEngine):
         return partition
 
     def commit(self, tag):
-        print(f"[Torch] Checkpoint {tag} is ready now!")
+        logger.info(f"[Torch] Checkpoint {tag} is ready now!")
         return True

@@ -45,9 +45,11 @@ class NebulaCheckpointEngine(CheckpointEngine):
 
     def load(self, path: str, map_location=None):
         if not self.enable_nebula_load:
-            logger.info(f"[Nebula] Disable nebula load. Loading checkpoint from {path}...")
+            logger.info(
+                f"[Nebula] Disable nebula load. Loading checkpoint from {path}...")
             partition = torch.load(path, map_location=map_location)
-            logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path}...")
+            logger.info(
+                f"[Nebula] Disable nebula load. Loaded checkpoint from {path}...")
             return partition
 
         tag = _get_tag_from_path(path)

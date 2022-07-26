@@ -2601,15 +2601,14 @@ class DeepSpeedEngine(Module):
             old_moe_load = False
             if not isinstance(checkpoint['num_experts'], list):
                 old_moe_load = True
-            DeepSpeedEngine.load_moe_state_dict(
-                load_dir,
-                tag,
-                state_dict=checkpoint['module'],
-                old_moe_load=old_moe_load,
-                model=self.module,
-                mpu=self.mpu,
-                num_experts=self.num_experts,
-                checkpoint_engine=self.checkpoint_engine)
+            DeepSpeedEngine.load_moe_state_dict(load_dir,
+                                                tag,
+                                                state_dict=checkpoint['module'],
+                                                old_moe_load=old_moe_load,
+                                                model=self.module,
+                                                mpu=self.mpu,
+                                                num_experts=self.num_experts,
+                                                checkpoint_engine=self.checkpoint_engine)
         if not self.load_universal_checkpoint():
             self.load_module_state_dict(state_dict=checkpoint['module'],
                                         strict=load_module_strict,
