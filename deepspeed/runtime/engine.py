@@ -5,9 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import os
 import re
 import stat
-import math
 import torch
-import warnings
 import hashlib
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
@@ -17,19 +15,15 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from typing import Callable, Dict, Optional, Union, Iterable
+from typing import Callable, Dict, Union, Iterable
 
 import deepspeed
 
-from deepspeed.runtime.utils import see_memory_usage, get_ma_status, DummyOptim
+from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
-
-from deepspeed.runtime.activation_checkpointing import (
-    checkpointing as activation_checkpointing,
-)
 
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
@@ -43,6 +37,20 @@ from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
     PLD_THETA, PLD_GAMMA, BFLOAT16, FP16
+
+from deepspeed.compression import compression_scheduler
+from deepspeed.compression.constants import \
+    WEIGHT_QUANTIZE_IN_FORWARD_ENABLED, \
+    WEIGHT_QUANTIZATION, SHARED_PARAMETERS, \
+    WEIGHT_QUANTIZE_ENABLED, \
+    WEIGHT_QUANTIZE_GROUPS, \
+    WEIGHT_QUANTIZE_FP16_MIXED_QUANTIZE, \
+    WEIGHT_QUANTIZE_CHANGE_RATIO, \
+    WEIGHT_QUANTIZE_TYPE, \
+    WEIGHT_QUANTIZE_ROUNDING, \
+    WEIGHT_QUANTIZE_VERBOSE, \
+    WEIGHT_QUANTIZE_KERNEL
+
 from deepspeed.runtime.zero.constants import \
     ZERO_OPTIMIZATION_OPTIMIZER_STATES, ZERO_OPTIMIZATION_GRADIENTS, ZERO_OPTIMIZATION_WEIGHTS
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
@@ -50,9 +58,7 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 
 from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
-from deepspeed.runtime.utils import get_grad_norm
 from deepspeed.utils import logger, log_dist, instrument_w_nvtx
-from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.timer import ThroughputTimer, SynchronizedWallClockTimer
 from deepspeed.utils.debug import debug_extract_module_and_param_names
 from deepspeed.monitor.monitor import MonitorMaster
@@ -64,7 +70,6 @@ from deepspeed.runtime.data_pipeline.curriculum_scheduler import CurriculumSched
 from .pipe.module import PipelineModule
 from .utils import ensure_directory_exists, get_ma_status
 from ..ops.op_builder import UtilsBuilder
-from ..ops.adam import DeepSpeedCPUAdam
 from ..ops.adam import FusedAdam
 from ..moe.sharded_moe import TopKGate, MOELayer
 from ..moe.layer import MoE
@@ -264,6 +269,8 @@ class DeepSpeedEngine(Module):
 
         self._set_distributed_vars(args)
 
+        dist.configure(self._config)
+
         self.monitor = MonitorMaster(self._config.monitor_config)
 
         see_memory_usage(
@@ -390,7 +397,6 @@ class DeepSpeedEngine(Module):
 
     def get_batch_info(self):
         """Get all training batch related settings.
-
         Returns:
             train_batch_size (int): The effective training batch size. This is the amount of data
                 samples that leads to one step of model update.
@@ -429,7 +435,6 @@ class DeepSpeedEngine(Module):
     def get_global_grad_norm(self) -> float:
         """Return the 2-norm of all gradients. If there is model parallelism,
         the norm will be global.
-
         The computed norm will be cached and reused until the next step() pass.
         .. note::
             In the presence of model parallelism, this is a collective call
@@ -592,18 +597,24 @@ class DeepSpeedEngine(Module):
 
     def quantize_training(self):
         return (
-            self._config.quantize_training_enabled,
-            self._config.quantize_target_bits,
-            self._config.quantize_start_bits,
-            self._config.quantize_period,
-            self._config.quantize_offset,
-            self._config.quantize_groups,
-            self._config.fp16_mixed_quantize,
-            self._config.quantize_change_rate,
-            self._config.quantize_type,
-            self._config.quantize_rounding,
-            self._config.quantize_verbose,
-            self._config.use_quantizer_kernel,
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_IN_FORWARD_ENABLED],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_ENABLED],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_GROUPS],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_FP16_MIXED_QUANTIZE],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_CHANGE_RATIO],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_TYPE],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_ROUNDING],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_VERBOSE],
+            self._config.compression_config[WEIGHT_QUANTIZATION][SHARED_PARAMETERS]
+            [WEIGHT_QUANTIZE_KERNEL],
         )
 
     def zero_optimization(self):
@@ -698,6 +709,9 @@ class DeepSpeedEngine(Module):
 
     def gradient_accumulation_steps(self):
         return self._config.gradient_accumulation_steps
+
+    def load_universal_checkpoint(self):
+        return self._config.load_universal_checkpoint
 
     @property
     def communication_data_type(self):
@@ -1120,6 +1134,7 @@ class DeepSpeedEngine(Module):
         log_dist("DeepSpeed Final Optimizer = {}".format(self.optimizer_name()),
                  ranks=[0])
 
+        self.compression_scheduler = self._configure_compression_scheduler()
         self.quantizer = self._configure_quantization()
 
     def _configure_basic_optimizer(self, model_parameters):
@@ -1202,13 +1217,13 @@ class DeepSpeedEngine(Module):
             optimizer = torch_optimizer(model_parameters, **optimizer_parameters)
         return optimizer
 
+    def _configure_compression_scheduler(self):
+        return compression_scheduler(self.module, self._config.compression_config)
+
     def _configure_quantization(self):
         (
+            quantize_weight_in_forward,
             quantize_enabled,
-            q_target_bits,
-            q_start_bits,
-            q_period,
-            q_offset,
             q_groups,
             q_mixed_fp16,
             q_change_ratio,
@@ -1217,15 +1232,13 @@ class DeepSpeedEngine(Module):
             q_verbose,
             use_quantizer_kernel,
         ) = self.quantize_training()
+        if quantize_enabled and not quantize_weight_in_forward:
+            assert self.fp16_enabled(), "MoQ (quantize in optimization step) weight quantization is only supported for FP16"
         quantizer = None
-        if quantize_enabled:
+        if quantize_enabled and not quantize_weight_in_forward:
             from deepspeed.runtime.quantize import Quantizer
 
             quantizer = Quantizer(
-                q_target_bits,
-                q_start_bits,
-                q_period,
-                q_offset,
                 q_groups,
                 q_mixed_fp16,
                 q_change_ratio,
@@ -1305,6 +1318,7 @@ class DeepSpeedEngine(Module):
         timers = self.timers if self.wall_clock_breakdown() else None
         optimizer = BF16_Optimizer(
             optimizer,
+            self.param_names,
             mpu=self.mpu,
             clip_grad=clip_grad,
             allgather_bucket_size=self.zero_allgather_bucket_size(),
@@ -1465,11 +1479,9 @@ class DeepSpeedEngine(Module):
 
     def was_step_applied(self) -> bool:
         """Returns True if the latest ``step()`` produced in parameter updates.
-
         Note that a ``False`` return is not an error condition. Steps are frequently
         no-ops, such as between gradient accumulation boundaries or when overflows
         occur.
-
         Returns:
             bool: Whether the latest ``step()`` modified model parameters.
         """
@@ -1569,11 +1581,26 @@ class DeepSpeedEngine(Module):
                                  == self.flops_profiler_profile_step()
                                  and self.global_rank == 0)
 
+        # used to check quantization happens at step 0!
+        if self.global_steps == 0 and hasattr(self, "compression_scheduler"):
+            self.compression_scheduler.step(step_zero_check=True)
+            if self.quantizer:
+                tensor_to_quantize = self.optimizer.bit16_groups if self.zero_optimization_stage(
+                ) == 2 else self.optimizer.fp16_groups
+                if self.compression_scheduler.weight_quantization_enabled:
+                    self.quantizer.quantize(
+                        tensor_to_quantize,
+                        (self.optimizer.overflow if self.fp16_enabled() else False),
+                        self.eigenvalue_enabled(),
+                        None,
+                    )
+
         if flops_profiler_active:
             self.flops_profiler.start_profile(ignore_list=None)
 
-        if self.module.training and self.progressive_layer_drop:
-            kwargs.update(self.progressive_layer_drop.get_state())
+        if self.module.training:
+            if self.progressive_layer_drop:
+                kwargs.update(self.progressive_layer_drop.get_state())
 
         if self.__class__.__name__ != "PipelineEngine":
             # TODO: The above if condition is a HACK since for PipelineEngine
@@ -1668,7 +1695,6 @@ class DeepSpeedEngine(Module):
     @instrument_w_nvtx
     def backward(self, loss, allreduce_gradients=True, release_loss=False):
         r"""Execute backward pass on the loss
-
         Arguments:
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: is deprecated, ignored, and will soon be removed'
@@ -1767,9 +1793,7 @@ class DeepSpeedEngine(Module):
         value before each forward/backward. The final fordward/backward should have the
         boundary state set to True. This style allows client code to only call engine.step() once after all
         the gradient accumulation passes are complete. See example below:
-
         .. code-block:: python
-
         engine.set_gradient_accumulation_boundary(False)
         for _ in range(gradient_accumulation_steps - 1):
             micro_batch = next(data_loader)
@@ -1780,7 +1804,6 @@ class DeepSpeedEngine(Module):
         loss = engine(micro_batch)
         engine.backward(loss)
         engine.step()
-
         Arguments:
             is_boundary (bool): are we at a gradient accumulation boundary or not?
         """
@@ -1818,17 +1841,15 @@ class DeepSpeedEngine(Module):
 
         # Quantize the updated parameter if there is no overflow
         if self.quantizer:
-            if self.fp16_enabled():
-                tensor_to_quantize = self.optimizer.bit16_groups if self.zero_optimization_stage(
-                ) == 2 else self.optimizer.fp16_groups
-            else:
-                tensor_to_quantize = self.optimizer.param_groups
-            self.quantizer.quantize(
-                tensor_to_quantize,
-                (self.optimizer.overflow if self.fp16_enabled() else False),
-                self.eigenvalue_enabled(),
-                block_eigenvalue,
-            )
+            tensor_to_quantize = self.optimizer.bit16_groups if self.zero_optimization_stage(
+            ) == 2 else self.optimizer.fp16_groups
+            if self.compression_scheduler.weight_quantization_enabled:
+                self.quantizer.quantize(
+                    tensor_to_quantize,
+                    (self.optimizer.overflow if self.fp16_enabled() else False),
+                    self.eigenvalue_enabled(),
+                    block_eigenvalue,
+                )
         # zero grad in basic optimizer could be unreliable and may not exhibit
         # the behaviour that we want
         if self.bfloat16_enabled():
@@ -1853,6 +1874,7 @@ class DeepSpeedEngine(Module):
         if overflow:
             self.skipped_steps += 1
         else:
+            self.compression_scheduler.step()
             if self.lr_scheduler is not None:
                 try:
                     self.lr_scheduler.step(**(lr_kwargs or {}))
@@ -2448,7 +2470,6 @@ class DeepSpeedEngine(Module):
                         load_module_only=False,
                         custom_load_fn=None):
         """Load training checkpoint
-
         Arguments:
             load_dir: Required. Directory to load the checkpoint from
             tag: Checkpoint tag used as a unique identifier for checkpoint, if not provided will attempt to load tag in 'latest' file
@@ -2459,11 +2480,8 @@ class DeepSpeedEngine(Module):
             custom_load_fn: Optional. Custom model load function.
         Returns:
             A tuple of ``load_path`` and ``client_state``.
-
             *``load_path``: Path of the loaded checkpoint. ``None`` if loading the checkpoint failed.
-
             *``client_state``: State dictionary used for loading required training states in the client code.
-
         Important: under ZeRO3, one cannot load checkpoint with ``engine.load_checkpoint()`` right
         after ``engine.save_checkpoint()``. It is because ``engine.module`` is partitioned, and
         ``load_checkpoint()`` wants a pristine model. If insisting to do so, please reinitialize engine
@@ -2471,16 +2489,23 @@ class DeepSpeedEngine(Module):
         """
 
         if tag is None:
-            latest_path = os.path.join(load_dir, "latest")
+            latest_tag = "latest_universal" if self.load_universal_checkpoint(
+            ) else "latest"
+            latest_path = os.path.join(load_dir, latest_tag)
             if os.path.isfile(latest_path):
                 with open(latest_path, "r") as fd:
                     tag = fd.read().strip()
             else:
-                logger.warning(
-                    f"Unable to find latest file at {latest_path}, if trying to load latest "
-                    "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
-                )
-                return None, None
+                if self.load_universal_checkpoint():
+                    raise ValueError(
+                        f'Invalid for universal checkpoint: {latest_path} does not exist'
+                    )
+                else:
+                    logger.warning(
+                        f"Unable to find latest file at {latest_path}, if trying to load latest "
+                        "checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint."
+                    )
+                    return None, None
 
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
@@ -2548,10 +2573,10 @@ class DeepSpeedEngine(Module):
                                                 model=self.module,
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
-
-        self.load_module_state_dict(state_dict=checkpoint['module'],
-                                    strict=load_module_strict,
-                                    custom_load_fn=custom_load_fn)
+        if not self.load_universal_checkpoint():
+            self.load_module_state_dict(state_dict=checkpoint['module'],
+                                        strict=load_module_strict,
+                                        custom_load_fn=custom_load_fn)
 
         self.loaded_checkpoint_dp_world_size = checkpoint['dp_world_size']
 
@@ -2649,25 +2674,35 @@ class DeepSpeedEngine(Module):
         return load_path, client_state
 
     def _load_zero_checkpoint(self, load_dir, tag, load_optimizer_states=True):
-        zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
-        if zero_sd_list is None:
-            return False
-
-        if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
-            raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
-                f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
-                f"current world size is {self.dp_world_size}. Automatic adjustment " \
-                "of ZeRO's optimizer state partitioning with a new world size is not " \
-                "currently supported.")
+        if self.load_universal_checkpoint():
+            zero_sd_list = None
+            checkpoint_folder = f'{os.path.join(load_dir, tag)}'
+        else:
+            if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
+                raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
+                    f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
+                    f"current world size is {self.dp_world_size}. Automatic adjustment " \
+                    "of ZeRO's optimizer state partitioning with a new world size is not " \
+                    "currently supported.")
+            checkpoint_folder = None
+            zero_sd_list = self._get_all_zero_checkpoints(load_dir, tag)
+            if zero_sd_list is None:
+                return False
 
         self.optimizer.load_state_dict(
             state_dict_list=zero_sd_list,
             load_optimizer_states=load_optimizer_states,
             load_from_fp32_weights=self.zero_load_from_fp32_weights(),
-        )
-        logger.info(
-            f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
-        )
+            checkpoint_folder=checkpoint_folder)
+
+        if self.load_universal_checkpoint():
+            logger.info(
+                f'loaded universal zero checkpoints from {checkpoint_folder} for rank {self.global_rank}'
+            )
+        else:
+            logger.info(
+                f"loading {len(zero_sd_list)} zero partition checkpoints for rank {self.global_rank}"
+            )
         return True
 
     def _get_mp_rank_zero_checkpoint_names(self,
@@ -2771,14 +2806,12 @@ class DeepSpeedEngine(Module):
 
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
-
         Arguments:
             save_dir: Required. Directory for saving the checkpoint
             tag: Optional. Checkpoint tag used as a unique identifier for the checkpoint, global step is
                 used if not provided. Tag name must be the same across all ranks.
             client_state: Optional. State dictionary used for saving required training states in the client code.
             save_latest: Optional. Save a file 'latest' pointing to the latest saved checkpoint.
-
         Important: all processes must call this method and not just the process with rank 0. It is
         because each process needs to save its master weights and scheduler+optimizer states. This
         method will hang waiting to synchronize with other processes if it's called just for the
@@ -3028,11 +3061,9 @@ class DeepSpeedEngine(Module):
         optimizer. the names are exactly as in state_dict. The order is absolutely important, since
         the saved data is just flattened data with no identifiers and requires reconstruction in the
         same order it was saved.
-
         We can't rely on self.module.named_parameters() to get the saved tensors, as some params
         will be missing and others unsaved and then it'd be impossible to reconstruct state_dict
         from the flattened weights.
-
         optimizer.bit16_groups seems to be the easiest to use as it's in all zeroX versions.
         """
         param_group_shapes = []
@@ -3092,21 +3123,15 @@ class DeepSpeedEngine(Module):
 
     def _zero3_consolidated_16bit_state_dict(self):
         """
-
         Get a full non-partitioned state_dict with fp16 weights on cpu.
-
         Important: this function must be called on all ranks and not just rank 0.
-
         This is similar to nn.Module.state_dict (modelled after _save_to_state_dict), but:
-
         1. consolidates the weights from different partitions on gpu0
         2. works on one layer at a time to require as little gpu0 memory as possible, by
         moving the already consolidated weights to cpu
         3. takes care to keep the shared params shared when gradually copying the params to cpu
-
         Returns:
             a consolidated fp16 ``state_dict`` on cpu on rank 0, ``None`` on other ranks
-
         """
         if not self.zero_optimization_partition_weights():
             raise ValueError("this function requires ZeRO-3 mode")
@@ -3168,21 +3193,16 @@ class DeepSpeedEngine(Module):
 
     def save_16bit_model(self, save_dir, save_filename="pytorch_model.bin"):
         r"""Save 16bit model weights
-
         This method saves the 16bit model weights at the desired destination.
-
         Arguments:
             save_dir: Required. Directory for saving the model
             save_filename: Optional. Filename to save to. Defaults to ``pytorch_model.bin``
-
         Returns:
             ``True`` when a model has been saved, ``False`` otherwise. It will not be saved if
             stage3_gather_16bit_weights_on_model_save is ``False``.
-
         Important: all processes must call this method and not just the process with rank 0. It is
         because the processes need to work in sync to gather the weights. This method will hang
         waiting to synchronize with other processes if it's called just for the process with rank 0.
-
         """
 
         path = os.path.join(save_dir, save_filename)
