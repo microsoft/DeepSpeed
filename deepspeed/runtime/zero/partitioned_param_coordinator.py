@@ -258,6 +258,8 @@ class PartitionedParameterCoordinator:
             debug_rank0(f"-fetch: {param.ds_summary()}")
         self.__all_gather_params(params_to_fetch)
 
+        ##Update secondary tensor
+
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
@@ -389,6 +391,7 @@ class PartitionedParameterCoordinator:
     def __all_gather_params(self, params: Set[Parameter]) -> None:
         """for each partitioned parameter, kick off an async allgather and store
         the work handle for the in flight parameters."""
+
         partitioned_params = []
         for param in params:
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
@@ -397,8 +400,10 @@ class PartitionedParameterCoordinator:
 
         if partitioned_params:
             with torch.cuda.stream(self.__allgather_stream):
-                handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
-
+                logger.info(
+                       "SAGE ALLGather in PPC Rank {}, is secondary_tensor set ? {} "
+                        .format(dist.get_rank(),partitioned_params[0].use_secondary_tensor))
+                handle = partitioned_params[0].all_gather_coalesced(partitioned_params) 
             for param in partitioned_params:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
                 self.__inflight_param_registry[param] = handle

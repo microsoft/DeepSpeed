@@ -163,18 +163,13 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
-        self.zero_param_group_size = 4
+        ##SAGE: TODO: pass as argument
+        self.zero_param_group_size = 2 
 
         if self.zero_param_group_size > 1:
             self._set_zero_group_parallelism()
-       
 
-        logger.info(
-                "Test Group in STAGE3! Rank {} group dict: {}, "
-                  .format(dist.get_rank(), groups._get_zero_param_parallel_ranks_in_group()))
-            
-
-        zpg = groups._get_zero_param_parallel_group()
+        zpg = groups._get_zero_param_inter_parallel_group()
 
         self.parameter_offload = DeepSpeedZeRoOffload(module,
                                                       timers,
@@ -1883,6 +1878,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
+
+        ##Invalidate secondary partition
+        if self.parameter_offload:
+            print_rank_0(f"SAGE INVALIDATE secondary partition Param offload DICT {self.parameter_offload.__dict__}")
+            self.parameter_offload.invalidate_secondary_partition()
 
         self.log_timers(timer_names)
 

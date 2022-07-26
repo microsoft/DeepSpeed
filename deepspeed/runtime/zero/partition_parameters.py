@@ -51,6 +51,13 @@ def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group):
                                                 group=group,
                                                 async_op=True)
 
+def _dist_broadcast_fn(input_tensor:Tensor,src_rank,group):
+    return instrument_w_nvtx(dist.broadcast)(input_tensor,
+                                                src_rank,
+                                                group=group,
+                                                async_op=True)
+     
+
 
 def print_rank_0(message, debug=False, force=False):
     rank = dist.get_rank()
@@ -499,7 +506,12 @@ class AllGatherCoalescedHandle:
         if self.__complete:
             return
 
-        instrument_w_nvtx(self.__allgather_handle.wait)()
+        for handle in self.__allgather_handle:
+            #print("Rank in ALLGather WAIT [", dist.get_rank(), " ] handles ", len(self.__allgather_handle), " handle ", handle)
+            print("Rank in ALLGather WAIT [", dist.get_rank(), " ] partitions LEM ", len(self.__partitions), " PARTITIONS ", self.__partitions)
+            instrument_w_nvtx(handle.wait)()
+
+        #instrument_w_nvtx(self.__allgather_handle.wait)()
 
         # split the single tensor out into individual tensors
         param_offset = 0
@@ -515,7 +527,7 @@ class AllGatherCoalescedHandle:
                         min(param.ds_numel - param_start,
                             param.ds_tensor.ds_numel))
                     partitions.append(part_to_copy)
-
+            print("Rank in WAIT [", dist.get_rank(), " ] parttion ", partitions, " param ds shape ", param.ds_shape, " partition size ", len(partitions))
             param.data = instrument_w_nvtx(torch.cat)(partitions).view(param.ds_shape)
             param.ds_status = ZeroParamStatus.AVAILABLE
 
@@ -665,19 +677,21 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.world_size = dist.get_world_size(group=self.ds_process_group)
 
-        self.zero_param_parallel_group = zero_param_parallel_group #revise
-        ###num_ranks_in_group
-        self.param_group_size = num_ranks_in_group = 4##pass as argument
-        ##TODO: get from group
-        self.param_group_rank = math.floor(self.rank/self.param_group_size)
+        self.zero_param_process_group = zero_param_parallel_group #revise
+        
+        self.use_secondary_tensor = False
 
-        if self.zero_param_parallel_group is not None: 
+        if self.zero_param_process_group is not None: 
+
+            self.num_ranks_in_param_group = groups._get_zero_param_intra_parallel_group_world_size() # of ranks within a parameter (intra) group
+            self.num_param_groups =   groups._get_zero_param_inter_parallel_group_world_size()# of parameter (inter) group 
+            #TODO: assert that two are above are same as (len) from below
+            ##TODO: check that MPU is not set
+            self.param_group_rank = math.floor(self.rank/self.num_ranks_in_param_group)
             logger.info(
-                     "SAGE Test Group in partition parameter Rank {} rank in my group: {}, group world size: {} "
-                     .format(dist.get_rank(), groups._get_zero_param_parallel_rank_in_mygroup(),
-                     groups._get_zero_param_parallel_group_world_size()))
-                     #groups._get_zero_param_parallel_allranks_in_group()))
-            
+                     "Test Group in partition parameter Rank {} ranks in my intra group: {}, ranks in my inter group: {} "
+                     .format(dist.get_rank(), groups._get_zero_param_intra_parallel_group_ranks(),
+                     groups._get_zero_param_inter_parallel_group_ranks()))
 
         # Local device is the device where the parameters are consumed, must be default device.
         # It is the device where parameters are fully instantiated using allgather
@@ -767,7 +781,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             f"Param count {param_count}. After converting and partitioning parmas in {module.__class__.__name__}",
             force=False)
 
-    ##SAGE First allgather here before partition
     def _convert_to_deepspeed_param(self, param):
 
         # Partitioned, Normal, Remote
@@ -800,6 +813,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # The group that the parameter is scattered across.
         param.ds_process_group = self.ds_process_group
 
+        #Process group for secondary partition all (group) gather
+        param.ds_zero_param_process_group = self.zero_param_process_group
+        param.ds_secondary_tensor_group_size = self.num_ranks_in_param_group
+        param.ds_secondary_tensor_num_of_groups = self.num_param_groups
+        param.use_secondary_tensor = self.use_secondary_tensor
+
         # This is set to the Async Param swapper if remote device is nvme
         # else this is set to None
         param.nvme_swapper = self.param_swapper
@@ -808,7 +827,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         param.ds_id = Init.param_id
         Init.param_id += 1
 
-        ###SAGE secondary not available
         def all_gather(param_list=None, async_op=False, hierarchy=0):
             cls = param
             if param_list is None:
@@ -826,7 +844,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 if param.ds_status != ZeroParamStatus.NOT_AVAILABLE:
                     raise RuntimeError(param.ds_summary())
                 param.ds_status = ZeroParamStatus.INFLIGHT
-
+            
+            ##use apppropriate all gather process group
+            ds_process_group = self.zero_param_process_group if self.use_secondary_tensor else self.ds_process_group
+            logger.info(
+                    "SAGE ALLGather Rank {}, is secondary_tensor set ? {} "
+                    .format(self.rank,self.use_secondary_tensor))
             # ensure that each rank has params in same order. the allgather
             # is done by flattening the parameter list into a single tensor that
             # can be allgathered in a single call - this means that if each rank
@@ -855,10 +878,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
+                #All gather on secondary tensor if available
+                param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor else param.ds_tensor
+                ###SAGE TODO
                 handle = _dist_allgather_fn(
-                    param.ds_tensor.to(torch.cuda.current_device()),
+                    param_ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
-                    self.ds_process_group,
+                    ds_process_group,
                 )
                 param.data = param_buffer.narrow(0,
                                                  0,
@@ -873,29 +899,67 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                           device=torch.cuda.current_device(),
                                           requires_grad=False)
                 partitions: List[Parameter] = []
+                #Recalc (correct) partition size for secondary partition
+                if self.use_secondary_tensor:
+                    ###CHECK
+                    partition_sz = sum(p.ds_tensor.ds_numel*p.ds_secondary_tensor_group_size for p in params)
+
+                num_param_groups = self.num_param_groups 
+                world_size = num_param_groups if self.use_secondary_tensor else self.world_size
+                #for i in range(self.world_size): ##TODO, optimize, try group lead
+                for i in range(world_size):
+                    partitions.append(
+                        flat_tensor.narrow(0,
+                                           partition_sz * i,
+                                           partition_sz))
+                 
+                if self.use_secondary_tensor:
+                    if dist.get_rank() in groups._get_zero_param_inter_parallel_group_ranks():  
+                        self.rank = groups._get_zero_param_inter_parallel_rank_in_mygroup() #use rank in groups
+                        #logger.info(
+                        # "SAGE ALLGather FIR Rank : {}, rank in my group : {}, partition size: {} "
+                        # .format(dist.get_rank(), self.rank, len(partitions)))
+                        instrument_w_nvtx(torch.cat)(
+                            [p.ds_secondary_tensor.to(torch.cuda.current_device()) for p in params],
+                            out=partitions[self.rank])
+                else:
+                    instrument_w_nvtx(torch.cat)(
+                        [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
+                        out=partitions[self.rank])
+ 
+
+                #do intergroup gather on secondary tensor
+                #broadcast output of intergroup to intragroup
+                handles = []
+                if not self.use_secondary_tensor or dist.get_rank() in groups._get_zero_param_inter_parallel_group_ranks():
+                    logger.info(
+                     "SAGE ALLGather Rank : {}, IN (size) : {}, OUT (size): {}, IN : {}, OUT : {} "
+                     .format(self.rank,partitions[self.rank].size(),flat_tensor.size(), partitions[self.rank],flat_tensor))
+                    handles.append(_dist_allgather_fn(partitions[self.rank],  ##SAGE: fix unused partition
+                                                flat_tensor,
+                                                ds_process_group))
+
+                if self.use_secondary_tensor:
+                  src_rank = groups._get_zero_param_intra_broadcast_src_rank()
+                  ds_intra_group = groups._get_zero_param_intra_parallel_group()
+                  handles.append(_dist_broadcast_fn(flat_tensor,src_rank,ds_intra_group))
+
+                ##SAGE
+                partition_sz = sum(p.ds_tensor.ds_numel for p in params)
+                partitions: List[Parameter] = []
                 for i in range(self.world_size):
                     partitions.append(
                         flat_tensor.narrow(0,
                                            partition_sz * i,
                                            partition_sz))
-
-                instrument_w_nvtx(torch.cat)(
-                    [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
-                    out=partitions[self.rank])
-                    #out, #in
-                logger.info(
-                     "SAGE ALLGather Rank : {}, IN (size) : {}, OUT (size): {}, IN : {}, OUT : {} "
-                     .format(self.rank,partitions[self.rank].size(),flat_tensor.size(), partitions[self.rank],flat_tensor))
-
-                handle = _dist_allgather_fn(partitions[self.rank],
-                                            flat_tensor,
-                                            self.ds_process_group)
-
+                 
                 return AllGatherCoalescedHandle(
-                    allgather_handle=handle,
+                    #allgather_handle=handle,
+                    allgather_handle=handles,
                     params=params,
-                    partitions=partitions,
+                    partitions=partitions, ##FIX
                     world_size=self.world_size,
+                    #world_size=world_size,  ##FIX
                 )
 
         def partition(param_list=None, hierarchy=0, has_been_updated=False):
@@ -1047,20 +1111,20 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            #print_rank_0(f"Before Partitioning Param {param.ds_id} {param.ds_tensor} sec: {param.ds_secondary_tensor}",force=True)
-            logger.info(
-                     "SAGE Before partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
-                     .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
+            print_rank_0(f"Before Partitioning Param {param.ds_id} {param.ds_tensor} sec: {param.ds_secondary_tensor}",force=True)
+            #logger.info(
+            #         "SAGE Before partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
+            #         .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
             #self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
             param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             # if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
-            #print_rank_0(f"After Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=True)
-            logger.info(
-                     "SAGE After partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
-                     .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
+            print_rank_0(f"After Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=True)
+            #logger.info(
+            #         "SAGE After partitioning Param  Rank {}, ds_id {} pri: {}, sec {} "
+            #         .format(dist.get_rank(), param.ds_id, param.ds_tensor, param.ds_secondary_tensor))
             #self._param_status(param)
 
     @instrument_w_nvtx
@@ -1108,7 +1172,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             partition_size = tensor_size // self.world_size
 
             ###per_rank_partition*num_ranks_in_group
-            secondary_partition_size = partition_size*self.param_group_size
+            secondary_partition_size = partition_size*self.num_ranks_in_param_group
 
             if param.ds_tensor is None: ##assumption, invalid primary assumes invalid secondary, here create both!!!
                 final_location = None
@@ -1159,9 +1223,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param.ds_secondary_tensor.status = PartitionedParamStatus.AVAILABLE
                 param.ds_secondary_tensor.final_location = final_location
 
-                logger.info(
-                     "SAGE End raw partititioning (Initializing)  Rank {}, primary part: {}, sec part {} "
-                     .format(dist.get_rank(), param.ds_tensor, param.ds_secondary_tensor))
+                #logger.info(
+                #     "SAGE End raw partititioning (Initializing)  Rank {}, primary part: {}, sec part {} "
+                #     .format(dist.get_rank(), param.ds_tensor, param.ds_secondary_tensor))
 
             start = partition_size * self.rank
             end = start + partition_size
@@ -1169,7 +1233,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             ##compute start and end for secondary partition copy
             #floor(rank in world/num of ranks in group) ==== group_rank
 
-            secondary_start = secondary_partition_size * (math.floor(self.rank/self.param_group_size))
+            secondary_start = secondary_partition_size * (math.floor(self.rank/self.num_ranks_in_param_group))
             secondary_end = secondary_start + secondary_partition_size
 
             one_dim_param = param.contiguous().view(-1)
@@ -1181,9 +1245,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 param.ds_tensor.copy_(src_tensor)
                 param.ds_secondary_tensor.copy_(sec_src_tensor)
                 #partitioned_tensor = src_tensor.clone().detach().to(self.remote_device)
+                ##SAGE: secondary partition is now available use, revisit
+                self.use_secondary_tensor=True
 
             else:
-                logger.info("SAGE PARAM NOT IN BETWEEN WHY ......? Rank {} , start {}, end {}, numel {} " 
+                logger.info("SAGE PARAM NOT IN BETWEEN .REVISE.....? Rank {} , start {}, end {}, numel {} " 
                             .format(dist.get_rank(), start, end, param.ds_numel))
                 # partitioned_tensor = torch.zeros(partition_size,
                 #                                  dtype=param.dtype,
@@ -1224,7 +1290,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             print_rank_0(
                 f"ID {param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}", force=True
             )
-
+            #Here set status of secondary partition
     def _param_status(self, param):
         if param.ds_tensor is not None:
             print_rank_0(
