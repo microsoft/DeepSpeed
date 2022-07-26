@@ -41,7 +41,7 @@ ZeRO optimization should be enabled as:
 ZERO_OPTIMIZATION = "zero_optimization"
 
 
-def read_zero_config_deprecated(self, param_dict):
+def read_zero_config_deprecated(param_dict):
     zero_config_dict = {}
     zero_config_dict["stage"] = 1 if param_dict[ZERO_OPTIMIZATION] else 0
     if zero_config_dict["stage"] > 0:
@@ -53,6 +53,16 @@ def read_zero_config_deprecated(self, param_dict):
         "DeepSpeedConfig: this format of ZeRO optimization setup is deprecated. Please use the following format: {}"
         .format(ZERO_FORMAT))
     return zero_config_dict
+
+
+def get_zero_config(param_dict):
+    if ZERO_OPTIMIZATION in param_dict:
+        zero_config_dict = param_dict[ZERO_OPTIMIZATION]
+        if isinstance(zero_config_dict, bool):
+            zero_config_dict = read_zero_config_deprecated(param_dict)
+    else:
+        zero_config_dict = {}
+    return DeepSpeedZeroConfig(**zero_config_dict)
 
 
 class ZeroStageEnum(int, Enum):

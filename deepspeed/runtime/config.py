@@ -21,7 +21,7 @@ from .config_utils import (
     dict_raise_error_on_duplicate_keys,
     ScientificNotationEncoder,
 )
-from .zero.config import DeepSpeedZeroConfig, read_zero_config_deprecated, ZERO_OPTIMIZATION, ZeroStageEnum
+from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
 from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import DeepSpeedMonitorConfig
@@ -787,13 +787,7 @@ class DeepSpeedConfig(object):
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
-        if ZERO_OPTIMIZATION in param_dict:
-            zero_config_dict = param_dict[ZERO_OPTIMIZATION]
-            if isinstance(zero_config_dict, bool):
-                zero_config_dict = read_zero_config_deprecated(param_dict)
-        else:
-            zero_config_dict = {}
-        self.zero_config = DeepSpeedZeroConfig(**zero_config_dict)
+        self.zero_config = get_zero_config(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
