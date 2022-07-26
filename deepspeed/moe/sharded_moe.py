@@ -21,6 +21,7 @@ from torch import Tensor
 from torch.nn import Module
 import torch.nn.functional as F
 from deepspeed.utils import groups
+from .mappings import drop_tokens, gather_tokens
 
 if TYPE_CHECKING:
     Base = Module[Tensor]
@@ -528,7 +529,7 @@ class MOELayer(Base):
             # need to be dropped to ensure correctness.
             # this also doubles up as a communication optimization as we are
             # reducing the all-to-all communication volume.
-            dispatched_input = groups.drop_tokens(dispatched_input, dim=1)
+            dispatched_input = drop_tokens(dispatched_input, dim=1)
 
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
 
@@ -562,7 +563,7 @@ class MOELayer(Base):
             # the dropped duplicate tokens need to be gathered on each
             # tensor parallel rank again for the tensor-parallel
             # non-expert of the next layer.
-            expert_output = groups.gather_tokens(expert_output, dim=1)
+            expert_output = gather_tokens(expert_output, dim=1)
 
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))

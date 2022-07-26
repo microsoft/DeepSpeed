@@ -27,8 +27,6 @@ import deepspeed
 def _gather_tokens(input_, dim=0):
     """Gather tensors and concatenate them along a dimension"""
     mpu = deepspeed.utils.groups.mpu
-    if mpu.get_tensor_model_parallel_world_size() == 1:
-        return input_
 
     input_ = input_.contiguous()
     # Size and dimension.
@@ -52,8 +50,7 @@ def _gather_tokens(input_, dim=0):
 def _drop_tokens(input_, dim=0):
     """Divide a tensor among the tensor parallel ranks"""
     mpu = deepspeed.utils.groups.mpu
-    if mpu.get_tensor_model_parallel_world_size() == 1:
-        return input_
+
     total_chunks = mpu.get_tensor_model_parallel_world_size()
     this_chunk = mpu.get_tensor_model_parallel_rank()
     assert input_.shape[dim] % total_chunks == 0, f"input dimension {dim} ({input_.shape[dim]}) is not divisible by tensor parallel world size ({total_chunks})"
@@ -93,3 +90,19 @@ class _DropTokens(torch.autograd.Function):
     @staticmethod
     def backward(ctx, input_):
         return _gather_tokens(input_, ctx.dim), None
+
+
+def gather_tokens(input_, dim=0):
+    mpu = deepspeed.utils.groups.mpu
+    if mpu is None or mpu.get_tensor_model_parallel_world_size() == 1:
+        # no tensor parallelism for non-experts
+        return input_
+    return _GatherTokens.apply(input_, dim)
+
+
+def drop_tokens(input_, dim=0):
+    mpu = deepspeed.utils.groups.mpu
+    if mpu is None or mpu.get_tensor_model_parallel_world_size() == 1:
+        # no tensor parallelism for non-experts
+        return input_
+    return _DropTokens.apply(input_, dim)

@@ -28,7 +28,6 @@ from deepspeed import comm as dist
 
 from deepspeed.utils import log_dist
 from deepspeed.utils.exceptions import DeprecatedException
-from deepspeed.utils.mappings import _GatherTokens, _DropTokens
 
 # Expert parallel group that the current rank belongs to.
 _EXPERT_PARALLEL_GROUP = {}
@@ -398,17 +397,3 @@ def _get_data_parallel_rank():
 def _get_expert_model_parallel_world_size():
     global expert_tensor_parallel_world_size
     return expert_tensor_parallel_world_size
-
-
-def gather_tokens(input_, dim=0):
-    global mpu
-    if mpu is None:  # no tensor parallelism for non-experts
-        return input_
-    return _GatherTokens.apply(input_, dim)
-
-
-def drop_tokens(input_, dim=0):
-    global mpu
-    if mpu is None:  # no tensor parallelism for non-experts
-        return input_
-    return _DropTokens.apply(input_, dim)
