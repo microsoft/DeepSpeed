@@ -212,9 +212,7 @@ def allgather_fn(output_tensor: torch.Tensor,
                 "torch.distributed.all_gather which will result in suboptimal performance. "
                 "please consider upgrading your pytorch installation.")
             has_warned_all_gather = True
-        print("Rank in COMM ALLGATHER [", get_rank(), " ] world size group ", cdb.get_world_size(group), " inp size ", input_tensor.size(), " out size ", output_tensor.size())
         output_tensors = list(torch.chunk(output_tensor, cdb.get_world_size(group)))
-        print("Rank in COMM ALLGATHER [", get_rank(), " ] world size group ", cdb.get_world_size(group), " inp size ", input_tensor.size(), " out size ", output_tensor.size(), " out_list ", len(output_tensors))
         return cdb.all_gather(output_tensors, input_tensor, group=group, async_op=True)
 
 
