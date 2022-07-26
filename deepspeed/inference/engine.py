@@ -13,7 +13,6 @@ from packaging import version as pkg_version
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer
-from ..utils import logger
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
@@ -50,7 +49,7 @@ class InferenceEngine(Module):
                  moe_type='standard',
                  config=None,
                  enable_cuda_graph=False,
-                 save_mp_checkpoint_path=False):
+                 save_mp_checkpoint_path=None):
         """
         Args:
             model: torch.nn.Module

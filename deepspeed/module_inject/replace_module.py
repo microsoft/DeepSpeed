@@ -793,14 +793,14 @@ def replace_transformer_layer(orig_layer_impl,
                 sd = torch.load(checkpoint[i * world_size + (rank // checkpoint_stride)],
                                 map_location='cpu')
                 load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
+    print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:
         if dist.is_initialized():
             dist.barrier()
-        torch.save(replaced_module.state_dict(),
-                   f'{save_mp_checkpoint_path}/bloom-tp_0{rank}.pt')
+        torch.save(replaced_module.transformer.state_dict(),
+                   f'{save_mp_checkpoint_path}/bloom-tp_{rank:0>2d}.pt')
 
-    print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
     return replaced_module
 
 

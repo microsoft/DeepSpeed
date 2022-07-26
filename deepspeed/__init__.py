@@ -239,7 +239,7 @@ def init_inference(model,
                    moe_type='standard',
                    args=None,
                    enable_cuda_graph=False,
-                   save_mp_checkpoint_path=False):
+                   save_mp_checkpoint_path=None):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
