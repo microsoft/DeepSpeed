@@ -1,6 +1,7 @@
 import os
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import torch
 import torch.multiprocessing as mp
@@ -197,7 +198,6 @@ def distributed_test(world_size=2, backend='nccl'):
             """Launch processes and gracefully handle failures. """
 
             # Spawn all workers on subprocesses.
-            mp.set_start_method('forkserver')
             processes = []
             for local_rank in range(num_procs):
                 p = Process(target=dist_init,
