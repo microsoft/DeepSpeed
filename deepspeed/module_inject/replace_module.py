@@ -768,8 +768,8 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     start_time = time.time()
+    rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint is not None:
-        rank = dist.get_rank() if dist.is_initialized() else 0
 
         if ckpt_type == 'pp':
             pbar = tqdm.tqdm(total=len(checkpoint),

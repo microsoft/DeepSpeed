@@ -142,7 +142,6 @@ class InferenceEngine(Module):
                 save_mp_checkpoint_path=save_mp_checkpoint_path)
 
         device = torch.cuda.current_device()
-        # logger.info(f"Place model to device: {device}")
         self.module.to(device)
 
         if self.mp_world_size > 1:
