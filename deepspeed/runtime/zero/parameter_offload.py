@@ -11,6 +11,7 @@ from deepspeed.runtime.zero.partition_parameters import _init_external_params
 from deepspeed.runtime.zero.partition_parameters import *
 from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.zero.partitioned_param_coordinator import PartitionedParameterCoordinator, iter_params
+from deepspeed import comm as dist
 
 FWD_MODULE_STACK = list()
 
@@ -20,6 +21,7 @@ def is_builtin_type(obj):
     return obj.__class__.__module__ == '__builtin__' or obj.__class__.__module__ == "builtins"
 
 
+# ensure we only warn once, otherwise every iteration will trigger a warning
 warned = False
 
 
@@ -43,12 +45,12 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                   outputs[key])
         return outputs
 
-    elif type(outputs) is torch.Tensor:
+    elif isinstance(outputs, (torch.Tensor, torch.nn.parameter.Parameter)):
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
             global warned
-            if not warned:
+            if not warned and dist.get_rank() == 0:
                 logger.warning(
                     f"A module has unknown inputs or outputs type ({type(outputs)}) and the tensors embedded in it cannot be detected. "
                     "The ZeRO-3 hooks designed to trigger before or after backward pass of the module relies on knowing the input and "
