@@ -181,11 +181,13 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     Returns:
         Expert parallel group ranks and Expert data parallel group ranks list.
     """
+    _ensure_divisibility(world_size, model_parallel_size_)
+    dp_world_size = world_size // model_parallel_size_
+    _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     # Generate data parallel groups
     data_parallel_groups = []
     dp_group_size = model_parallel_size_
-    dp_world_size = mpu.get_data_parallel_world_size()
     for i in range(dp_group_size):
         data_parallel_groups.append(list(range(i, world_size, dp_group_size)))
 
