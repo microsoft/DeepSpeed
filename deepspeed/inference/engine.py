@@ -1,7 +1,6 @@
 '''
 Copyright 2021 The Microsoft DeepSpeed Team
 '''
-from deepspeed.runtime.checkpoint_engine import checkpoint_engine
 import torch
 import os
 
