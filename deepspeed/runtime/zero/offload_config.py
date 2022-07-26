@@ -3,12 +3,10 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional
+from pydantic import Field, validator
 from enum import Enum
 from pathlib import Path
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
-from deepspeed.utils import logger
 
 
 class OffloadDeviceEnum(str, Enum):

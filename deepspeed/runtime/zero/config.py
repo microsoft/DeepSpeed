@@ -3,10 +3,9 @@ Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import Field, validator
 from typing import Optional
 from enum import Enum
-from pathlib import Path
 from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
 from deepspeed.utils import logger
 from .offload_config import DeepSpeedZeroOffloadParamConfig, DeepSpeedZeroOffloadOptimizerConfig
