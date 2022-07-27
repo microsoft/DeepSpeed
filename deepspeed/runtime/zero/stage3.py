@@ -3,6 +3,7 @@
 Licensed under the MIT license.
 """
 
+import sys
 import gc
 import collections
 from typing import Deque, Dict, Tuple
