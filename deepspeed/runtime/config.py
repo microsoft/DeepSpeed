@@ -21,9 +21,9 @@ from .config_utils import (
     dict_raise_error_on_duplicate_keys,
     ScientificNotationEncoder,
 )
-from .zero.config import DeepSpeedZeroConfig
-from .zero.constants import *
+from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import DeepSpeedMonitorConfig
 
 from deepspeed import comm as dist
@@ -45,7 +45,8 @@ from ..elasticity.constants import (
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
-
+from ..compression.config import get_compression_config, get_quantize_enabled
+from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
 TENSOR_CORE_ALIGN_SIZE = 8
@@ -223,18 +224,6 @@ def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
 
 
-def get_zero_optimization(param_dict):
-    return get_scalar_param(param_dict, ZERO_OPTIMIZATION, ZERO_OPTIMIZATION_DEFAULT)
-
-
-def get_zero_reduce_scatter(param_dict):
-    return get_scalar_param(
-        param_dict,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT,
-    )
-
-
 def get_communication_data_type(param_dict):
     val = get_scalar_param(param_dict,
                            COMMUNICATION_DATA_TYPE,
@@ -262,73 +251,6 @@ def get_gradient_predivide_factor(param_dict):
     return get_scalar_param(param_dict,
                             GRADIENT_PREDIVIDE_FACTOR,
                             GRADIENT_PREDIVIDE_FACTOR_DEFAULT)
-
-
-def get_quantize_enabled(param_dict):
-    if QUANTIZE_TRAINING in param_dict.keys():
-        return get_scalar_param(
-            param_dict[QUANTIZE_TRAINING],
-            QUANTIZE_TRAINING_ENABLED,
-            QUANTIZE_TRAINING_ENABLED_DEFAULT,
-        )
-    else:
-        return False
-
-
-def get_quantize_training(param_dict):
-    if QUANTIZE_TRAINING in param_dict.keys():
-        return (
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][TARGET_BITS]),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS][START_BITS]
-             if START_BITS in param_dict[QUANTIZE_TRAINING][QUANTIZE_BITS].keys() else
-             QUANTIZE_START_BITS_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][QUANTIZE_PERIOD]
-             if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() else
-             QUANTIZE_PERIOD_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE][SCHEDULE_OFFSET]
-             if QUANTIZE_SCHEDULE in param_dict[QUANTIZE_TRAINING].keys() and
-             SCHEDULE_OFFSET in param_dict[QUANTIZE_TRAINING][QUANTIZE_SCHEDULE].keys()
-             else QUANTIZE_OFFSET_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_GROUPS] if QUANTIZE_GROUPS
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_GROUPS_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE]
-             [FP16_MIXED_QUANTIZE_ENABLED]
-             if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and FP16_MIXED_QUANTIZE_ENABLED
-             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
-             FP16_MIXED_QUANTIZE_ENABLED_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE][QUANTIZE_CHANGE_RATIO]
-             if FP16_MIXED_QUANTIZE in param_dict[QUANTIZE_TRAINING].keys()
-             and QUANTIZE_CHANGE_RATIO
-             in param_dict[QUANTIZE_TRAINING][FP16_MIXED_QUANTIZE].keys() else
-             QUANTIZE_CHANGE_RATIO_DEFAULT),
-            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING]
-             and QUANTIZE_TYPE in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_TYPE]
-             == QUANTIZE_ASYMMETRIC else QUANTIZE_TYPE_DEFAULT),
-            (1 if QUANTIZE_ALGO in param_dict[QUANTIZE_TRAINING] and QUANTIZE_ROUNDING
-             in param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO].keys()
-             and param_dict[QUANTIZE_TRAINING][QUANTIZE_ALGO][QUANTIZE_ROUNDING]
-             == STOCHASTIC_ROUNDING else QUANTIZE_ROUNDING_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZE_VERBOSE] if QUANTIZE_VERBOSE
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZE_VERBOSE_DEFAULT),
-            (param_dict[QUANTIZE_TRAINING][QUANTIZER_KERNEL] if QUANTIZER_KERNEL
-             in param_dict[QUANTIZE_TRAINING].keys() else QUANTIZER_KERNEL_DEFAULT),
-        )
-    else:
-        return (
-            QUANTIZE_TARGET_BITS_DEFAULT,
-            QUANTIZE_START_BITS_DEFAULT,
-            QUANTIZE_PERIOD_DEFAULT,
-            QUANTIZE_OFFSET_DEFAULT,
-            QUANTIZE_GROUPS_DEFAULT,
-            FP16_MIXED_QUANTIZE_ENABLED_DEFAULT,
-            QUANTIZE_CHANGE_RATIO_DEFAULT,
-            QUANTIZE_TYPE_DEFAULT,
-            QUANTIZE_ROUNDING_DEFAULT,
-            QUANTIZE_VERBOSE_DEFAULT,
-            QUANTIZER_KERNEL_DEFAULT,
-        )
 
 
 def get_steps_per_print(param_dict):
@@ -621,6 +543,7 @@ def get_memory_breakdown(param_dict):
 def get_eigenvalue_config(param_dict):
     if get_quantize_enabled(param_dict):
         param_dict = param_dict[QUANTIZE_TRAINING]
+        assert not get_eigenvalue_enabled(param_dict), "Eigenvalue based MoQ is temporarily disabled"
         return (
             get_eigenvalue_enabled(param_dict),
             get_eigenvalue_verbose(param_dict),
@@ -864,13 +787,14 @@ class DeepSpeedConfig(object):
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
-        self.zero_config = DeepSpeedZeroConfig(param_dict)
+        self.zero_config = get_zero_config(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
 
+        self.comms_config = DeepSpeedCommsConfig(param_dict)
         self.monitor_config = DeepSpeedMonitorConfig(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
@@ -885,20 +809,7 @@ class DeepSpeedConfig(object):
         self.initial_dynamic_scale = get_initial_dynamic_scale(param_dict)
         self.dynamic_loss_scale_args = get_dynamic_loss_scale_args(param_dict)
 
-        self.quantize_training_enabled = get_quantize_enabled(param_dict)
-        (
-            self.quantize_target_bits,
-            self.quantize_start_bits,
-            self.quantize_period,
-            self.quantize_offset,
-            self.quantize_groups,
-            self.fp16_mixed_quantize,
-            self.quantize_change_rate,
-            self.quantize_type,
-            self.quantize_rounding,
-            self.quantize_verbose,
-            self.use_quantizer_kernel,
-        ) = get_quantize_training(param_dict)
+        self.compression_config = get_compression_config(param_dict)
 
         self.optimizer_name = get_optimizer_name(param_dict)
         if (self.optimizer_name is not None
@@ -945,6 +856,9 @@ class DeepSpeedConfig(object):
         self.checkpoint_tag_validation_enabled = (validation_mode !=
                                                   ValidationMode.IGNORE)
         self.checkpoint_tag_validation_fail = validation_mode == ValidationMode.FAIL
+        self.load_universal_checkpoint = checkpoint_params.get(
+            LOAD_UNIVERSAL_CHECKPOINT,
+            LOAD_UNIVERSAL_CHECKPOINT_DEFAULT)
 
         self.aio_config = get_aio_config(param_dict)
 
@@ -1056,13 +970,13 @@ class DeepSpeedConfig(object):
 
         if self.zero_enabled:
             assert (
-                self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION
+                self.zero_optimization_stage <= ZeroStageEnum.max_stage
             ), "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(
-                MAX_STAGE_ZERO_OPTIMIZATION
+                ZeroStageEnum.max_stage
             )
 
         if self.fp16_master_weights_and_gradients:
-            assert self.zero_enabled and self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
+            assert self.zero_enabled and self.zero_optimization_stage == ZeroStageEnum.gradients, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled

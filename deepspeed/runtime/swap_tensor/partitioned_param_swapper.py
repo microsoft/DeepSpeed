@@ -11,11 +11,9 @@ from enum import Enum
 import torch
 from deepspeed import comm as dist
 
-from deepspeed.utils.logging import logger
 from deepspeed.ops.aio import AsyncIOBuilder
 from .constants import *
 from .utils import swap_in_tensors, swap_out_tensors, MIN_AIO_BYTES, AIO_ALIGNED_BYTES, print_object, SwapBufferPool
-from ..zero.offload_constants import *
 
 
 def print_rank_0(message, debug=False, force=False):
@@ -86,7 +84,7 @@ class AsyncPartitionedParameterSwapper(object):
     def _configure_aio(self, ds_config):
         self.swap_config = ds_config.zero_config.offload_param
         torch_dtype_string = str(self.dtype).split(".")[1]
-        self.swap_folder = os.path.join(self.swap_config[OFFLOAD_PARAM_NVME_PATH],
+        self.swap_folder = os.path.join(self.swap_config.nvme_path,
                                         'zero_stage_3',
                                         f'{torch_dtype_string}params',
                                         f'rank{dist.get_rank()}')
@@ -102,10 +100,10 @@ class AsyncPartitionedParameterSwapper(object):
         self.aligned_bytes = AIO_ALIGNED_BYTES * self.aio_config[AIO_THREAD_COUNT]
         self.numel_alignment = self.aligned_bytes // self.swap_element_size
 
-        self.elements_per_buffer = self.swap_config[OFFLOAD_PARAM_BUFFER_SIZE]
+        self.elements_per_buffer = self.swap_config.buffer_size
         self.aligned_elements_per_buffer = self._io_aligned_numel(
             self.elements_per_buffer)
-        self.param_buffer_count = self.swap_config[OFFLOAD_PARAM_BUFFER_COUNT]
+        self.param_buffer_count = self.swap_config.buffer_count
 
         self.available_buffer_ids = [i for i in range(self.param_buffer_count)]
         self.reserved_buffer_ids = []
@@ -305,7 +303,7 @@ class AsyncPartitionedParameterSwapper(object):
                     f'Num inflight: params {len(self.inflight_params)}, buffers {len(self.inflight_swap_in_buffers)}, numel = {self.inflight_numel}',
                     force=True)
                 print_rank_0(
-                    f'Num available: param {len(self.available_params)}, numel = {self.available_numel}',
+                    f'Num available params: count = {len(self.available_params)}, ids = {self.available_params}, numel = {self.available_numel}',
                     force=True)
 
             assert len(swap_in_paths) <= len(self.available_buffer_ids), f"Not enough buffers {len(self.available_buffer_ids)} for swapping {len(swap_in_paths)}"
