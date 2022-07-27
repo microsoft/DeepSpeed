@@ -265,7 +265,8 @@ class DeepSpeedZeRoOffload(object):
            partitioning ZeRO"""
         for param in iter_params(self.module, recurse=True):
             #TODO add flag
-            print_rank_0(f"INVALIDATE {param.__dict__}")
+            #print_rank_0(f"INVALIDATE {param.__dict__}", force=True)
+            logger.info(f"SAGE Rank {dist.get_rank()} Before Invalidate {param.__dict__}")
             param.ds_secondary_group_tensor=None
             param.use_secondary_tensor = False
 

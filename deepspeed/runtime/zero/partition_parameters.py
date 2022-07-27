@@ -470,15 +470,18 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
 
 class AllGatherHandle:
-    def __init__(self, handle, param: Parameter) -> None:
+    def __init__(self, handles, param: Parameter) -> None:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
             raise RuntimeError(f"expected param {param.ds_summary()} to be available")
 
-        self.__handle = handle
+        self.__handles = handles
         self.__param = param
 
     def wait(self) -> None:
-        instrument_w_nvtx(self.__handle.wait)()
+        #instrument_w_nvtx(self.__handle.wait)()
+        for handle in self.__handles:
+            instrument_w_nvtx(handle.wait)()
+
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
 
 
@@ -677,7 +680,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.world_size = dist.get_world_size(group=self.ds_process_group)
 
-        self.zero_param_process_group = zero_param_parallel_group #revise
+        self.zero_param_process_group = zero_param_parallel_group #inter_parallel_group
         
         self.use_secondary_tensor = False
         self.num_ranks_in_param_group = 1
@@ -846,8 +849,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     raise RuntimeError(param.ds_summary())
                 param.ds_status = ZeroParamStatus.INFLIGHT
             
-            ##use apppropriate all gather process group
-            ds_process_group = self.zero_param_process_group if self.use_secondary_tensor else self.ds_process_group
+            ##use apppropriate all gather process group, interparallel for secondary
+            ##intra group use for broadcast
+            ds_process_group = self.ds_process_group 
+            if self.use_secondary_tensor:
+                src_rank = groups._get_zero_param_intra_broadcast_src_rank()
+                ds_intra_group = groups._get_zero_param_intra_parallel_group() #intragroup
+                ds_process_group = self.zero_param_process_group #intergroup
+
             logger.info(
                     "SAGE ALLGather Rank {}, is secondary_tensor set ? {} "
                     .format(self.rank,self.use_secondary_tensor))
@@ -873,25 +882,36 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             if len(params) == 1:
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
+                #buffer_size = math.ceil(param.ds_numel / self.world_size) * self.world_size
+                #if self.use_secondary_tensor:
+                #    buffer_size *= self.num_ranks_in_group
+
                 param_buffer = torch.empty(
                     math.ceil(param.ds_numel / self.world_size) * self.world_size,
+                    #buffer_size,
                     dtype=param.dtype,
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
-                #All gather on secondary tensor if available
+
+                #All gather on secondary tensor (with intergroup comm) if available
                 param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor else param.ds_tensor
-                ###SAGE TODO
-                handle = _dist_allgather_fn(
-                    param_ds_tensor.to(torch.cuda.current_device()),
-                    param_buffer,
+                handles=[]
+                if not self.use_secondary_tensor or dist.get_rank() in groups._get_zero_param_inter_parallel_group_ranks():
+                    handles.append(_dist_allgather_fn(
+                    param_ds_tensor.to(torch.cuda.current_device()), 
+                    param_buffer, 
                     ds_process_group,
-                )
+                    ))
+                
+                if self.use_secondary_tensor:
+                     handles.append(_dist_broadcast_fn(param_buffer,src_rank,ds_intra_group)) #sync?
+
                 param.data = param_buffer.narrow(0,
                                                  0,
                                                  param.ds_numel).view(param.ds_shape).to(
                                                      param.device)
-                return AllGatherHandle(handle, param)
+                return AllGatherHandle(handles, param)
             else:
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
                 flat_tensor = torch.empty(partition_sz * self.world_size,
@@ -941,9 +961,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                 ds_process_group))
 
                 if self.use_secondary_tensor:
-                  src_rank = groups._get_zero_param_intra_broadcast_src_rank()
-                  ds_intra_group = groups._get_zero_param_intra_parallel_group()
                   handles.append(_dist_broadcast_fn(flat_tensor,src_rank,ds_intra_group)) #sync?
+                 
 
                 ##SAGE
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)

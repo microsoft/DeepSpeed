@@ -168,11 +168,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         #num of ranks in a ZeRO param partitioning group
         self.zero_param_group_size = zero_param_group_size
 
-
+        zpg = None
         if self.zero_param_group_size > 1:
             self._set_zero_group_parallelism()
-
-        zpg = groups._get_zero_param_inter_parallel_group()
+            zpg = groups._get_zero_param_inter_parallel_group()
 
         self.parameter_offload = DeepSpeedZeRoOffload(module,
                                                       timers,
@@ -1882,9 +1881,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
 
+        
         ##Invalidate secondary partition
         if self.parameter_offload:
-            print_rank_0(f"SAGE INVALIDATE secondary partition Param offload DICT {self.parameter_offload.__dict__}")
+            print_rank_0(f"SAGE INVALIDATE secondary partition",force=True)
             self.parameter_offload.invalidate_secondary_partition()
 
         self.log_timers(timer_names)
@@ -1955,7 +1955,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             self._release_sub_group(sub_group_id, timer_names)
 
         self.stop_timers(['optimizer_step'])
-
+        
         self._post_step(timer_names)
 
         # warn user about caching allocator flushes
