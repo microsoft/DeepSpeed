@@ -12,11 +12,11 @@
 ## Latest News
 <b> DeepSpeed trained the world's most powerful language models ([MT-530B](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/), [BLOOM](https://huggingface.co/blog/bloom-megatron-deepspeed)); [learn how](https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/).</b>
 
+* [2022/07] [Azure and DeepSpeed empower easy-to-use and high-performance model training](https://azure.microsoft.com/en-us/blog/azure-empowers-easytouse-highperformance-and-hyperscale-model-training-using-deepspeed/)
 * [2022/07] [DeepSpeed Compression: A composable library for extreme compression](https://www.microsoft.com/en-us/research/blog/deepspeed-compression-a-composable-library-for-extreme-compression-and-zero-cost-quantization/)
 * [2022/03] [Supporting efficient large model training on AMD Instinct GPUs with DeepSpeed](https://cloudblogs.microsoft.com/opensource/2022/03/21/supporting-efficient-large-model-training-on-amd-instinct-gpus-with-deepspeed/)
 * [2022/03] [Maximizing Communication Efficiency for Large-scale Training via 0/1 Adam](https://www.deepspeed.ai/tutorials/zero-one-adam/)
 * [2022/01] [DeepSpeed: Advancing MoE inference and training to power next-generation AI scale](https://www.microsoft.com/en-us/research/blog/deepspeed-advancing-moe-inference-and-training-to-power-next-generation-ai-scale/)
-* [2021/11] [Autotuning: Automatically discover the optimal DeepSpeed configuration](https://www.deepspeed.ai/news/2021/11/15/autotuning.html)
 
 ---
 
@@ -98,10 +98,10 @@ DeepSpeed has been integrated with several different popular open-source DL fram
 
 | Description | Status |
 | ----------- | ------ |
-| NVIDIA | [![nv-torch12-p40](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml) [![nv-torch18-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml) [![nv-torch-latest-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml) |
+| NVIDIA | [![nv-torch12-p40](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch12-p40.yml) [![nv-torch18-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch18-v100.yml) [![nv-torch-latest-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-latest-v100.yml) [![nv-inference](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-inference.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-inference.yml) |
 | AMD | [![amd](https://github.com/microsoft/DeepSpeed/actions/workflows/amd.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/amd.yml) |
 | PyTorch Nightly | [![nv-torch-nightly-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-nightly-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-torch-nightly-v100.yml) |
-| Integrations | [![nv-transformers-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml) [![nv-lightning-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml) |
+| Integrations | [![nv-transformers-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-transformers-v100.yml) [![nv-lightning-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-lightning-v100.yml) [![nv-accelerate-v100](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-accelerate-v100.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/nv-accelerate-v100.yml) |
 | Misc | [![Formatting](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/formatting.yml) [![pages-build-deployment](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/microsoft/DeepSpeed/actions/workflows/pages/pages-build-deployment) [![Documentation Status](https://readthedocs.org/projects/deepspeed/badge/?version=latest)](https://deepspeed.readthedocs.io/en/latest/?badge=latest)|
 
 # Installation
@@ -114,8 +114,15 @@ just-in-time (JIT) using [torch's JIT C++ extension loader that relies on
 ninja](https://pytorch.org/docs/stable/cpp_extension.html) to build and
 dynamically link them at runtime.
 
-**Note:** [PyTorch](https://pytorch.org/) must be installed _before_ installing
-DeepSpeed.
+## Requirements
+* [PyTorch](https://pytorch.org/) must be installed _before_ installing DeepSpeed.
+* For full feature support we recommend a version of PyTorch that is >= 1.8 and ideally the latest PyTorch stable release.
+* Specific GPUs we develop and test against are listed below, this doesn't mean your GPU will not work if it doesn't fall into this category it's just DeepSpeed is most well tested on the following:
+  * NVIDIA: Pascal, Volta, and Ampere architectures
+  * AMD: MI100 and MI200
+
+## PyPI
+We regularly push releases to [PyPI](https://pypi.org/project/deepspeed/) and encourage users to install from there in most cases.
 
 ```bash
 pip install deepspeed
@@ -132,7 +139,8 @@ If you would like to pre-install any of the DeepSpeed extensions/ops (instead
 of JIT compiling) or install pre-compiled ops via PyPI please see our [advanced
 installation instructions](https://www.deepspeed.ai/tutorials/advanced-install/).
 
-On Windows you can build wheel with following steps, currently only inference mode is supported.
+## Windows
+Windows support is partially supported with DeepSpeed. On Windows you can build wheel with following steps, currently only inference mode is supported.
 1. Install pytorch, such as pytorch 1.8 + cuda 11.1
 2. Install visual cpp build tools, such as VS2019 C++ x64/x86 build tools
 3. Launch cmd console with Administrator privilege for creating required symlink folders
@@ -140,7 +148,7 @@ On Windows you can build wheel with following steps, currently only inference mo
 
 # Features
 
-Please checkout [DeepSpeed-Training](https://www.deepspeed.ai/docs/training), [DeepSpeed-Inference](https://www.deepspeed.ai/docs/inference) and [DeepSpeed-Compression](https://www.deepspeed.ai/docs/compression) pages for full set of features offered along each of these three pillars.
+Please checkout [DeepSpeed-Training](https://www.deepspeed.ai/training), [DeepSpeed-Inference](https://www.deepspeed.ai/inference) and [DeepSpeed-Compression](https://www.deepspeed.ai/compression) pages for full set of features offered along each of these three pillars.
 
 # Further Reading
 
