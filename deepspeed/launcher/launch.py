@@ -15,10 +15,12 @@ import json
 import base64
 import time
 import signal
+import psutil
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..nebula.constants import DLTS_POD_ENV_PATH
 from ..utils import logger
 
 PID_FILE_BASEPATH = "/tmp"
@@ -87,6 +89,21 @@ def parse_args():
     return parser.parse_args()
 
 
+# Adapted from https://psutil.readthedocs.io/en/latest/#kill-process-tree
+def terminate_process_tree(pid):
+    process = psutil.Process(pid)
+    children = process.children(recursive=True)
+    children.append(process)
+    for child in children:
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    gone, alive = psutil.wait_procs(children, timeout=30)
+    for p in alive:
+        p.kill()
+
+
 def main():
     args = parse_args()
     current_env = os.environ.copy()
@@ -143,6 +160,17 @@ def main():
         with open(pid_file, 'w') as fd:
             fd.write(f"{launcher_pid}")
 
+    if os.path.exists(DLTS_POD_ENV_PATH):
+        with open(DLTS_POD_ENV_PATH) as file:
+            lines = file.readlines()
+            lines = [line.rstrip() for line in lines]
+            for line in lines:
+                if line.startswith('export FC_TASKROLE_NAME') or line.startswith(
+                        'export FC_TASK_INDEX'):
+                    key_val = line.split()[1]
+                    key, val = key_val.split('=')
+                    current_env[key] = val
+
     processes = []
     cmd = []
     for local_rank in range(0, num_local_procs):
@@ -177,7 +205,7 @@ def main():
         for process in processes:
             logger.info(f"Killing subprocess {process.pid}")
             try:
-                process.kill()
+                terminate_process_tree(process.pid)
             except Exception:
                 pass
         if last_return_code is not None:
