@@ -787,7 +787,7 @@ def replace_transformer_layer(orig_layer_impl,
         rank = dist.get_rank() if dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         checkpoint = checkpoint_dict['checkpoints']
-        ckpt_type = checkpoint_dict['parallelization']
+        ckpt_type = checkpoint_dict.get('parallelization', 'pp')
         ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
         base_dir = checkpoint_dict.get('base_dir', '')
 
