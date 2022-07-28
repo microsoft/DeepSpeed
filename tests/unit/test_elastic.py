@@ -2,8 +2,9 @@ import pytest
 import deepspeed
 from .common import distributed_test
 from deepspeed.git_version_info import version as ds_version
-from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict
 import os
+from .simple_model import SimpleModel, args_from_dict
+>>>>>>> staging-ft-elastic-v1
 
 base_ds_config = {
     "elasticity": {

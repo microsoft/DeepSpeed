@@ -2,15 +2,11 @@
 Copyright 2019 The Microsoft DeepSpeed Team
 """
 
-from numpy.core.numeric import count_nonzero
-from deepspeed.elasticity.elasticity import compute_elastic_config
 import time
 import torch
 from numpy import mean
 from deepspeed.utils.logging import log_dist
 from deepspeed import comm as dist
-
-from deepspeed.utils import logger
 
 try:
     import psutil
@@ -88,10 +84,14 @@ class SynchronizedWallClockTimer:
             return elapsed_
 
         def mean(self):
+            self.elapsed(reset=False)
             return trim_mean(self.elapsed_records, 0.1)
 
     def __init__(self):
         self.timers = {}
+
+    def get_timers(self):
+        return self.timers
 
     def __call__(self, name):
         if name not in self.timers:
@@ -142,6 +142,7 @@ class ThroughputTimer:
         monitor_memory=False,
         logging_fn=None,
     ):
+        from deepspeed.utils import logger
         self.start_time = 0
         self.end_time = 0
         self.started = False
@@ -189,13 +190,17 @@ class ThroughputTimer:
             self.end_time = time.time()
             duration = self.end_time - self.start_time
             self.total_elapsed_time += duration
+
+            curr_samples_sec = (self.batch_size * self.num_workers) / duration
+
             if self.local_step_count % self.steps_per_output == 0:
                 if report_speed:
                     self.logging(
-                        "{}/{}, SamplesPerSec={}, MemAllocated={}GB, MaxMemAllocated={}GB"
+                        "{}/{}, RunningAvgSamplesPerSec={}, CurrSamplesPerSec={}, MemAllocated={}GB, MaxMemAllocated={}GB"
                         .format(self.epoch_count,
                                 self.local_step_count,
                                 self.avg_samples_per_sec(),
+                                curr_samples_sec,
                                 round(torch.cuda.memory_allocated() / 1024**3,
                                       2),
                                 round(torch.cuda.max_memory_allocated() / 1024**3,
@@ -232,6 +237,9 @@ def trim_mean(data, trim_percent):
     """
     assert trim_percent >= 0.0 and trim_percent <= 1.0
     n = len(data)
+    # Account for edge case of empty list
+    if len(data) == 0:
+        return 0
     data.sort()
     k = int(round(n * (trim_percent)))
     return mean(data[k:n - k])
