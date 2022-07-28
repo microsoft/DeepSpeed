@@ -232,9 +232,9 @@ class InferenceEngine(Module):
             for method in methods:
                 if not hasattr(mpu, method):
                     raise ValueError(f"mpu is missing {method}")
-        if self.checkpoint is not None and not isinstance(self.checkpoint, str):
+        if self.checkpoint is not None and not isinstance(self.checkpoint, (str, dict)):
             raise ValueError(
-                f"checkpoint must be None or a str, got {type(self.checkpoint)}")
+                f"checkpoint must be None, str or dict, got {type(self.checkpoint)}")
 
         supported_dtypes = [None, torch.half, torch.int8, torch.float]
         if self.dtype not in supported_dtypes:
