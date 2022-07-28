@@ -61,58 +61,40 @@ def set_cuda_visibile():
 
 
 class DistributedTest(ABC):
+    dist_test = True
     world_size = 2
     backend = "nccl"
 
-    @pytest.fixture(autouse=True)
     def _run_test(self, request):
         self.test_kwargs = self._get_test_kwargs(request)
         if isinstance(self.world_size, int):
-            self.run_test(self.world_size)
-        elif isinstance(self.world_size, list):
-            for procs in self.world_size:
-                self.run_test(procs)
-                time.sleep(0.5)
+            self.world_size = [self.world_size]
+        for procs in self.world_size:
+            self._launch_procs(procs)
+            time.sleep(0.5)
 
     def _get_test_kwargs(self, request):
         test_kwargs = {}
-        for mark in request.cls.pytestmark:
+        pytest_marks = [
+            getattr(request.cls,
+                    "pytestmark",
+                    []),
+            request.keywords.get("pytestmark",
+                                 [])
+        ]
+        pytest_marks = [mark for mark_list in pytest_marks for mark in mark_list]
+        for mark in pytest_marks:
+            if mark.name != "parametrize":
+                continue
             for param in mark.args[0].replace(" ", "").split(","):
                 test_kwargs[param] = request.getfixturevalue(param)
         return test_kwargs
 
-    def dist_init(self, local_rank, num_procs):
-        """Initialize deepspeed.comm and execute the user function. """
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = get_master_port()
-        os.environ['LOCAL_RANK'] = str(local_rank)
-        # NOTE: unit tests don't support multi-node so local_rank == global rank
-        os.environ['RANK'] = str(local_rank)
-        os.environ['WORLD_SIZE'] = str(num_procs)
-
-        # turn off NCCL logging if set
-        os.environ.pop('NCCL_DEBUG', None)
-
-        set_cuda_visibile()
-
-        deepspeed.init_distributed(dist_backend=self.backend)
-        dist.barrier()
-
-        if torch.cuda.is_available():
-            torch.cuda.set_device(local_rank)
-
-        self.test(**self.test_kwargs)
-
-        # make sure all ranks finish at the same time
-        dist.barrier()
-        # tear down after test completes
-        dist.destroy_process_group()
-
-    def run_test(self, num_procs):
+    def _launch_procs(self, num_procs):
         mp.set_start_method('forkserver', force=True)
         processes = []
         for local_rank in range(num_procs):
-            p = Process(target=self.dist_init, args=(local_rank, num_procs))
+            p = Process(target=self._dist_init, args=(local_rank, num_procs))
             p.start()
             processes.append(p)
 
@@ -141,6 +123,33 @@ class DistributedTest(ABC):
             if p.exitcode > 0:
                 pytest.fail(f'Worker {rank} exited with code {p.exitcode}',
                             pytrace=False)
+
+    def _dist_init(self, local_rank, num_procs):
+        """Initialize deepspeed.comm and execute the user function. """
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
+        os.environ['MASTER_PORT'] = get_master_port()
+        os.environ['LOCAL_RANK'] = str(local_rank)
+        # NOTE: unit tests don't support multi-node so local_rank == global rank
+        os.environ['RANK'] = str(local_rank)
+        os.environ['WORLD_SIZE'] = str(num_procs)
+
+        # turn off NCCL logging if set
+        os.environ.pop('NCCL_DEBUG', None)
+
+        set_cuda_visibile()
+
+        deepspeed.init_distributed(dist_backend=self.backend)
+        dist.barrier()
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+
+        self.test(**self.test_kwargs)
+
+        # make sure all ranks finish at the same time
+        dist.barrier()
+        # tear down after test completes
+        dist.destroy_process_group()
 
     @abstractmethod
     def test(self):

@@ -43,3 +43,41 @@ def check_environment(pytestconfig):
         pytest.exit(
             f"expected cuda version {expected_cuda_version} did not match found cuda version {torch.version.cuda}",
             returncode=2)
+
+
+''' Override of pytest "runtest" for DistributedTest class '''
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_call(item):
+    for val in dir(item._request):
+        print(val.upper(), getattr(item._request, val), "\n\n")
+    print(list(item._request.keywords.items()))
+    # We want to use our own launching function for distributed tests
+    if getattr(item.cls, "dist_test", False):
+        dist_test_class = item.cls()
+        dist_test_class._run_test(item._request)
+        item.runtest = lambda: True  # Dummy function so test is not run twice
+
+
+'''
+in_dist_test = False
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    global in_dist_test
+    result = outcome.get_result()
+    # DistributedTest runs the test in the setup phase. After it runs, we want
+    # to skip running the test again with pytest "call" phase. To do that, we
+    # skip and add the reason as "dist-test-pass"
+    if (call.when == 'setup') and (result.outcome
+                                   == 'skipped') and (call.excinfo.value.msg
+                                                      == 'dist-test-pass'):
+        in_dist_test = True
+        result.outcome = 'passed'
+    # Because we manually set the setup outcome to "passed", we will need to
+    # catch the upcoming failure when pytest tries to run the test again
+    if (call.when == 'call') and in_dist_test:
+        result.outcome = 'passed'
+        in_dist_test = False
+'''

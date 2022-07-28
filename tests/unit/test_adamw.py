@@ -26,6 +26,11 @@ adam_configs = [["AdamW", False, False, False, (FusedAdam, True)],
                 ["Adam",  True,  False, True,  (DeepSpeedCPUAdam, True)],
                 ["Adam",  True,  True,  True,  (torch.optim.AdamW, None)]]
 
+@pytest.fixture(params=[True, False])
+def extra(request):
+    return request.param
+
+@pytest.mark.sequential
 @pytest.mark.parametrize(
     'optimizer, zero_offload, torch_adam, adam_w_mode, resulting_optimizer',
     adam_configs)
@@ -37,7 +42,8 @@ class TestAdamConfigs(DistributedTest):
              zero_offload,
              torch_adam,
              adam_w_mode,
-             resulting_optimizer):
+             resulting_optimizer,
+             extra):
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
