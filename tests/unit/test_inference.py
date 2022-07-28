@@ -5,13 +5,15 @@ import pytest
 import itertools
 import deepspeed
 from deepspeed.git_version_info import torch_info
-from .common import distributed_test
+from .common import DistributedTest
 from packaging import version as pkg_version
 from deepspeed.ops.op_builder import OpBuilder
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from huggingface_hub import HfApi
 
 
+# Fixture avoids problems with missing imports when pytest collects tests when
+# running non-inference tests
 @pytest.fixture(scope="module", autouse=True)
 def lm_eval_imports():
     global lm_eval
@@ -190,22 +192,22 @@ Tests
 
 
 @pytest.mark.inference
-def test_model_task(
-    model_w_task,
-    dtype,
-    enable_cuda_graph,
-    query,
-    inf_kwargs,
-    assert_fn,
-    invalid_model_task_config,
-):
-    if invalid_model_task_config:
-        pytest.skip(invalid_model_task_config)
+class TestModelTask(DistributedTest):
+    world_size = 1
 
-    model, task = model_w_task
+    def test(
+        model_w_task,
+        dtype,
+        enable_cuda_graph,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
 
-    @distributed_test(world_size=[1])
-    def _go():
+        model, task = model_w_task
         local_rank = int(os.getenv("LOCAL_RANK", "0"))
 
         if "gpt-j-6B" in model and dtype == torch.half:
@@ -225,8 +227,8 @@ def test_model_task(
                 pipe.model.half()
 
         # Warm-up queries for perf measurement
-        for i in range(10):
-            _ = pipe(query, **inf_kwargs)
+        #for i in range(10):
+        #    _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
         bs_output = pipe(query, **inf_kwargs)
@@ -242,8 +244,8 @@ def test_model_task(
             enable_cuda_graph=enable_cuda_graph,
         )
         # Warm-up queries for perf measurement
-        for i in range(10):
-            _ = pipe(query, **inf_kwargs)
+        #for i in range(10):
+        #    _ = pipe(query, **inf_kwargs)
         torch.cuda.synchronize()
         start = time.time()
         ds_output = pipe(query, **inf_kwargs)
@@ -257,8 +259,6 @@ def test_model_task(
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
         assert assert_fn(bs_output, ds_output)
-
-    _go()
 
 
 @pytest.mark.nightly
@@ -274,9 +274,10 @@ def test_model_task(
     ),
 )
 @pytest.mark.parametrize("task", ["lambada"])
-def test_lm_correctness(model_family, model_name, task):
-    @distributed_test(world_size=[1])
-    def _go():
+class TestLMCorrectness(DistributedTest):
+    world_size = 1
+
+    def test(model_family, model_name, task):
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(f"cuda:{local_rank}")
         dtype = torch.float
@@ -320,5 +321,3 @@ def test_lm_correctness(model_family, model_name, task):
                        ds_output["results"][task]["ppl"])
         #assert ds_time <= bs_time
         assert ppl_diff < 0.01
-
-    _go()

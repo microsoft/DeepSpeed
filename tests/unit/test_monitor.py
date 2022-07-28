@@ -7,7 +7,7 @@ from deepspeed.monitor.wandb import WandbMonitor
 from deepspeed.monitor.csv_monitor import csvMonitor
 
 from .simple_model import *
-from .common import distributed_test
+from .common import DistributedTest
 from deepspeed.runtime.config import DeepSpeedConfig
 
 try:
@@ -28,9 +28,10 @@ wandb_available = pytest.mark.skipif(not _wandb_available,
 
 
 @tb_available
-def test_tensorboard(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_tensorboard():
+class TestTensorBoard(DistributedTest):
+    world_size = 2
+
+    def test_tensorboard(tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "tensorboard": {
@@ -45,13 +46,7 @@ def test_tensorboard(tmpdir):
         assert tb_monitor.output_path == "test_output/ds_logs/"
         assert tb_monitor.job_name == "test"
 
-    _test_tensorboard()
-
-
-@tb_available
-def test_empty_tensorboard(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_empty_tensorboard():
+    def test_empty_tensorboard(tmpdir):
         config_dict = {"train_batch_size": 2, "tensorboard": {}}
         ds_config = DeepSpeedConfig(config_dict)
         tb_monitor = TensorBoardMonitor(ds_config.monitor_config)
@@ -59,13 +54,12 @@ def test_empty_tensorboard(tmpdir):
         assert tb_monitor.output_path == TENSORBOARD_OUTPUT_PATH_DEFAULT
         assert tb_monitor.job_name == TENSORBOARD_JOB_NAME_DEFAULT
 
-    _test_empty_tensorboard()
-
 
 @wandb_available
-def test_wandb(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_wandb():
+class TestWandB(DistributedTest):
+    world_size = 2
+
+    def test_wandb(tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "wandb": {
@@ -82,13 +76,7 @@ def test_wandb(tmpdir):
         assert wandb_monitor.team == "my_team"
         assert wandb_monitor.project == "my_project"
 
-    _test_wandb()
-
-
-@wandb_available
-def test_empty_wandb(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_empty_wandb():
+    def test_empty_wandb(tmpdir):
         config_dict = {"train_batch_size": 2, "wandb": {}}
         ds_config = DeepSpeedConfig(config_dict)
         wandb_monitor = WandbMonitor(ds_config.monitor_config)
@@ -97,12 +85,11 @@ def test_empty_wandb(tmpdir):
         assert wandb_monitor.team == WANDB_TEAM_NAME_DEFAULT
         assert wandb_monitor.project == WANDB_PROJECT_NAME_DEFAULT
 
-    _test_empty_wandb()
 
+class TestCSVMonitor(DistributedTest):
+    world_size = 2
 
-def test_csv_monitor(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_csv_monitor():
+    def test_csv_monitor(tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "csv_monitor": {
@@ -117,12 +104,7 @@ def test_csv_monitor(tmpdir):
         assert csv_monitor.output_path == "test_output/ds_logs/"
         assert csv_monitor.job_name == "test"
 
-    _test_csv_monitor()
-
-
-def test_empty_csv_monitor(tmpdir):
-    @distributed_test(world_size=2)
-    def _test_empty_csv_monitor():
+    def test_empty_csv_monitor(tmpdir):
         config_dict = {"train_batch_size": 2, "csv_monitor": {}}
         ds_config = DeepSpeedConfig(config_dict)
         csv_monitor = csvMonitor(ds_config.monitor_config)
