@@ -6,15 +6,12 @@ from os.path import abspath, dirname, join
 import torch
 import warnings
 
-from unit.common import DistributedTest
-
-# This list should be updated if additional session-level fixtures (e.g., check_environment) are added
-SESSION_FIXTURE_LIST = ["pytestconfig", "check_environment"]
-
 # allow having multiple repository checkouts and not needing to remember to rerun
 # 'pip install -e .[dev]' when switching between checkouts and running tests.
 git_repo_path = abspath(join(dirname(dirname(__file__)), "src"))
 sys.path.insert(1, git_repo_path)
+
+# NOTE: when adding additional session-level pytest fixtures, update SESSION_FIXTURE_LIST in unit/common.py
 
 
 def pytest_addoption(parser):
@@ -55,7 +52,7 @@ def check_environment(pytestconfig):
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_call(item):
     # We want to use our own launching function for distributed tests
-    if issubclass(item.cls, DistributedTest):
+    if getattr(item.cls, "is_dist_test", False):
         dist_test_class = item.cls()
         dist_test_class._run_test(item._request)
         item.runtest = lambda: True  # Dummy function so test is not run twice

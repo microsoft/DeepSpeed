@@ -1,38 +1,62 @@
 import torch
 import deepspeed.comm as dist
 
-from .common import distributed_test
+from .common import DistributedTest
 
 import pytest
 
 
-@distributed_test(world_size=3)
-def test_init():
-    assert dist.is_initialized()
-    assert dist.get_world_size() == 3
-    assert dist.get_rank() < 3
+class TestInit(DistributedTest):
+    world_size = 3
+
+    def test(self):
+        assert dist.is_initialized()
+        assert dist.get_world_size() == 3
+        assert dist.get_rank() < 3
 
 
-# Demonstration of pytest's parameterization
-@pytest.mark.parametrize('number,color', [(1138, 'purple')])
-def test_dist_args(number, color):
-    """Outer test function with inputs from pytest.mark.parametrize(). Uses a distributed
-    helper function.
-    """
-    @distributed_test(world_size=2)
-    def _test_dist_args_helper(x, color='red'):
+# Demonstration of pytest's parameterization and fixtures
+@pytest.fixture(params=["hello"])
+def greeting(request):
+    return request.param
+
+
+@pytest.mark.parametrize("number,color", [(1138, "purple")])
+class TestDistArgs(DistributedTest):
+    world_size = 2
+    """ Classes that use DistributedTest class must define a test* method """
+    @pytest.mark.parametrize("shape", ["icosahedron"])
+    def test(self, number, color, shape, greeting):
+        """Ensure that we can parse args to DistributedTest methods. """
         assert dist.get_world_size() == 2
-        assert x == 1138
-        assert color == 'purple'
+        assert number == 1138
+        assert color == "purple"
+        assert shape == "icosahedron"
+        assert greeting == "hello"
 
-    """Ensure that we can parse args to distributed_test decorated functions. """
-    _test_dist_args_helper(number, color=color)
+
+# Demonstration of distributed tests grouped in single class
+@pytest.mark.parametrize("number", [1138])
+class TestGroupedDistTest(DistributedTest):
+    world_size = 2
+
+    def test_one(self, number):
+        assert dist.get_world_size() == 2
+        assert number == 1138
+
+    @pytest.mark.parametrize("color", ["purple"])
+    def test_two(self, number, color):
+        assert dist.get_world_size() == 2
+        assert number == 1138
+        assert color == "purple"
 
 
-@distributed_test(world_size=[1, 2, 4])
-def test_dist_allreduce():
-    x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
-    sum_of_ranks = (dist.get_world_size() * (dist.get_world_size() + 1)) // 2
-    result = torch.ones(1, 3).cuda() * sum_of_ranks
-    dist.all_reduce(x)
-    assert torch.all(x == result)
+class TestDistAllReduce(DistributedTest):
+    world_size = [1, 2, 4]
+
+    def test(self):
+        x = torch.ones(1, 3).cuda() * (dist.get_rank() + 1)
+        sum_of_ranks = (dist.get_world_size() * (dist.get_world_size() + 1)) // 2
+        result = torch.ones(1, 3).cuda() * sum_of_ranks
+        dist.all_reduce(x)
+        assert torch.all(x == result)

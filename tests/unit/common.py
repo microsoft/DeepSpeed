@@ -1,6 +1,6 @@
 import os
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
 
 import torch
@@ -65,16 +65,20 @@ def set_cuda_visibile():
 
 
 class DistributedTest(ABC):
+    is_dist_test = True
     world_size = 2
     backend = "nccl"
 
     def _run_test(self, request):
         self.test_kwargs = self._get_test_kwargs(request)
+        self.current_test = self._get_current_test_func(request)
         if isinstance(self.world_size, int):
             self.world_size = [self.world_size]
         for procs in self.world_size:
             self._launch_procs(procs)
             time.sleep(0.5)
+
+    """ Grab fixture / parametrize kwargs from pytest request object """
 
     def _get_test_kwargs(self, request):
         test_kwargs = {}
@@ -84,6 +88,12 @@ class DistributedTest(ABC):
         for p in params:
             test_kwargs[p] = request.getfixturevalue(p)
         return test_kwargs
+
+    """ DistributedTest subclasses may have multiple test methods """
+
+    def _get_current_test_func(self, request):
+        func_name = request.function.__name__
+        return getattr(self, func_name)
 
     def _launch_procs(self, num_procs):
         mp.set_start_method('forkserver', force=True)
@@ -139,17 +149,12 @@ class DistributedTest(ABC):
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
 
-        self.test(**self.test_kwargs)
+        self.current_test(**self.test_kwargs)
 
         # make sure all ranks finish at the same time
         dist.barrier()
         # tear down after test completes
         dist.destroy_process_group()
-
-    @abstractmethod
-    def test(self):
-        raise NotImplementedError(
-            "test should be defined for each distributed tests subclass")
 
 
 def distributed_test(world_size=2, backend='nccl'):
