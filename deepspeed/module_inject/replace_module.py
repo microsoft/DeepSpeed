@@ -160,11 +160,8 @@ def replace_transformer_layer(orig_layer_impl,
                               moe=False,
                               moe_experts=1,
                               moe_type='standard',
-                              checkpoint=None,
-                              ckpt_type='pp',
-                              save_mp_checkpoint_path=None,
-                              ckpt_name=None,
-                              ckpt_mp_size=1):
+                              checkpoint_dict=None,
+                              save_mp_checkpoint_path=None):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -784,10 +781,14 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
-    if checkpoint is not None:
+    if checkpoint_dict is not None:
         start_time = time.time()
         rank = dist.get_rank() if dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_initialized() else 1
+        checkpoint = checkpoint_dict['checkpoints']
+        ckpt_type = checkpoint_dict['parallelization']
+        ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
+        base_dir = checkpoint_dict.get('base_dir', None)
 
         if ckpt_type == 'pp':
             pbar = tqdm.tqdm(total=len(checkpoint),
@@ -807,9 +808,11 @@ def replace_transformer_layer(orig_layer_impl,
             for i in range(num_checkpoints):
                 if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
                     pbar.update(1)
-                sd = torch.load(checkpoint[i * ckpt_mp_size +
-                                           (rank // checkpoint_stride)],
-                                map_location='cpu')
+
+                ckpt_index = i * ckpt_mp_size + (rank // checkpoint_stride)
+                ckpt_file = checkpoint[
+                    ckpt_index] if base_dir is None else f'{base_dir}/{checkpoint[ckpt_index]}'
+                sd = torch.load(ckpt_file, map_location='cpu')
                 load_model_with_checkpoint(replaced_module,
                                            sd,
                                            mp_replace,
@@ -820,10 +823,12 @@ def replace_transformer_layer(orig_layer_impl,
     if save_mp_checkpoint_path is not None:
         from collections import OrderedDict
         import json
+
+        ckpt_name = checkpoint_dict['type']
         if dist.is_initialized():
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)
-        non_tp_ckpt_name = f'{save_mp_checkpoint_path}/{ckpt_name}-non-tp.pt'
+        non_tp_ckpt_name = f'{ckpt_name}-non-tp.pt'
         ckpt_files = [non_tp_ckpt_name] * world_size
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
@@ -835,12 +840,10 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 non_tp_ckpt_name)
-            ckpt_files += [
-                f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{r:0>2d}.pt'
-                for r in range(world_size)
-            ]
+            ckpt_files += [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
             config = json.dumps({
                 'type': ckpt_name,
+                'base_dir': f'{save_mp_checkpoint_path}',
                 'checkpoints': ckpt_files,
                 'version': 1.0,
                 'parallelization': 'tp',

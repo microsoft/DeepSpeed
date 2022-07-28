@@ -323,8 +323,12 @@ class InferenceEngine(Module):
                                 training_mp_size=1,
                                 checkpoint_dir=None,
                                 save_mp_checkpoint_path=False):
-        checkpoint, ckpt_type, ckpt_name, ckpt_mp_size = SDLoaderFactory.get_sd_loader_json(
-            checkpoint_dir) if checkpoint_dir is not None else (None, None, None, 0)
+        checkpoint = SDLoaderFactory.get_sd_loader_json(
+            checkpoint_dir,
+            self.checkpoint_engine) if checkpoint_dir is not None else (None,
+                                                                        None,
+                                                                        None,
+                                                                        0)
         replace_transformer_layer(
             client_module,
             self.module,
@@ -348,11 +352,9 @@ class InferenceEngine(Module):
             moe_experts=moe_experts,
             moe_type=moe_type,
             training_mp_size=training_mp_size,
-            checkpoint=checkpoint,
-            ckpt_type=ckpt_type,
+            checkpoint_dict=checkpoint,
             save_mp_checkpoint_path=save_mp_checkpoint_path,
-            ckpt_name=ckpt_name,
-            ckpt_mp_size=(ckpt_mp_size if ckpt_mp_size > 0 else self.mp_world_size))
+        )
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -392,7 +394,7 @@ class InferenceEngine(Module):
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
             sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
-            sd_loader, _, _, _ = SDLoaderFactory.get_sd_loader_json(load_dir)
+            sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
 
         if type(sd_loader) is list:
             self.sd = torch.load(sd_loader[0], map_location='cpu')
