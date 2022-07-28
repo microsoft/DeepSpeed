@@ -784,8 +784,8 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
-    start_time = time.time()
     if checkpoint is not None:
+        start_time = time.time()
         rank = dist.get_rank() if dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_initialized() else 1
 
@@ -815,7 +815,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            mp_replace,
                                            ckpt_type,
                                            rank % (world_size // ckpt_mp_size))
-    print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
+        print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:
         from collections import OrderedDict
