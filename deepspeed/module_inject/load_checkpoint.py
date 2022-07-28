@@ -2,9 +2,10 @@ from torch import nn
 import deepspeed.ops.transformer as transformer_inference
 from ..runtime.zero import GatheredParameters
 from .layers import LinearLayer, Normalize, EmbeddingLayer
+import torch
 
 
-def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type):
+def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
     error_msgs = []
 
     def transpose(data):
@@ -34,7 +35,36 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type):
             def load_parameters(module, prefix):
                 for n, p in module.named_parameters():
                     if len(n.split('.')) == 1:
-                        setattr(module, n, mp_replace.copy(p, sd[prefix + n]))
+                        src_shape = sd[prefix + n].shape
+                        dst_shape = p.shape
+
+                        if (len(src_shape) == 2 and len(dst_shape) == 2):
+                            if src_shape[0] == dst_shape[0] and src_shape[
+                                    1] == dst_shape[1]:
+                                p.data.copy_(sd[prefix + n])
+                            else:
+                                if src_shape[0] != dst_shape[0]:
+                                    weight_split = torch.split(
+                                        sd[prefix + n],
+                                        dst_shape[0],
+                                        dim=0)[rank].to(
+                                            torch.cuda.current_device()).contiguous()
+                                else:
+                                    weight_split = torch.split(
+                                        sd[prefix + n],
+                                        dst_shape[1],
+                                        dim=1)[rank].to(
+                                            torch.cuda.current_device()).contiguous()
+                                p.data.copy_(weight_split.contiguous())
+                        else:
+                            if src_shape[0] == dst_shape[0]:
+                                p.data.copy_(sd[prefix + n])
+                            else:
+                                bias_split = torch.split(
+                                    sd[prefix + n],
+                                    dst_shape[-1])[rank].to(
+                                        torch.cuda.current_device()).contiguous()
+                                p.data.copy_(bias_split)
 
             load_parameters(module, prefix)
             for n, child in module.named_children():

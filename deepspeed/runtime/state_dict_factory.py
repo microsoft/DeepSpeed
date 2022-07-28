@@ -25,8 +25,11 @@ class SDLoaderFactory:
             ckpt_type = 'pp'
             if 'parallelization' in data:
                 ckpt_type = data['parallelization']
+            mp_size = 1
+            if 'mp_size' in data:
+                mp_size = data['mp_size']
             if 'BLOOM' in sd_type or 'Bloom' in sd_type:
-                return ckpt_list, ckpt_type
+                return ckpt_list, ckpt_type, sd_type, mp_size
             return SDLoaderFactory.get_sd_loader(ckpt_list, sd_type, version)
 
     @staticmethod

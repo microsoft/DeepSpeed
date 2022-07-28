@@ -118,6 +118,21 @@ class ReplaceWithTensorSlicing:
         return torch.nn.parameter.Parameter(dst, requires_grad=False)
 
 
+def get_transformer_name(replaced_module):
+    from .replace_policy import supported_models
+    from torch.nn import ModuleList
+    transformer_name = ''
+    for n, c in replaced_module.named_children():
+        if c.__class__ in supported_models:
+            transformer_name += n + '.'
+            for name, child in c.named_children():
+                if child.__class__ is ModuleList:
+                    transformer_name += name
+                    break
+            break
+    return transformer_name
+
+
 def replace_transformer_layer(orig_layer_impl,
                               model,
                               policy=None,
@@ -147,7 +162,9 @@ def replace_transformer_layer(orig_layer_impl,
                               moe_type='standard',
                               checkpoint=None,
                               ckpt_type='pp',
-                              save_mp_checkpoint_path=None):
+                              save_mp_checkpoint_path=None,
+                              ckpt_name=None,
+                              ckpt_mp_size=1):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -768,8 +785,9 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     start_time = time.time()
-    rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint is not None:
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
 
         if ckpt_type == 'pp':
             pbar = tqdm.tqdm(total=len(checkpoint),
@@ -780,26 +798,64 @@ def replace_transformer_layer(orig_layer_impl,
                 sd = torch.load(checkpoint[i], map_location='cpu')
                 load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
         else:
-            world_size = dist.get_world_size() if dist.is_initialized() else 1
-            num_checkpoints = len(checkpoint) // world_size
-            assert world_size >= len(checkpoint),\
+            num_checkpoints = len(checkpoint) // ckpt_mp_size
+            assert world_size >= ckpt_mp_size,\
                 "Currently, merging checkpoints is not supported (when world_size is smaller than #checkpoints)!"
-            checkpoint_stride = world_size // len(checkpoint)
+            checkpoint_stride = world_size // ckpt_mp_size
             pbar = tqdm.tqdm(total=num_checkpoints,
                              desc=f"Loading {num_checkpoints} checkpoint shards")
             for i in range(num_checkpoints):
                 if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
                     pbar.update(1)
-                sd = torch.load(checkpoint[i * world_size + (rank // checkpoint_stride)],
+                sd = torch.load(checkpoint[i * ckpt_mp_size +
+                                           (rank // checkpoint_stride)],
                                 map_location='cpu')
-                load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
+                load_model_with_checkpoint(replaced_module,
+                                           sd,
+                                           mp_replace,
+                                           ckpt_type,
+                                           rank % (world_size // ckpt_mp_size))
     print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:
+        from collections import OrderedDict
+        import json
         if dist.is_initialized():
             dist.barrier()
-        torch.save(replaced_module.transformer.state_dict(),
-                   f'{save_mp_checkpoint_path}/bloom-tp_{rank:0>2d}.pt')
+        transformer_name = get_transformer_name(replaced_module)
+        non_tp_ckpt_name = f'{save_mp_checkpoint_path}/{ckpt_name}-non-tp.pt'
+        ckpt_files = [non_tp_ckpt_name] * world_size
+        if not dist.is_initialized() or dist.get_rank() == 0:
+            print("Saving tp-sharded checkpoints")
+            torch.save(
+                OrderedDict({
+                    k: v
+                    for k,
+                    v in dict(replaced_module.state_dict()).items()
+                    if transformer_name not in k
+                }),
+                non_tp_ckpt_name)
+            ckpt_files += [
+                f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{r:0>2d}.pt'
+                for r in range(world_size)
+            ]
+            config = json.dumps({
+                'type': ckpt_name,
+                'checkpoints': ckpt_files,
+                'version': 1.0,
+                'parallelization': 'tp',
+                'mp_size': world_size
+            })
+            with open(f"{save_mp_checkpoint_path}/{ckpt_name}_ds-inference_config.json",
+                      "w") as cfg:
+                cfg.write(config)
+        torch.save(
+            OrderedDict({
+                k: v
+                for k,
+                v in dict(replaced_module.state_dict()).items() if transformer_name in k
+            }),
+            f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{rank:0>2d}.pt')
 
     return replaced_module
 
