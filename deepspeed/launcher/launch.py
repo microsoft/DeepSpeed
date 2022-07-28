@@ -17,6 +17,7 @@ import time
 import signal
 import psutil
 from collections import defaultdict
+from typing import Dict
 from argparse import ArgumentParser, REMAINDER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import DLTS_POD_ENV_PATH
@@ -177,8 +178,7 @@ def main():
     if not is_torch_elastic_compatible():
         if args.enable_elastic_training:
             logger.info(f"Disabling elastic training support as \
-                    PyTorch version should be greater than 1.11.x.\
-                    Current version is {torch.__version__}")
+                    PyTorch version should be greater than 1.11.x")
             args.enable_elastic_training = False
 
     if os.path.exists(DLTS_POD_ENV_PATH):

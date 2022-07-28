@@ -1,8 +1,8 @@
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
 from typing import Any, Dict, Optional, Tuple
-from datetime import datetime, timedelta
-from torch.distributed.elastic.agent.server.api import RunResult, log, WorkerState, _get_socket_with_port
-from torch.distributed.elastic.metrics import prof, put_metric
+from datetime import datetime
+from torch.distributed.elastic.agent.server.api import log, _get_socket_with_port
+from torch.distributed.elastic.metrics import put_metric
 from torch.distributed.elastic.agent.server.api import (
     RunResult,
     WorkerGroup,
@@ -12,7 +12,7 @@ from torch.distributed.elastic.agent.server.api import (
 from torch.distributed import Store
 import time
 import os
-from torch.distributed.elastic.multiprocessing import PContext, start_processes
+from torch.distributed.elastic.multiprocessing import start_processes
 from torch.distributed.elastic.utils import macros
 import shutil
 import copy
