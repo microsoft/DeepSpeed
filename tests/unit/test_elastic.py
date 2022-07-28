@@ -4,7 +4,6 @@ from .common import distributed_test
 from deepspeed.git_version_info import version as ds_version
 import os
 from .simple_model import SimpleModel, args_from_dict
->>>>>>> staging-ft-elastic-v1
 
 base_ds_config = {
     "elasticity": {
