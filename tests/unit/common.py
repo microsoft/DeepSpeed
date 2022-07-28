@@ -11,6 +11,10 @@ from torch.multiprocessing import Process
 
 import pytest
 
+# This list should be updated if additional session-level fixtures
+# (e.g., check_environment) are added to ../conftest.py
+SESSION_FIXTURE_LIST = ["pytestconfig", "check_environment"]
+
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
 
@@ -61,7 +65,6 @@ def set_cuda_visibile():
 
 
 class DistributedTest(ABC):
-    dist_test = True
     world_size = 2
     backend = "nccl"
 
@@ -75,19 +78,11 @@ class DistributedTest(ABC):
 
     def _get_test_kwargs(self, request):
         test_kwargs = {}
-        pytest_marks = [
-            getattr(request.cls,
-                    "pytestmark",
-                    []),
-            request.keywords.get("pytestmark",
-                                 [])
+        params = [
+            k for k in request._fixture_defs.keys() if k not in SESSION_FIXTURE_LIST
         ]
-        pytest_marks = [mark for mark_list in pytest_marks for mark in mark_list]
-        for mark in pytest_marks:
-            if mark.name != "parametrize":
-                continue
-            for param in mark.args[0].replace(" ", "").split(","):
-                test_kwargs[param] = request.getfixturevalue(param)
+        for p in params:
+            test_kwargs[p] = request.getfixturevalue(p)
         return test_kwargs
 
     def _launch_procs(self, num_procs):
