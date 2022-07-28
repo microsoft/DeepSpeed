@@ -1,3 +1,4 @@
+import os
 import torch
 import tqdm
 import deepspeed
@@ -786,9 +787,9 @@ def replace_transformer_layer(orig_layer_impl,
         rank = dist.get_rank() if dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         checkpoint = checkpoint_dict['checkpoints']
-        ckpt_type = checkpoint_dict['parallelization']
+        ckpt_type = checkpoint_dict.get('parallelization', 'pp')
         ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
-        base_dir = checkpoint_dict.get('base_dir', None)
+        base_dir = checkpoint_dict.get('base_dir', '')
 
         if ckpt_type == 'pp':
             pbar = tqdm.tqdm(total=len(checkpoint),
@@ -810,8 +811,9 @@ def replace_transformer_layer(orig_layer_impl,
                     pbar.update(1)
 
                 ckpt_index = i * ckpt_mp_size + (rank // checkpoint_stride)
-                ckpt_file = checkpoint[
-                    ckpt_index] if base_dir is None else f'{base_dir}/{checkpoint[ckpt_index]}'
+                ckpt_file = os.path.join(
+                    base_dir,
+                    checkpoint[ckpt_index]) if base_dir else checkpoint[ckpt_index]
                 sd = torch.load(ckpt_file, map_location='cpu')
                 load_model_with_checkpoint(replaced_module,
                                            sd,
