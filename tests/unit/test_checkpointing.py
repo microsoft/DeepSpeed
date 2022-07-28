@@ -1,12 +1,8 @@
-import torch
-
-import deepspeed.comm as dist
-
 import deepspeed
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
-from deepspeed.utils import groups
 from deepspeed.runtime.fp16.fused_optimizer import FP16_Optimizer
 from deepspeed.runtime.fp16.unfused_optimizer import FP16_UnfusedOptimizer
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
 from deepspeed.runtime.pipe.topology import *
@@ -19,10 +15,7 @@ from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
 from .util import required_minimum_torch_version, required_torch_version
 
 import itertools
-import argparse
 import pytest
-import json
-import os
 import numbers
 from .common import distributed_test
 from .simple_model import *
@@ -735,13 +728,14 @@ def test_checkpoint_pipe_engine(zero_stage, tmpdir, stages=2):
 def test_checkpoint_pipe_module(base_topo, test_topo, tmpdir):
     @distributed_test(world_size=4)
     def _test(base_topo, test_topo, save_folder):
+        checkpoint_engine = TorchCheckpointEngine()
         base_model = LinearStackPipe(topology=base_topo)
-        base_model.save_state_dict(save_folder)
+        base_model.save_state_dict(save_folder, checkpoint_engine=checkpoint_engine)
 
         dist.barrier()
 
         test_model = LinearStackPipe(topology=test_topo)
-        test_model.load_state_dir(save_folder)
+        test_model.load_state_dir(save_folder, checkpoint_engine=checkpoint_engine)
 
         # Base and test can have different lengths, so make sure we map from the
         # smaller to larger model
@@ -1383,7 +1377,6 @@ def test_load_immediate_save(tmpdir, zero_stage):
 @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
 def test_save_before_accum_grad_is_done(tmpdir, zero_stage):
     config_dict = {
-        "train_batch_size": 4,
         "optimizer": {
             "type": 'Adam'
         },

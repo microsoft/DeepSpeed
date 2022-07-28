@@ -21,9 +21,9 @@ from .config_utils import (
     dict_raise_error_on_duplicate_keys,
     ScientificNotationEncoder,
 )
-from .zero.config import DeepSpeedZeroConfig
-from .zero.constants import *
+from .zero.config import get_zero_config, ZeroStageEnum
 from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
+from ..comm.config import DeepSpeedCommsConfig
 from ..monitor.config import DeepSpeedMonitorConfig
 
 from deepspeed import comm as dist
@@ -45,6 +45,8 @@ from ..elasticity.constants import (
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
+from ..nebula.config import DeepSpeedNebulaConfig
+
 from ..compression.config import get_compression_config, get_quantize_enabled
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
@@ -222,18 +224,6 @@ def get_gradient_accumulation_steps(param_dict):
 
 def get_sparse_gradients_enabled(param_dict):
     return get_scalar_param(param_dict, SPARSE_GRADIENTS, SPARSE_GRADIENTS_DEFAULT)
-
-
-def get_zero_optimization(param_dict):
-    return get_scalar_param(param_dict, ZERO_OPTIMIZATION, ZERO_OPTIMIZATION_DEFAULT)
-
-
-def get_zero_reduce_scatter(param_dict):
-    return get_scalar_param(
-        param_dict,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER,
-        ZERO_OPTIMIZATION_REDUCE_SCATTER_DEFAULT,
-    )
 
 
 def get_communication_data_type(param_dict):
@@ -799,13 +789,14 @@ class DeepSpeedConfig(object):
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
-        self.zero_config = DeepSpeedZeroConfig(param_dict)
+        self.zero_config = get_zero_config(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
         self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
             param_dict)
 
+        self.comms_config = DeepSpeedCommsConfig(param_dict)
         self.monitor_config = DeepSpeedMonitorConfig(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
@@ -874,6 +865,8 @@ class DeepSpeedConfig(object):
         self.aio_config = get_aio_config(param_dict)
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
+
+        self.nebula_config = DeepSpeedNebulaConfig(param_dict)
 
     def _batch_assertion(self):
 
@@ -981,13 +974,13 @@ class DeepSpeedConfig(object):
 
         if self.zero_enabled:
             assert (
-                self.zero_optimization_stage <= MAX_STAGE_ZERO_OPTIMIZATION
+                self.zero_optimization_stage <= ZeroStageEnum.max_stage
             ), "DeepSpeedConfig: Maximum supported ZeRO stage is {}".format(
-                MAX_STAGE_ZERO_OPTIMIZATION
+                ZeroStageEnum.max_stage
             )
 
         if self.fp16_master_weights_and_gradients:
-            assert self.zero_enabled and self.zero_optimization_stage == ZERO_OPTIMIZATION_GRADIENTS, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
+            assert self.zero_enabled and self.zero_optimization_stage == ZeroStageEnum.gradients, "Fp16_master_weights_and_grads is only supported with ZeRO Stage 2 for now."
 
     def _do_warning_check(self):
         fp16_enabled = self.fp16_enabled
