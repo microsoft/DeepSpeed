@@ -839,7 +839,7 @@ def replace_transformer_layer(orig_layer_impl,
                     v in dict(replaced_module.state_dict()).items()
                     if transformer_name not in k
                 }),
-                non_tp_ckpt_name)
+                f'{save_mp_checkpoint_path}/{non_tp_ckpt_name}')
             ckpt_files += [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
             config = json.dumps({
                 'type': ckpt_name,
