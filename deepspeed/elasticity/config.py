@@ -100,7 +100,7 @@ class ElasticityConfig:
                                                 NUM_GPUS_PER_NODE_DEFAULT)
         if self.num_gpus_per_node < 1:
             raise ElasticityConfigError(
-                "NUmber of GPUs per node cannot be less than 1, "
+                "Number of GPUs per node cannot be less than 1, "
                 f"given number of GPUs per node: {self.num_gpus_per_node}")
 
         self.min_time = param_dict.get(MIN_TIME, MIN_TIME_DEFAULT)
