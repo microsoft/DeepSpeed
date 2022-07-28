@@ -186,10 +186,11 @@ def _get_compatible_gpus_v02(micro_batches,
         valid_gpus
         micro-batch size
     '''
-    assert num_gpus_per_node % model_parallel_size == 0, \
+    if num_gpus_per_node % model_parallel_size != 0:
+        raise ElasticityError(
             f"In Elasticity v0.2, number of GPUs per node:" \
-            f"{num_gpus_per_node} should be divisible by" \
-            f"model parallel size {model_parallel_size}"
+            f"{num_gpus_per_node} should be divisible by " \
+            f"model parallel size {model_parallel_size}")
 
     def get_microbatch(final_batch_size):
         candidate_microbatch = None
@@ -371,7 +372,7 @@ def compute_elastic_config(ds_config: dict,
         # ensure batch size is int dtype
         final_batch_size = int(final_batch_size)
     elif float(elastic_config.version) == 0.2:
-        if world_size != 0 and False:
+        if world_size != 0:
             current_num_gpus = world_size
         else:
             if "WORLD_SIZE" in os.environ and \

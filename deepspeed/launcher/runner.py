@@ -430,6 +430,9 @@ def main(args=None):
             updated_active_resources[hostname] = list(range(args.num_gpus))
         active_resources = updated_active_resources
 
+    if args.elastic_training:
+        assert not args.no_local_rank, "--no_local_rank argument is not supported in Elastic training"
+
     # encode world info as base64 to make it easier to pass via command line
     world_info_base64 = encode_world_info(active_resources)
 
