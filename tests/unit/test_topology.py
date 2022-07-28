@@ -160,7 +160,7 @@ def test_topology_comm_list():
 class TestDistributedTopology(DistributedTest):
     world_size = 4
 
-    def test_grid_pipe_data():
+    def test_grid_pipe_data(self):
         topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
         grid = Grid(topology=topo)
 
@@ -184,7 +184,7 @@ class TestDistributedTopology(DistributedTest):
         data_group = grid.dp_group
         assert torch.all(rank_tensor == sum(data_group))
 
-    def test_stage_to_global():
+    def test_stage_to_global(self):
         topo = Topo(axes=['pipe', 'data'], dims=[2, 2])
         grid = Grid(topology=topo)
 

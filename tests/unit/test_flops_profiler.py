@@ -22,7 +22,7 @@ TOLERANCE = 0.05
 class TestFlopsProfilerInDSTraining(DistributedTest):
     world_size = 1
 
-    def test(tmpdir):
+    def test(self, tmpdir):
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,

@@ -31,7 +31,7 @@ wandb_available = pytest.mark.skipif(not _wandb_available,
 class TestTensorBoard(DistributedTest):
     world_size = 2
 
-    def test_tensorboard(tmpdir):
+    def test_tensorboard(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "tensorboard": {
@@ -46,7 +46,7 @@ class TestTensorBoard(DistributedTest):
         assert tb_monitor.output_path == "test_output/ds_logs/"
         assert tb_monitor.job_name == "test"
 
-    def test_empty_tensorboard(tmpdir):
+    def test_empty_tensorboard(self, tmpdir):
         config_dict = {"train_batch_size": 2, "tensorboard": {}}
         ds_config = DeepSpeedConfig(config_dict)
         tb_monitor = TensorBoardMonitor(ds_config.monitor_config)
@@ -59,7 +59,7 @@ class TestTensorBoard(DistributedTest):
 class TestWandB(DistributedTest):
     world_size = 2
 
-    def test_wandb(tmpdir):
+    def test_wandb(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "wandb": {
@@ -76,7 +76,7 @@ class TestWandB(DistributedTest):
         assert wandb_monitor.team == "my_team"
         assert wandb_monitor.project == "my_project"
 
-    def test_empty_wandb(tmpdir):
+    def test_empty_wandb(self, tmpdir):
         config_dict = {"train_batch_size": 2, "wandb": {}}
         ds_config = DeepSpeedConfig(config_dict)
         wandb_monitor = WandbMonitor(ds_config.monitor_config)
@@ -89,7 +89,7 @@ class TestWandB(DistributedTest):
 class TestCSVMonitor(DistributedTest):
     world_size = 2
 
-    def test_csv_monitor(tmpdir):
+    def test_csv_monitor(self, tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "csv_monitor": {
@@ -104,7 +104,7 @@ class TestCSVMonitor(DistributedTest):
         assert csv_monitor.output_path == "test_output/ds_logs/"
         assert csv_monitor.job_name == "test"
 
-    def test_empty_csv_monitor(tmpdir):
+    def test_empty_csv_monitor(self, tmpdir):
         config_dict = {"train_batch_size": 2, "csv_monitor": {}}
         ds_config = DeepSpeedConfig(config_dict)
         csv_monitor = csvMonitor(ds_config.monitor_config)

@@ -161,29 +161,41 @@ def inf_kwargs(model_w_task):
         return {}
 
 
+def fill_mask_assert(x, y):
+    return set(res["token_str"] for res in x) == set(res["token_str"] for res in y)
+
+
+def question_answering_assert(x, y):
+    return x["answer"] == y["answer"]
+
+
+def text_classification_assert(x, y):
+    return set(res["label"] for res in x) == set(res["label"] for res in y)
+
+
+def token_classification_assert(x, y):
+    return set(ent["word"] for ent in x) == set(ent["word"] for ent in y)
+
+
+def text_generation_assert(x, y):
+    return set(res["generated_text"] for res in x) == set(res["generated_text"]
+                                                          for res in y)
+
+
 @pytest.fixture
 def assert_fn(model_w_task):
     model, task = model_w_task
-    if task == "fill-mask":
-        return lambda x, y: set(res["token_str"] for res in x) == set(
-            res["token_str"] for res in y
-        )
-    elif task == "question-answering":
-        return lambda x, y: x["answer"] == y["answer"]
-    elif task == "text-classification":
-        return lambda x, y: set(res["label"] for res in x) == set(
-            res["label"] for res in y
-        )
-    elif task == "token-classification":
-        return lambda x, y: set(ent["word"] for ent in x) == set(
-            ent["word"] for ent in y
-        )
-    elif task == "text-generation":
-        return lambda x, y: set(res["generated_text"] for res in x) == set(
-            res["generated_text"] for res in y
-        )
-    else:
+    assert_fn_dict = {
+        "fill-mask": fill_mask_assert,
+        "question-answering": question_answering_assert,
+        "text-classification": text_classification_assert,
+        "token-classification": token_classification_assert,
+        "text-generation": text_generation_assert,
+    }
+    assert_fn = assert_fn_dict.get(task, None)
+    if assert_fn is None:
         NotImplementedError(f'assert_fn for task "{task}" is not implemented')
+    return assert_fn
 
 
 """
@@ -196,6 +208,7 @@ class TestModelTask(DistributedTest):
     world_size = 1
 
     def test(
+        self,
         model_w_task,
         dtype,
         enable_cuda_graph,
@@ -277,7 +290,7 @@ class TestModelTask(DistributedTest):
 class TestLMCorrectness(DistributedTest):
     world_size = 1
 
-    def test(model_family, model_name, task):
+    def test(self, model_family, model_name, task):
         local_rank = os.getenv("LOCAL_RANK", "0")
         device = torch.device(f"cuda:{local_rank}")
         dtype = torch.float

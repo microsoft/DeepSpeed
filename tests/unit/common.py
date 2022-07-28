@@ -1,5 +1,6 @@
 import os
 import time
+import inspect
 from abc import ABC
 from pathlib import Path
 
@@ -70,30 +71,27 @@ class DistributedTest(ABC):
     backend = "nccl"
 
     def _run_test(self, request):
-        self.test_kwargs = self._get_test_kwargs(request)
         self.current_test = self._get_current_test_func(request)
+        self.test_kwargs = self._get_test_kwargs(request)
         if isinstance(self.world_size, int):
             self.world_size = [self.world_size]
         for procs in self.world_size:
             self._launch_procs(procs)
             time.sleep(0.5)
 
-    """ Grab fixture / parametrize kwargs from pytest request object """
+    def _get_current_test_func(self, request):
+        # DistributedTest subclasses may have multiple test methods
+        func_name = request.function.__name__
+        return getattr(self, func_name)
 
     def _get_test_kwargs(self, request):
+        # Grab fixture / parametrize kwargs from pytest request object
         test_kwargs = {}
-        params = [
-            k for k in request._fixture_defs.keys() if k not in SESSION_FIXTURE_LIST
-        ]
+        params = inspect.getfullargspec(self.current_test).args
+        params.remove("self")
         for p in params:
             test_kwargs[p] = request.getfixturevalue(p)
         return test_kwargs
-
-    """ DistributedTest subclasses may have multiple test methods """
-
-    def _get_current_test_func(self, request):
-        func_name = request.function.__name__
-        return getattr(self, func_name)
 
     def _launch_procs(self, num_procs):
         mp.set_start_method('forkserver', force=True)
