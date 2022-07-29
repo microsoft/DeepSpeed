@@ -79,7 +79,7 @@ def test_moe_tensor_parallel(tmpdir, ep_size, tp_size, enable_expert_tp, use_res
     args = args_from_dict(tmpdir, config_dict)
     hidden_dim = 16
 
-    class FakeMPU():
+    class MPU():
         def __init__(self, tp_world_size):
             self.rank = deepspeed.comm.get_rank()
             self.world_size = deepspeed.comm.get_world_size()
@@ -143,7 +143,7 @@ def test_moe_tensor_parallel(tmpdir, ep_size, tp_size, enable_expert_tp, use_res
                                               model=model,
                                               optimizer=optimizer,
                                               dist_init_required=False,
-                                              mpu=FakeMPU(tp_size))
+                                              mpu=MPU(tp_size))
 
         assert model.num_local_experts == world_size // ep_size
         if enable_expert_tp:
