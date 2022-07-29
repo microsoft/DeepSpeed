@@ -70,6 +70,9 @@ from ..git_version_info import version
 from deepspeed.profiling.flops_profiler.profiler import FlopsProfiler
 from deepspeed.utils.logging import print_json_dist
 
+import threading
+import time
+import copy
 MEMORY_OPT_ALLREDUCE_SIZE = 500000000
 
 DeepSpeedOptimizerCallable = \
@@ -343,6 +346,43 @@ class DeepSpeedEngine(Module):
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
 
+        self.checkpoint_module_cpu_stage = None
+        self.checkpoint_optimizer_cpu_stage = None
+        self.checkpoint_cpu_thread_save_nonzero = None
+        self.checkpoint_cpu_thread_save_zero = None
+        self.enable_two_level_checkpoint = self._config.elastic_training_params["elastic_training_two_level_checkpoint"]
+        self.elastic_checkpoint_tag = 0
+        self.elastic_checkpoint_tags = ['tag1','tag2']
+        self.elastic_last_checkpoint_step = 0
+        self.enable_elastic_training_save = self._config.elastic_training_params["elastic_training_auto_checkpoint"]
+        self.elastic_megatron_save = True
+        self.elastic_save_dir = "./elastic_checkpoint_dir"
+        self.elastic_training_checkpoint_step = 10
+
+        print("Elastic training auto checkpoint:",self.enable_elastic_training_save)
+
+        self.checkpoint_frequency = None
+
+        checkpoint_overhead = self.get_checkpoint_overhead("./temp_elastic_checkpoint")
+
+        if self.enable_elastic_training_save:
+            # self.load_checkpoint(self.elastic_save_dir)
+            self.elastic_last_checkpoint_step = self.global_steps
+
+            # Configure current elastic tag
+            latest_path = os.path.join(self.elastic_save_dir, "latest")
+            if os.path.isfile(latest_path):
+                with open(latest_path, "r") as fd:
+                    tag = fd.read().strip()
+
+                    if tag in self.elastic_checkpoint_tags:
+                        self.elastic_checkpoint_tag = self.elastic_checkpoint_tags.index(tag) 
+                        
+        print("checkpoint_overhead:",checkpoint_overhead)
+        
+        if self.enable_elastic_training_save:
+            assert self.wall_clock_breakdown(), "Please Enable Wall Clock"
+
     def destroy(self):
         if self.optimizer is not None and hasattr(self.optimizer, 'destroy'):
             self.optimizer.destroy()
@@ -487,6 +527,9 @@ class DeepSpeedEngine(Module):
 
     def curriculum_params(self):
         return self._config.curriculum_params
+
+    def elastic_training_checkpoint_save(self):
+        return self.enable_elastic_training_save
 
     def tensorboard_enabled(self):
         return self._config.tensorboard_enabled
@@ -1575,6 +1618,18 @@ class DeepSpeedEngine(Module):
             **kwargs: variable length keyword arguments
         """
 
+        if( self.global_steps%self.elastic_training_checkpoint_step == 0 
+                and self.checkpoint_frequency == None
+                and self.tput_timer.total_step_count >= self.elastic_training_checkpoint_step 
+                and self.enable_elastic_training_save):
+            self.get_checkpoint_frequency()
+
+        if self.enable_elastic_training_save and self.checkpoint_frequency != None :
+            # Only call save checkpoint in first microstep
+            if self.elastic_last_checkpoint_step != self.global_steps and self.global_steps% self.checkpoint_frequency ==0:
+                self.elastic_last_checkpoint_step = self.global_steps
+                # self.save_checkpoint_elastic_training()
+
         if self.autotuning_profile_model_info():
             ma = get_ma_status()
         else:
@@ -1688,7 +1743,6 @@ class DeepSpeedEngine(Module):
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: is deprecated, ignored, and will soon be removed'
         """
-
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
 
         if not allreduce_gradients:
@@ -1889,6 +1943,8 @@ class DeepSpeedEngine(Module):
         r"""Execute the weight update step after forward and backward propagation
         on effective_train_batch.
         """
+        
+
         see_memory_usage("Engine before step", force=self.memory_breakdown())
 
         # Check early because self.global_steps is incremented at some point here.
@@ -2002,6 +2058,8 @@ class DeepSpeedEngine(Module):
 
         self.micro_steps += 1
         see_memory_usage("Engine after step", force=self.memory_breakdown())
+
+        
 
     def _start_timers(self, timer_names):
         for name in timer_names:
@@ -2506,6 +2564,8 @@ class DeepSpeedEngine(Module):
                 )
                 return None, None
 
+        print("Loading from tag:",tag)
+
         if self.zero_optimization_partition_weights():
             # Prepare for checkpoint load by ensuring all parameters are partitioned
             self.optimizer.checkpoint_event_prologue()
@@ -2531,6 +2591,20 @@ class DeepSpeedEngine(Module):
             self.optimizer.checkpoint_event_epilogue()
 
         return load_path, client_states
+    
+    def _move_module_cpu_transfer(self, dict_state):
+        if(self.zero_cpu_offload() == False):
+            for key, value in dict_state.items():
+                dict_state[key] = value.cuda()
+
+    def _move_opt_cpu_transfer(self, dict_state):
+
+        for item_key, item_value in dict_state.items():
+            if(isinstance(item_value, torch.Tensor)):
+                dict_state[item_key] = item_value.cuda()
+            elif isinstance(item_value, dict):
+                self._move_opt_cpu_transfer( dict_state[item_key])
+
 
     def _load_checkpoint(self,
                          load_dir,
@@ -2572,7 +2646,10 @@ class DeepSpeedEngine(Module):
                                                 model=self.module,
                                                 mpu=self.mpu,
                                                 num_experts=self.num_experts)
-
+        if(self.enable_two_level_checkpoint):
+            None
+            # self._move_module_cpu_transfer(checkpoint['module'])
+            # self._move_opt_cpu_transfer(checkpoint['optimizer'])
         self.load_module_state_dict(state_dict=checkpoint['module'],
                                     strict=load_module_strict,
                                     custom_load_fn=custom_load_fn)
@@ -2677,7 +2754,7 @@ class DeepSpeedEngine(Module):
         if zero_sd_list is None:
             return False
 
-        if load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
+        if not self.zero_elastic_checkpoint() and load_optimizer_states and self.dp_world_size != self.loaded_checkpoint_dp_world_size:
             raise ZeRORuntimeException("The checkpoint being loaded used a DP " \
                 f"world size of {self.loaded_checkpoint_dp_world_size} but the " \
                 f"current world size is {self.dp_world_size}. Automatic adjustment " \
@@ -2792,6 +2869,200 @@ class DeepSpeedEngine(Module):
                 assert valid, msg
             elif not valid:
                 logger.warning(msg)
+    def _initialize_dict_checkpoint_two_level(self, val):
+        if(isinstance(val, dict)):
+            temp_dict = dict()
+            for item_key, item_value in val.items():
+                temp_dict[item_key] = self._initialize_dict_checkpoint_two_level(item_value)
+            return temp_dict
+        elif(isinstance(val, torch.Tensor)):
+            return val.cpu()
+        else:
+            return val
+    def _copy_dict_checkpoint_two_level(self, dest, val):
+        if(isinstance(val, dict)):
+            for item_key, item_value in val.items():
+                if(not isinstance(item_value, (dict, torch.Tensor))):
+                    dest[item_key] = item_value
+                else:
+                    self._copy_dict_checkpoint_two_level(dest[item_key], item_value)
+        elif(isinstance(val, torch.Tensor)):
+            dest.copy_(val)
+        else:
+            raise ValueError(f"Unsupported Value in Checkpoint")
+    
+    def _save_checkpoint_multi_level_cpu_transfer_module(self):
+
+        if (self.checkpoint_module_cpu_stage == None):
+            self.checkpoint_module_cpu_stage = dict()
+            for key, value in self.module.state_dict().items():
+                self.checkpoint_module_cpu_stage[key] = self._initialize_dict_checkpoint_two_level(value)
+        #     for key, value in self.module.state_dict().items():
+        #         self.checkpoint_module_cpu_stage[key] = value.cpu()
+        else:
+            self._copy_dict_checkpoint_two_level(
+                self.checkpoint_module_cpu_stage, 
+                self.module.state_dict(),
+                )
+                # self.checkpoint_module_cpu_stage[key].copy_(value)
+
+
+    def _save_checkpoint_multi_level_cpu_transfer_optimizer(self):
+
+        if (self.checkpoint_optimizer_cpu_stage == None):
+            self.checkpoint_optimizer_cpu_stage = dict()
+            for key, value in self.optimizer.state_dict().items():
+                self.checkpoint_optimizer_cpu_stage[key] = self._initialize_dict_checkpoint_two_level(value)
+        else:
+            self._copy_dict_checkpoint_two_level(
+                    self.checkpoint_optimizer_cpu_stage, 
+                    self.optimizer.state_dict(),
+                    )
+
+    def _wait_save_checkpoint(self):
+        t = time.time()
+        if(self.checkpoint_cpu_thread_save_nonzero != None):          
+            self.checkpoint_cpu_thread_save_nonzero.join()
+
+        if(self.checkpoint_cpu_thread_save_zero != None):
+            self.checkpoint_cpu_thread_save_zero.join()
+
+        if(self.checkpoint_cpu_thread_save_zero != None or
+            self.checkpoint_cpu_thread_save_nonzero!=None):
+
+            if self.global_rank == 0:
+                print("Thread join:", time.time()-t)
+    def _save_checkpoint_multi_level_cpu(self, save_dir, tag, client_state={}):
+        t = time.time()
+        save_path = self._get_ckpt_name(save_dir, tag)
+        
+        self._save_checkpoint_multi_level_cpu_transfer_module()
+        zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
+        if self.optimizer and not zero_optimizer_state:
+            self._save_checkpoint_multi_level_cpu_transfer_optimizer()
+        # torch.cuda.synchronize()
+
+        if self.global_rank == 0:
+            print("Time transfer GPU->CPU:", time.time()-t)
+        # A hack to save the checkpointing directory. Pipeline parallelism overrides
+        # module_state_dict() and uses this path to save the model. module_state_dict()
+        # then instead just returns None.
+        self._curr_ckpt_path = os.path.join(save_dir, tag)
+
+        
+        state = dict(
+                     module=self.checkpoint_module_cpu_stage,
+                     buffer_names=self._get_buffer_names(),
+                     optimizer=self.checkpoint_optimizer_cpu_stage
+                     if self.optimizer and not zero_optimizer_state else None,
+                     param_shapes=copy.deepcopy(self._get_zero_param_shapes())
+                     if self.optimizer and zero_optimizer_state else None,
+                     lr_scheduler=copy.deepcopy(self.lr_scheduler.state_dict())
+                     if self.lr_scheduler is not None else None,
+                     sparse_tensor_module_names=self.sparse_tensor_module_names,
+                     skipped_steps=self.skipped_steps,
+                     global_steps=self.global_steps,
+                     global_samples=self.global_samples,
+                     dp_world_size=self.dp_world_size,
+                     mp_world_size=self.mp_world_size,
+                     ds_config=self.config,
+                     ds_version=version)
+
+        state.update(client_state)
+
+        def async_save_checkpoint(state):
+            log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
+            torch.save(state, save_path)
+            self._curr_save_path = None
+
+        self.checkpoint_cpu_thread_save_nonzero = threading.Thread(
+                                                target=async_save_checkpoint,
+                                                args = (state,)
+                                            )
+        self.checkpoint_cpu_thread_save_nonzero.start()
+        if self.global_rank == 0:
+            print("Thread Started:", time.time()-t)
+
+    def get_checkpoint_overhead(self, save_dir):
+        enable_two_level_checkpoint = self.enable_two_level_checkpoint
+        self.enable_two_level_checkpoint = False
+        t_start = time.time()
+        self.save_checkpoint(save_dir)
+        checkpoint_overhead = time.time() - t_start
+        self.enable_two_level_checkpoint = enable_two_level_checkpoint
+
+        self.checkpoint_overhead = checkpoint_overhead
+        return checkpoint_overhead
+
+    def get_checkpoint_frequency(self):
+
+        iteration_time = 0
+
+        if(self.checkpoint_frequency ==None):
+
+            self.max_checkpoint_overhead_percentage = 0.05
+
+            # if self.wall_clock_breakdown() and self.global_rank==0:
+            # fw_latency = self.timers('forward').mean()
+            # bw_latency = self.timers('backward').mean()
+            # st_latency = self.timers('step').mean()
+
+            # iteration_time = fw_latency + bw_latency + st_latency
+
+            checkpoint_freq_factor = 10
+
+            samples_per_step = self.tput_timer.total_step_count - self.tput_timer.start_step
+            time_per_step = self.tput_timer.total_elapsed_time / samples_per_step
+            time_per_iteration = self.gradient_accumulation_steps() * time_per_step
+
+            if not self.enable_two_level_checkpoint:
+                est_checkpoint_frequency = math.ceil(self.checkpoint_overhead / (time_per_iteration*self.max_checkpoint_overhead_percentage))     
+            else:
+                est_checkpoint_frequency = math.ceil(self.checkpoint_overhead / time_per_iteration)
+            
+            offset = checkpoint_freq_factor - (est_checkpoint_frequency % checkpoint_freq_factor)
+            checkpoint_frequency = est_checkpoint_frequency + offset 
+            checkpoint_frequency = torch.tensor([checkpoint_frequency]).to(self.device)
+            dist.all_reduce(checkpoint_frequency, op=torch.distributed.ReduceOp.MAX)
+
+            self.checkpoint_frequency = checkpoint_frequency.item()
+
+            print("Checkpoint Freq:", self.checkpoint_frequency)
+
+        # print("Computed Iteration time:", self.tput_timer.batch_size, self.tput_timer.num_workers , self.gradient_accumulation_steps() *( self.tput_timer.total_elapsed_time) / (self.tput_timer.total_step_count - self.tput_timer.start_step) )
+
+
+    def save_checkpoint_elastic_training(self, save_dir=None, tag=None, client_state={}, save_latest=True):
+        if self.checkpoint_frequency == None:
+            return 0
+        if self.global_steps % self.checkpoint_frequency !=0 :
+            return 0
+        assert tag==None, "Automatic checkpointing in  Elastic training does not support custom tag to reduce memory consumption"
+        if save_dir == None:
+            save_dir = self.elastic_save_dir
+        if self.elastic_megatron_save and False:
+            original_state_dict = self.module.state_dict
+            self.module.state_dict = self.module.state_dict_for_save_checkpoint
+
+
+        self._wait_save_checkpoint()
+        tag = self.elastic_checkpoint_tags[self.elastic_checkpoint_tag]
+        if self.global_rank == 0:
+            if os.path.exists(save_dir):
+                with open(os.path.join(save_dir, 'latest'), 'w') as fd:
+                    fd.write(tag)
+
+        self.elastic_checkpoint_tag = (self.elastic_checkpoint_tag + 1) % len(self.elastic_checkpoint_tags)
+
+        # Get tag for the next checkpoint
+        tag = self.elastic_checkpoint_tags[self.elastic_checkpoint_tag]
+        self.save_checkpoint(save_dir, tag, client_state, save_latest=True)
+
+        if self.elastic_megatron_save and False:
+            self.module.state_dict = original_state_dict
+
+
+                
 
     def save_checkpoint(self, save_dir, tag=None, client_state={}, save_latest=True):
         r"""Save training checkpoint
@@ -2819,6 +3090,11 @@ class DeepSpeedEngine(Module):
         os.makedirs(save_dir, exist_ok=True)
         torch.distributed.barrier()
 
+        t =time.time()
+        self._wait_save_checkpoint()
+        if self.enable_two_level_checkpoint and self.global_rank == 0:
+            print("Save Async time:", time.time()-t)
+
         if tag is None:
             tag = f"global_step{self.global_steps}"
 
@@ -2835,18 +3111,23 @@ class DeepSpeedEngine(Module):
 
         if self.save_non_zero_checkpoint:
             self._create_checkpoint_file(save_dir, tag, False)
-            self._save_checkpoint(save_dir, tag, client_state=client_state)
-
+            if self.enable_two_level_checkpoint:
+                self._save_checkpoint_multi_level_cpu(save_dir, tag, client_state=client_state)
+            else:
+                self._save_checkpoint(save_dir, tag, client_state=client_state)
+            
         if self.save_zero_checkpoint:
             self._create_zero_checkpoint_files(save_dir, tag)
-            self._save_zero_checkpoint(save_dir, tag)
-
+            if self.enable_two_level_checkpoint:
+                self._save_zero_checkpoint_cpu_transfer(save_dir, tag)
+            else:
+                self._save_zero_checkpoint(save_dir, tag)
         if self.zero_optimization_partition_weights():
             self.optimizer.checkpoint_event_epilogue()
 
         # Save latest checkpoint tag
         torch.distributed.barrier()
-        if save_latest and self.global_rank == 0:
+        if save_latest and self.global_rank == 0 and not self.enable_two_level_checkpoint:
             with open(os.path.join(save_dir, 'latest'), 'w') as fd:
                 fd.write(tag)
 
@@ -3002,6 +3283,7 @@ class DeepSpeedEngine(Module):
         # A hack to save the checkpointing directory. Pipeline parallelism overrides
         # module_state_dict() and uses this path to save the model. module_state_dict()
         # then instead just returns None.
+        t = time.time()
         self._curr_ckpt_path = os.path.join(save_dir, tag)
         zero_optimizer_state = self.zero_optimization() or self.bfloat16_enabled()
         state = dict(module=self.module_state_dict(),
@@ -3025,6 +3307,8 @@ class DeepSpeedEngine(Module):
         log_dist(message=f'Saving model checkpoint: {save_path}', ranks=[0, 1])
         torch.save(state, save_path)
         self._curr_save_path = None
+
+        print("Time to save model:", time.time()-t)
 
     def _get_buffer_names(self):
         buffer_names = []
@@ -3100,6 +3384,32 @@ class DeepSpeedEngine(Module):
         copyfile(src, dst)
         # make executable
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+
+    def _save_zero_checkpoint_cpu_transfer(self, save_path, tag):
+        t = time.time()
+        zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)
+        self._save_checkpoint_multi_level_cpu_transfer_optimizer()
+
+        zero_sd = dict(optimizer_state_dict=self.checkpoint_optimizer_cpu_stage,
+                       ds_config=self.config,
+                       ds_version=version)
+
+
+        def async_save_checkpoint(state):
+            with open(zero_checkpoint_name, 'wb') as fd:
+                torch.save(zero_sd, fd)
+                fd.flush()
+            if self.global_rank == 0:
+                self._copy_recovery_script(save_path)
+            ckpt_type = 'zero' if self.zero_optimization() else 'bf16_zero'
+            logger.info(f'{ckpt_type} checkpoint saved {zero_checkpoint_name}')
+        
+        self.checkpoint_cpu_thread_save_zero = threading.Thread(
+                                                target=async_save_checkpoint,
+                                                args = (zero_sd,)
+                                            )
+        self.checkpoint_cpu_thread_save_zero.start()
+        print("Thread Started Zero:", time.time()-t)
 
     def _save_zero_checkpoint(self, save_path, tag):
         zero_checkpoint_name = self._get_zero_ckpt_name(save_path, tag)

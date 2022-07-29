@@ -102,6 +102,16 @@ def get_pld_enabled(param_dict):
     else:
         return False
 
+def get_elastic_training_params(param_dict):
+    params = dict()
+    params["elastic_training_two_level_checkpoint"] = get_scalar_param(param_dict,
+                                                        "ELASTIC_TRAIN_TWO_LEVEL_CHECKPOINT", 
+                                                        False)
+    params["elastic_training_auto_checkpoint"]= get_scalar_param(param_dict, 
+                                                        "ELASTIC_TRAIN_AUTO_CHECKPOINT", 
+                                                        False)
+
+    return params
 
 def get_pld_params(param_dict):
     if PROGRESSIVE_LAYER_DROP in param_dict.keys():
@@ -890,6 +900,7 @@ class DeepSpeedConfig(object):
         self.gradient_predivide_factor = get_gradient_predivide_factor(param_dict)
         self.sparse_gradients_enabled = get_sparse_gradients_enabled(param_dict)
 
+        self.elastic_training_params = get_elastic_training_params(param_dict)
         self.zero_config = DeepSpeedZeroConfig(param_dict)
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
