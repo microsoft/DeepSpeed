@@ -23,6 +23,7 @@ from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..nebula.constants import DLTS_POD_ENV_PATH
 from ..utils import logger
 from ..elasticity import is_torch_elastic_compatible
+from .constants import ELASTIC_TRAINING_ID_DEFAULT
 
 PID_FILE_BASEPATH = "/tmp"
 
@@ -253,7 +254,7 @@ def main():
         rdzv_parameters = RendezvousParameters(backend='c10d',
                                                endpoint=args.master_addr + ":" +
                                                str(args.master_port),
-                                               run_id='123456789',
+                                               run_id=ELASTIC_TRAINING_ID_DEFAULT,
                                                min_nodes=args.min_elastic_nodes,
                                                max_nodes=args.max_elastic_nodes,
                                                **rdzv_configs)
