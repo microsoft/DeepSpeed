@@ -253,16 +253,16 @@ class InsertPostInitMethodToModuleSubClasses(object):
                  mem_efficient_linear=True,
                  ds_config=None,
                  dtype=None):
-        global zero_init_enabled
         self.mem_efficient_linear = mem_efficient_linear
         self.enabled = enabled
         self._set_dtype(ds_config, dtype)
         assert self.dtype in [torch.half, torch.bfloat16, torch.float], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
-        zero_init_enabled = True
 
     def __enter__(self):
+        global zero_init_enabled
         if not self.enabled:
             return
+        zero_init_enabled = True
 
         def apply_with_gather(orig_module_apply_fn: Callable) -> Callable:
             """many models make use of child modules like Linear or Embedding which
