@@ -16,6 +16,8 @@ specialized_mode = None
 import torch.nn as nn
 from .transformer_inference import DeepSpeedSelfAttention, DeepSpeedInferenceConfig
 from ....moe.sharded_moe import TopKGate
+import fairseq
+from fairseq.modules.moe.top2gate import Top2Gate
 import torch.distributed as dist
 
 import torch.nn.functional as F
@@ -270,7 +272,9 @@ class DeepSpeedMoEInference(nn.Module):
 
         self.prev_key = None
         self.prev_value = None
-
+        import fairseq
+        from fairseq.modules.transformer_layer import FeedForwardNetwork
+    
         if config.mlp_type == 'residual':
             self.res_mlp = DeepSpeedMoEMLP(config,
                                            quantize_scales,
@@ -285,13 +289,14 @@ class DeepSpeedMoEInference(nn.Module):
                                     inference_cuda_module.vector_matmul_fp32
 
         config.mp_size = 1
-        self.mlp = nn.ModuleList(
-            DeepSpeedMoEMLP(config,
-                            quantize_scales,
-                            quantize_groups,
-                            merge_count,
-                            mlp_extra_grouping,
-                            expert_mp_group) for i in range(self.config.moe_experts))
+        self.mlp = nn.ModuleList(FeedForwardNetwork(embed_dim=self.config.hidden_size, ffn_dim=self.config.hidden_size*4) for i in range(self.config.moe_experts))
+        #self.mlp = nn.ModuleList(
+        #    DeepSpeedMoEMLP(config,
+        #                    quantize_scales,
+        #                    quantize_groups,
+        #                    merge_count,
+        #                    mlp_extra_grouping,
+        #                    expert_mp_group) for i in range(self.config.moe_experts))
 
         self.moe_gate = TopKGate(self.config.hidden_size,
                                  self.config.global_experts,
@@ -302,6 +307,18 @@ class DeepSpeedMoEInference(nn.Module):
                                  self.config.noisy_gate_policy,
                                  self.config.drop_tokens,
                                  self.config.use_rts)
+
+        self.moe_gate = Top2Gate(self.config.hidden_size,
+                                 self.config.global_experts, True, None, False, 0.25, False)
+                        #args.moe_expert_count,
+#                     args.moe_gating_use_fp32,
+#                     args.moe_second_expert_policy,
+#                     args.moe_normalize_gate_prob_before_dropping,
+#                     getattr(args, "moe_eval_capacity_token_fraction", 0.25),
+#                     getattr(args, "moe_batch_prioritized_routing", False),
+        
+        from fairseq.modules.moe.moe_layer import MOELayer
+        self.moe_layer = MOELayer(self.moe_gate, self.mlp, None)  
 
         self.ep_group = ep_group
         self.mp_group = mp_group
@@ -325,11 +342,29 @@ class DeepSpeedMoEInference(nn.Module):
             attention_output.view(-1, self.config.hidden_size),
             None,
             )
-        dispatched_attention = self.einsum_sec_sm_ecm(
-            dispatch_mask.type_as(attention_output),
-            attention_output.view(-1,
-                                  self.config.hidden_size))
+        # bring from training
+        dispatched_attention = torch.einsum("sec,sm->ecm",
+                                      dispatch_mask.type_as(attention_output),
+                                      attention_output.view(-1, self.config.hidden_size))
+        # inference side
+        #dispatched_attention = self.einsum_sec_sm_ecm(
+            #dispatch_mask.type_as(attention_output),
+            #attention_output.view(-1,
+            #                      self.config.hidden_size))
+
         return dispatched_attention, combined_weights
+            
+    def expert_exec_t(self, dispatched_input):
+        chunks = dispatched_input.chunk(self.config.moe_experts, dim=1)
+        expert_outputs = []
+        for chunk, expert in zip(chunks, self.mlp):
+            out = expert(chunk)
+            if type(out) is tuple:
+                out = out[0]  # Ignore the bias term for now
+            expert_outputs += [out]
+
+        expert_output = torch.cat(expert_outputs, dim=1)
+        return expert_output
 
     def expert_exec(self, dispatched_input):
         dispatched_input = dispatched_input.reshape(
@@ -345,6 +380,7 @@ class DeepSpeedMoEInference(nn.Module):
         ) + chunks[0].shape[2:],
                                      dtype=dispatched_input.dtype,
                                      device=dispatched_input.device)
+        
         for chunk, expert in zip(chunks, range(len(self.mlp))):
             expert_outputs[expert] = self.mlp[expert](chunk.view(
                 -1,
@@ -427,6 +463,7 @@ class DeepSpeedMoEInference(nn.Module):
                                                  self.attn_nw,
                                                  self.attn_nb,
                                                  self.config.epsilon)
+            out = self.moe_layer(attention_output)
 
             if self.config.mlp_type == 'residual':
                 res_mlp_out = self.res_mlp(attention_output, async_op=True)
@@ -446,7 +483,7 @@ class DeepSpeedMoEInference(nn.Module):
             ############## MoE Gating + Experts ###############
             dispatched_attention, combined_weights = self.moe_gate_einsum(attention_output)
             dispatched_input = self._alltoall(dispatched_attention)
-            expert_outputs = self.expert_exec(dispatched_input)
+            expert_outputs = self.expert_exec_t(dispatched_input)
             expert_output = self._alltoall(expert_outputs)
             output = self.scale_expert_output(attention_output,
                                               expert_output,
@@ -477,10 +514,14 @@ class DeepSpeedMoEInference(nn.Module):
         #print(f"MoE {context_output.shape}")
         if self.config.fairseq:
             print("returning fairseq moe config")
+            return out, None, None, None
             # output, attn_weights, [key, value, self_attn_padding_mask]
-            return output, None, None, None #[attention_output[1], attention_output[2], self_attn_padding_mask
+            
+            #return output, None, None, None #[attention_output[1], attention_output[2], self_attn_padding_mask
 
         if self.config.return_tuple:
             return output if type(output) is tuple else (output, None, None, None)
         else:
             return output
+        
+        return out

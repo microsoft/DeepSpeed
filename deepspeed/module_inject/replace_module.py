@@ -359,7 +359,7 @@ def replace_transformer_layer(orig_layer_impl,
                 qkvw.data = transpose(qkvw.data)
                 dense_w.data = transpose(dense_w.data)
 
-            if mlp_linear_layer:
+            if (not moe) and mlp_linear_layer:
                 _h4h_w = [transpose(moe_w1.data)
                           for moe_w1 in _h4h_w] if moe else transpose(_h4h_w.data)
                 _4hh_w = [transpose(moe_w1.data)
@@ -383,16 +383,16 @@ def replace_transformer_layer(orig_layer_impl,
                 ) if torch.distributed.is_initialized() else 1
                 gpu_index = 0
                 for ep_index in range(local_ep_size):
-                    mpl_block[ep_index].inter_w.data = _h4h_w[
+                    mpl_block[ep_index].fc1.weight.data = _h4h_w[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
-                    mpl_block[ep_index].inter_b.data = _h4h_b[
+                    mpl_block[ep_index].fc1.bias.data = _h4h_b[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
-                    mpl_block[ep_index].output_w.data = _4hh_w[
+                    mpl_block[ep_index].fc2.weight.data = _4hh_w[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
-                    mpl_block[ep_index].output_b.data = _4hh_b[
+                    mpl_block[ep_index].fc2.bias.data = _4hh_b[
                         gpu_index * local_ep_size + ep_index].to(
                             torch.cuda.current_device())
                 new_module.moe_gate.wg = wg

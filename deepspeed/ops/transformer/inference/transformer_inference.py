@@ -621,6 +621,8 @@ class DeepSpeedTransformerInference(nn.Module):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
+        if type(input) is tuple:
+            print(f"deepspeed transformer inference input = {type(input[0])},{type(input[1])}")
         input_type = input.dtype
 
         if (self.config.fp16 or self.config.q_int8) \
