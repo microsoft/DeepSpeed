@@ -1,6 +1,6 @@
 # Copyright 2020 The Microsoft DeepSpeed Team
 """
-DeepSpeed launcher, this is similar to torch.distributed.launch but supports
+DeepSpeed launcher, this is similar to torch's distributed.launch but supports
 additional features such as arbitrary gpu exclusion.
 
 deepspeed.launcher.launch is intended to be run on a single worker node and
@@ -15,18 +15,16 @@ import json
 import base64
 import time
 import signal
+import psutil
 from collections import defaultdict
+from typing import Dict
 from argparse import ArgumentParser, REMAINDER
-from torch.distributed.launcher.api import LaunchConfig, elastic_launch
-from torch.distributed.elastic.multiprocessing import Std
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..nebula.constants import DLTS_POD_ENV_PATH
 from ..utils import logger
-from ..elasticity import DSElasticAgent
-from torch.distributed.elastic.rendezvous import RendezvousParameters
-from torch.distributed.elastic.agent.server.api import WorkerSpec
-import torch.distributed.elastic.rendezvous.registry as rdzv_registry
-PID_FILE_BASEPATH = "/tmp"
+from ..elasticity import is_torch_elastic_compatible
 
+PID_FILE_BASEPATH = "/tmp"
 
 
 def parse_args():
@@ -106,34 +104,24 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_config_elastic(args, num_local_procs, node_rank) -> LaunchConfig:
+# Adapted from https://psutil.readthedocs.io/en/latest/#kill-process-tree
+def terminate_process_tree(pid):
+    process = psutil.Process(pid)
+    children = process.children(recursive=True)
+    children.append(process)
+    for child in children:
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    gone, alive = psutil.wait_procs(children, timeout=30)
+    for p in alive:
+        p.kill()
 
-    config: Dict[str, str] = {'timeout': 100}
-    config["store_type "] =  "file"
-
-    config = LaunchConfig(
-        min_nodes=args.nnodes,
-        max_nodes=args.max_nodes,
-        nproc_per_node=num_local_procs,
-        run_id="123456789",
-        role="default",
-        rdzv_endpoint="worker-0:46728",
-        rdzv_backend='c10d',
-        rdzv_configs=config,
-        max_restarts=100,
-        monitor_interval=1,
-        start_method="spawn",
-        redirects=Std.from_str("0"),
-        tee=Std.from_str("0"),
-        log_dir="",
-    )
-    return config
 
 def main():
     args = parse_args()
     current_env = os.environ.copy()
-
-
 
     for k in current_env.keys():
         if "NCCL" in k:
@@ -187,6 +175,23 @@ def main():
         with open(pid_file, 'w') as fd:
             fd.write(f"{launcher_pid}")
 
+    if not is_torch_elastic_compatible():
+        if args.enable_elastic_training:
+            logger.info(f"Disabling elastic training support as \
+                    PyTorch version should be greater than 1.11.x")
+            args.enable_elastic_training = False
+
+    if os.path.exists(DLTS_POD_ENV_PATH):
+        with open(DLTS_POD_ENV_PATH) as file:
+            lines = file.readlines()
+            lines = [line.rstrip() for line in lines]
+            for line in lines:
+                if line.startswith('export FC_TASKROLE_NAME') or line.startswith(
+                        'export FC_TASK_INDEX'):
+                    key_val = line.split()[1]
+                    key, val = key_val.split('=')
+                    current_env[key] = val
+
     processes = []
     cmd = []
 
@@ -206,7 +211,7 @@ def main():
             else:
                 if args.module:
                     raise ValueError("Don't use both the '--no_python' flag"
-                                    " and the '--module' flag at the same time.")
+                                     " and the '--module' flag at the same time.")
             cmd.append(args.training_script)
             # A user may not want to pass local_rank as a keyword arg so we make this optional.
             if not args.no_local_rank:
@@ -216,22 +221,21 @@ def main():
             process = subprocess.Popen(cmd, env=current_env)
             processes.append(process)
     else:
-        # dist_rank = global_rank_mapping[local_node][local_rank]
-        # os.environ["RANK"] = str(dist_rank)
-        # os.environ["LOCAL_RANK"] = str(local_rank)
-        if args.min_nodes== -1:
+        from ..elasticity import DSElasticAgent
+        from torch.distributed.elastic.rendezvous import RendezvousParameters
+        from torch.distributed.elastic.agent.server.api import WorkerSpec
+        import torch.distributed.elastic.rendezvous.registry as rdzv_registry
+        from torch.distributed.elastic.multiprocessing import Std
+
+        if args.min_nodes == -1:
             args.min_nodes = 1
-        if args.max_nodes== -1:
+        if args.max_nodes == -1:
             args.max_nodes = args.nnodes
         assert args.max_nodes > 0 and  args.min_nodes > 0 , "Max and Min nodes should be positive"
 
-        os.environ["MASTER_ADDR"] = args.master_addr
-        os.environ["MASTER_PORT"] = str(args.master_port)
-        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
+        current_env["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
-        
-
-        # spawn the processes
+        # Get config and arguments
         cmd = []
         if not args.no_python:
             cmd = [sys.executable, "-u"]
@@ -240,47 +244,35 @@ def main():
         else:
             if args.module:
                 raise ValueError("Don't use both the '--no_python' flag"
-                                " and the '--module' flag at the same time.")
+                                 " and the '--module' flag at the same time.")
         cmd.append(args.training_script)
         cmd += args.training_script_args
-        elastic_config = get_config_elastic(args, num_local_procs,args.node_rank)
         cmd_args = cmd[1:]
-        # cmd_args = ['MASTER_ADDR={}'.format(args.master_addr), 'MASTER_PORT={}'.format(args.master_port)] + cmd_args
-        print ("CMD is:",cmd_args)
-        
-        
-        # elastic_launch(
-        #     config=elastic_config,
-        #     entrypoint= cmd[0],
-        # )(*cmd_args)
+
         rdzv_configs: Dict[str, str] = {'timeout': 100}
-        rdzv_parameters = RendezvousParameters(
-            backend='c10d',
-            endpoint=args.master_addr+":29400",
-            run_id='123456789',
-            min_nodes=args.min_nodes,
-            max_nodes=args.max_nodes,
-            **rdzv_configs
-        )
+        rdzv_parameters = RendezvousParameters(backend='c10d',
+                                               endpoint=args.master_addr + ":" +
+                                               str(args.master_port),
+                                               run_id='123456789',
+                                               min_nodes=args.min_nodes,
+                                               max_nodes=args.max_nodes,
+                                               **rdzv_configs)
 
         spec = WorkerSpec(
-                role='trainer',
-                local_world_size=num_local_procs,
-                entrypoint=cmd[0],
-                args=cmd[1:],
-                rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
-                max_restarts=100,
-                monitor_interval=5,
-                redirects=Std.from_str("0"),
-                tee=Std.from_str("0"),
-                master_addr=args.master_addr,
-                master_port=str(args.master_port),
-            )
-        agent = DSElasticAgent(
-            spec
+            role='trainer',
+            local_world_size=num_local_procs,
+            entrypoint=cmd[0],
+            args=cmd[1:],
+            rdzv_handler=rdzv_registry.get_rendezvous_handler(rdzv_parameters),
+            max_restarts=100,
+            monitor_interval=5,
+            redirects=Std.from_str("0"),
+            tee=Std.from_str("0"),
+            master_addr=None,
+            master_port=None,
         )
+        agent = DSElasticAgent(spec, current_env)
         agent.run()
-
 
     sig_names = {2: "SIGINT", 15: "SIGTERM"}
     last_return_code = None
@@ -289,7 +281,7 @@ def main():
         for process in processes:
             logger.info(f"Killing subprocess {process.pid}")
             try:
-                process.kill()
+                terminate_process_tree(process.pid)
             except Exception:
                 pass
         if last_return_code is not None:

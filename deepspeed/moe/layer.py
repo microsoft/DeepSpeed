@@ -2,16 +2,13 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
-import torch.nn.init as init
 import torch
-import torch.distributed as dist
 
-from deepspeed.utils import logger, log_dist
+from deepspeed.utils import log_dist
 
-import deepspeed.utils.groups as groups
+from deepspeed.utils import groups
 from .sharded_moe import MOELayer, TopKGate
 from .experts import Experts
-import copy
 import typing
 
 
@@ -126,6 +123,6 @@ class MoE(torch.nn.Module):
             if type(output_mlp) is tuple:
                 output_mlp = output_mlp[0]  # Ignore the bias term for now
             coef = self.coefficient(hidden_states)
-            coef = torch.nn.functional.softmax(coef, dim=1)
+            coef = torch.nn.functional.softmax(coef, dim=-1)
             output = output * coef[..., 0:1] + output_mlp * coef[..., 1:]
         return output, self.deepspeed_moe.l_aux, self.deepspeed_moe.exp_counts

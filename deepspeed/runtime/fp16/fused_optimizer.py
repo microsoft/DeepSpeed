@@ -12,8 +12,8 @@ from deepspeed.runtime import DeepSpeedOptimizer
 from deepspeed.runtime.utils import get_global_norm, get_grad_norm, CheckOverflow, get_weight_norm
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import groups, logger, log_dist
+from deepspeed import comm as dist
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT, CLIP_GRAD
-import torch.distributed as dist
 
 
 class FP16_Optimizer(DeepSpeedOptimizer):
@@ -181,7 +181,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                                      apply_scale=False)
 
         # Stash unscaled gradient norm
-        self._global_grad_norm = scaled_global_grad_norm / self.cur_scale
+        self._global_grad_norm = scaled_grad_norm / self.cur_scale
 
         # norm is in fact norm*cur_scale
         self.optimizer.step(grads=[[g] for g in grads_groups_flat],
@@ -338,7 +338,7 @@ class FP16_Optimizer(DeepSpeedOptimizer):
                                           dtype=torch.float)
         dist.all_reduce(scaled_norm_tensor, group=pg)
         all_groups_norm = scaled_norm_tensor.item()
-        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {torch.distributed.get_rank()}")
+        #print(f"old = {all_groups_norm_old} and new = {all_groups_norm} at rank: {deepspeed.comm.get_rank()}")
         return all_groups_norm
 
     def unscale_and_clip_grads(self, grad_groups_flat, total_norm, apply_scale=True):

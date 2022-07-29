@@ -1,184 +1,117 @@
-from torch.distributed.elastic.rendezvous import RendezvousParameters
 from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
-import torch.distributed.elastic.rendezvous.registry as rdzv_registry
-from torch.distributed.elastic.agent.server.api import WorkerSpec
-from torch.distributed.elastic.multiprocessing import Std
 from typing import Any, Dict, Optional, Tuple
-from  torch.distributed.elastic.rendezvous.dynamic_rendezvous import (
-    _BackendRendezvousStateHolder, 
-    DynamicRendezvousHandler, 
-    _NodeDescGenerator, 
-    RendezvousSettings, 
-    RendezvousTimeout,
-    _RendezvousState,
-    RendezvousBackend,
-    create_handler,
-    _get_timeout,
-    _RendezvousState
+from datetime import datetime
+from torch.distributed.elastic.agent.server.api import log, _get_socket_with_port
+from torch.distributed.elastic.metrics import put_metric
+from torch.distributed.elastic.agent.server.api import (
+    RunResult,
+    WorkerGroup,
+    WorkerSpec,
+    WorkerState,
 )
-from torch.distributed import  Store
-from torch.distributed.elastic.rendezvous import rendezvous_handler_registry
-from torch.distributed.elastic.rendezvous.registry import get_rendezvous_handler
-from datetime import datetime, timedelta
-from torch.distributed.elastic.events import (
-    NodeState,
-    construct_and_record_rdzv_event,
-)
-from torch.distributed.elastic.agent.server.api import RunResult, log, WorkerState
-from torch.distributed.elastic.agent.server.local_elastic_agent import LocalElasticAgent
-from torch.distributed.elastic.metrics import prof, put_metric
+from torch.distributed import Store
 import time
+import os
+from torch.distributed.elastic.multiprocessing import start_processes
+from torch.distributed.elastic.utils import macros
+import shutil
+import copy
+from contextlib import closing
+import subprocess
 
-
-def _remove_participant_epilogue_DS(state: _RendezvousState, settings: RendezvousSettings) -> None:
-    if state.complete:
-        # If we do not have any participants left, move to the next round.
-        if not state.participants:
-            state.complete = False
-
-            state.round += 1
-        else:
-            state.complete = False
-
-            state.round += 1
-    else:
-        if len(state.participants) < settings.min_nodes:
-            state.deadline = None
-
-
-# class _RendezvousStateDS(_RendezvousState):
-#     round: int
-#     complete: bool
-#     deadline: Optional[datetime]
-#     closed: bool
-#     participants: Dict[_NodeDesc, int]
-#     wait_list: Set[_NodeDesc]
-#     last_heartbeats: Dict[_NodeDesc, datetime]
-#     def __init__(self):
-#         super().__init__()
-#         self.restart = False
-
-
-class _DSBackendRendezvousStateHolder(_BackendRendezvousStateHolder):
-    # def __init__(
-    #     self,
-    #     backend: RendezvousBackend,
-    #     settings: RendezvousSettings,
-    #     cache_duration: int = 1,
-    # ) -> None:
-    #     super().__init__(backend, settings, cache_duration)
-    #     self._state = _RendezvousStateDS()
-    #     print(self._state.restart)
-
-    # def state(self) -> _RendezvousStateDS:
-    #     """See base class."""
-    #     return self._state
-    def _sanitize(self) -> None:
-        state = self._state
-
-        if not hasattr(state, 'property'):
-            state.restart = False
-
-        expire_time = datetime.utcnow() - (
-            self._settings.keep_alive_interval * self._settings.keep_alive_max_attempt
-        )
-
-        # Filter out the dead nodes.
-        self._dead_nodes = [
-            node
-            for node, last_heartbeat in state.last_heartbeats.items()
-            if last_heartbeat < expire_time
-        ]
-        # for node, last_heartbeat in state.last_heartbeats.items():
-        #     print("last node:", node, last_heartbeat)
-
-        participant_removed = False
-
-        for dead_node in self._dead_nodes:
-            del state.last_heartbeats[dead_node]
-
-            try:
-                del state.participants[dead_node]
-
-                participant_removed = True
-            except KeyError:
-                pass
-
-            try:
-                state.wait_list.remove(dead_node)
-            except KeyError:
-                pass
-
-        if participant_removed:
-            # Common epilogue shared with the _remove_from_participants()
-            # function of _DistributedRendezvousOpExecutor.
-            _remove_participant_epilogue_DS(state, self._settings)
-
-class DynamicRendezvousHandlerDS(DynamicRendezvousHandler):
-    _node_desc_generator = _NodeDescGenerator()
-
-    @classmethod
-    def from_backend(
-        cls,
-        run_id: str,
-        store: Store,
-        backend: RendezvousBackend,
-        min_nodes: int,
-        max_nodes: int,
-        timeout: Optional[RendezvousTimeout] = None,
-    ):
-
-        node = cls._node_desc_generator.generate()
-
-        settings = RendezvousSettings(
-            run_id,
-            min_nodes,
-            max_nodes,
-            timeout or RendezvousTimeout(),
-            keep_alive_interval=timedelta(seconds=5),
-            keep_alive_max_attempt=3,
-        )
-
-        state_holder = _DSBackendRendezvousStateHolder(backend, settings)
-        return cls(node, settings, backend.name, store, state_holder)
-
-
-def create_ds_handler(
-    store: Store, backend: RendezvousBackend, params: RendezvousParameters
-) -> DynamicRendezvousHandler:
-    try:
-        timeout = RendezvousTimeout(
-            _get_timeout(params, "join"),
-            _get_timeout(params, "last_call"),
-            _get_timeout(params, "close"),
-        )
-
-        return DynamicRendezvousHandlerDS.from_backend(
-            params.run_id,
-            store,
-            backend,
-            params.min_nodes,
-            params.max_nodes,
-            timeout,
-        )
-    except Exception as e:
-        construct_and_record_rdzv_event(
-            message=f"{type(e).__name__}: {str(e)}",
-            run_id=params.run_id,
-            node_state=NodeState.FAILED,
-        )
-        raise
-
-def _create_ds_c10d_handler(params: RendezvousParameters):
-    from torch.distributed.elastic.rendezvous.c10d_rendezvous_backend import create_backend
-
-    backend, store = create_backend(params)
-
-    return create_ds_handler(store, backend, params)
-# del rendezvous_handler_registry._registry["c10d"]
-# rendezvous_handler_registry.register("c10d", _create_ds_c10d_handler)
 
 class DSElasticAgent(LocalElasticAgent):
+    def __init__(
+        self,
+        spec: WorkerSpec,
+        env: Dict,
+        start_method="spawn",
+        exit_barrier_timeout: float = 300,
+        log_dir: Optional[str] = None,
+    ):
+        super().__init__(spec, start_method, exit_barrier_timeout, log_dir)
+        self.ds_env = env
+
+    @staticmethod
+    def _set_master_addr_port(store: Store,
+                              master_addr: Optional[str],
+                              master_port: Optional[int]):
+        if master_port is None:
+            sock = _get_socket_with_port()
+            with closing(sock):
+                master_port = sock.getsockname()[1]
+
+        if master_addr is None:
+            # master_addr = _get_fq_hostname()
+            result = subprocess.check_output("hostname -I", shell=True)
+            master_addr = result.decode('utf-8').split()[0]
+
+        store.set("MASTER_ADDR", master_addr.encode(encoding="UTF-8"))
+        store.set("MASTER_PORT", str(master_port).encode(encoding="UTF-8"))
+
+    def _start_workers(self, worker_group: WorkerGroup) -> Dict[int, Any]:
+        spec = worker_group.spec
+        store = worker_group.store
+        assert store is not None
+        master_addr, master_port = super()._get_master_addr_port(store)
+        restart_count = spec.max_restarts - self._remaining_restarts
+
+        use_agent_store = spec.rdzv_handler.get_backend() == "static"
+
+        args: Dict[int, Tuple] = {}
+        envs: Dict[int, Dict[str, str]] = {}
+        for worker in worker_group.workers:
+            local_rank = worker.local_rank
+
+            worker_env_ds = copy.deepcopy(self.ds_env)
+            worker_env_elastic = {
+                "LOCAL_RANK": str(local_rank),
+                "RANK": str(worker.global_rank),
+                "GROUP_RANK": str(worker_group.group_rank),
+                "ROLE_RANK": str(worker.role_rank),
+                "ROLE_NAME": spec.role,
+                "LOCAL_WORLD_SIZE": str(spec.local_world_size),
+                "WORLD_SIZE": str(worker.world_size),
+                "GROUP_WORLD_SIZE": str(worker_group.group_world_size),
+                "ROLE_WORLD_SIZE": str(worker.role_world_size),
+                "MASTER_ADDR": master_addr,
+                "MASTER_PORT": str(master_port),
+                "TORCHELASTIC_RESTART_COUNT": str(restart_count),
+                "TORCHELASTIC_MAX_RESTARTS": str(spec.max_restarts),
+                "TORCHELASTIC_RUN_ID": spec.rdzv_handler.get_run_id(),
+                "TORCHELASTIC_USE_AGENT_STORE": str(use_agent_store),
+                "NCCL_ASYNC_ERROR_HANDLING": os.getenv("NCCL_ASYNC_ERROR_HANDLING",
+                                                       str(1)),
+            }
+            worker_env_ds.update(worker_env_elastic)
+            if "OMP_NUM_THREADS" in os.environ:
+                worker_env_ds["OMP_NUM_THREADS"] = os.environ["OMP_NUM_THREADS"]
+
+            envs[local_rank] = worker_env_ds
+            worker_args = list(spec.args)
+            worker_args = macros.substitute(worker_args, str(local_rank))
+            args[local_rank] = tuple(worker_args)
+
+        # scaling events do not count towards restarts (gets same attempt #)
+        # remove existing log dir if this restart is due to a scaling event
+        attempt_log_dir = os.path.join(self._log_dir, f"attempt_{restart_count}")
+        shutil.rmtree(attempt_log_dir, ignore_errors=True)
+        os.makedirs(attempt_log_dir)
+
+        assert spec.entrypoint is not None
+        self._pcontext = start_processes(
+            name=spec.role,
+            entrypoint=spec.entrypoint,
+            args=args,
+            envs=envs,
+            log_dir=attempt_log_dir,
+            start_method=self._start_method,
+            redirects=spec.redirects,
+            tee=spec.tee,
+        )
+
+        return self._pcontext.pids()
+
     def _invoke_run(self, role: str = "default") -> RunResult:
         # NOTE: currently only works for a single role
 
@@ -186,15 +119,11 @@ class DSElasticAgent(LocalElasticAgent):
         role = spec.role
 
         log.info(
-            f"[{role}] starting workers for entrypoint: {spec.get_entrypoint_name()}"
-        )
+            f"[{role}] starting workers for entrypoint: {spec.get_entrypoint_name()}")
 
         self._initialize_workers(self._worker_group)
         monitor_interval = spec.monitor_interval
         rdzv_handler = spec.rdzv_handler
-
-        # if not hasattr(rdzv_handler._state_holder.state, 'property'):
-        #     rdzv_handler._state_holder.state.restart = False
 
         participants = rdzv_handler._state_holder.state.participants
 
@@ -206,11 +135,12 @@ class DSElasticAgent(LocalElasticAgent):
             self._worker_group.state = state
 
             expire_time = datetime.utcnow() - (
-                rdzv_handler._settings.keep_alive_interval * rdzv_handler._settings.keep_alive_max_attempt
-            )
+                rdzv_handler._settings.keep_alive_interval *
+                rdzv_handler._settings.keep_alive_max_attempt)
             _dead_nodes = [
-                node
-                for node, last_heartbeat in rdzv_handler._state_holder.state.last_heartbeats.items()
+                node for node,
+                last_heartbeat in
+                rdzv_handler._state_holder.state.last_heartbeats.items()
                 if last_heartbeat < expire_time
             ]
 
@@ -224,18 +154,20 @@ class DSElasticAgent(LocalElasticAgent):
                 )
                 self._exit_barrier()
                 return run_result
-            elif state in {WorkerState.UNHEALTHY, WorkerState.FAILED} or len(participants)>len( rdzv_handler._state_holder.state.participants):
+            elif state in {
+                    WorkerState.UNHEALTHY,
+                    WorkerState.FAILED
+            } or len(participants) > len(rdzv_handler._state_holder.state.participants):
                 if self._remaining_restarts > 0:
                     log.info(
                         f"[{role}] Worker group {state.name}. "
                         f"{self._remaining_restarts}/{spec.max_restarts} attempts left;"
-                        f" will restart worker group"
-                    )
+                        f" will restart worker group")
                     self._remaining_restarts -= 1
                     # rdzv_handler._state_holder.state.restart = False
                     self._restart_workers(self._worker_group)
-                    participants =  rdzv_handler._state_holder.state.participants
-                    
+                    participants = rdzv_handler._state_holder.state.participants
+
                 else:
                     self._stop_workers(self._worker_group)
                     self._worker_group.state = WorkerState.FAILED
@@ -246,12 +178,10 @@ class DSElasticAgent(LocalElasticAgent):
                 num_nodes_waiting = rdzv_handler.num_nodes_waiting()
                 group_rank = self._worker_group.group_rank
                 if num_nodes_waiting > 0:
-                    log.info(
-                        f"[{role}] Detected {num_nodes_waiting} "
-                        f"new nodes from group_rank={group_rank}; "
-                        f"will restart worker group"
-                    )
+                    log.info(f"[{role}] Detected {num_nodes_waiting} "
+                             f"new nodes from group_rank={group_rank}; "
+                             f"will restart worker group")
                     self._restart_workers(self._worker_group)
-                    participants =  rdzv_handler._state_holder.state.participants
+                    participants = rdzv_handler._state_holder.state.participants
             else:
                 raise Exception(f"[{role}] Worker group in {state.name} state")
