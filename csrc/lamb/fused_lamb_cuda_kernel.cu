@@ -8,13 +8,16 @@
 #include "ATen/cuda/CUDAContext.h"
 #include "ATen/cuda/detail/IndexUtils.cuh"
 //#include "ATen/Type.h"
-#include <THC/THCGeneral.h>
 #include "ATen/AccumulateType.h"
 
 #include <iostream>
 
 //#include <helper_functions.h>
+#if defined(__HIP_PLATFORM_HCC__) && HIP_VERSION > 305
+#include <hip/hip_cooperative_groups.h>
+#else
 #include <cooperative_groups.h>
+#endif
 #include <cuda_runtime_api.h>
 #include <stdio.h>
 
@@ -464,7 +467,7 @@ void fused_lamb_cuda(at::Tensor& p,
                         lamb_coeff.data<scalar_t>());
             }));
     }
-    THCudaCheck(cudaGetLastError());
+    C10_CUDA_CHECK(cudaGetLastError());
 }
 
 // template __device__ void reduce_two_vectors_in_register<float,512>(float a, float b, float* g_a,

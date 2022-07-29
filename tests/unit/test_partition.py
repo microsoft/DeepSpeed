@@ -1,14 +1,14 @@
 import pytest
 
 import torch
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 from deepspeed.runtime.utils import partition_uniform
 from deepspeed.runtime.utils import partition_balanced
 from deepspeed.runtime.utils import prefix_sum_inc
 from deepspeed.runtime.utils import PartitionedTensor
 
-from common import distributed_test
+from .common import distributed_test
 
 
 @distributed_test(world_size=4)

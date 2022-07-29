@@ -6,7 +6,7 @@ import pickle
 import typing
 
 import torch
-import torch.distributed as dist
+from deepspeed import comm as dist
 
 # To query whether we have send/recv support
 from packaging.version import Version
@@ -25,7 +25,7 @@ def can_send_recv() -> bool:
 
 
 #initializes adjacent process groups
-#run this only after torch.distributed.init_process_group() has been called
+#run this only after deepspeed.init_distributed() has been called
 def init_process_groups(grid):
     global _groups, _grid
     _grid = grid
@@ -47,7 +47,7 @@ def _is_valid_send_recv(src_stage, dest_stage):
 
 def send(tensor, dest_stage, async_op=False):
     global _groups
-    assert async_op == False, "Doesnt support async_op true"
+    assert async_op == False, "Doesn't support async_op true"
     src_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 
@@ -68,7 +68,7 @@ def send(tensor, dest_stage, async_op=False):
 
 def recv(tensor, src_stage, async_op=False):
     global _groups
-    assert async_op == False, "Doesnt support async_op true"
+    assert async_op == False, "Doesn't support async_op true"
     dest_stage = _grid.get_stage_id()
     _is_valid_send_recv(src_stage, dest_stage)
 

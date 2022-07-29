@@ -10,9 +10,7 @@ https://github.com/pytorch/pytorch/blob/v1.1.0/torch/optim/lr_scheduler.py
 
 import argparse
 from torch.optim import Optimizer
-from typing import Union, List
 import math
-from deepspeed.runtime.constants import *
 from deepspeed.utils import logger
 
 LR_SCHEDULE = 'lr_schedule'
@@ -47,6 +45,9 @@ DECAY_MOM_RATE = 'decay_mom_rate'
 WARMUP_MIN_LR = 'warmup_min_lr'
 WARMUP_MAX_LR = 'warmup_max_lr'
 WARMUP_NUM_STEPS = 'warmup_num_steps'
+WARMUP_TYPE = 'warmup_type'
+WARMUP_LOG_RATE = 'log'
+WARMUP_LINEAR_RATE = 'linear'
 
 TOTAL_NUM_STEPS = 'total_num_steps'
 
@@ -148,7 +149,10 @@ def add_tuning_arguments(parser):
                        type=int,
                        default=1000,
                        help='WarmupLR step count for LR warmup.')
-
+    group.add_argument('--warmup_type',
+                       type=str,
+                       default=WARMUP_LOG_RATE,
+                       help='WarmupLR increasing function during warmup')
     return parser
 
 
@@ -225,6 +229,9 @@ def override_warmupLR_params(args, params):
 
     if hasattr(args, WARMUP_NUM_STEPS) and args.warmup_num_steps is not None:
         params[WARMUP_NUM_STEPS] = args.warmup_num_steps
+
+    if hasattr(args, WARMUP_TYPE) and args.warmup_type is not None:
+        params[WARMUP_TYPE] = args.warmup_type
 
 
 def override_params(args, params):
@@ -305,7 +312,7 @@ class LRRangeTest(object):
     the paper `A disciplined approach to neural network hyper-parameters: Part1`_.
 
     LRRT policy is used for finding maximum LR that trains a model without divergence, and can be used to
-    configure the LR boundaries for Cylic LR schedules.
+    configure the LR boundaries for Cyclic LR schedules.
 
     LRRT changes the learning rate after every batch.
     `step` should be called after a batch has been used for training.
@@ -316,7 +323,7 @@ class LRRangeTest(object):
             lower boundary in the range test for each parameter group.
         lr_range_test_step_size (int): Interval of training steps to increase learning rate. Default: 2000
         lr_range_test_step_rate (float): Scaling rate for range test. Default: 1.0
-        lr_range_test_staircase (bool): Scale in staircase fashion, rather than continous. Default: False.
+        lr_range_test_staircase (bool): Scale in staircase fashion, rather than continuous. Default: False.
         last_batch_iteration (int): The index of the last batch. This parameter is used when
             resuming a training job. Since `step()` should be invoked after each
             batch instead of after each epoch, this number represents the total
@@ -703,6 +710,7 @@ class WarmupLR(object):
             warmup_min_lr (float or list): minimum learning rate. Default: 0
             warmup_max_lr (float or list): maximum learning rate. Default: 0.001
             warmup_num_steps (int): number of steps to warm up from min_lr to max_lr. Default: 1000
+            warmup_type {‘log’, ‘linear’}: increasing function from min_lr to max_lr during warmup. Default: log
             last_batch_iteration (int): The index of the last batch. Default: -1.
         Example:
             >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
@@ -719,6 +727,7 @@ class WarmupLR(object):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.optimizer = get_torch_optimizer(optimizer)
@@ -727,6 +736,13 @@ class WarmupLR(object):
         self.max_lrs = self._format_param(self.optimizer, warmup_max_lr, "max_lr")
         self.delta_lrs = [big - small for big, small in zip(self.max_lrs, self.min_lrs)]
         self.warmup_num_steps = max(2, warmup_num_steps)
+        # Currently only support linear and log function
+        if warmup_type not in {WARMUP_LOG_RATE, WARMUP_LINEAR_RATE}:
+            logger.warning(
+                f"Using unknown warmup_type: {warmup_type}. The increasing function "
+                f"is set to default (log)")
+            warmup_type = WARMUP_LOG_RATE
+        self.warmup_type = warmup_type
         self.inverse_log_warm_up = 1.0 / math.log(self.warmup_num_steps)
         self.last_batch_iteration = last_batch_iteration
 
@@ -764,7 +780,10 @@ class WarmupLR(object):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            if self.warmup_type == WARMUP_LOG_RATE:
+                return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
+                return self.last_batch_iteration / self.warmup_num_steps
         return 1.0
 
     def _format_param(self, optimizer, param_value, param_name):
@@ -788,6 +807,7 @@ class WarmupDecayLR(WarmupLR):
             warmup_min_lr (float or list): minimum learning rate. Default: 0
             warmup_max_lr (float or list): maximum learning rate. Default: 0.001
             warmup_num_steps (int): number of steps to warm up from min_lr to max_lr. Default: 1000
+            warmup_type {‘log’, ‘linear’}: increasing function from min_lr to max_lr during warmup. Default: log
             last_batch_iteration (int): The index of the last batch. Default: -1.
         Example:
             >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
@@ -805,6 +825,7 @@ class WarmupDecayLR(WarmupLR):
                  warmup_min_lr: float = 0.0,
                  warmup_max_lr: float = 0.001,
                  warmup_num_steps: int = 1000,
+                 warmup_type: str = WARMUP_LOG_RATE,
                  last_batch_iteration: int = -1):
 
         self.total_num_steps = total_num_steps
@@ -813,6 +834,7 @@ class WarmupDecayLR(WarmupLR):
                              warmup_min_lr,
                              warmup_max_lr,
                              warmup_num_steps,
+                             warmup_type,
                              last_batch_iteration)
         if self.total_num_steps < self.warmup_num_steps:
             logger.warning('total_num_steps {} is less than warmup_num_steps {}'.format(
@@ -821,7 +843,10 @@ class WarmupDecayLR(WarmupLR):
 
     def _get_gamma(self):
         if self.last_batch_iteration < self.warmup_num_steps:
-            return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            if self.warmup_type == WARMUP_LOG_RATE:
+                return self.inverse_log_warm_up * math.log(self.last_batch_iteration + 1)
+            elif self.warmup_type == WARMUP_LINEAR_RATE:
+                return self.last_batch_iteration / self.warmup_num_steps
         return max(
             0.0,
             float(self.total_num_steps - self.last_batch_iteration) /

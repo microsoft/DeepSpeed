@@ -9,6 +9,10 @@ on:
     branches:
       '**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   # formatting and basic install on cpu-only machine
@@ -27,7 +31,7 @@ jobs:
 
       - name: Install deepspeed
         run: |
-          pip install .[dev]
+          pip install .[dev,autotuning]
           ds_report
 
       - name: Formatting checks

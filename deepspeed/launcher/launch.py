@@ -1,6 +1,6 @@
 # Copyright 2020 The Microsoft DeepSpeed Team
 """
-DeepSpeed launcher, this is similar to torch.distributed.launch but supports
+DeepSpeed launcher, this is similar to torch's distributed.launch but supports
 additional features such as arbitrary gpu exclusion.
 
 deepspeed.launcher.launch is intended to be run on a single worker node and
@@ -15,11 +15,15 @@ import json
 import base64
 import time
 import signal
+import psutil
 from collections import defaultdict
 from argparse import ArgumentParser, REMAINDER
 
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
+from ..nebula.constants import DLTS_POD_ENV_PATH
 from ..utils import logger
+
+PID_FILE_BASEPATH = "/tmp"
 
 
 def parse_args():
@@ -51,6 +55,27 @@ def parse_args():
                         type=str,
                         help="world info base64 encoded dictionary")
 
+    parser.add_argument("--module",
+                        action="store_true",
+                        help="Change each process to interpret the launch "
+                        "script as a Python module, executing with the same "
+                        "behavior as 'python -m'.")
+
+    parser.add_argument("--no_python",
+                        action="store_true",
+                        help="Skip prepending the training script with "
+                        "'python' - just execute it directly.")
+
+    parser.add_argument("--no_local_rank",
+                        action="store_true",
+                        help="Do not pass local_rank as an argument when calling "
+                        "the user's training script.")
+
+    parser.add_argument("--save_pid",
+                        type=int,
+                        default=0,
+                        help="main launching process pid, for internal pid tracking")
+
     # positional
     parser.add_argument("training_script",
                         type=str,
@@ -64,29 +89,42 @@ def parse_args():
     return parser.parse_args()
 
 
+# Adapted from https://psutil.readthedocs.io/en/latest/#kill-process-tree
+def terminate_process_tree(pid):
+    process = psutil.Process(pid)
+    children = process.children(recursive=True)
+    children.append(process)
+    for child in children:
+        try:
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    gone, alive = psutil.wait_procs(children, timeout=30)
+    for p in alive:
+        p.kill()
+
+
 def main():
     args = parse_args()
     current_env = os.environ.copy()
 
     for k in current_env.keys():
         if "NCCL" in k:
-            logger.info("%s %s %s", args.node_rank, k, current_env[k])
+            logger.info(f"{args.node_rank} {k}={current_env[k]}")
 
-    world_info = None
-    assert args.world_info != "None", "must provide world info dict"
+    if args.world_info == "None":
+        raise ValueError("world_info can not be None")
     world_info = base64.urlsafe_b64decode(args.world_info)
     world_info = json.loads(world_info)
 
-    logger.info("WORLD INFO DICT: {}".format(world_info))
+    logger.info(f"WORLD INFO DICT: {world_info}")
     node_list = list(world_info.keys())
     args.nnodes = len(node_list)
     local_node = node_list[args.node_rank]
     local_gpu_ids = world_info[local_node]
     num_local_procs = len(local_gpu_ids)
     logger.info(
-        "nnodes={}, num_local_procs={}, node_rank={}".format(args.nnodes,
-                                                             num_local_procs,
-                                                             args.node_rank),
+        f"nnodes={args.nnodes}, num_local_procs={num_local_procs}, node_rank={args.node_rank}"
     )
 
     global_rank_mapping = defaultdict(list)
@@ -98,19 +136,43 @@ def main():
         for gid in gids:
             global_rank_mapping[node_id].append(curr_global_rank)
             curr_global_rank += 1
-    logger.info("global_rank_mapping={}".format(global_rank_mapping))
-    logger.info("dist_world_size={}".format(dist_world_size))
+    logger.info(f"global_rank_mapping={global_rank_mapping}")
+    logger.info(f"dist_world_size={dist_world_size}")
     current_env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, local_gpu_ids))
-    logger.info("Setting CUDA_VISIBLE_DEVICES={}".format(
-        current_env["CUDA_VISIBLE_DEVICES"]))
-    exclusion_counts_per_node = None
+    logger.info(f"Setting CUDA_VISIBLE_DEVICES={current_env['CUDA_VISIBLE_DEVICES']}")
 
     # set PyTorch distributed related environmental variables
     current_env["MASTER_ADDR"] = args.master_addr
     current_env["MASTER_PORT"] = str(args.master_port)
     current_env["WORLD_SIZE"] = str(dist_world_size)
+    current_env["CROSS_RANK"] = str(args.node_rank)
+    current_env["CROSS_SIZE"] = str(args.nnodes)
+    current_env["LOCAL_SIZE"] = str(num_local_procs)
+
+    if args.save_pid:
+        print(f"launcher pid: {os.getpid()}")
+
+    pid_file = None
+    if args.save_pid:
+        launcher_pid = os.getpid()
+        pid_file = os.path.join(PID_FILE_BASEPATH, f"{args.save_pid}.deepspeed")
+        assert not os.path.isfile(pid_file), "pid file exists but shouldn't"
+        with open(pid_file, 'w') as fd:
+            fd.write(f"{launcher_pid}")
+
+    if os.path.exists(DLTS_POD_ENV_PATH):
+        with open(DLTS_POD_ENV_PATH) as file:
+            lines = file.readlines()
+            lines = [line.rstrip() for line in lines]
+            for line in lines:
+                if line.startswith('export FC_TASKROLE_NAME') or line.startswith(
+                        'export FC_TASK_INDEX'):
+                    key_val = line.split()[1]
+                    key, val = key_val.split('=')
+                    current_env[key] = val
 
     processes = []
+    cmd = []
     for local_rank in range(0, num_local_procs):
         # each process's rank
         dist_rank = global_rank_mapping[local_node][local_rank]
@@ -118,35 +180,47 @@ def main():
         current_env["LOCAL_RANK"] = str(local_rank)
 
         # spawn the processes
-        cmd = [
-            sys.executable,
-            "-u",
-            args.training_script,
-            "--local_rank={}".format(local_rank)
-        ] + args.training_script_args
-
-        sig_names = {2: "SIGINT", 15: "SIGTERM"}
-        last_return_code = None
-
-        def sigkill_handler(signum, frame):
-            for process in processes:
-                print(f"Killing subprocess {process.pid}")
-                try:
-                    process.kill()
-                except Exception as e:
-                    pass
-            if last_return_code is not None:
-                raise subprocess.CalledProcessError(returncode=last_return_code, cmd=cmd)
-            if signum in sig_names:
-                print(f"Main process received {sig_names[signum]}, exiting")
-            sys.exit(1)
-
-        # pass SIGINT/SIGTERM to children if the parent is being terminated
-        signal.signal(signal.SIGINT, sigkill_handler)
-        signal.signal(signal.SIGTERM, sigkill_handler)
+        cmd = []
+        if not args.no_python:
+            cmd = [sys.executable, "-u"]
+            if args.module:
+                cmd.append("-m")
+        else:
+            if args.module:
+                raise ValueError("Don't use both the '--no_python' flag"
+                                 " and the '--module' flag at the same time.")
+        cmd.append(args.training_script)
+        # A user may not want to pass local_rank as a keyword arg so we make this optional.
+        if not args.no_local_rank:
+            cmd.append(f"--local_rank={local_rank}")
+        cmd += args.training_script_args
 
         process = subprocess.Popen(cmd, env=current_env)
         processes.append(process)
+
+    sig_names = {2: "SIGINT", 15: "SIGTERM"}
+    last_return_code = None
+
+    def sigkill_handler(signum, frame):
+        for process in processes:
+            logger.info(f"Killing subprocess {process.pid}")
+            try:
+                terminate_process_tree(process.pid)
+            except Exception:
+                pass
+        if last_return_code is not None:
+            logger.error(f"{cmd} exits with return code = {last_return_code}")
+            sys.exit(last_return_code)
+        if signum in sig_names:
+            logger.info(f"Main process received {sig_names[signum]}, exiting")
+        if args.save_pid:
+            if os.path.isfile(pid_file):
+                os.remove(pid_file)
+        sys.exit(1)
+
+    # pass SIGINT/SIGTERM to children if the parent is being terminated
+    signal.signal(signal.SIGINT, sigkill_handler)
+    signal.signal(signal.SIGTERM, sigkill_handler)
 
     alive_processes = set(processes)
     while len(alive_processes):
@@ -161,6 +235,7 @@ def main():
                     sigkill_handler(signal.SIGTERM, None)  # not coming back
                 else:
                     # exited cleanly
+                    logger.info(f"Process {process.pid} exits successfully.")
                     finished_processes.append(process)
         alive_processes = set(alive_processes) - set(finished_processes)
 

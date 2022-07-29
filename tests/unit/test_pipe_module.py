@@ -2,20 +2,21 @@ import copy
 
 import torch
 import torch.nn as nn
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 import pytest
 
 import deepspeed
 
-from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
+
 PipeTopo = PipeDataParallelTopology
 
-from deepspeed.pipe import PipelineModule, LayerSpec
+from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
 
-from common import distributed_test
-from simple_model import args_from_dict
+from .common import distributed_test
+from .simple_model import args_from_dict
 
 HIDDEN_DIM = 32
 LAYERS = 8

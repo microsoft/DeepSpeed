@@ -10,7 +10,7 @@ class InferenceBuilder(CUDAOpBuilder):
         super().__init__(name=name)
 
     def absolute_name(self):
-        return f'deepspeed.ops.transformer_inference.{self.NAME}_op'
+        return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def sources(self):
         return [
@@ -19,7 +19,15 @@ class InferenceBuilder(CUDAOpBuilder):
             'csrc/transformer/inference/csrc/normalize.cu',
             'csrc/transformer/inference/csrc/softmax.cu',
             'csrc/transformer/inference/csrc/dequantize.cu',
+            'csrc/transformer/inference/csrc/apply_rotary_pos_emb.cu',
+            'csrc/transformer/inference/csrc/transform.cu',
         ]
+
+    def extra_ldflags(self):
+        if not self.is_rocm_pytorch():
+            return ['-lcurand']
+        else:
+            return []
 
     def include_paths(self):
         return ['csrc/transformer/inference/includes']

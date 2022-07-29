@@ -1,14 +1,12 @@
-from deepspeed.moe.utils import is_moe_param, split_params_grads_into_shared_and_expert_params, split_params_into_shared_and_expert_params
 import torch
 from torch._utils import _flatten_dense_tensors
-import torch.distributed as dist
+import deepspeed.comm as dist
 import pytest
 
 import deepspeed.runtime.utils as ds_utils
-from deepspeed.utils.logging import log_dist
 import deepspeed.utils.groups as groups
 
-from common import distributed_test
+from .common import distributed_test
 
 
 def test_call_to_str():
@@ -34,8 +32,7 @@ def test_clip_grad_norm_():
 
         parameters = [param1, param2]
 
-        groups.initialize_model_parallel(1)
-        groups.initialize_expert_parallel(2)
+        groups._create_expert_and_data_parallel(2)
 
         norm = ds_utils.clip_grad_norm_(parameters, max_norm=0.1)
         norm = torch.Tensor([norm]).to(dist.get_rank())
@@ -43,7 +40,7 @@ def test_clip_grad_norm_():
         world_size = dist.get_world_size()
         gathered_norm = [torch.zeros(1).cuda() for i in range(world_size)]
 
-        torch.distributed.all_gather(gathered_norm, norm)
+        dist.all_gather(gathered_norm, norm)
 
         assert gathered_norm[0] == gathered_norm[1], "norm at rank 0 does not match the norm at rank 1"
 
@@ -54,8 +51,7 @@ def test_clip_grad_norm_():
 def test_CheckOverflow(check_using_norm):
     @distributed_test(world_size=[2])
     def _test_CheckOverflow(check_using_norm: bool):
-        groups.initialize_model_parallel(1)
-        groups.initialize_expert_parallel(2)
+        groups._create_expert_and_data_parallel(2)
 
         param1 = torch.nn.Parameter(torch.Tensor([0]))
         param1.grad = torch.Tensor([1])

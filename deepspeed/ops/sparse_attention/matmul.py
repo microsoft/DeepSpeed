@@ -1,9 +1,7 @@
 # DeepSpeed note, code taken & adapted from commit 9aa94789f13ada713af36cfd8cca2fc9a7f6b79a
 # https://github.com/ptillet/torch-blocksparse/blob/master/torch_blocksparse/matmul.py
 import importlib
-import warnings
 import torch
-import math
 
 import triton
 import triton.language as tl
@@ -289,7 +287,7 @@ class _sparse_matmul(torch.autograd.Function):
         #_sparse_matmul._load_utils()
         #start_width = 64 // block
         #segmented = _sparse_matmul.sdd_segment(layout.type(torch.int32), start_width)
-        start_width = 128 // block
+        start_width = (128 if block > 16 else 32) // block
         layout = layout.type(torch.int32)
         segmented = libtriton.superblock(layout.data_ptr(),
                                          layout.shape[0],
@@ -339,8 +337,8 @@ class _sparse_matmul(torch.autograd.Function):
         a_inner, b_inner = a.shape[a_dim], b.shape[b_dim]
         if a_inner != b_inner:
             raise ValueError(
-                f"Size of tensor A along the {_dim_to_name(a_dim)} dim ({a_inner}) must match size "
-                f"of tensor B along the {_dim_to_name(b_dim)} dim ({b_inner})")
+                f"Size of tensor A along the {a_dim} dim ({a_inner}) must match size "
+                f"of tensor B along the {b_dim} dim ({b_inner})")
         if a_inner % 16 != 0:
             raise ValueError('Reduction size for SDD must be a multiple of 16')
 

@@ -16,7 +16,7 @@ b886b7bb972afe72bac0f5de4f42a4a7bae8ebef
 import copy
 import torch
 import contextlib
-import torch.distributed as dist
+from deepspeed import comm as dist
 
 import mmap
 from torch import _C
@@ -222,12 +222,12 @@ def model_parallel_cuda_manual_seed(seed):
     # Data parallel gets the original seed.
     data_parallel_seed = seed
 
-    if torch.distributed.get_rank() == 0:
+    if dist.get_rank() == 0:
         logger.info(
             '> initializing model parallel cuda seeds on global rank {}, '
             'model parallel rank {}, and data parallel rank {} with '
             'model parallel seed: {} and data parallel seed: {}'.format(
-                torch.distributed.get_rank(),
+                dist.get_rank(),
                 tp_rank,
                 mpu.get_data_parallel_rank(),
                 model_parallel_seed,
@@ -506,7 +506,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         def save_args_for_backward(*all_args):
             tensor_args, non_tensor_args, tensor_flags = extract_tensors(all_objects=all_args)
-            ctx.save_for_backward(*tensor_args)
+            ctx.deepspeed_saved_tensors = tensor_args
             ctx.non_tensor_args = non_tensor_args
             ctx.tensor_flags = tensor_flags
 
@@ -656,16 +656,16 @@ class CheckpointFunction(torch.autograd.Function):
         if PARTITION_ACTIVATIONS:
             # with torch.cuda.stream(transport_stream):
             inputs = gather_partitioned_activations(
-                ctx.saved_tensors,
+                ctx.deepspeed_saved_tensors,
                 device=cuda_device if CPU_CHECKPOINT else None)
             detached_inputs = detach_variable(inputs)
         elif CPU_CHECKPOINT:
-            inputs = move_to_device(ctx.saved_tensors,
+            inputs = move_to_device(ctx.deepspeed_saved_tensors,
                                     cuda_device,
                                     is_activation_to_checkpoint)
             detached_inputs = detach_variable(inputs)
         else:
-            inputs = ctx.saved_tensors
+            inputs = ctx.deepspeed_saved_tensors
             detached_inputs = detach_variable(inputs)
 
         # Add non tensor input args
@@ -717,6 +717,11 @@ class CheckpointFunction(torch.autograd.Function):
         see_memory_usage("In backward checkpointing code before backward", force=False)
 
         torch.autograd.backward(output_tensors, grad_tensors)
+
+        # Force clear our stashed tensors to prevent a memory leak in certain scenarios
+        ctx.deepspeed_saved_tensors = None
+        ctx.non_tensor_args = None
+        ctx.tensor_flags = None
 
         see_memory_usage("After backward checkpointing code after backward", force=False)
 

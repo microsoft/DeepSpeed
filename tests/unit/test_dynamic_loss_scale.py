@@ -1,12 +1,8 @@
 import torch
 import deepspeed
-import argparse
-import pytest
-import json
-import os
 import numpy as np
-from common import distributed_test
-from simple_model import SimpleModel, args_from_dict
+from .common import distributed_test
+from .simple_model import SimpleModel, args_from_dict
 
 
 def run_model_step(model, gradient_list):

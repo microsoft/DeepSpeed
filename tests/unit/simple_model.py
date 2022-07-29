@@ -6,20 +6,27 @@ import torch
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.moe.layer import MoE
 
+import deepspeed.comm as dist
+
 
 class SimpleModel(torch.nn.Module):
-    def __init__(self, hidden_dim, empty_grad=False):
+    def __init__(self, hidden_dim, empty_grad=False, nlayers=1):
         super(SimpleModel, self).__init__()
-        self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.linears = torch.nn.ModuleList(
+            [torch.nn.Linear(hidden_dim,
+                             hidden_dim) for i in range(nlayers)])
         if empty_grad:
             self.linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
         self.empty_grad = empty_grad
 
     def forward(self, x, y):
-        hidden_dim = x
-        hidden_dim = self.linear(hidden_dim)
-        return self.cross_entropy_loss(hidden_dim, y)
+        if len(self.linears) == 1:
+            x = self.linears[0](x)
+        else:
+            for i, l in enumerate(self.linears):
+                x = self.linears[i // 2](x) + l(x)
+        return self.cross_entropy_loss(x, y)
 
 
 class Curriculum_SimpleModel(SimpleModel):
@@ -33,12 +40,14 @@ class Curriculum_SimpleModel(SimpleModel):
 
 
 class SimpleMoEModel(torch.nn.Module):
-    def __init__(self, hidden_dim, num_experts=4):
+    def __init__(self, hidden_dim, num_experts=4, ep_size=1, use_residual=False):
         super(SimpleMoEModel, self).__init__()
         self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
         linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
         self.linear2 = MoE(hidden_size=hidden_dim,
                            expert=linear2,
+                           ep_size=ep_size,
+                           use_residual=use_residual,
                            num_experts=num_experts,
                            k=1)
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
@@ -47,6 +56,36 @@ class SimpleMoEModel(torch.nn.Module):
         hidden_dim = x
         hidden_dim = self.linear(hidden_dim)
         output, _, _ = self.linear2(hidden_dim)
+        hidden_dim = hidden_dim + output
+        sentence_embed = hidden_dim.mean(1)
+        return self.cross_entropy_loss(sentence_embed, y)
+
+
+class SimplePRMoEModel(torch.nn.Module):
+    def __init__(self, hidden_dim, num_experts=2, ep_size=1, use_residual=False):
+        super(SimplePRMoEModel, self).__init__()
+        self.linear = torch.nn.Linear(hidden_dim, hidden_dim)
+        linear2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.linear2 = MoE(hidden_size=hidden_dim,
+                           expert=linear2,
+                           ep_size=ep_size,
+                           use_residual=use_residual,
+                           num_experts=num_experts,
+                           k=1)
+        linear3 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.linear3 = MoE(hidden_size=hidden_dim,
+                           expert=linear3,
+                           ep_size=ep_size,
+                           use_residual=use_residual,
+                           num_experts=int(2 * num_experts),
+                           k=1)
+        self.cross_entropy_loss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, x, y):
+        hidden_dim = x
+        hidden_dim = self.linear(hidden_dim)
+        output, _, _ = self.linear2(hidden_dim)
+        output, _, _ = self.linear3(output)
         hidden_dim = hidden_dim + output
         sentence_embed = hidden_dim.mean(1)
         return self.cross_entropy_loss(sentence_embed, y)
@@ -156,7 +195,7 @@ class HybridStateOptimizer(torch.optim.Optimizer):
                 state = self.state[p]
                 if len(state) == 0:
                     state['integer_step'] = 0
-                    state['tensor_step'] = torch.zeros(1)
+                    state['tensor_step'] = torch.zeros(1, device=p.device)
 
                 d_p = p.grad.data
                 p.data.add_(-group['lr'], d_p)
@@ -224,10 +263,10 @@ def create_deepspeed_args():
     parser = argparse.ArgumentParser()
     args = parser.parse_args(args='')
     args.deepspeed = True
-    if torch.distributed.is_initialized():
+    if dist.is_initialized():
         # We assume up to one full node executing unit tests
-        assert torch.distributed.get_world_size() <= torch.cuda.device_count()
-        args.local_rank = torch.distributed.get_rank()
+        assert dist.get_world_size() <= torch.cuda.device_count()
+        args.local_rank = dist.get_rank()
     return args
 
 

@@ -18,12 +18,13 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
+from deepspeed import comm as dist
 
 tensor_map = {}
 
 
 def print_rank_0(message, debug=False, force=False):
-    if torch.distributed.get_rank() == 0 and (debug or force):
+    if dist.get_rank() == 0 and (debug or force):
         print(message)
 
 
@@ -108,6 +109,13 @@ class LinearFunctionForZeroStage3(torch.autograd.Function):
             #print("needs bias")
         #print(f"backward shaped grad_input {grad_input.shape}, grad_weight {grad_weight.shape}, grad_bias {grad_bias.shape if grad_bias is not None else None}")
         return grad_input, grad_weight, grad_bias
+
+
+def zero3_linear_wrap(input, weight, bias=None):
+    if bias is None:
+        return LinearFunctionForZeroStage3.apply(input, weight)
+    else:
+        return LinearFunctionForZeroStage3.apply(input, weight, bias)
 
 
 class LinearModuleForZeroStage3(Module):

@@ -1,6 +1,12 @@
 ---
 title: "1-bit Adam: Up to 5x less communication volume and up to 3.4x faster training"
+tags: training IO
+toc: false
 ---
+
+**Note:**
+On 03/07/2022 we released 0/1 Adam, which is a new communication-efficient Adam optimizer partially following the 1-bit Adam's design. Compared to the 1-bit Adam described below, 0/1 Adam provides better communication efficiency and the same final model quality on different tasks including BERT, GPT-2, and ImageNet. Thus we would recommend to first try 0/1 Adam ([tutorial](/tutorials/zero-one-adam/)), and then try 1-bit Adam if 0/1 Adam couldn't provide baseline Adam's convergence in your task.
+{: .notice--info}
 
 **Note:**
 This tutorial is updated on 03/04/2021 to reflect the 1-bit Adam v2. Changes include: 1) NCCL-based implementation which provides better performance and usability compared to the MPI-based implementation. 2) Add support to momentum masks for those parameters with constant zero gradients during training. 3) Bug fixes. See details below.
@@ -71,7 +77,7 @@ mpirun -np [#processes] -ppn [#GPUs on each node] -hostfile [hostfile] [MPI flag
 
 ### 1.3 1-bit Algorithm
 
-The detailed description of the 1-bit Algorithm can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).
+The detailed description of the 1-bit Algorithm can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).
 
 ### 1.4 Configuration of 1-bit Adam
 The 1-bit Adam feature can be used by setting the optimizer configuration options as follows. An example json config file is shown below.
@@ -209,7 +215,7 @@ We fixed the learning rate to 3e-5. The table below shows the F1 and the EM scor
 
 Figure 1: Scalability of 1-bit Adam for SQuAD Finetuning on V100 GPUs with batch size of 3/GPU. -->
 
-Performance results of SQuAD Fine-tuning can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).
+Performance results of SQuAD Fine-tuning can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).
 
 
 
@@ -289,4 +295,4 @@ The above file is for BERT-large. For BERT-base training (sequence length 128), 
 
 ### 3.3 Performance Results for BERT Pre-training
 
-Performance results of BERT Pre-training can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/09/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).
+Performance results of BERT Pre-training can be seen from our [blog post](https://www.deepspeed.ai/news/2020/09/08/onebit-adam-blog-post.html) and our [paper](https://arxiv.org/abs/2102.02888).

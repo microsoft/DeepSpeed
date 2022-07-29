@@ -2,10 +2,7 @@
 Copyright 2020 The Microsoft DeepSpeed Team
 '''
 
-import math
 import torch
-import time
-from pathlib import Path
 from ..op_builder import CPUAdagradBuilder
 from deepspeed.utils.logging import should_log_le
 
@@ -70,11 +67,17 @@ class DeepSpeedCPUAdagrad(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
+        # intended device for step
+        device = torch.device('cpu')
+
         for group_id, group in enumerate(self.param_groups):
             for param_id, p in enumerate(group['params']):
 
                 if p.grad is None:
                     continue
+
+                assert p.device == device, f"CPUAdagrad param is on {p.device} and must be 'cpu', make " \
+                        "sure you enabled 'offload_optimizer': 'cpu' in your ZeRO config."
 
                 state = self.state[p]
                 # State initialization

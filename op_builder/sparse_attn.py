@@ -1,8 +1,12 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-import warnings
 from .builder import OpBuilder
+
+try:
+    from packaging import version as pkg_version
+except ImportError:
+    pkg_version = None
 
 
 class SparseAttnBuilder(OpBuilder):
@@ -21,11 +25,15 @@ class SparseAttnBuilder(OpBuilder):
     def cxx_args(self):
         return ['-O2', '-fopenmp']
 
-    def is_compatible(self):
+    def is_compatible(self, verbose=True):
         # Check to see if llvm and cmake are installed since they are dependencies
         #required_commands = ['llvm-config|llvm-config-9', 'cmake']
         #command_status = list(map(self.command_exists, required_commands))
         #deps_compatible = all(command_status)
+
+        if self.is_rocm_pytorch():
+            self.warning(f'{self.NAME} is not compatible with ROCM')
+            return False
 
         try:
             import torch
@@ -52,4 +60,26 @@ class SparseAttnBuilder(OpBuilder):
                 f'{self.NAME} requires a torch version >= 1.5 but detected {TORCH_MAJOR}.{TORCH_MINOR}'
             )
 
-        return super().is_compatible() and torch_compatible and cuda_compatible
+        try:
+            import triton
+        except ImportError:
+            # auto-install of triton is broken on some systems, reverting to manual install for now
+            # see this issue: https://github.com/microsoft/DeepSpeed/issues/1710
+            self.warning(
+                f"please install triton==1.0.0 if you want to use sparse attention")
+            return False
+
+        if pkg_version:
+            installed_triton = pkg_version.parse(triton.__version__)
+            triton_mismatch = installed_triton != pkg_version.parse("1.0.0")
+        else:
+            installed_triton = triton.__version__
+            triton_mismatch = installed_triton != "1.0.0"
+
+        if triton_mismatch:
+            self.warning(
+                f"using untested triton version ({installed_triton}), only 1.0.0 is known to be compatible"
+            )
+            return False
+
+        return super().is_compatible(verbose) and torch_compatible and cuda_compatible
