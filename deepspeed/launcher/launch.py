@@ -251,10 +251,13 @@ def main():
         cmd_args = cmd[1:]
 
         rdzv_configs: Dict[str, str] = {'timeout': 100}
+        run_id = os.environ.get("ELASTIC_RUN_ID", ELASTIC_TRAINING_ID_DEFAULT)
+
+        # Creating config for rendezvous class
         rdzv_parameters = RendezvousParameters(backend='c10d',
                                                endpoint=args.master_addr + ":" +
                                                str(args.master_port),
-                                               run_id=ELASTIC_TRAINING_ID_DEFAULT,
+                                               run_id=run_id,
                                                min_nodes=args.min_elastic_nodes,
                                                max_nodes=args.max_elastic_nodes,
                                                **rdzv_configs)
