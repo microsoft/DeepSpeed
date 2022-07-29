@@ -1,7 +1,7 @@
 import torch
 import deepspeed.comm as dist
 
-from .common import DistributedTest
+from tests.unit.common import DistributedTest
 
 import pytest
 

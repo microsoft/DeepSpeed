@@ -2,8 +2,8 @@ import torch
 import pytest
 import deepspeed
 from deepspeed.profiling.flops_profiler import get_model_profile
-from .simple_model import SimpleModel, random_dataloader, args_from_dict
-from .common import DistributedTest
+from tests.unit.simple_model import SimpleModel, random_dataloader
+from tests.unit.common import DistributedTest
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
 TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -22,7 +22,7 @@ TOLERANCE = 0.05
 class TestFlopsProfilerInDSTraining(DistributedTest):
     world_size = 1
 
-    def test(self, tmpdir):
+    def test(self):
         config_dict = {
             "train_batch_size": 1,
             "steps_per_print": 1,
@@ -45,11 +45,10 @@ class TestFlopsProfilerInDSTraining(DistributedTest):
                 "top_modules": 3,
             },
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
         model = SimpleModel(hidden_dim, empty_grad=False)
 
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                             model=model,
                                             model_parameters=model.parameters())
 
