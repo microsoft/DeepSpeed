@@ -298,9 +298,8 @@ class DeepSpeedEngine(Module):
             monitor_memory=False,
         )
 
-        if dist.get_rank() == 0:
-            logger.info(
-                f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}")
+        log_dist(f"DeepSpeed Flops Profiler Enabled: {self.flops_profiler_enabled()}",
+                 ranks=[0])
 
         if self.flops_profiler_enabled():
             self.flops_profiler = FlopsProfiler(self.module, self)
@@ -769,18 +768,17 @@ class DeepSpeedEngine(Module):
         # First check for scheduler in json configuration
         lr_scheduler = self._scheduler_from_config(self.optimizer)
         if lr_scheduler:
-            if self.global_rank == 0:
-                logger.info(
-                    f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}")
+            log_dist(
+                f"DeepSpeed using configured LR scheduler = {self.scheduler_name()}",
+                ranks=[0])
             self.lr_scheduler = lr_scheduler
         else:
             if isinstance(client_lr_scheduler, Callable):
-                if self.global_rank == 0:
-                    logger.info('DeepSpeed using client callable to create LR scheduler')
+                log_dist('DeepSpeed using client callable to create LR scheduler',
+                         ranks=[0])
                 self.lr_scheduler = client_lr_scheduler(self.basic_optimizer)
             else:
-                if self.global_rank == 0:
-                    logger.info('DeepSpeed using client LR scheduler')
+                log_dist('DeepSpeed using client LR scheduler', ranks=[0])
                 self.lr_scheduler = client_lr_scheduler
 
         log_dist(f'DeepSpeed LR Scheduler = {self.lr_scheduler}', ranks=[0])
@@ -1083,31 +1081,26 @@ class DeepSpeedEngine(Module):
                 client_optimizer.param_groups[:] = [
                     pg for pg in client_optimizer.param_groups if len(pg["params"]) != 0
                 ]
-                if self.global_rank == 0:
-                    logger.info(
-                        "Removing param_group that has no 'params' in the client Optimizer"
-                    )
+                log_dist(
+                    "Removing param_group that has no 'params' in the client Optimizer",
+                    ranks=[0])
 
                 basic_optimizer = client_optimizer
-                if self.global_rank == 0:
-                    logger.info('Using client Optimizer as basic optimizer')
+                log_dist('Using client Optimizer as basic optimizer', ranks=[0])
             else:
                 basic_optimizer = client_optimizer(model_parameters)
-                if self.global_rank == 0:
-                    logger.info('Using client callable to create basic optimizer')
+                log_dist('Using client callable to create basic optimizer', ranks=[0])
         else:
             basic_optimizer = self._configure_basic_optimizer(model_parameters)
-            if self.global_rank == 0:
-                logger.info(
-                    "Using DeepSpeed Optimizer param name {} as basic optimizer".format(
-                        self.optimizer_name()))
+            log_dist(
+                f"Using DeepSpeed Optimizer param name {self.optimizer_name()} as basic optimizer",
+                ranks=[0])
 
         self._check_for_duplicates(basic_optimizer)
 
         self.basic_optimizer = basic_optimizer
-        if self.global_rank == 0:
-            logger.info("DeepSpeed Basic Optimizer = {}".format(
-                basic_optimizer.__class__.__name__))
+        log_dist("DeepSpeed Basic Optimizer = {basic_optimizer.__class__.__name__}",
+                 ranks=[0])
 
         if self.zero_optimization():
             assert (
@@ -1128,8 +1121,7 @@ class DeepSpeedEngine(Module):
         elif self.amp_enabled():
             assert not (self.fp16_enabled() or self.bfloat16_enabled()), "Cannot enable both amp with (legacy) fp16 or bfloat16 mode"
             amp_params = self.amp_params()
-            if self.global_rank == 0:
-                logger.info(f"Initializing AMP with these params: {amp_params}")
+            log_dist(f"Initializing AMP with these params: {amp_params}", ranks=[0])
             try:
                 logger.info("Initializing Apex amp from: {}".format(amp.__path__))
             except NameError:
@@ -1330,8 +1322,8 @@ class DeepSpeedEngine(Module):
         if optimizer is None:
             optimizer = DummyOptim(list(self.module.parameters()))
 
-        if self.global_rank == 0:
-            logger.info('Creating unfused BF16 optimizer')
+        log_dist('Creating BF16 optimizer', ranks=[0])
+
         timers = self.timers if self.wall_clock_breakdown() else None
         optimizer = BF16_Optimizer(
             optimizer,
@@ -1411,7 +1403,7 @@ class DeepSpeedEngine(Module):
         elif zero_stage == ZeroStageEnum.weights:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
             if isinstance(optimizer, DummyOptim):
-                logger.info("Creating ZeRO Offload") if dist.get_rank() == 0 else None
+                log_dist("Creating ZeRO Offload", ranks=[0])
                 optimizer = DeepSpeedZeRoOffload(
                     self.module,
                     timers=timers,
