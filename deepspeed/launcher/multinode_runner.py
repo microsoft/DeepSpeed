@@ -96,8 +96,8 @@ class PDSHRunner(MultiNodeRunner):
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         if self.args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
-            deepspeed_launch.append(f"--max_nodes={self.args.max_num_nodes}")
-            deepspeed_launch.append(f"--min_nodes={self.args.min_num_nodes}")
+            deepspeed_launch.append(f"--max_elastic_nodes={self.args.max_elastic_nodes}")
+            deepspeed_launch.append(f"--min_elastic_nodes={self.args.min_elastic_nodes}")
 
         cmd_to_search = [i + "\\" for i in deepspeed_launch[2:6]]
 

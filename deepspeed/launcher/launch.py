@@ -71,12 +71,12 @@ def parse_args():
                         action="store_true",
                         help="Enable elastic training support.")
 
-    parser.add_argument("--min_nodes",
+    parser.add_argument("--min_elastic_nodes",
                         type=int,
                         default=-1,
                         help="Min number of nodes in elastic training.")
 
-    parser.add_argument("--max_nodes",
+    parser.add_argument("--max_elastic_nodes",
                         type=int,
                         default=-1,
                         help="Max number of nodes in elastic training.")
@@ -227,11 +227,11 @@ def main():
         import torch.distributed.elastic.rendezvous.registry as rdzv_registry
         from torch.distributed.elastic.multiprocessing import Std
 
-        if args.min_nodes == -1:
-            args.min_nodes = 1
-        if args.max_nodes == -1:
-            args.max_nodes = args.nnodes
-        assert args.max_nodes > 0 and  args.min_nodes > 0 , "Max and Min nodes should be positive"
+        if args.min_elastic_nodes == -1:
+            args.min_elastic_nodes = 1
+        if args.max_elastic_nodes == -1:
+            args.max_elastic_nodes = args.nnodes
+        assert args.max_elastic_nodes > 0 and  args.min_elastic_nodes > 0 , "Max and Min nodes should be positive"
 
         current_env["NCCL_ASYNC_ERROR_HANDLING"] = str(1)
 
@@ -254,8 +254,8 @@ def main():
                                                endpoint=args.master_addr + ":" +
                                                str(args.master_port),
                                                run_id='123456789',
-                                               min_nodes=args.min_nodes,
-                                               max_nodes=args.max_nodes,
+                                               min_nodes=args.min_elastic_nodes,
+                                               max_nodes=args.max_elastic_nodes,
                                                **rdzv_configs)
 
         spec = WorkerSpec(

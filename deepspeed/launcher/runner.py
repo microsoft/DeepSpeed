@@ -78,13 +78,13 @@ def parse_args(args=None):
                         help="Total number of worker nodes to run on, this will use "
                         "the top N hosts from the given hostfile.")
 
-    parser.add_argument("--min_num_nodes",
+    parser.add_argument("--min_elastic_nodes",
                         type=int,
                         default=-1,
                         help="Minimum number of nodes to run elastic training on. "
                         "Default is 1 when elastic training is enabled")
 
-    parser.add_argument("--max_num_nodes",
+    parser.add_argument("--max_elastic_nodes",
                         type=int,
                         default=-1,
                         help="Maximum number of nodes to run elastic training on. "
@@ -460,8 +460,8 @@ def main(args=None):
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
         if args.elastic_training:
             deepspeed_launch.append("--enable_elastic_training")
-            deepspeed_launch.append(f"--max_nodes={args.max_num_nodes}")
-            deepspeed_launch.append(f"--min_nodes={args.min_num_nodes}")
+            deepspeed_launch.append(f"--max_elastic_nodes={args.max_elastic_nodes}")
+            deepspeed_launch.append(f"--min_elastic_nodes={args.min_elastic_nodes}")
         cmd = deepspeed_launch + [args.user_script] + args.user_args
     else:
         args.launcher = args.launcher.lower()
