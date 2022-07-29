@@ -41,10 +41,16 @@ from ..elasticity.constants import (
     ELASTICITY,
     IGNORE_NON_ELASTIC_BATCH_INFO,
     IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT,
+    MODEL_PARLLEL_SIZE,
+    MODEL_PARLLEL_SIZE_DEFAULT,
+    NUM_GPUS_PER_NODE,
+    NUM_GPUS_PER_NODE_DEFAULT,
 )
 
 from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
+from ..nebula.config import DeepSpeedNebulaConfig
+
 from ..compression.config import get_compression_config, get_quantize_enabled
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
@@ -724,6 +730,21 @@ class DeepSpeedConfig(object):
             # Ensure the resource scheduler saw the same elastic config we are using at runtime
             ensure_immutable_elastic_config(runtime_elastic_config_dict=elastic_dict)
 
+            self.elastic_model_parallel_size = elastic_dict.get(
+                MODEL_PARLLEL_SIZE,
+                MODEL_PARLLEL_SIZE_DEFAULT)
+            if self.elastic_model_parallel_size < 1:
+                raise ElasticityConfigError(
+                    "Model-Parallel size cannot be less than 1, "
+                    f"given model-parallel size: {self.elastic_model_parallel_size}")
+
+            self.num_gpus_per_node = elastic_dict.get(NUM_GPUS_PER_NODE,
+                                                      NUM_GPUS_PER_NODE_DEFAULT)
+            if self.num_gpus_per_node < 1:
+                raise ElasticityConfigError(
+                    "NUmber of GPUs per node cannot be less than 1, "
+                    f"given number of GPUs per node: {self.num_gpus_per_node}")
+
             ignore_non_elastic_batch_info = elastic_dict.get(
                 IGNORE_NON_ELASTIC_BATCH_INFO,
                 IGNORE_NON_ELASTIC_BATCH_INFO_DEFAULT)
@@ -863,6 +884,8 @@ class DeepSpeedConfig(object):
         self.aio_config = get_aio_config(param_dict)
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
+
+        self.nebula_config = DeepSpeedNebulaConfig(param_dict)
 
     def _batch_assertion(self):
 
