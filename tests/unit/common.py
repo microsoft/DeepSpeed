@@ -11,10 +11,7 @@ import deepspeed.comm as dist
 from torch.multiprocessing import Process
 
 import pytest
-
-# This list should be updated if additional session-level fixtures
-# (e.g., check_environment) are added to ../conftest.py
-SESSION_FIXTURE_LIST = ["pytestconfig", "check_environment"]
+from _pytest.outcomes import Skipped
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
@@ -95,9 +92,10 @@ class DistributedTest(ABC):
 
     def _launch_procs(self, num_procs):
         mp.set_start_method('forkserver', force=True)
+        skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
         processes = []
         for local_rank in range(num_procs):
-            p = Process(target=self._dist_init, args=(local_rank, num_procs))
+            p = Process(target=self._dist_init, args=(local_rank, num_procs, skip_msg))
             p.start()
             processes.append(p)
 
@@ -127,7 +125,12 @@ class DistributedTest(ABC):
                 pytest.fail(f'Worker {rank} exited with code {p.exitcode}',
                             pytrace=False)
 
-    def _dist_init(self, local_rank, num_procs):
+        if not skip_msg.empty():
+            # This assumed all skip messages are the same, it may be useful to
+            # add a check here to assert all exit messages are equal
+            pytest.skip(skip_msg.get())
+
+    def _dist_init(self, local_rank, num_procs, skip_msg):
         """Initialize deepspeed.comm and execute the user function. """
         os.environ['MASTER_ADDR'] = '127.0.0.1'
         os.environ['MASTER_PORT'] = get_master_port()
@@ -147,7 +150,13 @@ class DistributedTest(ABC):
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
 
-        self.current_test(**self.test_kwargs)
+        try:
+            self.current_test(**self.test_kwargs)
+        except BaseException as e:
+            if isinstance(e, Skipped):
+                skip_msg.put(e.msg)
+            else:
+                raise e
 
         # make sure all ranks finish at the same time
         dist.barrier()

@@ -11,8 +11,6 @@ import warnings
 git_repo_path = abspath(join(dirname(dirname(__file__)), "src"))
 sys.path.insert(1, git_repo_path)
 
-# NOTE: when adding additional session-level pytest fixtures, update SESSION_FIXTURE_LIST in unit/common.py
-
 
 def pytest_addoption(parser):
     parser.addoption("--torch_ver", default=None, type=str)
