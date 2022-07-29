@@ -15,14 +15,16 @@ class InferenceBuilder(CUDAOpBuilder):
         return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
-        sys_cuda_major, _ = installed_cuda_version()
-        torch_cuda_major = version.parse(torch.version.cuda).major
-        cuda_capability = torch.cuda.get_device_properties(0).major
         cuda_okay = True
-        if cuda_capability >= 8:
-            if torch_cuda_major < 11 or sys_cuda_major < 11:
-                self.warning("On Ampere and higher architectures please use CUDA 11+")
-                cuda_okay = False
+        if not self.is_rocm_pytorch() and torch.cuda.is_available():
+            sys_cuda_major, _ = installed_cuda_version()
+            torch_cuda_major = version.parse(torch.version.cuda).major
+            cuda_capability = torch.cuda.get_device_properties(0).major
+            if cuda_capability >= 8:
+                if torch_cuda_major < 11 or sys_cuda_major < 11:
+                    self.warning(
+                        "On Ampere and higher architectures please use CUDA 11+")
+                    cuda_okay = False
         return super().is_compatible(verbose) and cuda_okay
 
     def sources(self):
