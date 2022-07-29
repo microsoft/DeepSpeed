@@ -6,13 +6,6 @@ from .simple_model import args_from_dict
 from .util import required_torch_version
 from deepspeed.moe.layer import MoE
 
-try:
-    from apex import amp  # noqa: F401
-    _amp_available = True
-except ImportError:
-    _amp_available = False
-amp_available = pytest.mark.skip(_amp_available, reason="apex/amp is not installed")
-
 
 @pytest.mark.parametrize("ep_size, tp_size, enable_expert_tp, use_residual",
                          [
