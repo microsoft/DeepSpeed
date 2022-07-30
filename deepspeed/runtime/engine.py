@@ -264,9 +264,11 @@ class DeepSpeedEngine(Module):
         see_memory_usage(f"DeepSpeed Engine: After args sanity test",
                          force=self.memory_breakdown())
         if mpu is not None:
-            assert not self.elasticity_enabled(), (
-                "Elasticity is not currently supported" " with model parallelism."
-            )
+            if self.elasticity_enabled():
+                if not self.is_elastic_model_parallel_supported():
+                    assert not self.elasticity_enabled(), (
+                        "Elasticity is not currently supported" " with model parallelism."
+                    )
 
         self._set_distributed_vars(args)
 
@@ -469,6 +471,14 @@ class DeepSpeedEngine(Module):
 
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
+
+    def is_elastic_model_parallel_supported(self):
+        if self.elasticity_enabled():
+            # Add code for finding number of GPUs per node automatically
+            if self._config.num_gpus_per_node % self._config.elastic_model_parallel_size == 0:
+                return True
+            else:
+                return False
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -1711,11 +1721,14 @@ class DeepSpeedEngine(Module):
                  loss,
                  allreduce_gradients=True,
                  release_loss=False,
+                 retain_graph=False,
                  scale_wrt_gas=True):
         r"""Execute backward pass on the loss
         Arguments:
             loss: Torch tensor on which to execute backward propagation
             allreduce_gradients: is deprecated, ignored, and will soon be removed'
+            retain_graph: bool, default: false
+                forward on user defined choice of retain_graph
         """
 
         see_memory_usage("Engine before backward", force=self.memory_breakdown())
@@ -1751,9 +1764,9 @@ class DeepSpeedEngine(Module):
         self._start_timers(self.engine_timers.backward_inner_timers)
 
         if self.zero_optimization():
-            self.optimizer.is_gradient_accumulation_boundary = (
-                self.is_gradient_accumulation_boundary())
-            self.optimizer.backward(loss)
+            self.optimizer.is_gradient_accumulation_boundary = self.is_gradient_accumulation_boundary(
+            )
+            self.optimizer.backward(loss, retain_graph=retain_graph)
         elif self.amp_enabled():
             # AMP requires delaying unscale when inside gradient accumulation boundaries
             # https://nvidia.github.io/apex/advanced.html#gradient-accumulation-across-iterations
@@ -1761,19 +1774,19 @@ class DeepSpeedEngine(Module):
             with amp.scale_loss(loss,
                                 self.optimizer,
                                 delay_unscale=delay_unscale) as scaled_loss:
-                scaled_loss.backward()
+                scaled_loss.backward(retain_graph=retain_graph)
         elif self.fp16_enabled():
             if self.eigenvalue_enabled():
                 self.optimizer.backward(loss, create_graph=True, retain_graph=True)
             else:
-                self.optimizer.backward(loss)
+                self.optimizer.backward(loss, retain_graph=retain_graph)
         elif self.bfloat16_enabled():
             self.optimizer.backward(loss)
         else:
             if self.eigenvalue_enabled():
                 loss.backward(create_graph=True, retain_graph=True)
             else:
-                loss.backward()
+                loss.backward(retain_graph=retain_graph)
 
         self._stop_timers(self.engine_timers.backward_inner_timers)
 
