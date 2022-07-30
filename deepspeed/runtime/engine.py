@@ -264,9 +264,11 @@ class DeepSpeedEngine(Module):
         see_memory_usage(f"DeepSpeed Engine: After args sanity test",
                          force=self.memory_breakdown())
         if mpu is not None:
-            assert not self.elasticity_enabled(), (
-                "Elasticity is not currently supported" " with model parallelism."
-            )
+            if self.elasticity_enabled():
+                if not self.is_elastic_model_parallel_supported():
+                    assert not self.elasticity_enabled(), (
+                        "Elasticity is not currently supported" " with model parallelism."
+                    )
 
         self._set_distributed_vars(args)
 
@@ -469,6 +471,14 @@ class DeepSpeedEngine(Module):
 
     def elasticity_enabled(self):
         return self._config.elasticity_enabled
+
+    def is_elastic_model_parallel_supported(self):
+        if self.elasticity_enabled():
+            # Add code for finding number of GPUs per node automatically
+            if self._config.num_gpus_per_node % self._config.elastic_model_parallel_size == 0:
+                return True
+            else:
+                return False
 
     def pld_enabled(self):
         return self._config.pld_enabled
@@ -704,6 +714,9 @@ class DeepSpeedEngine(Module):
 
     def amp_params(self):
         return self._config.amp_params
+
+    def fp16_auto_cast(self):
+        return self._config.fp16_auto_cast
 
     def loss_scale(self):
         return self._config.loss_scale
@@ -1639,6 +1652,9 @@ class DeepSpeedEngine(Module):
         if self.training_dataloader is None:
             self.tput_timer.start()
 
+        if self.fp16_auto_cast():
+            inputs = self._cast_inputs_half(inputs)
+
         loss = self.module(*inputs, **kwargs)
 
         if self.zero_optimization_partition_weights():
@@ -1661,6 +1677,22 @@ class DeepSpeedEngine(Module):
         else:
             see_memory_usage("Engine after forward", force=self.memory_breakdown())
         return loss
+
+    def _cast_inputs_half(self, inputs):
+        if isinstance(inputs, (list, tuple)):
+            new_inputs = []
+            for v in inputs:
+                new_inputs.append(self._cast_inputs_half(v))
+            return inputs.__class__(new_inputs)
+        elif isinstance(inputs, dict):
+            new_inputs = {}
+            for k, v in inputs:
+                new_inputs[k] = self._cast_inputs_half(v)
+            return new_inputs
+        elif hasattr(inputs, 'half'):
+            return inputs.half()
+        else:
+            return inputs
 
     def print_forward_breakdown(self, fwd_time):
         gate_time = 0.0
