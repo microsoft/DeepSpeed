@@ -5,19 +5,18 @@ import torch
 import os
 
 from deepspeed import comm as dist
-from deepspeed.utils import groups
+from deepspeed.utils.logging import log_dist
 
 from torch.nn.modules import Module
 from packaging import version as pkg_version
+from deepspeed.runtime.checkpoint_engine.torch_checkpoint_engine import TorchCheckpointEngine
 
 from ..runtime.state_dict_factory import SDLoaderFactory
 from ..runtime.weight_quantizer import WeightQuantization
 from ..module_inject.replace_module import replace_transformer_layer
-from ..utils import logger
 from ..comm.comm import init_distributed
 from ..pipe import PipelineModule
 from ..moe.utils import has_moe_layers
-from ..moe.layer import MoE
 from ..runtime.zero import GatheredParameters
 from ..module_inject import LinearAllreduce, LinearLayer, Normalize, ReplaceWithTensorSlicing
 
@@ -50,7 +49,8 @@ class InferenceEngine(Module):
                  moe_experts=1,
                  moe_type='standard',
                  config=None,
-                 enable_cuda_graph=False):
+                 enable_cuda_graph=False,
+                 save_mp_checkpoint_path=None):
         """
         Args:
             model: torch.nn.Module
@@ -93,6 +93,7 @@ class InferenceEngine(Module):
         self.expert_mp_group = expert_mp_group
         self.enable_cuda_graph = enable_cuda_graph
         self.cuda_graph_created = False
+        self.checkpoint_engine = TorchCheckpointEngine()
         self._init_quantization_setting(quantization_setting)
 
         if enable_cuda_graph:
@@ -129,7 +130,8 @@ class InferenceEngine(Module):
                     moe_experts,
                     moe_type,
                     training_mp_size,
-                    self.checkpoint if replace_with_kernel_inject else None)
+                    self.checkpoint if replace_with_kernel_inject else None,
+                    save_mp_checkpoint_path=save_mp_checkpoint_path)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -138,11 +140,16 @@ class InferenceEngine(Module):
                 moe_experts=moe_experts,
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
-                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None)
+                checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
+                save_mp_checkpoint_path=save_mp_checkpoint_path)
 
         device = torch.cuda.current_device()
-        logger.info(f"Place model to device: {device}")
         self.module.to(device)
+
+        if self.mp_world_size > 1:
+            _rng_state = torch.cuda.get_rng_state().to(torch.cuda.current_device())
+            dist.broadcast(_rng_state, 0)
+            torch.cuda.set_rng_state(_rng_state.cpu())
 
         if self.mp_world_size > 1:
             self.model_orig_fwd = self.module.forward
@@ -208,9 +215,11 @@ class InferenceEngine(Module):
             self.quantize_groups = quantization_setting
         elif quantization_setting is not None:
             self.quantize_groups = quantization_setting
-        logger.info(f"quantize_bits = {self.quantize_bits} "
-                    f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
-                    f"quantize_groups = {self.quantize_groups}")
+        log_dist(
+            f"quantize_bits = {self.quantize_bits} "
+            f"mlp_extra_grouping = {self.mlp_extra_grouping}, "
+            f"quantize_groups = {self.quantize_groups}",
+            [0])
 
     def _validate_args(self, mpu):
         if not isinstance(self.module, Module):
@@ -223,9 +232,9 @@ class InferenceEngine(Module):
             for method in methods:
                 if not hasattr(mpu, method):
                     raise ValueError(f"mpu is missing {method}")
-        if self.checkpoint is not None and not isinstance(self.checkpoint, str):
+        if self.checkpoint is not None and not isinstance(self.checkpoint, (str, dict)):
             raise ValueError(
-                f"checkpoint must be None or a str, got {type(self.checkpoint)}")
+                f"checkpoint must be None, str or dict, got {type(self.checkpoint)}")
 
         supported_dtypes = [None, torch.half, torch.int8, torch.float]
         if self.dtype not in supported_dtypes:
@@ -312,32 +321,37 @@ class InferenceEngine(Module):
                                 moe_experts=1,
                                 moe_type='standard',
                                 training_mp_size=1,
-                                checkpoint_dir=None):
+                                checkpoint_dir=None,
+                                save_mp_checkpoint_path=False):
         checkpoint = SDLoaderFactory.get_sd_loader_json(
-            checkpoint_dir) if checkpoint_dir is not None else None
-        replace_transformer_layer(client_module,
-                                  self.module,
-                                  triangular_masking=self.triangular_masking,
-                                  policy=injection_policy,
-                                  mp_size=self.mp_world_size,
-                                  mp_group=self.mp_group,
-                                  ep_group=self.ep_group,
-                                  expert_mp_group=self.expert_mp_group,
-                                  config=self.config,
-                                  fp16=(self.dtype == torch.half),
-                                  training=False,
-                                  return_tuple=return_tuple,
-                                  quantize=(self.dtype == torch.int8),
-                                  quantize_settings=(self.quantization_scales,
-                                                     self.quantize_merge_count,
-                                                     self.mlp_extra_grouping,
-                                                     self.quantize_groups),
-                                  replace_with_kernel_inject=replace_with_kernel_inject,
-                                  moe=moe,
-                                  moe_experts=moe_experts,
-                                  moe_type=moe_type,
-                                  training_mp_size=training_mp_size,
-                                  checkpoint=checkpoint)
+            checkpoint_dir,
+            self.checkpoint_engine) if checkpoint_dir is not None else None
+        replace_transformer_layer(
+            client_module,
+            self.module,
+            triangular_masking=self.triangular_masking,
+            policy=injection_policy,
+            mp_size=self.mp_world_size,
+            mp_group=self.mp_group,
+            ep_group=self.ep_group,
+            expert_mp_group=self.expert_mp_group,
+            config=self.config,
+            fp16=(self.dtype == torch.half),
+            training=False,
+            return_tuple=return_tuple,
+            quantize=(self.dtype == torch.int8),
+            quantize_settings=(self.quantization_scales,
+                               self.quantize_merge_count,
+                               self.mlp_extra_grouping,
+                               self.quantize_groups),
+            replace_with_kernel_inject=replace_with_kernel_inject,
+            moe=moe,
+            moe_experts=moe_experts,
+            moe_type=moe_type,
+            training_mp_size=training_mp_size,
+            checkpoint_dict=checkpoint,
+            save_mp_checkpoint_path=save_mp_checkpoint_path,
+        )
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
@@ -375,7 +389,7 @@ class InferenceEngine(Module):
                         tag = fd.read().strip()
 
             ckpt_list = self._get_all_ckpt_names(load_dir, tag)
-            sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list)
+            sd_loader = SDLoaderFactory.get_sd_loader(ckpt_list, self.checkpoint_engine)
         else:
             sd_loader = SDLoaderFactory.get_sd_loader_json(load_dir)
 
@@ -415,10 +429,12 @@ class InferenceEngine(Module):
                     state_dict=checkpoint[self._choose_module_key(checkpoint)],
                     old_moe_load=old_moe_load,
                     model=self.module,
-                    mpu=self.mpu)
+                    mpu=self.mpu,
+                    checkpoint_engine=self.checkpoint_engine)
 
             self.module.load_state_dict(
                 state_dict=checkpoint[self._choose_module_key(checkpoint)],
+                checkpoint_engine=self.checkpoint_engine,
                 strict=load_module_strict)
 
     def _choose_module_key(self, sd):

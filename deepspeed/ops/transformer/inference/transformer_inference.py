@@ -3,14 +3,13 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import json
 import math
-import importlib
 import torch
-from torch import nn
 from torch.autograd import Function
-import time
 from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
+from deepspeed.utils.logging import log_dist
+
 # Cuda modules will be imported if needed
 inference_cuda_module = None
 minus_inf = -10000.0
@@ -192,6 +191,7 @@ class DeepSpeedSelfAttentionFunction(Function):
             return tensor_list
 
         def backup_attention(mixed_x_layer, layer_past, alibi, input_mask, norm_factor):
+            alibi = alibi.to(torch.cuda.current_device())
             head_dim = hidden_size_per_partition // num_attention_heads_per_partition
             new_tensor_shape = mixed_x_layer.size()[:-1] + (
                 num_attention_heads_per_partition,
@@ -336,7 +336,7 @@ class DeepSpeedSelfAttentionFunction(Function):
                         torch.empty(1),
                         num_attention_heads_per_partition,
                         (1 / norm_factor if config.scale_attention else 1.0),
-                        (not unfused_mode),
+                        (not unfused_mode),  # noqa: F821
                         config.triangular_masking,
                         config.local_attention,
                         config.window_size,
@@ -344,21 +344,21 @@ class DeepSpeedSelfAttentionFunction(Function):
                 else:
                     attn_key_value = score_context_func(
                         mixed_query,
-                        (key_layer if unfused_mode else past_key.type_as(key_layer)),
+                        (key_layer if unfused_mode else past_key.type_as(key_layer)),  # noqa: F821
                         key_layer,
                         ((1 - input_mask).half() *
                          minus_inf) if input_mask.dtype == torch.int64 else input_mask,
                         (value_layer
-                         if unfused_mode else past_value.type_as(value_layer)),
+                         if unfused_mode else past_value.type_as(value_layer)),  # noqa: F821
                         value_layer,
                         num_attention_heads_per_partition,
                         (1 / norm_factor if config.scale_attention else 1.0),
-                        (not unfused_mode),
+                        (not unfused_mode),  # noqa: F821
                         config.triangular_masking,
                         config.local_attention,
                         config.window_size,
                         no_masking)
-                if unfused_mode:
+                if unfused_mode:  # noqa: F821
                     context_layer, _, _ = attn_key_value
                 else:
                     context_layer, key_layer, value_layer = attn_key_value
@@ -768,7 +768,8 @@ class DeepSpeedTransformerInference(nn.Module):
             builder = op_builder.InferenceBuilder()
             inference_cuda_module = builder.load()
 
-        print("DeepSpeed Transformer Inference config is ", self.config.__dict__)
+        if DeepSpeedTransformerInference.layer_id == 1:
+            log_dist(f"DeepSpeed-Inference config: {self.config.__dict__}", [0])
 
         self.attention = DeepSpeedSelfAttention(self.config,
                                                 mp_group,

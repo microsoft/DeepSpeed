@@ -115,6 +115,9 @@ def initialize(args=None,
         __git_branch__),
              ranks=[0])
 
+    # Disable zero.Init context if it's currently enabled
+    zero.partition_parameters.shutdown_init_context()
+
     assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
@@ -238,7 +241,8 @@ def init_inference(model,
                    moe_experts=1,
                    moe_type='standard',
                    args=None,
-                   enable_cuda_graph=False):
+                   enable_cuda_graph=False,
+                   save_mp_checkpoint_path=None):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -304,6 +308,7 @@ def init_inference(model,
                              moe_experts,
                              moe_type,
                              args,
-                             enable_cuda_graph)
+                             enable_cuda_graph,
+                             save_mp_checkpoint_path)
 
     return engine

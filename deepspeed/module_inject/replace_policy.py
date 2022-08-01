@@ -4,6 +4,8 @@ import torch
 from torch.nn.parameter import Parameter
 from packaging import version as pkg_version
 
+supported_models = {None}
+
 
 class DSPolicy(ABC):
     def __init__(self,
@@ -215,7 +217,6 @@ class MegatronLayerPolicy(DSPolicy):
                 MegatronLayerPolicy._orig_layer_class = None
             else:
                 try:
-                    import megatron
                     from megatron.model.transformer import ParallelTransformerLayer
                     MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
                 except ImportError:
@@ -330,6 +331,9 @@ class BLOOMLayerPolicy(DSPolicy):
         try:
             import transformers
             BLOOMLayerPolicy._orig_layer_class = transformers.models.bloom.modeling_bloom.BloomBlock
+            global supported_models
+            supported_models.update(
+                {transformers.models.bloom.modeling_bloom.BloomModel})
         except:
             BLOOMLayerPolicy._orig_layer_class = None
 
@@ -372,7 +376,6 @@ class GPTNEOXLayerPolicy(DSPolicy):
                 GPTNEOXLayerPolicy._orig_layer_class = None
             else:
                 try:
-                    import transformers
                     from transformers import GPTNeoXLayer
                     GPTNEOXLayerPolicy._orig_layer_class = GPTNeoXLayer
                 except ImportError:
