@@ -955,7 +955,7 @@ class Autotuner:
         low = min_micro_batch_size
         high = max_micro_batch_size
         # binary search until low is the smallest micro batch size that OOMs.
-        while low < high:
+        while low <= high:
             mid = int((low + high) // 2)
             logger.debug(f"trying mbs = {mid}, low = {low}, high = {high}")
             if mid not in used_micro_batch_sizes:
