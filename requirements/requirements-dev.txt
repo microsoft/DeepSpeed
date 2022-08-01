@@ -10,5 +10,7 @@ pytest-xdist
 recommonmark
 sphinx
 sphinx-rtd-theme
+tensorboard
 torchvision
 transformers
+wandb

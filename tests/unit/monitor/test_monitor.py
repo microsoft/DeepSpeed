@@ -1,5 +1,3 @@
-import pytest
-
 from deepspeed.monitor.constants import *
 
 from deepspeed.monitor.tensorboard import TensorBoardMonitor
@@ -9,24 +7,7 @@ from deepspeed.monitor.csv_monitor import csvMonitor
 from tests.unit.common import DistributedTest
 from deepspeed.runtime.config import DeepSpeedConfig
 
-try:
-    import tensorboard  # noqa: F401
-    _tb_available = True
-except ImportError:
-    _tb_available = False
-tb_available = pytest.mark.skipif(not _tb_available,
-                                  reason="tensorboard is not installed")
 
-try:
-    import wandb  # noqa: F401
-    _wandb_available = True
-except ImportError:
-    _wandb_available = False
-wandb_available = pytest.mark.skipif(not _wandb_available,
-                                     reason="wandb is not installed")
-
-
-@tb_available
 class TestTensorBoard(DistributedTest):
     world_size = 2
 
@@ -54,7 +35,6 @@ class TestTensorBoard(DistributedTest):
         assert tb_monitor.job_name == TENSORBOARD_JOB_NAME_DEFAULT
 
 
-@wandb_available
 class TestWandB(DistributedTest):
     world_size = 2
 
