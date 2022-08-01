@@ -24,10 +24,9 @@ Copyright 2021 The Microsoft DeepSpeed Team
  For inference and other new scenarios, the code will be either reused or added to this file.
 """
 
-import torch
 from deepspeed import comm as dist
 
-from deepspeed.utils import logger, log_dist
+from deepspeed.utils import log_dist
 from deepspeed.utils.exceptions import DeprecatedException
 
 # Expert parallel group that the current rank belongs to.
@@ -38,6 +37,8 @@ _EXPERT_DATA_PARALLEL_GROUP = {}
 _WORLD_GROUP = None
 # global object to maintain mpu object if passed by a Megatron client
 mpu = None
+# global object that stores tensor parallel world size for experts
+expert_tensor_parallel_world_size = 1
 
 
 # Deprecated groups initialize function.
@@ -105,7 +106,7 @@ def _create_model_parallel(model_parallel_size_):
     return _DATA_PARALLEL_GROUP, _MODEL_PARALLEL_GROUP
 
 
-def _create_expert_and_data_parallel(ep_size):
+def _create_expert_and_data_parallel(expert_parallel_size_):
     """
         Create expert and data parallel groups.
 
@@ -120,11 +121,12 @@ def _create_expert_and_data_parallel(ep_size):
     """
     assert dist.is_initialized()
 
-    log_dist(f'Creating expert and data parallel groups with size {ep_size}', ranks=[0])
+    log_dist(
+        f'Creating expert and data parallel groups with size {expert_parallel_size_}',
+        ranks=[0])
     world_size = dist.get_world_size()
     rank = dist.get_rank()
 
-    expert_parallel_size_ = min(ep_size, world_size)
     _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
@@ -222,10 +224,16 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     assert dist.is_initialized(), "dist is not initialized"
     model_parallel_size_ = mpu.get_model_parallel_world_size()
 
+    global expert_tensor_parallel_world_size
+    expert_tensor_parallel_world_size = model_parallel_size_
+
     world_size = dist.get_world_size()
     rank = dist.get_rank()
     dp_world_size = mpu.get_data_parallel_world_size()
     dp_rank = mpu.get_data_parallel_rank()
+
+    _ensure_divisibility(world_size, model_parallel_size_)
+    _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     log_dist(
         f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
@@ -236,9 +244,6 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     # Get world size and rank. Ensure some consistencies.
     _DATA_PARALLEL_GROUP = mpu.get_data_parallel_group()
     _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
-
-    expert_parallel_size_ = min(expert_parallel_size_, dp_world_size)
-    _ensure_divisibility(world_size, expert_parallel_size_)
 
     group_name = f"ep_size_{expert_parallel_size_}"
 
@@ -387,3 +392,8 @@ def _get_data_parallel_rank():
     if mpu is not None:
         return mpu.get_data_parallel_rank()
     return dist.get_rank(group=_get_data_parallel_group())
+
+
+def _get_expert_model_parallel_world_size():
+    global expert_tensor_parallel_world_size
+    return expert_tensor_parallel_world_size

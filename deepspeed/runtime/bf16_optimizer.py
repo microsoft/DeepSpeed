@@ -12,7 +12,6 @@ from deepspeed.runtime import ZeROOptimizer
 from packaging import version as pkg_version
 
 from deepspeed.git_version_info import version
-from deepspeed.runtime.swap_tensor.partitioned_param_swapper import print_rank_0
 from deepspeed.runtime.utils import (get_global_norm_of_tensors,
                                      clip_tensors_by_global_norm,
                                      DummyOptim,
@@ -418,7 +417,7 @@ class BF16_Optimizer(ZeROOptimizer):
                                   hp_frag_address.numel)
                 for key,
                 value in self.optimizer.state[flat_hp_partition].items()
-                if torch.is_tensor(value)
+                if torch.is_tensor(value) and value.dim() > 0
             }
 
             lp_frag_address = fragment_address(start=fragment_start - lp_start,

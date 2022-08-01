@@ -1,5 +1,7 @@
 ---
 title: "DeepSpeed Configuration JSON"
+toc: true
+toc_label: "Contents"
 ---
 
 ### Batch Size Related Parameters
@@ -217,6 +219,7 @@ Example of <i>**scheduler**</i>
 ```json
 "fp16": {
     "enabled": true,
+    "auto_cast": false,
     "loss_scale": 0,
     "initial_scale_power": 32,
     "loss_scale_window": 1000,
@@ -230,6 +233,12 @@ Example of <i>**scheduler**</i>
 | Description                                                                                 | Default |
 | ------------------------------------------------------------------------------------------- | ------- |
 | <i>**enabled**</i> is a **fp16** parameter indicating whether or not FP16 training enabled. | `false` |
+
+<i>**fp16:auto_cast**</i>: [boolean]
+
+| Description                                                  | Default |
+| -------------------------------------------------------------| ------- |
+| <i>**auto_cast**</i> automatically casts inputs to **fp16**  | `false` |
 
 <i>**fp16:loss_scale**</i>: [float]
 
@@ -1043,6 +1052,82 @@ Example of <i>**csv_monitor**</i> configuration:
     "enabled": true,
     "output_path": "output/ds_logs/",
     "job_name": "train_bert"
+}
+```
+
+### Elastic Training Config (V0.1 and V0.2)
+
+```json
+  "elasticity": {
+    "enabled": true,
+    "max_train_batch_size": "seqlen",
+    "micro_batch_sizes": 8,
+    "min_gpus": 1024,
+    "max_gpus": "fixed_linear",
+    "min_time": "seqlen",
+    "version": 8,
+    "ignore_non_elastic_batch_info": 1024,
+    "num_gpus_per_node": "fixed_linear",
+    "model_parallel_size": MODEL_PARALLEL_SIZE
+  }
+```
+
+| Field | Description                                                                                                                                                                                                                                                                                                   |Default|
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| `enabled`   | Enables computation of global batch size in elastic training. | false |
+| `max_train_batch_size` | Max acceptable batch size can be used in training. | 2000 |
+| `micro_batch_sizes` | Acceptable micro batch sizes, same as train_micro_batch_size_per_gpu | [2,4,6] |
+| `min_gpus` | Min number of GPUs to search over when computing highly composite batch size in v0.1 and v0.2. | 1 |
+| `max_gpus` | Max number of GPUs to search over when computing highly composite batch size in v0.1 and v0.2. | 10000 |
+| `min_time` |Minimum running time (minutes) before the scheduler will scale again (only used in v0.1). 0 implies it's unknown | 0 |
+| `prefer_large_batch` | When finding a suitable batch size, attempt to find one that is closest to the max train batch size given. | true |
+| `version` | Version of elastic logic to use. | 0.2 |
+| `ignore_non_elastic_batch_info` | Ignore all batch info provided outside the elastic config. To reduce confusion, we require all batch related info to be given in elastic config only. | false |
+| `num_gpus_per_node` | Number of GPUs per node. This information is used by v0.2 to support model-parallel training (only used by v0.2) | 1 |
+| `model_parallel_size` | Tensor or model parallel size (only used by v0.2) | 1 |
+
+
+### Communication Logging
+
+
+DeepSpeed provides a flexible communication logging tool which can automatically detect and record communication operations launched via `deepspeed.comm`. NOTE: All logging communication calls are synchronized in order to provide accurate timing information. This may hamper performance if your model heavily uses asynchronous communication operations.
+
+Once the logs are populated, they can be summarized with `deepspeed.comm.log_summary()`. For more detail and example usage, see the [tutorial](/tutorials/comms-logging/)
+
+
+
+
+<i>**comms_logger**</i>: [dictionary]
+
+| Fields | Value                                                                                                                                                                                                                                                                                                        |Default |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| enabled   | Whether communication logging is enabled. | `false` |
+| verbose | Whether to immediately print every communication operation  | `false` |
+| prof_all  | Whether to profile all operations. | `true` |
+| debug  | Appends the caller function to each communication operation's `log_name`. | `false` |
+| prof_ops  | A list of communication operations to log (only the specified ops will be profiled). | `[]` |
+
+
+Example of recommended <i>**comms_logger**</i> configuration:
+
+```json
+"comms_logger": {
+  "enabled": true,
+  "verbose": false,
+  "prof_all": true,
+  "debug": false
+}
+```
+
+Example of <i>**comms_logger**</i> configuration for logging specific operations only:
+
+```json
+"comms_logger": {
+  "enabled": true,
+  "verbose": false,
+  "prof_all": false,
+  "debug": false,
+  "prof_ops": ["all_reduce", "all_gather"]
 }
 ```
 ### Compression
