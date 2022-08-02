@@ -38,7 +38,6 @@ from deepspeed.runtime.dataloader import DeepSpeedDataLoader
 from deepspeed.runtime.constants import \
     ROUTE_TRAIN, ROUTE_PREDICT, ROUTE_EVAL, \
     PLD_THETA, PLD_GAMMA, BFLOAT16, FP16
-from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.compression import compression_scheduler
 from deepspeed.compression.constants import \
     WEIGHT_QUANTIZE_IN_FORWARD_ENABLED, \

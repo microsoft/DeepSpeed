@@ -4,7 +4,7 @@ Licensed under the MIT license.
 """
 
 from pydantic import Field
-from deepspeed.runtime.config_utils import get_scalar_param, DeepSpeedConfigModel
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
 
 class DeepSpeedActivationCheckpointingConfig(DeepSpeedConfigModel):
