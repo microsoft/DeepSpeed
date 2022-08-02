@@ -22,6 +22,7 @@ import deepspeed
 from deepspeed.runtime.utils import see_memory_usage, DummyOptim
 from deepspeed.runtime.zero.stage_1_and_2 import DeepSpeedZeroOptimizer
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+from deepspeed.runtime.zero.config import ZeroStageEnum
 from deepspeed.runtime.zero.utils import is_zero_supported_optimizer, ZeRORuntimeException
 from deepspeed.runtime.zero.parameter_offload import DeepSpeedZeRoOffload
 
@@ -628,7 +629,7 @@ class DeepSpeedEngine(Module):
         )
 
     def zero_optimization(self):
-        return self._config.zero_enabled
+        return self._config.zero_config.stage != ZeroStageEnum.disabled
 
     def zero_allow_untested_optimizer(self):
         return self._config.zero_allow_untested_optimizer
@@ -652,7 +653,7 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.sub_group_size
 
     def zero_optimization_stage(self):
-        return self._config.zero_optimization_stage
+        return self._config.zero_config.stage
 
     def zero_reduce_bucket_size(self):
         return self._config.zero_config.reduce_bucket_size

@@ -1,6 +1,59 @@
 from .constants import *
 import copy
+from pydantic import Field
+from typing import Dict, List
+from enum import Enum
 from ..runtime.config_utils import get_scalar_param
+from deepspeed.runtime.config_utils import DeepSpeedConfigModel
+
+
+class QuantizationTypeEnum(str, Enum):
+    symmetric = "symmetric"
+    asymmetric = "asymmetric"
+
+class QuantizationRoundingEnum(str, Enum):
+    neartest = "nearest"
+    stochastic = "stochastic"
+
+
+class FP16MixdQuantizeConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    quantize_change_ratio: float = Field(0.001, ge=0)
+
+
+class WeightQuantizationSharedParamsConfig(DeepSpeedConfigModel):
+    enabled: bool = False
+    quantizer_kernel: bool = False
+    schedule_offset: int = Field(0, ge=0)
+    quantize_groups: int = Field(1, gt=0)
+    quantize_verbose: bool = False
+    quantization_type: QuantizationTypeEnum = QuantizationTypeEnum.symmetric
+    quantize_weight_in_forward: bool = False
+    rounding: QuantizationRoundingEnum = QuantizationRoundingEnum.nearest
+    fp16_mixed_quantize: FP16MixedQuantizeConfig = {}
+
+
+class WeightQuantizationDifferentGroupsConfig(DeepSpeedConfigModel):
+    start_bits: int
+    target_bits: int
+    quantization_period: int = Field(1, ge=0)
+    modules: List[str] = ["*"]
+    related_modules: List[str] = None
+
+
+class WeightQuantizationConfig(DeepSpeedConfigModel):
+    shared_parameters: WeightQuantizationSharedParamsConfig = {}
+    different_groups: Dict[str, WeightQuantizationDifferentGroupsConfig] = {}
+
+class ActivationQuantizationConfig(DeepSpeedConfigModel):
+    shared_parameters: WeightQuantizationSharedParamsConfig = {}
+    different_groups: Dict[str, WeightQuantizationDifferentGroupsConfig] = {}
+
+
+
+class DeepSpeedCompressionConfig(DeepSpeedConfigModel):
+    weight_quantization: WeightQuantizationConfig = {}
+    activation_quantization: ActivationQuantizationConfig = {}
 
 
 def get_compression_config(param_dict):
