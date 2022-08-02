@@ -2065,6 +2065,8 @@ class DeepSpeedEngine(Module):
         record = self.is_gradient_accumulation_boundary() and \
             self.flops_profiler_enabled() and \
                 (self.global_steps >= self.flops_profiler_profile_step())
+        if not record:
+            return
         for name in timer_names:
             self.timers(name).stop(record=record)
 
