@@ -91,7 +91,7 @@ class DistributedTest(ABC):
         return test_kwargs
 
     def _launch_procs(self, num_procs):
-        mp.set_start_method('spawn', force=True)
+        mp.set_start_method('forkserver', force=True)
         skip_msg = mp.Queue()  # Allows forked processes to share pytest.skip reason
         processes = []
         for local_rank in range(num_procs):
