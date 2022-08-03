@@ -8,12 +8,11 @@ import os
 import numpy as np
 
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
-from deepspeed.ops.op_builder import OpBuilder
 
 PipeTopo = PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule
-from .common import distributed_test
-from .simple_model import SimpleModel, random_dataloader, args_from_dict
+from .common import DistributedTest
+from .simple_model import SimpleModel, random_dataloader
 from .test_pipe import AlexNetPipe, train_cifar
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -22,138 +21,92 @@ if TORCH_MAJOR < 1 or TORCH_MINOR < 8:
     pytest.skip("NCCL-based 1-bit compression requires torch 1.8 or higher",
                 allow_module_level=True)
 
-rocm_version = OpBuilder.installed_rocm_version()
-if rocm_version[0] > 4:
-    pytest.skip(
-        "NCCL-based 1-bit compression is not yet supported w. ROCm 5 until cupy supports ROCm 5",
-        allow_module_level=True)
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
+class TestOneBitAdamBasic(DistributedTest):
+    world_size = [1, 2]
 
-def test_onebitadam_fp16_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self, dtype):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": (dtype == torch.float16),
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_onebitadam_fp16_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
-
-    _test_onebitadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
-
-
-def test_onebitadam_fp32_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
-            }
-        },
-        "gradient_clipping": 1.0,
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
-
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_onebitadam_fp32_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=torch.float)
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
 
-    _test_onebitadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestOneBitAdamExpAvgMask(DistributedTest):
+    world_size = 2
 
-def test_onebitadam_exp_avg_mask(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-    mask1 = torch.flatten(mask1)
-    optimizer_grouped_parameters = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                    {
-                                        'params': [param_optimizer[1][1]],
-                                        'weight_decay': 0.01
-                                    }]
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+        mask1 = torch.flatten(mask1)
+        optimizer_grouped_parameters = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                        {
+                                            'params': [param_optimizer[1][1]],
+                                            'weight_decay': 0.01
+                                        }]
 
-    @distributed_test(world_size=[2])
-    def _test_onebitadam_exp_avg_mask(args, model, hidden_dim):
-        model, optimizer, _, _ = deepspeed.initialize(args=args,
+        model, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                       model=model,
                                                       model_parameters=optimizer_grouped_parameters)
         data_loader = random_dataloader(model=model,
@@ -169,75 +122,73 @@ def test_onebitadam_exp_avg_mask(tmpdir):
             if v['exp_avg'].size() == mask1.size():
                 assert torch.allclose(v['exp_avg'], v['exp_avg'].mul_(mask1.to(device=v['exp_avg'].device)), atol=1e-07), f"Momentum mask is not working properly"
 
-    _test_onebitadam_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestOneBitAdamCheckpointing(DistributedTest):
+    world_size = 2
 
-def test_onebitadam_checkpointing(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    mask2 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-        mask2[1][col] += 1
-    mask1 = torch.flatten(mask1)
-    mask2 = torch.flatten(mask2)
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        mask2 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+            mask2[1][col] += 1
+        mask1 = torch.flatten(mask1)
+        mask2 = torch.flatten(mask2)
 
-    optimizer_grouped_parameters_1 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_1 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_2 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask2
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_2 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask2
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_3 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_3 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    @distributed_test(world_size=[2])
-    def _test_onebitadam_checkpointing(mask1, mask2, args, model, hidden_dim):
-        model_1, optimizer_1, _, _ = deepspeed.initialize(args=args,
+        model_1, optimizer_1, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_1)
         data_loader = random_dataloader(model=model_1,
@@ -257,7 +208,7 @@ def test_onebitadam_checkpointing(tmpdir):
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
-        model_2, optimizer_2, _, _ = deepspeed.initialize(args=args,
+        model_2, optimizer_2, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_2)
         # Test whether momentum mask stays the same after loading checkpoint
@@ -274,7 +225,7 @@ def test_onebitadam_checkpointing(tmpdir):
             assert 'server_error' not in v, f"Incorrect server error"
         assert optimizer_2.optimizer.adam_freeze_key is True
 
-        model_3, optimizer_3, _, _ = deepspeed.initialize(args=args,
+        model_3, optimizer_3, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_3)
         optimizer_3.optimizer.freeze_step = 20
@@ -300,42 +251,31 @@ def test_onebitadam_checkpointing(tmpdir):
             assert 'server_error' not in v, f"Incorrect server error"
         assert optimizer_3.optimizer.adam_freeze_key is False
 
-    _test_onebitadam_checkpointing(mask1,
-                                   mask2,
-                                   args=args,
-                                   model=model,
-                                   hidden_dim=hidden_dim)
-
-
-def test_onebitadam_checkpointing_overflow(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test_overflow(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[2])
-    def _test_onebitadam_checkpointing_overflow(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -353,10 +293,6 @@ def test_onebitadam_checkpointing_overflow(tmpdir):
             dist.barrier()
             model.save_checkpoint(save_folder, tag=None)
 
-    _test_onebitadam_checkpointing_overflow(args=args,
-                                            model=model,
-                                            hidden_dim=hidden_dim)
-
 
 @pytest.mark.parametrize('topo',
                          [
@@ -367,45 +303,46 @@ def test_onebitadam_checkpointing_overflow(tmpdir):
                              PipeTopo(num_pp=4,
                                       num_dp=1),
                          ])
-def test_onebitadam_fp16_pipeline(topo, tmpdir):
-    config_dict = {
-        "train_batch_size": 16,
-        "train_micro_batch_size_per_gpu": 4,
-        "steps_per_print": 20,
-        "optimizer": {
-            "type": "OneBitAdam",
-            "params": {
-                "lr": 0.00001,
-                "betas": [0.9,
-                          0.999],
-                "eps": 1e-8,
-                "weight_decay": 3e-7,
-                "freeze_step": 200,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+class TestOneBitAdamFP16Pipeline(DistributedTest):
+    world_size = 4
+
+    def test(self, topo):
+        config_dict = {
+            "train_batch_size": 16,
+            "train_micro_batch_size_per_gpu": 4,
+            "steps_per_print": 20,
+            "optimizer": {
+                "type": "OneBitAdam",
+                "params": {
+                    "lr": 0.00001,
+                    "betas": [0.9,
+                              0.999],
+                    "eps": 1e-8,
+                    "weight_decay": 3e-7,
+                    "freeze_step": 200,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "zero_optimization": {
+                "stage": 0
+            },
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
+            },
+            "pipeline": {
+                "seed_layers": True,
+                "activation_checkpoint_interval": 1
             }
-        },
-        "gradient_clipping": 1.0,
-        "zero_optimization": {
-            "stage": 0
-        },
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
-        },
-        "pipeline": {
-            "seed_layers": True,
-            "activation_checkpoint_interval": 1
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
 
-    # Allocate model for consistent initial weights.
-    init_net = AlexNetPipe()
+        # Allocate model for consistent initial weights.
+        init_net = AlexNetPipe()
 
-    @distributed_test(world_size=4)
-    def _helper(topo, tmpdir, steps=500):
+        steps = 500
         assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
@@ -414,147 +351,102 @@ def test_onebitadam_fp16_pipeline(topo, tmpdir):
                                     loss_fn=nn.CrossEntropyLoss())
 
         test_losses = train_cifar(test_model,
-                                  args,
+                                  config_dict=config_dict,
                                   num_steps=steps,
                                   fp16=config_dict['fp16']['enabled'])
 
-    _helper(topo, tmpdir)
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
+class TestZeroOneAdamBasic(DistributedTest):
+    world_size = [1, 2]
 
-def test_zerooneadam_fp16_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self, dtype):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "ZeroOneAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "var_freeze_step": 4,
+                    "var_update_scaler": 1,
+                    "local_step_scaler": 1,
+                    "local_step_clipper": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": (dtype == torch.float16),
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_zerooneadam_fp16_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
-
-    _test_zerooneadam_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
-
-
-def test_zerooneadam_fp32_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
-            }
-        },
-        "gradient_clipping": 1.0,
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
-
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_zerooneadam_fp32_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=torch.float)
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
 
-    _test_zerooneadam_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestZeroOneAdamExpAvgMask(DistributedTest):
+    world_size = 2
 
-def test_zerooneadam_exp_avg_mask(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "ZeroOneAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "var_freeze_step": 4,
+                    "var_update_scaler": 1,
+                    "local_step_scaler": 1,
+                    "local_step_clipper": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-    mask1 = torch.flatten(mask1)
-    optimizer_grouped_parameters = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                    {
-                                        'params': [param_optimizer[1][1]],
-                                        'weight_decay': 0.01
-                                    }]
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+        mask1 = torch.flatten(mask1)
+        optimizer_grouped_parameters = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                        {
+                                            'params': [param_optimizer[1][1]],
+                                            'weight_decay': 0.01
+                                        }]
 
-    @distributed_test(world_size=[2])
-    def _test_zerooneadam_exp_avg_mask(args, model, hidden_dim):
-        model, optimizer, _, _ = deepspeed.initialize(args=args,
+        model, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                       model=model,
                                                       model_parameters=optimizer_grouped_parameters)
         data_loader = random_dataloader(model=model,
@@ -570,78 +462,76 @@ def test_zerooneadam_exp_avg_mask(tmpdir):
             if v['exp_avg'].size() == mask1.size():
                 assert torch.allclose(v['exp_avg'], v['exp_avg'].mul_(mask1.to(device=v['exp_avg'].device)), atol=1e-07), f"Momentum mask is not working properly"
 
-    _test_zerooneadam_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestZeroOneAdamCheckpointing(DistributedTest):
+    world_size = 2
 
-def test_zerooneadam_checkpointing(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "ZeroOneAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "var_freeze_step": 4,
+                    "var_update_scaler": 1,
+                    "local_step_scaler": 1,
+                    "local_step_clipper": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    mask2 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-        mask2[1][col] += 1
-    mask1 = torch.flatten(mask1)
-    mask2 = torch.flatten(mask2)
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        mask2 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+            mask2[1][col] += 1
+        mask1 = torch.flatten(mask1)
+        mask2 = torch.flatten(mask2)
 
-    optimizer_grouped_parameters_1 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_1 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_2 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask2
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_2 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask2
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_3 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_3 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    @distributed_test(world_size=[2])
-    def _test_zerooneadam_checkpointing(mask1, mask2, args, model, hidden_dim):
-        model_1, optimizer_1, _, _ = deepspeed.initialize(args=args,
+        model_1, optimizer_1, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_1)
         data_loader = random_dataloader(model=model_1,
@@ -660,7 +550,7 @@ def test_zerooneadam_checkpointing(tmpdir):
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
-        model_2, optimizer_2, _, _ = deepspeed.initialize(args=args,
+        model_2, optimizer_2, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_2)
         # Test whether momentum mask stays the same after loading checkpoint
@@ -676,7 +566,7 @@ def test_zerooneadam_checkpointing(tmpdir):
             assert 'worker_error' not in v, f"Incorrect worker error"
             assert 'server_error' not in v, f"Incorrect server error"
 
-        model_3, optimizer_3, _, _ = deepspeed.initialize(args=args,
+        model_3, optimizer_3, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_3)
         optimizer_3.optimizer.freeze_step = 20
@@ -700,45 +590,34 @@ def test_zerooneadam_checkpointing(tmpdir):
             assert 'worker_error' not in v, f"Incorrect worker error"
             assert 'server_error' not in v, f"Incorrect server error"
 
-    _test_zerooneadam_checkpointing(mask1,
-                                    mask2,
-                                    args=args,
-                                    model=model,
-                                    hidden_dim=hidden_dim)
-
-
-def test_zerooneadam_checkpointing_overflow(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+    def test_overflow(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "ZeroOneAdam",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "var_freeze_step": 4,
+                    "var_update_scaler": 1,
+                    "local_step_scaler": 1,
+                    "local_step_clipper": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[2])
-    def _test_zerooneadam_checkpointing_overflow(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -756,10 +635,6 @@ def test_zerooneadam_checkpointing_overflow(tmpdir):
             dist.barrier()
             model.save_checkpoint(save_folder, tag=None)
 
-    _test_zerooneadam_checkpointing_overflow(args=args,
-                                             model=model,
-                                             hidden_dim=hidden_dim)
-
 
 @pytest.mark.parametrize('topo',
                          [
@@ -770,48 +645,49 @@ def test_zerooneadam_checkpointing_overflow(tmpdir):
                              PipeTopo(num_pp=4,
                                       num_dp=1),
                          ])
-def test_zerooneadam_fp16_pipeline(topo, tmpdir):
-    config_dict = {
-        "train_batch_size": 16,
-        "train_micro_batch_size_per_gpu": 4,
-        "steps_per_print": 20,
-        "optimizer": {
-            "type": "ZeroOneAdam",
-            "params": {
-                "lr": 0.00001,
-                "betas": [0.9,
-                          0.999],
-                "eps": 1e-8,
-                "weight_decay": 3e-7,
-                "var_freeze_step": 4,
-                "var_update_scaler": 1,
-                "local_step_scaler": 1,
-                "local_step_clipper": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+class TestZeroOneAdamFP16Pipeline(DistributedTest):
+    world_size = 4
+
+    def test(self, topo):
+        config_dict = {
+            "train_batch_size": 16,
+            "train_micro_batch_size_per_gpu": 4,
+            "steps_per_print": 20,
+            "optimizer": {
+                "type": "ZeroOneAdam",
+                "params": {
+                    "lr": 0.00001,
+                    "betas": [0.9,
+                              0.999],
+                    "eps": 1e-8,
+                    "weight_decay": 3e-7,
+                    "var_freeze_step": 4,
+                    "var_update_scaler": 1,
+                    "local_step_scaler": 1,
+                    "local_step_clipper": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "zero_optimization": {
+                "stage": 0
+            },
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
+            },
+            "pipeline": {
+                "seed_layers": True,
+                "activation_checkpoint_interval": 1
             }
-        },
-        "gradient_clipping": 1.0,
-        "zero_optimization": {
-            "stage": 0
-        },
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
-        },
-        "pipeline": {
-            "seed_layers": True,
-            "activation_checkpoint_interval": 1
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
 
-    # Allocate model for consistent initial weights.
-    init_net = AlexNetPipe()
+        # Allocate model for consistent initial weights.
+        init_net = AlexNetPipe()
 
-    @distributed_test(world_size=4)
-    def _helper(topo, tmpdir, steps=500):
+        steps = 500
         assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
@@ -820,155 +696,107 @@ def test_zerooneadam_fp16_pipeline(topo, tmpdir):
                                     loss_fn=nn.CrossEntropyLoss())
 
         test_losses = train_cifar(test_model,
-                                  args,
+                                  config_dict=config_dict,
                                   num_steps=steps,
                                   fp16=config_dict['fp16']['enabled'])
 
-    _helper(topo, tmpdir)
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
+class TestOneBitLambBasic(DistributedTest):
+    world_size = [1, 2]
 
-def test_onebitlamb_fp16_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "max_coeff": 0.3,
-                "min_coeff": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl",
-                "coeff_beta": 0.9,
-                "factor_max": 1.0,
-                "factor_min": 0.5,
-                "factor_threshold": 0.1
+    def test(self, dtype):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitLamb",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "max_coeff": 0.3,
+                    "min_coeff": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl",
+                    "coeff_beta": 0.9,
+                    "factor_max": 1.0,
+                    "factor_min": 0.5,
+                    "factor_threshold": 0.1
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": (dtype == torch.float16),
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_onebitlamb_fp16_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
-                                              model=model,
-                                              model_parameters=model.parameters())
-        data_loader = random_dataloader(model=model,
-                                        total_samples=50,
-                                        hidden_dim=hidden_dim,
-                                        device=model.device)
-        for n, batch in enumerate(data_loader):
-            loss = model(batch[0], batch[1])
-            model.backward(loss)
-            model.step()
-
-    _test_onebitlamb_fp16_basic(args=args, model=model, hidden_dim=hidden_dim)
-
-
-def test_onebitlamb_fp32_basic(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "max_coeff": 0.3,
-                "min_coeff": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl",
-                "coeff_beta": 0.9,
-                "factor_max": 1.0,
-                "factor_min": 0.5,
-                "factor_threshold": 0.1
-            }
-        },
-        "gradient_clipping": 1.0,
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
-
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[1, 2])
-    def _test_onebitlamb_fp32_basic(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=50,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=torch.float)
+                                        dtype=dtype)
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
             model.backward(loss)
             model.step()
 
-    _test_onebitlamb_fp32_basic(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestOneBitLampExpAvgMask(DistributedTest):
+    world_size = 2
 
-def test_onebitlamb_exp_avg_mask(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "max_coeff": 0.3,
-                "min_coeff": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl",
-                "coeff_beta": 0.9,
-                "factor_max": 1.0,
-                "factor_min": 0.5,
-                "factor_threshold": 0.1
+    def test(self):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitLamb",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "max_coeff": 0.3,
+                    "min_coeff": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl",
+                    "coeff_beta": 0.9,
+                    "factor_max": 1.0,
+                    "factor_min": 0.5,
+                    "factor_threshold": 0.1
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-    optimizer_grouped_parameters = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                    {
-                                        'params': [param_optimizer[1][1]],
-                                        'weight_decay': 0.01
-                                    }]
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+        optimizer_grouped_parameters = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                        {
+                                            'params': [param_optimizer[1][1]],
+                                            'weight_decay': 0.01
+                                        }]
 
-    @distributed_test(world_size=[2])
-    def _test_onebitlamb_exp_avg_mask(args, model, hidden_dim):
-        model, optimizer, _, _ = deepspeed.initialize(args=args,
+        model, optimizer, _, _ = deepspeed.initialize(config=config_dict,
                                                       model=model,
                                                       model_parameters=optimizer_grouped_parameters)
         data_loader = random_dataloader(model=model,
@@ -984,79 +812,77 @@ def test_onebitlamb_exp_avg_mask(tmpdir):
             if v['exp_avg'].size() == mask1.size():
                 assert torch.allclose(v['exp_avg'], v['exp_avg'].mul_(mask1.to(device=v['exp_avg'].device)), atol=1e-07), f"Momentum mask is not working properly"
 
-    _test_onebitlamb_exp_avg_mask(args=args, model=model, hidden_dim=hidden_dim)
 
+class TestOneBitLambCheckpointing(DistributedTest):
+    world_size = 2
 
-def test_onebitlamb_checkpointing(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "max_coeff": 0.3,
-                "min_coeff": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl",
-                "coeff_beta": 0.9,
-                "factor_max": 1.0,
-                "factor_min": 0.5,
-                "factor_threshold": 0.1
+    def test(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitLamb",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "max_coeff": 0.3,
+                    "min_coeff": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl",
+                    "coeff_beta": 0.9,
+                    "factor_max": 1.0,
+                    "factor_min": 0.5,
+                    "factor_threshold": 0.1
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-    param_optimizer = list(model.named_parameters())
-    mask1 = torch.zeros_like(param_optimizer[0][1].data)
-    mask2 = torch.zeros_like(param_optimizer[0][1].data)
-    for col in range(mask1.size()[1]):
-        mask1[0][col] += 1
-        mask2[1][col] += 1
+        model = SimpleModel(hidden_dim)
+        param_optimizer = list(model.named_parameters())
+        mask1 = torch.zeros_like(param_optimizer[0][1].data)
+        mask2 = torch.zeros_like(param_optimizer[0][1].data)
+        for col in range(mask1.size()[1]):
+            mask1[0][col] += 1
+            mask2[1][col] += 1
 
-    optimizer_grouped_parameters_1 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask1
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_1 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask1
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_2 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01,
-        'exp_avg_mask': mask2
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_2 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01,
+            'exp_avg_mask': mask2
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    optimizer_grouped_parameters_3 = [{
-        'params': [param_optimizer[0][1]],
-        'weight_decay': 0.01
-    },
-                                      {
-                                          'params': [param_optimizer[1][1]],
-                                          'weight_decay': 0.01
-                                      }]
+        optimizer_grouped_parameters_3 = [{
+            'params': [param_optimizer[0][1]],
+            'weight_decay': 0.01
+        },
+                                          {
+                                              'params': [param_optimizer[1][1]],
+                                              'weight_decay': 0.01
+                                          }]
 
-    @distributed_test(world_size=[2])
-    def _test_onebitlamb_checkpointing(mask1, mask2, args, model, hidden_dim):
-        model_1, optimizer_1, _, _ = deepspeed.initialize(args=args,
+        model_1, optimizer_1, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_1)
         data_loader = random_dataloader(model=model_1,
@@ -1080,7 +906,7 @@ def test_onebitlamb_checkpointing(tmpdir):
         assert torch.allclose(optimizer_1.param_groups[0]['exp_avg_mask'], mask1, atol=1e-07), f"Momentum mask should not change after saving checkpoint"
 
 
-        model_2, optimizer_2, _, _ = deepspeed.initialize(args=args,
+        model_2, optimizer_2, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_2)
         # Test whether momentum mask stays the same after loading checkpoint
@@ -1102,7 +928,7 @@ def test_onebitlamb_checkpointing(tmpdir):
         assert list(sorted(scaling_coeff_2)) == list(sorted(scaling_coeff_1)), f"Incorrect scaling_coeffs"
         assert optimizer_2.optimizer.lamb_freeze_key is True
 
-        model_3, optimizer_3, _, _ = deepspeed.initialize(args=args,
+        model_3, optimizer_3, _, _ = deepspeed.initialize(config=config_dict,
                                                           model=model,
                                                           model_parameters=optimizer_grouped_parameters_3)
         optimizer_3.optimizer.freeze_step = 20
@@ -1132,48 +958,37 @@ def test_onebitlamb_checkpointing(tmpdir):
             assert 'scaling_coeff' not in v, f"Incorrect scaling_coeff"
         assert optimizer_3.optimizer.lamb_freeze_key is False
 
-    _test_onebitlamb_checkpointing(mask1,
-                                   mask2,
-                                   args=args,
-                                   model=model,
-                                   hidden_dim=hidden_dim)
-
-
-def test_onebitlamb_checkpointing_overflow(tmpdir):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00015,
-                "weight_decay": 0.01,
-                "max_coeff": 0.3,
-                "min_coeff": 0.01,
-                "freeze_step": 2,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl",
-                "coeff_beta": 0.9,
-                "factor_max": 1.0,
-                "factor_min": 0.5,
-                "factor_threshold": 0.1
+    def test_overflow(self, tmpdir):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "OneBitLamb",
+                "params": {
+                    "lr": 0.00015,
+                    "weight_decay": 0.01,
+                    "max_coeff": 0.3,
+                    "min_coeff": 0.01,
+                    "freeze_step": 2,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl",
+                    "coeff_beta": 0.9,
+                    "factor_max": 1.0,
+                    "factor_min": 0.5,
+                    "factor_threshold": 0.1
+                }
+            },
+            "gradient_clipping": 1.0,
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
             }
-        },
-        "gradient_clipping": 1.0,
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim)
-
-    @distributed_test(world_size=[2])
-    def _test_onebitlamb_checkpointing_overflow(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -1191,10 +1006,6 @@ def test_onebitlamb_checkpointing_overflow(tmpdir):
             dist.barrier()
             model.save_checkpoint(save_folder, tag=None)
 
-    _test_onebitlamb_checkpointing_overflow(args=args,
-                                            model=model,
-                                            hidden_dim=hidden_dim)
-
 
 @pytest.mark.parametrize('topo',
                          [
@@ -1205,45 +1016,46 @@ def test_onebitlamb_checkpointing_overflow(tmpdir):
                              PipeTopo(num_pp=4,
                                       num_dp=1),
                          ])
-def test_onebitlamb_fp16_pipeline(topo, tmpdir):
-    config_dict = {
-        "train_batch_size": 16,
-        "train_micro_batch_size_per_gpu": 4,
-        "steps_per_print": 20,
-        "optimizer": {
-            "type": "OneBitLamb",
-            "params": {
-                "lr": 0.00001,
-                "betas": [0.9,
-                          0.999],
-                "eps": 1e-8,
-                "weight_decay": 3e-7,
-                "freeze_step": 200,
-                "cuda_aware": False,
-                "comm_backend_name": "nccl"
+class TestOneBitLambFP16Pipeline(DistributedTest):
+    world_size = 4
+
+    def test(self, topo):
+        config_dict = {
+            "train_batch_size": 16,
+            "train_micro_batch_size_per_gpu": 4,
+            "steps_per_print": 20,
+            "optimizer": {
+                "type": "OneBitLamb",
+                "params": {
+                    "lr": 0.00001,
+                    "betas": [0.9,
+                              0.999],
+                    "eps": 1e-8,
+                    "weight_decay": 3e-7,
+                    "freeze_step": 200,
+                    "cuda_aware": False,
+                    "comm_backend_name": "nccl"
+                }
+            },
+            "gradient_clipping": 1.0,
+            "zero_optimization": {
+                "stage": 0
+            },
+            "fp16": {
+                "enabled": True,
+                "loss_scale": 0,
+                "initial_scale_power": 16
+            },
+            "pipeline": {
+                "seed_layers": True,
+                "activation_checkpoint_interval": 1
             }
-        },
-        "gradient_clipping": 1.0,
-        "zero_optimization": {
-            "stage": 0
-        },
-        "fp16": {
-            "enabled": True,
-            "loss_scale": 0,
-            "initial_scale_power": 16
-        },
-        "pipeline": {
-            "seed_layers": True,
-            "activation_checkpoint_interval": 1
         }
-    }
-    args = args_from_dict(tmpdir, config_dict)
 
-    # Allocate model for consistent initial weights.
-    init_net = AlexNetPipe()
+        # Allocate model for consistent initial weights.
+        init_net = AlexNetPipe()
 
-    @distributed_test(world_size=4)
-    def _helper(topo, tmpdir, steps=500):
+        steps = 500
         assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
@@ -1252,17 +1064,16 @@ def test_onebitlamb_fp16_pipeline(topo, tmpdir):
                                     loss_fn=nn.CrossEntropyLoss())
 
         test_losses = train_cifar(test_model,
-                                  args,
+                                  config_dict=config_dict,
                                   num_steps=steps,
                                   fp16=config_dict['fp16']['enabled'])
 
-    _helper(topo, tmpdir)
-
 
 @pytest.mark.sequential
-def test_compressed_allreduce_basic(tmpdir):
-    @distributed_test(world_size=[1, 2])
-    def _test_compressed_allreduce_basic():
+class TestCompressedAllReduceBasic(DistributedTest):
+    world_size = [1, 2]
+
+    def test(self, tmpdir):
         from deepspeed.runtime.comm.nccl import NcclBackend
         size = dist.get_world_size()
         rank = dist.get_rank()
@@ -1327,5 +1138,3 @@ def test_compressed_allreduce_basic(tmpdir):
         if torch.sum(check_mag_mask) != 0:
             print('Fails at {} of positions'.format(torch.sum(check_mag_mask)))
         assert torch.sum(diff_server_mask) == 0 or torch.sum(check_mag_mask) == 0
-
-    _test_compressed_allreduce_basic()

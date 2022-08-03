@@ -136,7 +136,12 @@ def cifar_trainset(fp16=False):
     return trainset
 
 
-def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, seed=123):
+def train_cifar(model,
+                config_dict,
+                num_steps=400,
+                average_dp_losses=True,
+                fp16=True,
+                seed=123):
     with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
         ds_utils.set_random_seed(seed)
 
@@ -144,10 +149,10 @@ def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, s
         model.eval()
 
         trainset = cifar_trainset(fp16=fp16)
-        args.local_rank = dist.get_rank()
+        config_dict['local_rank'] = dist.get_rank()
 
         engine, _, _, _ = deepspeed.initialize(
-            args=args,
+            config=config_dict,
             model=model,
             model_parameters=[p for p in model.parameters()],
             training_data=trainset)
