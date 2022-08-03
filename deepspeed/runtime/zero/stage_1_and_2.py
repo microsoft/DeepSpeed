@@ -966,9 +966,13 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
             if not self.ipg_bucket_has_moe_params:
                 tensor.div_(dist.get_world_size(group=self.dp_process_group))
 
+            tensor_to_reduce = tensor
+            if self.communication_data_type != tensor.dtype:
+                tensor_to_reduce = tensor.to(self.communication_data_type)
+
             async_handles = []
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
-                grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
+                grad_slice = tensor_to_reduce.narrow(0, int(bucket_offset), int(numel))
                 # if dist.get_rank() == 0:
                 #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
                 # dist.barrier()
@@ -982,6 +986,9 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
 
             for handle in async_handles:
                 handle.wait()
+
+            if self.communication_data_type != tensor.dtype:
+                tensor.copy_(tensor_to_reduce)
 
     ##############################################################################
     ############################# CPU Offload Methods#############################
