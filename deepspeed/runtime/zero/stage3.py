@@ -1155,6 +1155,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 g.div(self.gradient_predivide_factor) for g in full_grads_for_rank
             ]
 
+        #if torch.distributed.get_rank() == 0:
+        #    g_numel = sum([g.numel() for g in full_grads_for_rank])
+        #    print(f"reduce scatter numel: {g_numel}")
         grad_partitions_for_rank = reduce_scatter_coalesced(full_grads_for_rank,
                                                             self.dp_process_group)
 
