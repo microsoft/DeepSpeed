@@ -91,12 +91,8 @@ def cast_to_half(x):
 
 
 def cifar_trainset(fp16=False):
-    import torchvision
+    torchvision = pytest.importorskip("torchvision", minversion="0.5.0")
     import torchvision.transforms as transforms
-
-    tv_maj_ver, tv_min_ver = map(int, torchvision.__version__.split(".")[:2])
-    if not (tv_maj_ver > 0) and (tv_min_ver < 5):
-        pytest.skip("torchvision>=0.5.0 required")
 
     transform_list = [
         transforms.ToTensor(),

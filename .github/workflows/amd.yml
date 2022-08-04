@@ -38,7 +38,6 @@ jobs:
           pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.1.1
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-          pip install https://github.com/cupy/cupy/releases/download/v11.0.0/cupy_rocm_5_0-11.0.0-cp37-cp37m-manylinux1_x86_64.whl
           sudo apt-get update
           sudo apt-get install -y libaio-dev
 
@@ -67,5 +66,5 @@ jobs:
         run: |
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -n 4 unit/{comm,compression,inference,monitor,ops,profiling,runtime,utils}
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'sequential' unit/{comm,compression,inference,monitor,ops,profiling,runtime,utils}
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -n 4 unit/{autotuning,checkpointing,comm,compression,inference,launcher,monitor,ops,profiling,runtime,utils}
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --verbose -m 'sequential' unit/{autotuning,checkpointing,comm,compression,inference,launcher,monitor,ops,profiling,runtime,utils}
