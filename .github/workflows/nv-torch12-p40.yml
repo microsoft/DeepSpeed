@@ -31,7 +31,7 @@ jobs:
           nvcc --version
           pip install --upgrade pip
           pip uninstall --yes torch torchvision
-          pip install torch==1.2.0 torchvision==0.5.0
+          pip install torch==1.2.0 torchvision==0.4.0
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
 
