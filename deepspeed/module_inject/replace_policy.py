@@ -181,12 +181,12 @@ class HFGPTJLayerPolicy(DSPolicy):
         qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
 
         return self.linear_layer, \
-                qkvw, \
-                None, \
-                self.client_module.attn.out_proj.weight, \
-                None, \
-                self.scale_attention, \
-               self.is_megatron_v2
+            qkvw, \
+            None, \
+            self.client_module.attn.out_proj.weight, \
+            None, \
+            self.scale_attention, \
+            self.is_megatron_v2
 
     def mlp(self):
         return self.linear_layer, \
@@ -418,6 +418,55 @@ class GPTNEOXLayerPolicy(DSPolicy):
                self.client_module.input_layernorm.bias
 
 
+class HFOPTLayerPolicy(DSPolicy):
+    _orig_layer_class = None
+
+    def __init__(self, client_module, inference=True):
+        # TODO(arashb): linear_layer == True ?
+        super().__init__(inference, linear_layer=True)
+        self.client_module = client_module
+        try:
+            import transformers
+            HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
+        except:
+            HFOPTLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.self_attn.embed_dim, \
+                self.client_module.self_attn.num_heads
+
+    def attention(self):
+        qw = self.client_module.self_attn.q_proj.weight
+        kw = self.client_module.self_attn.k_proj.weight
+        vw = self.client_module.self_attn.v_proj.weight
+
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+
+        # TODO(arashb): what is linear_layer used for?
+        return self.linear_layer, \
+            qkvw, \
+            None, \
+            self.client_module.self_attn.out_proj.weight, \
+            None, \
+            self.scale_attention, \
+            self.is_megatron_v2
+
+    def mlp(self):
+        # TODO(arashb): what is linear_layer used for?
+        return self.linear_layer, \
+            self.client_module.fc1.weight, \
+            self.client_module.fc1.bias, \
+            self.client_module.fc2.weight, \
+            self.client_module.fc2.bias
+
+    def layerNorm(self):
+        # TODO(arashb): # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
+        return self.client_module.final_layer_norm.weight, \
+            self.client_module.final_layer_norm.bias, \
+            self.client_module.self_attn_layer_norm.weight, \
+            self.client_module.self_attn_layer_norm.bias
+
+
 replace_policies = [
     HFBertLayerPolicy,
     HFGPTNEOLayerPolicy,
@@ -426,4 +475,5 @@ replace_policies = [
     MegatronLayerPolicy,
     HFGPT2LayerPolicy,
     BLOOMLayerPolicy,
+    HFOPTLayerPolicy,
 ]
