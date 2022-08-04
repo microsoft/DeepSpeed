@@ -118,12 +118,8 @@ class DeepSpeedSelfAttentionFunction(Function):
     def forward(ctx,
                 input,
                 input_mask,
-                head_mask,
                 layer_past,
                 get_present,
-                encoder_hidden_states,
-                encoder_attention_mask,
-                output_attentions,
                 norm_w,
                 norm_b,
                 config,
@@ -529,24 +525,16 @@ class DeepSpeedSelfAttention(nn.Module):
     def forward(self,
                 input,
                 input_mask,
-                head_mask=None,
                 layer_past=None,
                 get_present=False,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                output_attentions=False,
                 norm_w=None,
                 norm_b=None,
                 alibi=None):
         output = DeepSpeedSelfAttentionFunction.apply(
             input,
             input_mask,
-            head_mask,
             layer_past,
             get_present,
-            encoder_hidden_states,
-            encoder_attention_mask,
-            output_attentions,
             norm_w,
             norm_b,
             self.config,
@@ -831,16 +819,12 @@ class DeepSpeedTransformerInference(nn.Module):
         with torch.no_grad():
             attention_output, key, value, context_outputtn_ctx, inp_norm = \
                                      self.attention(input,
-                                              input_mask,
-                                              head_mask,
-                                              layer_past,
-                                              get_present,
-                                              encoder_hidden_states,
-                                              encoder_attention_mask,
-                                              output_attentions,
-                                              self.norm_w,
-                                              self.norm_b,
-                                              alibi)
+                                                    input_mask,
+                                                    layer_past,
+                                                    get_present,
+                                                    self.norm_w,
+                                                    self.norm_b,
+                                                    alibi)
             presents = (key, value)
             self.layer_past = presents if layer_past is None else None
             output = self.mlp(attention_output, input, inp_norm, self.attention.attn_ob)
