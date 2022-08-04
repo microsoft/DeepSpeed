@@ -1103,7 +1103,10 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         persistent_params = []
         total_persistent_parameters = 0
         params_count = 0
-        for _, param in self.module.named_parameters(recurse=True):
+        all_params_count = 0
+        for name, param in self.module.named_parameters(recurse=True):
+            print_rank_0(f'param {param.ds_id} - {name} numel = {param.ds_numel}', force=True)
+            all_params_count += 1 
             if param.ds_numel < self.persistence_threshold:
                 params_count += 1
                 param.ds_persist = True
@@ -1111,8 +1114,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 total_persistent_parameters += param.ds_numel
 
         print_rank_0(
-            f"ZeRO 3: Total persistent parameters: {total_persistent_parameters} in {params_count} params",
-            force=False)
+            f"ZeRO 3: Total persistent parameters: numel = {total_persistent_parameters} in {params_count} params out of all {all_params_count}",
+            force=True)
         return persistent_params
 
     def _register_hooks_recursively(self, module, count=[0]):

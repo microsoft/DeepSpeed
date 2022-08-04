@@ -246,7 +246,7 @@ class PartitionedParameterCoordinator:
         if self.__inflight_param_registry:
             raise RuntimeError(
                 f"still have inflight params "
-                f"{[p.ds_summary for p in self.__inflight_param_registry.keys()]}")
+                f"{[p.ds_summary() for p in self.__inflight_param_registry.keys()]}")
 
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded parameter and submodule orders are
@@ -318,42 +318,44 @@ class PartitionedParameterCoordinator:
             }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
-        fetch_numel = sum([p.ds_numel for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
-        
+        fetch_numel = sum([p.partitioned_size() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
         if fetch_numel > 0:
+            self._dump_param_ids('params_to_fetch', current_submodule.id, [p.ds_id for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
             self._start_timers([__class__.FORWARD_FETCH_SUBMIT_TIMER])
             # kick off all gather for params in the immediately required submodule
-            for param in params_to_fetch:
-                debug_rank0(f"-fetch: {param.ds_summary()}")
+            # for param in params_to_fetch:
+            #     debug_rank0(f"-fetch: {param.ds_summary()}")
             self.__all_gather_params(params_to_fetch)
             self._stop_timers([__class__.FORWARD_FETCH_SUBMIT_TIMER])
-
-            self._start_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
-            # wait for parameters in the immediately needed submodule to become available        
-            for param in params_to_fetch:
-                param.ds_active_sub_modules.add(current_submodule.id)
-                debug_rank0(f"-wait: {param.ds_summary()}")
-                if param in self.__inflight_param_registry:
-                    with torch.cuda.stream(self.__allgather_stream):
-                        while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
-                                0].query():
-                            self.__ongoing_fetch_events.popleft()
-                        if len(self.__ongoing_fetch_events
-                            ) > self.__max_ongoing_fetch_events:
-                            self.__ongoing_fetch_events.popleft().synchronize()
-
-                        self.__inflight_param_registry.pop(param).wait()
-
-                        event = Event()
-                        event.record()
-                        self.__ongoing_fetch_events.append(event)
-
-                assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
-            torch.cuda.current_stream().wait_stream(self.__allgather_stream)
-            self._stop_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
-
             self.__forward_perf_counters[__class__.FORWARD_FETCH_SUBMIT_TIMER].increment(fetch_numel)
-            self.__forward_perf_counters[__class__.FORWARD_FETCH_WAIT_TIMER].increment(fetch_numel)
+
+        wait_numel = 0
+        self._start_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
+        # wait for parameters in the immediately needed submodule to become available        
+        for param in params_to_fetch:
+            param.ds_active_sub_modules.add(current_submodule.id)
+            # debug_rank0(f"-wait: {param.ds_summary()}")
+            if param in self.__inflight_param_registry:
+                wait_numel += param.partitioned_size()
+                with torch.cuda.stream(self.__allgather_stream):
+                    while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
+                            0].query():
+                        self.__ongoing_fetch_events.popleft()
+                    if len(self.__ongoing_fetch_events
+                        ) > self.__max_ongoing_fetch_events:
+                        self.__ongoing_fetch_events.popleft().synchronize()
+
+                    self.__inflight_param_registry.pop(param).wait()
+
+                    event = Event()
+                    event.record()
+                    self.__ongoing_fetch_events.append(event)
+
+            assert param.ds_status == ZeroParamStatus.AVAILABLE, param.ds_summary()
+        torch.cuda.current_stream().wait_stream(self.__allgather_stream)
+        self._stop_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
+
+        self.__forward_perf_counters[__class__.FORWARD_FETCH_WAIT_TIMER].increment(wait_numel)
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
@@ -420,14 +422,16 @@ class PartitionedParameterCoordinator:
                         params_to_prefetch.add(param_in_trace.param)
                         numel_prefetching += param_in_trace.param.ds_numel
 
-                self._start_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
-                for param in params_to_prefetch:
-                    debug_rank0(f"-prefetch: {param.ds_summary()}")
-                self.__all_gather_params(params_to_prefetch)
-                self._stop_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
+                if numel_prefetching > 0:
+                    self._dump_param_ids('params_to_prefetch', current_submodule.id, [p.ds_id for p in params_to_prefetch])
+                    self._start_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
+                    # for param in params_to_prefetch:
+                    #     debug_rank0(f"-prefetch: {param.ds_summary()}")
+                    self.__all_gather_params(params_to_prefetch)
+                    self._stop_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
 
-                if forward:
-                    self.__forward_perf_counters[__class__.FORWARD_PREFETCH_SUBMIT_TIMER].increment(numel_prefetching)
+                    if forward:
+                        self.__forward_perf_counters[__class__.FORWARD_PREFETCH_SUBMIT_TIMER].increment(numel_prefetching)
 
                 if self.__prefetch_nvme:
                     self.__prefetch_nvme_param_partitions()

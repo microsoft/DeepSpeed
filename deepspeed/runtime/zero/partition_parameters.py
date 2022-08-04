@@ -40,6 +40,7 @@ from deepspeed.utils.logging import logger
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
 
 param_count = 0
+weight_bias_count = 0
 partitioned_param_data_shape = [0]
 
 if hasattr(torch.distributed, "_all_gather_base"):
@@ -460,8 +461,8 @@ class InsertPostInitMethodToModuleSubClasses(object):
         #            torch.nn.functional.linear = self.linear_bk
 
         if torch.distributed.get_rank() == 0:
-            logger.info("finished initializing model with %.2fB parameters",
-                        param_count / 1e9)
+            logger.info("finished initializing model with %d weight_biases,  %.2fB parameters",
+                        weight_bias_count, param_count / 1e9)
 
         # Now that we cleaned up the metaclass injection, raise the exception.
         if exc_type is not None:
@@ -702,8 +703,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Remote device is the device where parameter partitions are stored
         # It can be same as local_device or it could be CPU or NVMe.
         self.remote_device = self.local_device if remote_device is None else remote_device
-        self.pin_memory = pin_memory if (self.remote_device
-                                         == OFFLOAD_CPU_DEVICE) else False
+        self.pin_memory = pin_memory if (self.remote_device in [OFFLOAD_CPU_DEVICE, OFFLOAD_NVME_DEVICE]) else False
+
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OFFLOAD_NVME_DEVICE:
@@ -755,7 +756,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             force=False)
 
         global param_count
+        global weight_bias_count
         for name, param in module.named_parameters(recurse=False):
+            weight_bias_count += 1 
             param_count += param.numel()
             if not is_zero_param(param):
                 self._convert_to_deepspeed_param(param)
@@ -859,6 +862,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     requires_grad=False,
                 )
                 handle = torch_allgather_fn(
+                    #torch.empty_like(param.ds_tensor, device=torch.cuda.current_device()), 
                     param.ds_tensor.to(torch.cuda.current_device()),
                     param_buffer,
                     self.ds_process_group,
@@ -885,6 +889,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 instrument_w_nvtx(torch.cat)(
                     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                     out=partitions[self.rank])
+                #instrument_w_nvtx(torch.cat)(
+                #    [torch.empty_like(p.ds_tensor, device=torch.cuda.current_device()) for p in params],
+                #    out=partitions[self.rank])
                 handle = torch_allgather_fn(partitions[self.rank],
                                             flat_tensor,
                                             self.ds_process_group)
