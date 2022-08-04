@@ -522,16 +522,19 @@ class MOELayer(Base):
         if self.wall_clock_breakdown:
             self.timers('falltoall').start()
 
-        if groups._get_expert_model_parallel_world_size() == 1:
-            # If the non-expert is tensor-parallel, it will create
-            # duplicate tokens on the tensor-parallel ranks.
-            # Since our experts are not tensor-parallel, these duplicates
-            # need to be dropped to ensure correctness.
-            # this also doubles up as a communication optimization as we are
-            # reducing the all-to-all communication volume.
-            dispatched_input = drop_tokens(dispatched_input, dim=1)
+        #if groups._get_expert_model_parallel_world_size() == 1:
+        # If the non-expert is tensor-parallel, it will create
+        # duplicate tokens on the tensor-parallel ranks.
+        # Since our experts are not tensor-parallel, these duplicates
+        # need to be dropped to ensure correctness.
+        # this also doubles up as a communication optimization as we are
+        # reducing the all-to-all communication volume.
+        dispatched_input = drop_tokens(dispatched_input, dim=1)
 
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
+
+        if groups._get_expert_model_parallel_world_size() > 1:
+            dispatched_input = gather_tokens(dispatched_input, dim=1)
 
         if self.wall_clock_breakdown:
             self.timers('falltoall').stop()
