@@ -11,9 +11,9 @@ from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 
 PipeTopo = PipeDataParallelTopology
 from deepspeed.runtime.pipe.module import PipelineModule
-from .common import DistributedTest
-from .simple_model import SimpleModel, random_dataloader
-from .test_pipe import AlexNetPipe, train_cifar
+from tests.unit.common import DistributedTest
+from tests.unit.simple_model import SimpleModel, random_dataloader
+from tests.unit.alexnet_model import AlexNetPipe, train_cifar
 
 TORCH_MAJOR = int(torch.__version__.split(".")[0])
 TORCH_MINOR = int(torch.__version__.split(".")[1])
@@ -391,12 +391,10 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
+        steps = 500  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
-
-        steps = 500
-        assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(),
@@ -405,7 +403,7 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
 
         test_losses = train_cifar(
             test_model,
-            config_dict=config_dict,
+            config=config_dict,
             num_steps=steps,
             fp16=config_dict["fp16"]["enabled"],
         )
@@ -789,12 +787,10 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
+        steps = 500  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
-
-        steps = 500
-        assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(),
@@ -803,7 +799,7 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
 
         test_losses = train_cifar(
             test_model,
-            config_dict=config_dict,
+            config=config_dict,
             num_steps=steps,
             fp16=config_dict["fp16"]["enabled"],
         )
@@ -1212,12 +1208,10 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
         }
 
         topo = PipeTopo(**topo_config)
+        steps = 500  # Must be >=100
 
         # Allocate model for consistent initial weights.
         init_net = AlexNetPipe()
-
-        steps = 500
-        assert steps >= 100
 
         test_net = copy.deepcopy(init_net)
         test_model = PipelineModule(layers=test_net.to_layers(),
@@ -1226,7 +1220,7 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
 
         test_losses = train_cifar(
             test_model,
-            config_dict=config_dict,
+            config=config_dict,
             num_steps=steps,
             fp16=config_dict["fp16"]["enabled"],
         )
