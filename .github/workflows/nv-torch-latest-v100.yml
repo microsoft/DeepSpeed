@@ -61,5 +61,5 @@ jobs:
           if [[ -d ./torch-extensions ]]; then rm -rf ./torch-extensions; fi
           cd tests
           EXPECTED_TORCH=$(pip index versions torch | grep -oP -m1 "^\s*LATEST.*\s\K\d+\.\d+")
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -n 4 unit/ --torch_ver=$EXPECTED_TROCH --cuda_ver="11.3"
-          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'sequential' unit/ --torch_ver=$EXPECTED_TORCH --cuda_ver="11.3"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -n 4 unit/{comm,compression,inference,monitor,ops,profiling,runtime,utils} --torch_ver=$EXPECTED_TROCH --cuda_ver="11.3"
+          TORCH_EXTENSIONS_DIR=./torch-extensions pytest --color=yes --durations=0 --forked --verbose -m 'sequential' unit/{comm,compression,inference,monitor,ops,profiling,runtime,utils} --torch_ver=$EXPECTED_TORCH --cuda_ver="11.3"
