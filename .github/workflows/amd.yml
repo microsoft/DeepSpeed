@@ -38,6 +38,7 @@ jobs:
           pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/rocm5.1.1
           python -c "import torch; print('torch:', torch.__version__, torch)"
           python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+          HCC_AMDGPU_TARGET=gfx908 __HIP_PLATFORM_HCC__="" CUPY_INSTALL_USE_HIP=1 pip install -U cupy
           sudo apt-get update
           sudo apt-get install -y libaio-dev
 
