@@ -124,7 +124,7 @@ def test_pipe_schedule_firststage():
 
 def test_pipe_schedule_laststage():
     sched = schedule.TrainSchedule(stages=3, micro_batches=4, stage_id=2)
-    assert len(list(iter(sched))) == 2 * (sched.micro_batches + sched.stages)
+    assert len(list(iter(sched))) == 2 * (sched.micro_batches + sched.stages - 1)
     for cmds in sched:
         assert all(instr.__class__ != schedule.SendActivation for instr in cmds)
         assert all(instr.__class__ != schedule.RecvGrad for instr in cmds)
