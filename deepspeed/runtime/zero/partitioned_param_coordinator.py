@@ -48,8 +48,12 @@ class PartitionedParameterCoordinator:
     FORWARD_FETCH_WAIT_TIMER = 'forward_fetch_wait'
     FORWARD_PREFETCH_SUBMIT_TIMER = 'forward_prefetch_submit'
     ALL_GATHER_TIMER = 'all_gather'
-    FORWARD_TIMER_NAMES = [FORWARD_FETCH_SUBMIT_TIMER, FORWARD_FETCH_WAIT_TIMER, FORWARD_PREFETCH_SUBMIT_TIMER, ALL_GATHER_TIMER]
-
+    FORWARD_TIMER_NAMES = [
+        FORWARD_FETCH_SUBMIT_TIMER,
+        FORWARD_FETCH_WAIT_TIMER,
+        FORWARD_PREFETCH_SUBMIT_TIMER,
+        ALL_GATHER_TIMER
+    ]
     """Handles partitioning and gathering of parameters."""
     class __InflightParamRegistry(UserDict):
         """registry for parameters in flight"""
@@ -63,7 +67,6 @@ class PartitionedParameterCoordinator:
                     f"attempted to add non-inflight parameter to registry {param.ds_summary()}"
                 )
             self.data[param] = handle
-
 
     @dataclass
     class __PerfCounter:
@@ -84,15 +87,13 @@ class PartitionedParameterCoordinator:
         param: Parameter
         step_id_last_used_at: int
 
-    def __init__(
-        self,
-        prefetch_bucket_sz: int,
-        max_reuse_distance_in_numel: int,
-        max_available_parameters_in_numel: int,
-        allgather_stream: Stream,
-        prefetch_nvme: bool = False,
-        timers = None 
-    ) -> None:
+    def __init__(self,
+                 prefetch_bucket_sz: int,
+                 max_reuse_distance_in_numel: int,
+                 max_available_parameters_in_numel: int,
+                 allgather_stream: Stream,
+                 prefetch_nvme: bool = False,
+                 timers=None) -> None:
         # mapping of param -> handle for each param that is currently in flight
         self.__inflight_param_registry = __class__.__InflightParamRegistry()
         # keeps track of the number of submodules invoked so far.
@@ -137,14 +138,11 @@ class PartitionedParameterCoordinator:
         self.__timers = timers
         self.__forward_timer_names = set(__class__.FORWARD_TIMER_NAMES)
         self.__forward_perf_counters = {
-            name: __class__.__PerfCounter(
-                name=name,
-                count=0,
-                num_elem=0
-            )
+            name: __class__.__PerfCounter(name=name,
+                                          count=0,
+                                          num_elem=0)
             for name in self.__forward_timer_names
         }
-
 
     def _log_timers(self, timer_names):
         if self.__timers is None:
@@ -168,9 +166,9 @@ class PartitionedParameterCoordinator:
 
     def log_forward_counters(self):
         for perf_ctr in self.__forward_perf_counters.values():
-            print_rank_0(f'{perf_ctr.name}: count = {perf_ctr.count}, numel = {perf_ctr.num_elem}', force=True)
-
-
+            print_rank_0(
+                f'{perf_ctr.name}: count = {perf_ctr.count}, numel = {perf_ctr.num_elem}',
+                force=True)
 
     """Tracing and Tracking
     TODO. consider performing trace before initializing PartitionedParameterCoordinator
@@ -283,7 +281,6 @@ class PartitionedParameterCoordinator:
         for perf_ctr in self.__forward_perf_counters.values():
             perf_ctr.reset()
 
-
     def _dump_params(self, tag, sub_module, params, step_id=None):
         if step_id is None:
             step_id = self.__step_id
@@ -318,20 +315,29 @@ class PartitionedParameterCoordinator:
             }))
 
         params_to_fetch = frozenset(iter_params(current_submodule))
-        fetch_numel = sum([p.partitioned_size() for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
+        fetch_numel = sum([
+            p.partitioned_size() for p in params_to_fetch
+            if p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+        ])
         if fetch_numel > 0:
-            self._dump_param_ids('params_to_fetch', current_submodule.id, [p.ds_id for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE])
+            self._dump_param_ids('params_to_fetch',
+                                 current_submodule.id,
+                                 [
+                                     p.ds_id for p in params_to_fetch
+                                     if p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+                                 ])
             self._start_timers([__class__.FORWARD_FETCH_SUBMIT_TIMER])
             # kick off all gather for params in the immediately required submodule
             # for param in params_to_fetch:
             #     debug_rank0(f"-fetch: {param.ds_summary()}")
             self.__all_gather_params(params_to_fetch)
             self._stop_timers([__class__.FORWARD_FETCH_SUBMIT_TIMER])
-            self.__forward_perf_counters[__class__.FORWARD_FETCH_SUBMIT_TIMER].increment(fetch_numel)
+            self.__forward_perf_counters[__class__.FORWARD_FETCH_SUBMIT_TIMER].increment(
+                fetch_numel)
 
         wait_numel = 0
         self._start_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
-        # wait for parameters in the immediately needed submodule to become available        
+        # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
             # debug_rank0(f"-wait: {param.ds_summary()}")
@@ -342,7 +348,7 @@ class PartitionedParameterCoordinator:
                             0].query():
                         self.__ongoing_fetch_events.popleft()
                     if len(self.__ongoing_fetch_events
-                        ) > self.__max_ongoing_fetch_events:
+                           ) > self.__max_ongoing_fetch_events:
                         self.__ongoing_fetch_events.popleft().synchronize()
 
                     self.__inflight_param_registry.pop(param).wait()
@@ -355,7 +361,8 @@ class PartitionedParameterCoordinator:
         torch.cuda.current_stream().wait_stream(self.__allgather_stream)
         self._stop_timers([__class__.FORWARD_FETCH_WAIT_TIMER])
 
-        self.__forward_perf_counters[__class__.FORWARD_FETCH_WAIT_TIMER].increment(wait_numel)
+        self.__forward_perf_counters[__class__.FORWARD_FETCH_WAIT_TIMER].increment(
+            wait_numel)
 
         # kick off parameter prefetches for upcoming modules
         # don't prefetch if we dont have a completed model trace
@@ -423,7 +430,9 @@ class PartitionedParameterCoordinator:
                         numel_prefetching += param_in_trace.param.ds_numel
 
                 if numel_prefetching > 0:
-                    self._dump_param_ids('params_to_prefetch', current_submodule.id, [p.ds_id for p in params_to_prefetch])
+                    self._dump_param_ids('params_to_prefetch',
+                                         current_submodule.id,
+                                         [p.ds_id for p in params_to_prefetch])
                     self._start_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
                     # for param in params_to_prefetch:
                     #     debug_rank0(f"-prefetch: {param.ds_summary()}")
@@ -431,7 +440,9 @@ class PartitionedParameterCoordinator:
                     self._stop_timers([__class__.FORWARD_PREFETCH_SUBMIT_TIMER])
 
                     if forward:
-                        self.__forward_perf_counters[__class__.FORWARD_PREFETCH_SUBMIT_TIMER].increment(numel_prefetching)
+                        self.__forward_perf_counters[
+                            __class__.FORWARD_PREFETCH_SUBMIT_TIMER].increment(
+                                numel_prefetching)
 
                 if self.__prefetch_nvme:
                     self.__prefetch_nvme_param_partitions()
@@ -481,12 +492,13 @@ class PartitionedParameterCoordinator:
                 all_gather_numel += param.ds_numel
 
         if partitioned_params:
-            self.__n_available_params += all_gather_numel            
+            self.__n_available_params += all_gather_numel
             with torch.cuda.stream(self.__allgather_stream):
                 self._start_timers([__class__.ALL_GATHER_TIMER])
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
                 self._stop_timers([__class__.ALL_GATHER_TIMER])
-                self.__forward_perf_counters[__class__.ALL_GATHER_TIMER].increment(all_gather_numel)
+                self.__forward_perf_counters[__class__.ALL_GATHER_TIMER].increment(
+                    all_gather_numel)
 
             for param in partitioned_params:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()

@@ -308,7 +308,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.offload_param_pin_memory = False
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
-        self.timers = timers 
+        self.timers = timers
 
         self._configure_offloading(offload_optimizer_config, offload_param_config)
 
@@ -648,8 +648,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                 _max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
                 prefetch_nvme=self.params_in_nvme_and_cpu,
-                timers=self.timers
-            )
+                timers=self.timers)
 
         return self.param_coordinators[training]
 
@@ -1105,8 +1104,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         params_count = 0
         all_params_count = 0
         for name, param in self.module.named_parameters(recurse=True):
-            print_rank_0(f'param {param.ds_id} - {name} numel = {param.ds_numel}', force=True)
-            all_params_count += 1 
+            print_rank_0(f'param {param.ds_id} - {name} numel = {param.ds_numel}',
+                         force=True)
+            all_params_count += 1
             if param.ds_numel < self.persistence_threshold:
                 params_count += 1
                 param.ds_persist = True
