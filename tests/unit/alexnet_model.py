@@ -84,6 +84,11 @@ class AlexNetPipeSpec(PipelineModule):
         super().__init__(layers=specs, loss_fn=nn.CrossEntropyLoss(), **kwargs)
 
 
+# Define this here because we cannot pickle local lambda functions
+def cast_to_half(x):
+    return x.half()
+
+
 def cifar_trainset(fp16=False):
     import torchvision
     import torchvision.transforms as transforms
@@ -98,7 +103,7 @@ def cifar_trainset(fp16=False):
                               0.5)),
     ]
     if fp16:
-        transform_list.append(torchvision.transforms.Lambda(lambda x: x.half()))
+        transform_list.append(torchvision.transforms.Lambda(cast_to_half))
 
     transform = transforms.Compose(transform_list)
 
