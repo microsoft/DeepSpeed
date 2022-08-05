@@ -2305,7 +2305,8 @@ class DeepSpeedEngine(Module):
 
         if self.postscale_gradients():
             if self.gradient_average:
-                values.mul_(self.gradient_predivide_factor() / dist.get_world_size(group=dp_group))
+                values.mul_(self.gradient_predivide_factor() /
+                            dist.get_world_size(group=dp_group))
         else:
             values.mul_(1. / dist.get_world_size(group=dp_group))
 
