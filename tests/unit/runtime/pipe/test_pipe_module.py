@@ -15,8 +15,8 @@ PipeTopo = PipeDataParallelTopology
 from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
 
-from .common import distributed_test
-from .simple_model import args_from_dict
+from tests.unit.common import DistributedTest
+from tests.unit.simple_model import args_from_dict
 
 HIDDEN_DIM = 32
 LAYERS = 8
@@ -34,7 +34,7 @@ def sequential_model():
 
 
 @pytest.fixture
-def simple_args(tmpdir):
+def simple_config():
     config_dict = {
         "train_batch_size": 1,
         "train_micro_batch_size_per_gpu": 1,
@@ -53,15 +53,14 @@ def simple_args(tmpdir):
             "activation_checkpoint_interval": 1
         }
     }
-    args = args_from_dict(tmpdir, config_dict)
-    return args
+    return config_dict
 
 
-def test_pipe_module_sequential(sequential_model, simple_args):
-    batch_input = torch.randn(1, HIDDEN_DIM)
+class TestPipeModuleSequential(DistributedTest):
+    world_size = 4
 
-    @distributed_test(world_size=4)
-    def _helper():
+    def test(self, sequential_model, simple_config):
+        batch_input = torch.randn(1, HIDDEN_DIM)
         base_model = copy.deepcopy(sequential_model)
         base_input = batch_input.clone().detach()
         base_output = base_model(base_input)
@@ -79,7 +78,7 @@ def test_pipe_module_sequential(sequential_model, simple_args):
         assert total_pipe_params == base_params
 
         pipe_model, _, _, _ = deepspeed.initialize(
-            args=simple_args,
+            config=simple_config,
             model=pipe_model,
             model_parameters=[p for p in pipe_model.parameters()])
 
@@ -98,5 +97,3 @@ def test_pipe_module_sequential(sequential_model, simple_args):
         pipe_output = pipe_output.to('cpu')
 
         assert torch.allclose(base_output, pipe_output, atol=1e-4)
-
-    _helper()
