@@ -14,6 +14,7 @@ class Model(torch.nn.Module):
     def forward(self, x, offsets):
         return self.linear(self.emb(x, offsets))
 
+
 class Adam(torch.optim.Optimizer):
     def __init__(self, dense_params, sparse_params):
         super().__init__(dense_params + sparse_params, defaults={})
@@ -29,11 +30,16 @@ class Adam(torch.optim.Optimizer):
             return loss_1 + loss_2
         return loss_1 or loss_2
 
+
 class TestSparseAdam(DistributedTest):
     world_size = 2
 
     def test(self):
-        config_dict = {"train_batch_size": 2, "steps_per_print": 1, "sparse_gradients": True}
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "sparse_gradients": True
+        }
 
         model = Model()
         optimizer = Adam(list(model.linear.parameters()), list(model.emb.parameters()))

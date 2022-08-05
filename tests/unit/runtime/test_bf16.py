@@ -300,10 +300,6 @@ class TestZeroEmptyGrad(DistributedTest):
             model.step()
 
 
-def custom_reduce(self, tensor, dst, op=dist.ReduceOp.SUM, group=None, async_op=False):
-    assert tensor.dtype == comm_torch_dtype
-    return orig_torch_reduce(tensor, dst, op, group, async_op)
-
 @pytest.mark.parametrize('comp_type_str, comm_type_str',
                          [("fp16",
                            "fp16"),
@@ -361,7 +357,12 @@ class TestZeroDtypeCocktail(DistributedTest):
                                         total_samples=2,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=comp_dtype)
+                                        dtype=comp_torch_dtype)
+
+        def custom_reduce(tensor, dst, op=dist.ReduceOp.SUM, group=None, async_op=False):
+            assert tensor.dtype == comm_torch_dtype
+            return orig_torch_reduce(tensor, dst, op, group, async_op)
+
         dist.reduce = custom_reduce
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])
