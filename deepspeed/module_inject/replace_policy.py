@@ -437,17 +437,23 @@ class HFOPTLayerPolicy(DSPolicy):
 
     def attention(self):
         qw = self.client_module.self_attn.q_proj.weight
+        qb = self.client_module.self_attn.q_proj.bias
+
         kw = self.client_module.self_attn.k_proj.weight
+        kb = self.client_module.self_attn.k_proj.bias
+
         vw = self.client_module.self_attn.v_proj.weight
+        vb = self.client_module.self_attn.v_proj.bias
 
         qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=False)
 
         # TODO(arashb): what is linear_layer used for?
         return self.linear_layer, \
             qkvw, \
-            None, \
+            qkvb, \
             self.client_module.self_attn.out_proj.weight, \
-            None, \
+            self.client_module.self_attn.out_proj.bias, \
             self.scale_attention, \
             self.is_megatron_v2
 
