@@ -265,6 +265,7 @@ def replace_transformer_layer(orig_layer_impl,
                     pre_layer_norm=preln,
                     mp_size=mp_size,
                     q_int8=quantize,
+                    return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
                     moe_experts=local_ep_size,
                     global_experts=num_experts,
                     mlp_type=moe_type)

@@ -209,6 +209,7 @@ class DeepSpeedMoEMLP(nn.Module):
                                           async_op)
 
 
+ccount = 0
 class DeepSpeedMoEInference(nn.Module):
     """Initialize the DeepSpeed MoE Transformer Layer.
         Arguments:
@@ -289,6 +290,9 @@ class DeepSpeedMoEInference(nn.Module):
                                     inference_cuda_module.vector_matmul_fp32
 
         config.mp_size = 1
+
+        print(f"----- deepsped moe self.config.moe_experts = {self.config.moe_experts}")
+        print(f"----- deepsped moe self.config.global_experts = {self.config.global_experts}")
         self.mlp = nn.ModuleList(FeedForwardNetwork(embed_dim=self.config.hidden_size, ffn_dim=self.config.hidden_size*4) for i in range(self.config.moe_experts))
         #self.mlp = nn.ModuleList(
         #    DeepSpeedMoEMLP(config,
@@ -427,7 +431,12 @@ class DeepSpeedMoEInference(nn.Module):
                 need_head_weights=False):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
+        #import pdb; pdb.set_trace()
         input_type = input.dtype
+
+        global ccount
+        ccount = ccount + 1
+        rrank = torch.distributed.get_rank()
 
         if (self.config.fp16 or self.config.q_int8) \
             and input.dtype == torch.float:
@@ -435,6 +444,9 @@ class DeepSpeedMoEInference(nn.Module):
 
         layer_past = None if self.prev_key is None else (self.prev_key, self.prev_value)
 
+
+        if rrank == 0:
+            print(f"rank = {rrank}, count={ccount}, ds input norm = {torch.norm(input)}\n")
         with torch.no_grad():
             attention_output = self.attention(input,
                                               input_mask,
@@ -446,6 +458,8 @@ class DeepSpeedMoEInference(nn.Module):
                                               output_attentions,
                                               self.norm_w,
                                               self.norm_b)
+            if rrank == 0:
+                print(f"rank = {rrank}, count={ccount}, ds after self_attn = {torch.norm(attention_output[0])}\n")
             context_output = attention_output[3]
             self.prev_key = attention_output[1]
             self.prev_value = attention_output[2]
@@ -459,11 +473,21 @@ class DeepSpeedMoEInference(nn.Module):
                 attention_output = attention_output[0]
 
             residual_add = attention_output + self.attention.attn_ob
+            if rrank == 0:
+                print(f"rank = {rrank}, count={ccount}, ds before final layer norm = {torch.norm(residual_add)}\n")
             attention_output = self.ds_layernorm(residual_add,
                                                  self.attn_nw,
                                                  self.attn_nb,
                                                  self.config.epsilon)
-            out = self.moe_layer(attention_output)
+            if rrank == 0:
+                print(f"rank = {rrank}, count={ccount}, ds after final layer norm (input of moe) norm = {torch.norm(attention_output)}")
+
+            out, _ = self.moe_layer(attention_output)
+
+            if rrank == 0:
+                print(f"rank = {rrank}, count={ccount}, after moe_layer norm = {torch.norm(out)}\n")
+
+            #return out
 
             if self.config.mlp_type == 'residual':
                 res_mlp_out = self.res_mlp(attention_output, async_op=True)
@@ -514,6 +538,7 @@ class DeepSpeedMoEInference(nn.Module):
         #print(f"MoE {context_output.shape}")
         if self.config.fairseq:
             print("returning fairseq moe config")
+            #import pdb; pdb.set_trace()
             return out, None, None, None
             # output, attn_weights, [key, value, self_attn_padding_mask]
             

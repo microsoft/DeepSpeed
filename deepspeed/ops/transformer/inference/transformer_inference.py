@@ -14,7 +14,7 @@ import torch.distributed as dist
 
 # Cuda modules will be imported if needed
 inference_cuda_module = None
-
+ccount = 0
 
 class TransformerConfig():
     def __init__(self, hidden_size, intermediate_size, heads, num_hidden_layers):
@@ -621,8 +621,13 @@ class DeepSpeedTransformerInference(nn.Module):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
-        if type(input) is tuple:
-            print(f"deepspeed transformer inference input = {type(input[0])},{type(input[1])}")
+        global ccount
+        ccount = ccount + 1
+        rrank = torch.distributed.get_rank()
+
+        if rrank == 0 and type(input) is not tuple:
+            print(f"deepspeed transformer inference input = {input.shape}, norm = {torch.norm(input)}")
+        #import pdb; pdb.set_trace()
         input_type = input.dtype
 
         if (self.config.fp16 or self.config.q_int8) \
@@ -642,6 +647,8 @@ class DeepSpeedTransformerInference(nn.Module):
                                               output_attentions,
                                               self.norm_w,
                                               self.norm_b)
+            if rrank == 0:
+                print(f"deepspeed transformer inference after self_attn = {attention_output[0].shape}, norm = {torch.norm(attention_output[0])}")
 
             self.prev_key = attention_output[1]
             self.prev_value = attention_output[2]
@@ -656,6 +663,10 @@ class DeepSpeedTransformerInference(nn.Module):
                 if self.config.mlp_after_attn else attention_output[-1],
                 input,
                 self.attention.attn_ob)
+            
+
+            if rrank == 0:
+                print(f"deepspeed transformer inference after mlp = {output.shape}, norm = {torch.norm(output)}")
 
             if not self.config.pre_layer_norm:
                 ds_layernorm = inference_cuda_module.layer_norm_fp16 if self.config.fp16 or self.config.q_int8 else \
@@ -664,7 +675,9 @@ class DeepSpeedTransformerInference(nn.Module):
                                       self.norm_w,
                                       self.norm_b,
                                       self.config.epsilon)
-
+            if rrank == 0:
+                print(f"deepspeed transformer inference layer norm after mlp type = {output.shape}, norm = {torch.norm(output)}")
+            
             if not self.config.mlp_after_attn:
                 inference_cuda_module.gptj_residual_add(output,
                                                         input,
@@ -676,7 +689,9 @@ class DeepSpeedTransformerInference(nn.Module):
             output = (output, presents)
 
         if self.config.fairseq:
-            print("returning fairseq config")
+            print(f"returning fairseq config")
+            if rrank == 0:
+                print(f"deepspeed transformer inference dense layer output type={type(output)}, = {output[0].shape}, norm = {torch.norm(output[0])}")
             return output, None, None, None
 
         #print(f"non-MoE {context_output.shape}")
