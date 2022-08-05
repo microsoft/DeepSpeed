@@ -65,7 +65,7 @@ class NebulaCheckpointEngine(CheckpointEngine):
         )
 
         checkpoint = None
-        if tag is None:
+        if tag is None or tag == 'latest' or tag == 'latest_universal':
             checkpoint = torch_nebula.get_latest_checkpoint(
                 persist_path=self.nebula_load_path)
         else:
