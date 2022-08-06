@@ -1,9 +1,11 @@
 import torch
-from mii.policies import replace_policies, HFBertLayerPolicy
 
 
 class WeightQuantization(object):
     def __init__(self, mlp_extra_grouping=True, mp_size=1):
+        from mii.policies import replace_policies, HFBertLayerPolicy
+        self.replace_policies = replace_policiesHFBertLayerPolicy
+        self.HFBertLayerPolicy = HFBertLayerPolicy
         self.dense_scales = []
         self.qkv_scales = []
         self.mlp4hh_scales = []
@@ -129,7 +131,7 @@ class WeightQuantization(object):
             for key in range(len(keys)):
                 if self.mlp_extra_grouping and self.is_mlp(keys[key]):
                     data_quantized, data_scale = self.quantize_data(keys[key], quantize_bits, groups * 2)
-                elif policy_cls is HFBertLayerPolicy and self.is_qkv(keys[key]):
+                elif policy_cls is self.HFBertLayerPolicy and self.is_qkv(keys[key]):
                     data_quantized, data_scale = self.quantize_data(keys[key], quantize_bits, groups * 3)
                 else:
                     data_quantized, data_scale = self.quantize_data(keys[key], quantize_bits, groups)
@@ -155,7 +157,7 @@ class WeightQuantization(object):
             for layer_name, replace_policy in quantize_policy.items():
                 policy.update({layer_name: (quantize_fn, replace_policy)})
         else:
-            for plcy in replace_policies:
+            for plcy in self.replace_policies:
                 policy.update({plcy._orig_layer_class: (quantize_fn, plcy)})
 
         quantized_module = _quantize_module(model, policy)
