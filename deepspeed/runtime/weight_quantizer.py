@@ -1,5 +1,5 @@
 import torch
-from ..module_inject.replace_policy import HFBertLayerPolicy, replace_policies
+from mii.policies import replace_policies, HFBertLayerPolicy
 
 
 class WeightQuantization(object):

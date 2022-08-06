@@ -54,6 +54,7 @@ jobs:
           pip uninstall --yes deepspeed
           pip install .[dev,1bit,autotuning,sparse_attn,inf]
           ds_report
+          pip install https://github.com/microsoft/deepspeed-mii.git@injection-policies
 
       - name: Unit tests
         run: |

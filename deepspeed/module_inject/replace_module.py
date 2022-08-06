@@ -1,18 +1,21 @@
 import os
-import torch
+import time
 import tqdm
-import deepspeed
-import deepspeed.ops.transformer as transformer_inference
-from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
-from .replace_policy import replace_policies
-from ..runtime.weight_quantizer import WeightQuantization
-from deepspeed import comm as dist
+import torch
 from torch import nn
 
+import deepspeed
+from deepspeed import comm as dist
+import deepspeed.ops.transformer as transformer_inference
+from ..pipe import PipelineModule
+from ..runtime.weight_quantizer import WeightQuantization
 from ..runtime.zero import GatheredParameters
 from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
-import time
+
+from mii.policies import replace_policies, HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
+# from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
+# from .replace_policy import replace_policies
 
 
 class ReplaceWithTensorSlicing:
@@ -961,9 +964,6 @@ def replace_module(model, orig_class, replace_fn, _replace_policy):
 
     replaced_module, _ = _replace_module(model, policy)
     return replaced_module
-
-
-from ..pipe import PipelineModule
 
 
 def _replace_module(model, policies, layer_id=0):
