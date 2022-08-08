@@ -184,6 +184,7 @@ class DeepSpeedZeRoOffload(object):
                      force=False)
 
         self.module = module
+        self.timers = timers
         self.dtype = list(module.parameters())[0].dtype
         self.offload_device = None
         self.offload_param_pin_memory = False
@@ -240,6 +241,7 @@ class DeepSpeedZeRoOffload(object):
                 _max_available_parameters_in_numel,
                 allgather_stream=self.__allgather_stream,
                 prefetch_nvme=self.offload_device == OffloadDeviceEnum.nvme,
+                timers=self.timers,
             )
 
         return self.param_coordinators[training]
@@ -453,7 +455,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, True)
 
         see_memory_usage(
             f"Before sub module function {sub_module.__class__.__name__} after fetch",
@@ -478,7 +480,7 @@ class DeepSpeedZeRoOffload(object):
         param_coordinator.trace_prologue(sub_module)
         if param_coordinator.is_record_trace():
             param_coordinator.record_module(sub_module)
-        param_coordinator.fetch_sub_module(sub_module)
+        param_coordinator.fetch_sub_module(sub_module, False)
 
     @torch.no_grad()
     def post_sub_module_backward_function(self, sub_module):
