@@ -20,6 +20,7 @@ from torch.nn import Parameter
 
 from .linear import zero3_linear_wrap
 
+from deepspeed.utils import groups
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
 from deepspeed.runtime.zero.utils import assert_ints_same_as_other_ranks
@@ -550,7 +551,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  config=None,
                  enabled=True,
                  dtype=None,
-                 mpu=None):
+                 mpu=None,
+                 zero_param_parallel_group=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -579,6 +581,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             dtype (``dtype``, optional): Can be used to change the data type of the parameters.
                 Supported options are ``torch.half`` and ``torch.float``. Defaults to ``None``
             mpu (``object``, optional): A model parallelism unit object that implements get_{model,data}_parallel_{rank,group,world_size}.
+            zero_param_parallel_group(``object``, optional): Parallel (comm) group for dual partitioning of ZeRO params.
 
         This context accelerates model initialization and enables models that
         are too large to allocate in their entirety in CPU memory. It has the
@@ -808,6 +811,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # The group that the parameter is scattered across.
         param.ds_process_group = self.ds_process_group
 
+        # Stores the secondary partitioned copy of the tensor
+        param.ds_secondary_tensor = None
         ###TODO: pass timer for debugging
         #Process group for secondary partition all (group) gather
         param.ds_zero_param_process_group = self.zero_param_process_group
@@ -1248,7 +1253,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                    elements_to_copy))
                 
                 if self.zero_param_process_group is not None and secondary_start < param.ds_numel:
-                    element_to_copy_sec = param.ds_numel - secondary_start
+                    elements_to_copy_sec = param.ds_numel - secondary_start
                     param.ds_secondary_tensor.narrow(0,
                                            0,
                                            elements_to_copy_sec).copy_(
