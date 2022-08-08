@@ -1861,6 +1861,11 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         if self.swap_optimizer:
             self.optimizer_swapper.log_timers()
 
+        ##Invalidate secondary partition
+        if self.parameter_offload:
+            print_rank_0(f"INVALIDATE secondary partition",force=True)
+            self.parameter_offload.invalidate_secondary_partition()
+
         self.log_timers(timer_names)
 
         see_memory_usage('After zero_optimizer step', force=False)

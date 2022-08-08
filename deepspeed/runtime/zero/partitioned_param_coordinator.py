@@ -394,6 +394,7 @@ class PartitionedParameterCoordinator:
 
         if partitioned_params:
             with torch.cuda.stream(self.__allgather_stream):
+                ##TODO: pass timer,fw/bw flag in lieu of invalidate fn?
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params)
 
             for param in partitioned_params:

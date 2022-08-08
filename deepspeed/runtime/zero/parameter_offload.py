@@ -269,6 +269,14 @@ class DeepSpeedZeRoOffload(object):
     def destroy(self):
         self._remove_module_hooks()
 
+    def invalidate_secondary_partition(self):
+        """Invalidate secondary partition in post step call of heirarchical 
+           partitioning ZeRO"""
+        ##TODO: add or replace with fw/bw fn
+        for param in iter_params(self.module, recurse=True):
+            param.ds_secondary_group_tensor=None
+            param.use_secondary_tensor = False
+
     def _remove_module_hooks(self):
         num_forward_hooks = len(self.forward_hooks)
         num_backward_hooks = len(self.backward_hooks)
