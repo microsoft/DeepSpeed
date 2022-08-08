@@ -176,7 +176,8 @@ class DeepSpeedZeRoOffload(object):
                  param_persistence_threshold=100000,
                  model_persistence_threshold=sys.maxsize,
                  offload_param_config=None,
-                 mpu=None):
+                 mpu=None,
+                 zero_param_parallel_group=None):
 
         see_memory_usage("DeepSpeedZeRoOffload initialize [begin]", force=True)
 
@@ -187,6 +188,7 @@ class DeepSpeedZeRoOffload(object):
         self.dtype = list(module.parameters())[0].dtype
         self.offload_device = None
         self.offload_param_pin_memory = False
+        self.zero_param_parallel_group = zero_param_parallel_group
         if offload_param_config is not None:
             self.offload_device = offload_param_config.device
             self.offload_param_pin_memory = offload_param_config.pin_memory
@@ -261,7 +263,8 @@ class DeepSpeedZeRoOffload(object):
                      config_dict_or_path=ds_config,
                      remote_device=self.offload_device,
                      pin_memory=self.offload_param_pin_memory,
-                     mpu=mpu)
+                     mpu=mpu,
+                     zero_param_parallel_group=self.zero_param_parallel_group)
 
     def destroy(self):
         self._remove_module_hooks()
