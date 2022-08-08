@@ -5,7 +5,6 @@ Licensed under the MIT license.
 
 import math
 import os
-import time
 import types
 from typing import Callable, Iterable
 from enum import Enum
@@ -20,9 +19,6 @@ from torch.nn import Module
 from torch.nn import Parameter
 
 from .linear import zero3_linear_wrap
-from .offload_constants import *
-
-from deepspeed.utils import groups ##for debugging???
 
 import deepspeed
 from ..utils import get_only_unique_item, see_memory_usage
@@ -33,17 +29,13 @@ from deepspeed.comm.comm import init_distributed
 from deepspeed.utils.debug import (debug_param2name_id_shape,
                                    debug_param2name_id_shape_device,
                                    debug_module2name,
-                                   debug_param2name,
                                    debug_param2name_id,
-                                   debug_param2name_id_shape_status,
-                                   printflock,
-                                   log_rank_file)
-from deepspeed.utils.logging import logger
-
+                                   debug_param2name_id_shape_status)
 from ..swap_tensor.partitioned_param_swapper import AsyncPartitionedParameterSwapper, PartitionedParamStatus
 
 param_count = 0
 partitioned_param_data_shape = [0]
+zero_init_enabled = False
 
 
 def _dist_allgather_fn(input_tensor: Tensor, output_tensor: Tensor, group=None):
@@ -267,8 +259,10 @@ class InsertPostInitMethodToModuleSubClasses(object):
         assert self.dtype in [torch.half, torch.bfloat16, torch.float], f"Invalid data type {self.dtype}, allowed values are [torch.half, torch.bfloat16, torch.float]"
 
     def __enter__(self):
+        global zero_init_enabled
         if not self.enabled:
             return
+        zero_init_enabled = True
 
         def apply_with_gather(orig_module_apply_fn: Callable) -> Callable:
             """many models make use of child modules like Linear or Embedding which
@@ -413,28 +407,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         if not self.enabled:
             return
 
-        def _disable_class(cls):
-            cls.__init__ = cls._old_init
-
-        # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in get_all_subclasses(torch.nn.modules.module.Module):
-            _disable_class(subclass)
-
-        # putting methods back the way we found them
-        torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
-        torch.nn.modules.module.Module.apply = torch.nn.modules.module.Module._old_apply
-
-        torch.Tensor.__new__ = torch.Tensor.__old_new__
-        torch.empty = _orig_torch_empty
-        torch.zeros = _orig_torch_zeros
-        torch.ones = _orig_torch_ones
-        torch.full = _orig_torch_full
-
-        # un doing it here will undo it during training
-        # if self.mem_efficient_linear:
-        #    torch.nn.functional.linear = self.linear_bk
-        #        if self.mem_efficient_linear:
-        #            torch.nn.functional.linear = self.linear_bk
+        shutdown_init_context()
 
         if dist.get_rank() == 0:
             logger.info("finished initializing model with %.2fB parameters",
@@ -463,6 +436,38 @@ class InsertPostInitMethodToModuleSubClasses(object):
             self.dtype = dtype or torch.half
 
 
+def shutdown_init_context():
+    global zero_init_enabled
+
+    if not zero_init_enabled:
+        return
+
+    def _disable_class(cls):
+        cls.__init__ = cls._old_init
+
+    # Replace .__init__() for all existing subclasses of torch.nn.Module
+    for subclass in get_all_subclasses(torch.nn.modules.module.Module):
+        _disable_class(subclass)
+
+    # putting methods back the way we found them
+    torch.nn.modules.module.Module.__init_subclass__ = torch.nn.modules.module.Module._old_init_subclass
+    torch.nn.modules.module.Module.apply = torch.nn.modules.module.Module._old_apply
+
+    torch.Tensor.__new__ = torch.Tensor.__old_new__
+    torch.empty = _orig_torch_empty
+    torch.zeros = _orig_torch_zeros
+    torch.ones = _orig_torch_ones
+    torch.full = _orig_torch_full
+
+    # un doing it here will undo it during training
+    # if self.mem_efficient_linear:
+    #    torch.nn.functional.linear = self.linear_bk
+    #        if self.mem_efficient_linear:
+    #            torch.nn.functional.linear = self.linear_bk
+
+    zero_init_enabled = False
+
+
 class AllGatherHandle:
     def __init__(self, handle, param: Parameter) -> None:
         if param.ds_status != ZeroParamStatus.INFLIGHT:
@@ -473,9 +478,7 @@ class AllGatherHandle:
 
     def wait(self) -> None:
         instrument_w_nvtx(self.__handle.wait)()
-
         self.__param.ds_status = ZeroParamStatus.AVAILABLE
-
 
 class AllGatherCoalescedHandle:
     def __init__(
@@ -547,8 +550,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                  config=None,
                  enabled=True,
                  dtype=None,
-                 mpu=None,
-                 zero_param_parallel_group=None):
+                 mpu=None):
         """A context to enable massive model construction for training with
         ZeRO-3. Models are automatically partitioned (or, sharded) across the
         system and converted to half precision.
@@ -671,14 +673,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         self.rank = dist.get_rank(group=self.ds_process_group)
         self.world_size = dist.get_world_size(group=self.ds_process_group)
 
+
         self.zero_param_process_group = zero_param_parallel_group 
         
         self.use_secondary_tensor = False
         self.num_ranks_in_param_group = self.world_size
         self.rank_in_group = self.rank
         self.num_param_groups = 1
-        if self.zero_param_process_group is not None: 
 
+        if self.zero_param_process_group is not None: 
             self.num_ranks_in_param_group = groups._get_zero_param_intra_parallel_group_world_size() # of ranks within a parameter (intra) group
             self.num_param_groups =   int(self.world_size / self.num_ranks_in_param_group)
             self.rank_in_group = groups._get_zero_param_intra_parallel_rank_in_mygroup() #use rank in groups
@@ -700,9 +703,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # Remote device is the device where parameter partitions are stored
         # It can be same as local_device or it could be CPU or NVMe.
-        self.remote_device = self.local_device if remote_device is None else remote_device
-        self.pin_memory = pin_memory if (self.remote_device
-                                         == OffloadDeviceEnum.cpu) else False
+        self.remote_device = self.local_device if remote_device in [
+            None,
+            OffloadDeviceEnum.none
+        ] else remote_device
+        self.pin_memory = pin_memory if (
+            self.remote_device in [OffloadDeviceEnum.cpu,
+                                   OffloadDeviceEnum.nvme]) else False
 
         # Enable fp16 param swapping to NVMe
         if self.remote_device == OffloadDeviceEnum.nvme:
@@ -722,13 +729,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             logger.info(
                 f"_all_gather_base API is not available in torch {torch.__version__}")
 
-    ###End of Init.__init__
-
     def _convert_to_zero_parameters(self, param_list):
         for param in param_list:
             if is_zero_param(param):
                 continue
-            self._convert_to_deepspeed_param(param) ##SAGE, initial all_gather before partition
+            self._convert_to_deepspeed_param(param)
             param.partition()
 
     def _validate_remote_device(self, remote_device, ds_config):
@@ -745,7 +750,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 assert ds_config.zero_config.offload_param.nvme_path is not None, \
                 f'"nvme_path" in DeepSpeed Config cannot be None if remote device is {OffloadDeviceEnum.nvme}'
-
 
     def _post_init_method(self, module):
         #see_memory_usage(f"Before converting parmas in {module.__class__.__name__}", force=False)
@@ -792,9 +796,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         # Stores the partitioned copy of the tensor
         param.ds_tensor = None
 
-        # Stores the secondary partitioned copy of the tensor
-        param.ds_secondary_tensor = None
-
         # Keeps track of how many active sub-modules need this param at any given point in time
         param.ds_active_sub_modules = set()
 
@@ -806,7 +807,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         # The group that the parameter is scattered across.
         param.ds_process_group = self.ds_process_group
-        
+
         ###TODO: pass timer for debugging
         #Process group for secondary partition all (group) gather
         param.ds_zero_param_process_group = self.zero_param_process_group
@@ -928,7 +929,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
                 handle = _dist_allgather_fn(partitions[rank_in_group],  
                                                 flat_tensor,
-                                                ds_process_group))
+                                                ds_process_group)
 
                  
                 return AllGatherCoalescedHandle(
@@ -938,6 +939,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     world_size=world_size,  
                     use_secondary_tensor=self.use_secondary_tensor,
                 )
+
 
         def partition(param_list=None, hierarchy=0, has_been_updated=False):
             cls = param
@@ -1283,7 +1285,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             print_rank_0(
                 f"ID {param.ds_id} partitioned type {param.dtype} dev {param.device} shape {param.shape}", force=True
             )
-            #Here set status of secondary partition
+
     def _param_status(self, param):
         if param.ds_tensor is not None:
             print_rank_0(
