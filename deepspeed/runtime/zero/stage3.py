@@ -10,6 +10,8 @@ from typing import Deque, Dict, Tuple
 from torch.cuda import Event, Stream
 from torch._six import inf
 
+from deepspeed.utils import groups
+
 from deepspeed.runtime import ZeROOptimizer
 from deepspeed.utils import logger
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
@@ -103,7 +105,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
                  elastic_checkpoint=False,
-                 aio_config=None):
+                 aio_config=None,
+                 zero_param_group_size=1):
 
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -148,6 +151,15 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
         self.params_in_nvme_and_cpu = False
         self.max_params_in_cpu = 0
 
+        #num of ranks in a ZeRO param partitioning group
+        self.zero_param_group_size = zero_param_group_size
+
+        zpg = None
+        if self.zero_param_group_size > 1:
+            self._set_zero_group_parallelism()
+            zpg = groups._get_zero_param_intra_parallel_group()
+
+
         self.parameter_offload = DeepSpeedZeRoOffload(
             module=module,
             timers=timers,
@@ -158,7 +170,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
             max_live_parameters=max_live_parameters,
             param_persistence_threshold=param_persistence_threshold,
             model_persistence_threshold=model_persistence_threshold,
-            offload_param_config=offload_optimizer_config)
+            offload_param_config=offload_optimizer_config,
+            zero_param_parallel_group=zpg)
 
         self.persistent_parameters = self.parameter_offload.persistent_parameters
         self._configure_offloading(offload_optimizer_config, offload_param_config)
@@ -348,6 +361,9 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def destroy(self):
         self.parameter_offload.destroy()
+
+    def _set_zero_group_parallelism(self):
+        groups._create_zero_param_parallel_group(self.zero_param_group_size)
 
     def _setup_for_real_optimizer(self):
         see_memory_usage("Before creating fp32 partitions", force=False)
