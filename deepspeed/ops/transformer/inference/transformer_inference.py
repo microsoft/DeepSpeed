@@ -814,7 +814,11 @@ class DeepSpeedTransformerInference(nn.Module):
                 encoder_attention_mask=None,
                 use_cache=False,
                 alibi=None,
-                output_attentions=False):
+                output_attentions=False,
+                # TODO(arashb): 'layer_head_mask' and 'past_key_value' are only added to satisfy the OPT models API.
+                # This needs to be redesigned later!
+                layer_head_mask=None,
+                past_key_value=None):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 
@@ -823,6 +827,7 @@ class DeepSpeedTransformerInference(nn.Module):
             self.layer_past = None
 
         layer_past = layer_past if layer_past is not None else self.layer_past
+        head_mask = layer_head_mask if layer_head_mask is not None else head_mask
 
         attn_mask = None
         if isinstance(input, tuple):
