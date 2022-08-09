@@ -61,7 +61,6 @@ class TestZeROCheckpoint(DistributedTest):
                 "cpu_offload": use_cpu_offload
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -70,7 +69,7 @@ class TestZeROCheckpoint(DistributedTest):
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models,
                                             hidden_dim,
                                             tmpdir,
@@ -121,7 +120,6 @@ class TestZeROCheckpoint(DistributedTest):
                 "cpu_offload": use_cpu_offload
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -132,7 +130,7 @@ class TestZeROCheckpoint(DistributedTest):
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models,
                                             hidden_dim,
                                             tmpdir,
@@ -153,13 +151,11 @@ class TestZeROCheckpoint(DistributedTest):
                 "initial_scale_power": 8
             }
         }
-
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
         optimizers = [HybridStateOptimizer(model.parameters()) for model in models]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             base_optimizers=optimizers,
                                             hidden_dim=hidden_dim,
@@ -181,7 +177,6 @@ class TestZeROCheckpoint(DistributedTest):
                 "stage": zero_stage,
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -190,7 +185,7 @@ class TestZeROCheckpoint(DistributedTest):
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models,
                                             hidden_dim,
                                             tmpdir,
@@ -362,9 +357,10 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         }
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        args = args_from_dict(tmpdir, config_dict)
 
-        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model = create_deepspeed_model(config_dict=config_dict,
+                                          model=model,
+                                          base_optimizer=None)
         ds_model.save_checkpoint(tmpdir)
         ds_model.load_checkpoint(tmpdir,
                                  load_optimizer_states=False,
@@ -388,24 +384,27 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         }
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        args = args_from_dict(tmpdir, config_dict)
 
         # 1. pretrain a model and save it
         dtype = torch.half
-        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model = create_deepspeed_model(config_dict=config_dict,
+                                          model=model,
+                                          base_optimizer=None)
         data_loader = random_dataloader(model=ds_model,
                                         total_samples=1,
                                         hidden_dim=hidden_dim,
                                         device=ds_model.device,
                                         dtype=dtype)
-        for n, batch in enumerate(data_loader):
+        for _, batch in enumerate(data_loader):
             loss = ds_model(batch[0], batch[1])
             ds_model.backward(loss)
             ds_model.step()
         ds_model.save_checkpoint(tmpdir)
 
         # 2. load and immediately save a model with a fresh ds engine
-        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model = create_deepspeed_model(config_dict=config_dict,
+                                          model=model,
+                                          base_optimizer=None)
         ds_model.load_checkpoint(tmpdir,
                                  load_optimizer_states=False,
                                  load_lr_scheduler_states=False,
@@ -432,12 +431,13 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         }
         hidden_dim = 10
         model = SimpleModel(hidden_dim)
-        args = args_from_dict(tmpdir, config_dict)
 
         # This test reproduces a bug where one tries to retrieve a 16bit model before grad_accum
         # cycle was completed.
         # So we config grad_accum=2 and step only once and save_16bit_model
-        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model = create_deepspeed_model(config_dict=config_dict,
+                                          model=model,
+                                          base_optimizer=None)
 
         data_loader = random_dataloader(model=ds_model,
                                         total_samples=2,

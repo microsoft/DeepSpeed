@@ -21,9 +21,8 @@ class TestLatestCheckpoint(DistributedTest):
             }
         }
         hidden_dim = 10
-        args = args_from_dict(tmpdir, config_dict)
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict=config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
@@ -44,9 +43,8 @@ class TestLatestCheckpoint(DistributedTest):
             }
         }
         hidden_dim = 10
-        args = args_from_dict(tmpdir, config_dict)
         model = SimpleModel(hidden_dim)
-        model, _, _,_ = deepspeed.initialize(args=args,
+        model, _, _,_ = deepspeed.initialize(config=config_dict,
                                             model=model,
                                             model_parameters=model.parameters())
         # should be no-op, since latest doesn't exist

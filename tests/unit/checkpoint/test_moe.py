@@ -25,7 +25,6 @@ class TestMoECheckpoint(DistributedTest):
             }
         }
         hidden_dim = 16
-        args = args_from_dict(tmpdir, config_dict)
 
         models = [
             SimpleMoEModel(hidden_dim=hidden_dim,
@@ -33,7 +32,7 @@ class TestMoECheckpoint(DistributedTest):
                            ep_size=ep_size) for _ in range(2)
         ]
         optimizers = [torch.optim.AdamW(params=model.parameters()) for model in models]
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
@@ -79,7 +78,6 @@ class TestMoECheckpoint(DistributedTest):
             }
         }
         hidden_dim = 16
-        args = args_from_dict(tmpdir, config_dict)
 
         models = [
             SimpleMoEModel(hidden_dim=hidden_dim,
@@ -97,7 +95,7 @@ class TestMoECheckpoint(DistributedTest):
             for group in param_groups
         ]
         optimizers = [torch.optim.AdamW(params=param) for param in params]
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,

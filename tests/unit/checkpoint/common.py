@@ -115,20 +115,20 @@ def compare_lr_scheduler_states(saved_model, loaded_model):
             assert state0 == state1
 
 
-def create_deepspeed_model(args, model, base_optimizer):
+def create_deepspeed_model(config_dict, model, base_optimizer):
     if base_optimizer is None:
-        ds_model, _, _, _ = deepspeed.initialize(args=args,
+        ds_model, _, _, _ = deepspeed.initialize(config=config_dict,
                                                  model=model,
                                                  model_parameters=model.parameters())
     else:
-        ds_model, _, _, _ = deepspeed.initialize(args=args,
+        ds_model, _, _, _ = deepspeed.initialize(config=config_dict,
                                                 model=model,
                                                 optimizer=base_optimizer)
 
     return ds_model
 
 
-def checkpoint_correctness_verification(args,
+def checkpoint_correctness_verification(config_dict,
                                         models,
                                         hidden_dim,
                                         tmpdir,
@@ -142,7 +142,7 @@ def checkpoint_correctness_verification(args,
                                         seq_dataloader=False,
                                         load_module_only=False):
     dtype = torch.half if fp16 else torch.float32
-    ds_model = create_deepspeed_model(args=args,
+    ds_model = create_deepspeed_model(config_dict=config_dict,
                                       model=models[0],
                                       base_optimizer=base_optimizers[0])
 
@@ -178,7 +178,7 @@ def checkpoint_correctness_verification(args,
 
     dist.barrier()
 
-    loaded_model = create_deepspeed_model(args=args,
+    loaded_model = create_deepspeed_model(config_dict=config_dict,
                                           model=models[1],
                                           base_optimizer=base_optimizers[1])
     assert list(trained_model.parameters())[0].dtype == list(

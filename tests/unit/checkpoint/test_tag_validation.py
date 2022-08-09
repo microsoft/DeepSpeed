@@ -25,10 +25,9 @@ class TestCheckpointValidationTag(DistributedTest):
             }
         }
         hidden_dim = 10
-        args = args_from_dict(tmpdir, config_dict)
         model = SimpleModel(hidden_dim)
 
-        model, _, _,_ = deepspeed.initialize(args=args,
+        model, _, _,_ = deepspeed.initialize(config=config_dict,
                                             model=model,
                                             model_parameters=model.parameters())
         if valid_mode == "FAIL":
@@ -57,6 +56,6 @@ class TestCheckpointValidationTag(DistributedTest):
         model = SimpleModel(hidden_dim)
 
         with pytest.raises(deepspeed.DeepSpeedConfigError):
-            model, _, _,_ = deepspeed.initialize(args=args,
+            model, _, _,_ = deepspeed.initialize(config=config_dict,
                                                 model=model,
                                                 model_parameters=model.parameters())

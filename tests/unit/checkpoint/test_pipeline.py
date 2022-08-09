@@ -7,16 +7,11 @@ from tests.unit.checkpoint.common import checkpoint_correctness_verification
 import pytest
 
 
-@pytest.fixture(params=[2])
-def num_stages(request):
-    return request.param
-
-
 class TestPipelineCheckpoint(DistributedTest):
     world_size = 4
 
     @pytest.mark.parametrize("zero_stage", [0, 1])
-    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir, num_stages):
+    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir, num_stages=2):
         config_dict = {
             "train_batch_size": 2,
             "train_micro_batch_size_per_gpu": 1,
@@ -51,9 +46,8 @@ class TestPipelineCheckpoint(DistributedTest):
             }
         }
 
-        args = args_from_dict(tmpdir, config_dict)
         models = [LinearStackPipe(num_stages=num_stages) for _ in range(2)]
-        checkpoint_correctness_verification(args=args,
+        checkpoint_correctness_verification(config_dict=config_dict,
                                             models=models,
                                             hidden_dim=models[0].hidden_dim,
                                             tmpdir=tmpdir,

@@ -9,22 +9,22 @@ from tests.unit.checkpoint.common import checkpoint_correctness_verification
 import pytest
 
 
+@pytest.mark.parametrize('zero_stage, use_cpu_offload',
+                         [(0,
+                           False),
+                          (1,
+                           False),
+                          (2,
+                           False),
+                          (2,
+                           True),
+                          (3,
+                           False),
+                          (3,
+                           True)])
 class TestLRSchedulerCheckpoint(DistributedTest):
     world_size = 2
 
-    @pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                             [(0,
-                               False),
-                              (1,
-                               False),
-                              (2,
-                               False),
-                              (2,
-                               True),
-                              (3,
-                               False),
-                              (3,
-                               True)])
     def test_checkpoint_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
@@ -58,7 +58,6 @@ class TestLRSchedulerCheckpoint(DistributedTest):
                 }
             }
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -69,26 +68,13 @@ class TestLRSchedulerCheckpoint(DistributedTest):
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models,
                                             hidden_dim,
                                             tmpdir,
                                             load_optimizer_states=False,
                                             load_lr_scheduler_states=True)
 
-    @pytest.mark.parametrize('zero_stage, use_cpu_offload',
-                             [(0,
-                               False),
-                              (1,
-                               False),
-                              (2,
-                               False),
-                              (2,
-                               True),
-                              (3,
-                               False),
-                              (3,
-                               True)])
     def test_checkpoint_no_lr_scheduler(self, tmpdir, zero_stage, use_cpu_offload):
         if use_cpu_offload and not deepspeed.ops.__compatible_ops__[CPUAdamBuilder.NAME]:
             pytest.skip("cpu-adam is not compatible")
@@ -118,7 +104,6 @@ class TestLRSchedulerCheckpoint(DistributedTest):
                 }
             },
         }
-        args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
         if zero_stage == 3:
@@ -127,7 +112,7 @@ class TestLRSchedulerCheckpoint(DistributedTest):
         else:
             models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models,
                                             hidden_dim,
                                             tmpdir,

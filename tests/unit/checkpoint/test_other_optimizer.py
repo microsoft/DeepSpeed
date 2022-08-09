@@ -51,14 +51,14 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
         # Load & verify optimizer states
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
                                             load_optimizer_states=True)
 
         # Ignore optimizer states
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
@@ -88,14 +88,14 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
         # Load & verify optimizer states
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
                                             load_optimizer_states=True)
 
         # Ignore optimizer states
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
@@ -123,7 +123,7 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
-        checkpoint_correctness_verification(args,
+        checkpoint_correctness_verification(config_dict,
                                             models=models,
                                             hidden_dim=hidden_dim,
                                             tmpdir=tmpdir,
