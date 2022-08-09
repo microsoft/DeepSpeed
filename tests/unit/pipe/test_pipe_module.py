@@ -7,11 +7,6 @@ import deepspeed.comm as dist
 import pytest
 
 import deepspeed
-
-from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
-
-PipeTopo = PipeDataParallelTopology
-
 from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
 
@@ -55,11 +50,15 @@ def simple_config():
     return config_dict
 
 
-class TestPipeModuleSequential(DistributedTest):
-    world_size = 4
+@pytest.fixture
+def batch_input():
+    return torch.randn(1, HIDDEN_DIM)
 
-    def test(self, sequential_model, simple_config):
-        batch_input = torch.randn(1, HIDDEN_DIM)
+
+class TestPipeModuleSequential(DistributedTest):
+    world_size = 2
+
+    def test(self, sequential_model, simple_config, batch_input):
         base_model = copy.deepcopy(sequential_model)
         base_input = batch_input.clone().detach()
         base_output = base_model(base_input)
@@ -67,7 +66,7 @@ class TestPipeModuleSequential(DistributedTest):
         base_params = sum(p.numel() for p in base_model.parameters())
 
         pipe_model = copy.deepcopy(sequential_model)
-        pipe_model = PipelineModule(layers=pipe_model, num_stages=4)
+        pipe_model = PipelineModule(layers=pipe_model, num_stages=2)
 
         # Ensure all parameters are accounted for.
         my_params = sum(p.numel() for p in pipe_model.parameters())
@@ -95,7 +94,4 @@ class TestPipeModuleSequential(DistributedTest):
         base_output = base_output.to('cpu')
         pipe_output = pipe_output.to('cpu')
 
-        assert torch.allclose(
-            base_output,
-            pipe_output,
-            atol=1e-3)  # TODO: original atol=1e-4, figure out why this started failing
+        assert torch.allclose(base_output, pipe_output, atol=1e-4)
