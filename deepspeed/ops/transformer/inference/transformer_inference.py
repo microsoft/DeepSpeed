@@ -9,6 +9,7 @@ from ... import op_builder
 import torch.nn as nn
 from deepspeed import comm as dist
 from deepspeed.utils.logging import log_dist
+from deepspeed.utils.types import ActivationFuncType
 
 # Cuda modules will be imported if needed
 inference_cuda_module = None
@@ -71,6 +72,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
                  rotate_every_two=True,
                  return_tuple=True,
                  mlp_after_attn=True,
+                 mlp_act_func_type=ActivationFuncType.GELU,
                  training_mp_size=1,
                  bigscience_bloom=False):
         super(DeepSpeedInferenceConfig,
@@ -95,6 +97,7 @@ class DeepSpeedInferenceConfig(TransformerConfig):
         self.rotate_every_two = rotate_every_two
         self.return_tuple = return_tuple
         self.mlp_after_attn = mlp_after_attn
+        self.mlp_act_func_type = mlp_act_func_type
         self.specialized_mode = False
         self.training_mp_size = training_mp_size
         self.bigscience_bloom = bigscience_bloom
@@ -577,7 +580,8 @@ class DeepSpeedMLPFunction(Function):
                 mlp_gemm_func,
                 fused_gemm_gelu,
                 vector_matmul_func,
-                bias_residual_func):
+                bias_residual_func,
+                activation_func_type=ActivationFuncType.GELU):
 
         if config.q_int8:
             (intermediate,
@@ -617,7 +621,8 @@ class DeepSpeedMLPFunction(Function):
                                              attn_nb,
                                              config.epsilon,
                                              config.pre_layer_norm,
-                                             config.mlp_after_attn)
+                                             config.mlp_after_attn,
+                                             config.mlp_act_func_type)
                 output = vector_matmul_func(intermediate, output_w, False)
 
         inference_cuda_module.residual_add(

@@ -4,6 +4,8 @@ import torch
 from torch.nn.parameter import Parameter
 from packaging import version as pkg_version
 
+from deepspeed.utils.types import ActivationFuncType
+
 supported_models = {None}
 
 
@@ -12,11 +14,14 @@ class DSPolicy(ABC):
                  inference=True,
                  linear_layer=True,
                  scale_attention=True,
-                 megatron_v2=False):
+                 megatron_v2=False,
+                 mlp_act_func_type=ActivationFuncType.GELU):
+
         self.inference = inference
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
         self.is_megatron_v2 = megatron_v2
+        self.mlp_act_func_type = mlp_act_func_type
 
     def attention(self):
         """
@@ -423,7 +428,7 @@ class HFOPTLayerPolicy(DSPolicy):
 
     def __init__(self, client_module, inference=True):
         # TODO(arashb): linear_layer == True ?
-        super().__init__(inference, linear_layer=True)
+        super().__init__(inference, linear_layer=True, mlp_act_func_type=ActivationFuncType.ReLU)
         self.client_module = client_module
         try:
             import transformers

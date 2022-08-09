@@ -14,6 +14,8 @@ from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
 import time
 
+from deepspeed.utils.types import ActivationFuncType
+
 
 class ReplaceWithTensorSlicing:
     def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):
@@ -309,6 +311,7 @@ def replace_transformer_layer(orig_layer_impl,
                                                                'window_size') else 1),
                     rotary_dim=rotary_dim,
                     mlp_after_attn=(rotary_dim is None or rotary_dim < 0),
+                    mlp_act_func_type=policy.mlp_act_func_type,
                     training_mp_size=training_mp_size,
                     bigscience_bloom=bigscience_bloom)
 
