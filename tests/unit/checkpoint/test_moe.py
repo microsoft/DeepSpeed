@@ -27,27 +27,22 @@ class TestMoECheckpoint(DistributedTest):
         hidden_dim = 16
         args = args_from_dict(tmpdir, config_dict)
 
-        def _helper(args):
-            models = [
-                SimpleMoEModel(hidden_dim=hidden_dim,
-                               num_experts=ep_size,
-                               ep_size=ep_size) for _ in range(2)
-            ]
-            optimizers = [
-                torch.optim.AdamW(params=model.parameters()) for model in models
-            ]
-            checkpoint_correctness_verification(args,
-                                                models=models,
-                                                hidden_dim=hidden_dim,
-                                                tmpdir=tmpdir,
-                                                load_optimizer_states=True,
-                                                load_lr_scheduler_states=False,
-                                                fp16=config_dict["fp16"]["enabled"],
-                                                empty_tag=True,
-                                                base_optimizers=optimizers,
-                                                seq_dataloader=True)
-
-        _helper(args)
+        models = [
+            SimpleMoEModel(hidden_dim=hidden_dim,
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
+        ]
+        optimizers = [torch.optim.AdamW(params=model.parameters()) for model in models]
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=False,
+                                            fp16=config_dict["fp16"]["enabled"],
+                                            empty_tag=True,
+                                            base_optimizers=optimizers,
+                                            seq_dataloader=True)
 
     @pytest.mark.parametrize("ep_size, load_optim_states",
                              [(4,
@@ -86,34 +81,29 @@ class TestMoECheckpoint(DistributedTest):
         hidden_dim = 16
         args = args_from_dict(tmpdir, config_dict)
 
-        def create_param_groups(model):
-            # param group must have a random unique name (for now)
-            # TODO: clean-up this requirement, the unique name should not be required here
-            return {
-                'params': [p for p in model.parameters()],
-                'name': 'random-unique-name'
-            }
-
-        def _helper(args):
-            models = [
-                SimpleMoEModel(hidden_dim=hidden_dim,
-                               num_experts=ep_size,
-                               ep_size=ep_size) for _ in range(2)
-            ]
-            params = [
-                split_params_into_different_moe_groups_for_optimizer(
-                    create_param_groups(model)) for model in models
-            ]
-            optimizers = [torch.optim.AdamW(params=param) for param in params]
-            checkpoint_correctness_verification(args,
-                                                models=models,
-                                                hidden_dim=hidden_dim,
-                                                tmpdir=tmpdir,
-                                                load_optimizer_states=load_optim_states,
-                                                load_lr_scheduler_states=False,
-                                                fp16=config_dict["fp16"]["enabled"],
-                                                empty_tag=True,
-                                                base_optimizers=optimizers,
-                                                seq_dataloader=True)
-
-        _helper(args)
+        models = [
+            SimpleMoEModel(hidden_dim=hidden_dim,
+                           num_experts=ep_size,
+                           ep_size=ep_size) for _ in range(2)
+        ]
+        # param group must have a random unique name (for now)
+        # TODO: clean-up this requirement, the unique name should not be required here
+        param_groups = [{
+            'params': [p for p in model.parameters()],
+            'name': 'random-unique-name'
+        } for model in models]
+        params = [
+            split_params_into_different_moe_groups_for_optimizer(group)
+            for group in param_groups
+        ]
+        optimizers = [torch.optim.AdamW(params=param) for param in params]
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=load_optim_states,
+                                            load_lr_scheduler_states=False,
+                                            fp16=config_dict["fp16"]["enabled"],
+                                            empty_tag=True,
+                                            base_optimizers=optimizers,
+                                            seq_dataloader=True)

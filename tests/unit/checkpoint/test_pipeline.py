@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.fixture(params=[2])
-def stages(request):
+def num_stages(request):
     return request.param
 
 
@@ -16,7 +16,7 @@ class TestPipelineCheckpoint(DistributedTest):
     world_size = 4
 
     @pytest.mark.parametrize("zero_stage", [0, 1])
-    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir, stages):
+    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir, num_stages):
         config_dict = {
             "train_batch_size": 2,
             "train_micro_batch_size_per_gpu": 1,
@@ -51,19 +51,16 @@ class TestPipelineCheckpoint(DistributedTest):
             }
         }
 
-        def _test(save_folder, num_stages):
-            args = args_from_dict(tmpdir, config_dict)
-            models = [LinearStackPipe(num_stages=num_stages) for _ in range(2)]
-            checkpoint_correctness_verification(args=args,
-                                                models=models,
-                                                hidden_dim=models[0].hidden_dim,
-                                                tmpdir=save_folder,
-                                                fp16=config_dict['fp16']['enabled'],
-                                                load_optimizer_states=True,
-                                                load_lr_scheduler_states=True,
-                                                train_batch=True)
-
-        _test(tmpdir, num_stages=stages)
+        args = args_from_dict(tmpdir, config_dict)
+        models = [LinearStackPipe(num_stages=num_stages) for _ in range(2)]
+        checkpoint_correctness_verification(args=args,
+                                            models=models,
+                                            hidden_dim=models[0].hidden_dim,
+                                            tmpdir=tmpdir,
+                                            fp16=config_dict['fp16']['enabled'],
+                                            load_optimizer_states=True,
+                                            load_lr_scheduler_states=True,
+                                            train_batch=True)
 
     @pytest.mark.parametrize(
         "base_topo,test_topo",
@@ -82,38 +79,35 @@ class TestPipelineCheckpoint(DistributedTest):
             #          num_dp=2)),
         ])
     def test_checkpoint_pipe_module(self, base_topo, test_topo, tmpdir):
-        def _test(base_topo, test_topo, save_folder):
-            checkpoint_engine = TorchCheckpointEngine()
-            base_model = LinearStackPipe(topology=base_topo)
-            base_model.save_state_dict(save_folder, checkpoint_engine=checkpoint_engine)
+        checkpoint_engine = TorchCheckpointEngine()
+        base_model = LinearStackPipe(topology=base_topo)
+        base_model.save_state_dict(tmpdir, checkpoint_engine=checkpoint_engine)
 
-            dist.barrier()
+        dist.barrier()
 
-            test_model = LinearStackPipe(topology=test_topo)
-            test_model.load_state_dir(save_folder, checkpoint_engine=checkpoint_engine)
+        test_model = LinearStackPipe(topology=test_topo)
+        test_model.load_state_dir(tmpdir, checkpoint_engine=checkpoint_engine)
 
-            # Base and test can have different lengths, so make sure we map from the
-            # smaller to larger model
-            if len(base_model.forward_funcs) < len(test_model.forward_funcs):
-                A = base_model
-                B = test_model
-            else:
-                A = test_model
-                B = base_model
+        # Base and test can have different lengths, so make sure we map from the
+        # smaller to larger model
+        if len(base_model.forward_funcs) < len(test_model.forward_funcs):
+            A = base_model
+            B = test_model
+        else:
+            A = test_model
+            B = base_model
 
-            # Compare layers individually since partitions are different
-            for idx, A_layer in enumerate(A.forward_funcs):
-                if not hasattr(A_layer, 'parameters'):
-                    # Skip functionals, etc.
-                    continue
+        # Compare layers individually since partitions are different
+        for idx, A_layer in enumerate(A.forward_funcs):
+            if not hasattr(A_layer, 'parameters'):
+                # Skip functionals, etc.
+                continue
 
-                # Find the corresponding layer in B
-                global_idx = idx + A._local_start
-                B_local_idx = global_idx - B._local_start
-                B_layer = B.forward_funcs[B_local_idx]
+            # Find the corresponding layer in B
+            global_idx = idx + A._local_start
+            B_local_idx = global_idx - B._local_start
+            B_layer = B.forward_funcs[B_local_idx]
 
-                # Compare layer parameters
-                for p0, p1 in zip(A_layer.parameters(), B_layer.parameters()):
-                    assert torch.allclose(p0, p1, atol=1e-07), f"Model state {p0} is not equal to {p1}"
-
-        _test(base_topo, test_topo, save_folder=tmpdir)
+            # Compare layer parameters
+            for p0, p1 in zip(A_layer.parameters(), B_layer.parameters()):
+                assert torch.allclose(p0, p1, atol=1e-07), f"Model state {p0} is not equal to {p1}"

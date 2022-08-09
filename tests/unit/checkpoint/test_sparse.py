@@ -52,39 +52,6 @@ class TestSparseCheckpoint(DistributedTest):
             def forward(self, x, offsets):
                 return self.linear(self.emb(x, offsets))
 
-        def _test(model_to_save, model_destination):
-            engine_to_save, _, _, _ = deepspeed.initialize(
-                model=model_to_save, config={"train_batch_size": 2, "sparse_gradients": to_save_model_sparse}
-            )
-            engine_destination, _, _, _ = deepspeed.initialize(
-                model=model_destination, config={"train_batch_size": 2, "sparse_gradients": destination_sparse}
-            )
-
-            save_folder = os.path.join(tmpdir, 'saved_checkpoint')
-            save_tag = '1'
-
-            engine_to_save.save_checkpoint(save_folder, tag=save_tag)
-
-            is_sparse_destination = isinstance(model_destination,
-                                               ModelEmbedding) and destination_sparse
-            if isinstance(model_destination,
-                          ModelEmbedding) and model_destination.emb.sparse:
-                assert "emb.weight" in engine_destination.sparse_tensor_module_names
-            engine_destination.load_checkpoint(save_folder,
-                                               tag=save_tag,
-                                               load_module_strict=False,
-                                               load_optimizer_states=False,
-                                               load_lr_scheduler_states=False,
-                                               load_module_only=False)
-            if isinstance(model_destination,
-                          ModelEmbedding) and isinstance(model_to_save,
-                                                         ModelEmbedding):
-                assert engine_destination.sparse_tensor_module_names == engine_to_save.sparse_tensor_module_names
-            elif isinstance(model_destination, ModelEmbedding):
-                assert not is_sparse_destination or "emb.weight" in engine_destination.sparse_tensor_module_names
-            else:
-                assert len(engine_destination.sparse_tensor_module_names) == 0
-
         if to_save_model_has_embedding:
             model_to_save = ModelEmbedding()
         else:
@@ -93,4 +60,35 @@ class TestSparseCheckpoint(DistributedTest):
             model_destination = ModelEmbedding()
         else:
             model_destination = ModelNoEmbedding()
-        _test(model_to_save, model_destination)
+
+        engine_to_save, _, _, _ = deepspeed.initialize(
+            model=model_to_save, config={"train_batch_size": 2, "sparse_gradients": to_save_model_sparse}
+        )
+        engine_destination, _, _, _ = deepspeed.initialize(
+            model=model_destination, config={"train_batch_size": 2, "sparse_gradients": destination_sparse}
+        )
+
+        save_folder = os.path.join(tmpdir, 'saved_checkpoint')
+        save_tag = '1'
+
+        engine_to_save.save_checkpoint(save_folder, tag=save_tag)
+
+        is_sparse_destination = isinstance(model_destination,
+                                           ModelEmbedding) and destination_sparse
+        if isinstance(model_destination,
+                      ModelEmbedding) and model_destination.emb.sparse:
+            assert "emb.weight" in engine_destination.sparse_tensor_module_names
+        engine_destination.load_checkpoint(save_folder,
+                                           tag=save_tag,
+                                           load_module_strict=False,
+                                           load_optimizer_states=False,
+                                           load_lr_scheduler_states=False,
+                                           load_module_only=False)
+        if isinstance(model_destination,
+                      ModelEmbedding) and isinstance(model_to_save,
+                                                     ModelEmbedding):
+            assert engine_destination.sparse_tensor_module_names == engine_to_save.sparse_tensor_module_names
+        elif isinstance(model_destination, ModelEmbedding):
+            assert not is_sparse_destination or "emb.weight" in engine_destination.sparse_tensor_module_names
+        else:
+            assert len(engine_destination.sparse_tensor_module_names) == 0

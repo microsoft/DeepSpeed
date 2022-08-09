@@ -48,29 +48,21 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
 
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
-
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        def _test_checkpoint_unfused_optimizer(args,
-                                               models,
-                                               hidden_dim,
-                                               load_optimizer_states):
-            checkpoint_correctness_verification(
-                args,
-                models=models,
-                hidden_dim=hidden_dim,
-                tmpdir=tmpdir,
-                load_optimizer_states=load_optimizer_states)
+        # Load & verify optimizer states
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True)
 
-        _test_checkpoint_unfused_optimizer(args=args,
-                                           models=models,
-                                           hidden_dim=hidden_dim,
-                                           load_optimizer_states=True)
-
-        _test_checkpoint_unfused_optimizer(args=args,
-                                           models=models,
-                                           hidden_dim=hidden_dim,
-                                           load_optimizer_states=False)
+        # Ignore optimizer states
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=False)
 
     def test_checkpoint_fused_optimizer(self, tmpdir):
         config_dict = {
@@ -93,29 +85,21 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
 
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
-
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-        def _test_checkpoint_fused_optimizer(args,
-                                             models,
-                                             hidden_dim,
-                                             load_optimizer_states):
-            checkpoint_correctness_verification(
-                args,
-                models=models,
-                hidden_dim=hidden_dim,
-                tmpdir=tmpdir,
-                load_optimizer_states=load_optimizer_states)
+        # Load & verify optimizer states
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True)
 
-        _test_checkpoint_fused_optimizer(args=args,
-                                         models=models,
-                                         hidden_dim=hidden_dim,
-                                         load_optimizer_states=True)
-
-        _test_checkpoint_fused_optimizer(args=args,
-                                         models=models,
-                                         hidden_dim=hidden_dim,
-                                         load_optimizer_states=False)
+        # Ignore optimizer states
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=False)
 
     def test_checkpoint_fp32_optimizer(self, tmpdir):
         config_dict = {
@@ -138,14 +122,9 @@ class TestOtherOptimizerCheckpoint(DistributedTest):
 
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
-
         models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
-
-        def _test_checkpoint_fp32_optimizer(args, models, hidden_dim):
-            checkpoint_correctness_verification(args,
-                                                models=models,
-                                                hidden_dim=hidden_dim,
-                                                tmpdir=tmpdir,
-                                                fp16=False)
-
-        _test_checkpoint_fp32_optimizer(args=args, models=models, hidden_dim=hidden_dim)
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            fp16=False)

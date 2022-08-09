@@ -64,30 +64,17 @@ class TestZeROCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
-        def _test_load_optimizer_state(args,
-                                       zero_stage,
-                                       hidden_dim,
-                                       load_optimizer_states):
-            if zero_stage == 3:
-                with deepspeed.zero.Init():
-                    models = [
-                        SimpleModel(hidden_dim,
-                                    empty_grad=False) for _ in range(2)
-                    ]
-            else:
+        if zero_stage == 3:
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+        else:
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-            checkpoint_correctness_verification(
-                args,
-                models,
-                hidden_dim,
-                tmpdir,
-                load_optimizer_states=load_optimizer_states)
-
-        _test_load_optimizer_state(args=args,
-                                   zero_stage=zero_stage,
-                                   hidden_dim=hidden_dim,
-                                   load_optimizer_states=True)
+        checkpoint_correctness_verification(args,
+                                            models,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=True)
 
     @pytest.mark.parametrize('zero_stage, use_cpu_offload, adam_optimizer',
                              [(1,
@@ -137,32 +124,19 @@ class TestZeROCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
-        def _test_not_load_optimizer_state(args,
-                                           zero_stage,
-                                           hidden_dim,
-                                           load_optimizer_states):
-            if zero_stage == 3:
-                global DeepSpeedZeroOptimizer_Stage3
-                from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-                with deepspeed.zero.Init():
-                    models = [
-                        SimpleModel(hidden_dim,
-                                    empty_grad=False) for _ in range(2)
-                    ]
-            else:
+        if zero_stage == 3:
+            global DeepSpeedZeroOptimizer_Stage3
+            from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+        else:
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-            checkpoint_correctness_verification(
-                args,
-                models,
-                hidden_dim,
-                tmpdir,
-                load_optimizer_states=load_optimizer_states)
-
-        _test_not_load_optimizer_state(args=args,
-                                       zero_stage=zero_stage,
-                                       hidden_dim=hidden_dim,
-                                       load_optimizer_states=False)
+        checkpoint_correctness_verification(args,
+                                            models,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=False)
 
     @pytest.mark.parametrize('zero_stage', [1, 2])
     def test_hybrid_optimizer_state(self, tmpdir, zero_stage):
@@ -185,18 +159,12 @@ class TestZeROCheckpoint(DistributedTest):
         models = [SimpleModel(hidden_dim=hidden_dim) for _ in range(2)]
         optimizers = [HybridStateOptimizer(model.parameters()) for model in models]
 
-        def _test_hybrid_optimizer_state(args, models, optimizers, hidden_dim):
-            checkpoint_correctness_verification(args,
-                                                models=models,
-                                                base_optimizers=optimizers,
-                                                hidden_dim=hidden_dim,
-                                                tmpdir=tmpdir,
-                                                load_optimizer_states=True)
-
-        _test_hybrid_optimizer_state(args=args,
-                                     models=models,
-                                     optimizers=optimizers,
-                                     hidden_dim=hidden_dim)
+        checkpoint_correctness_verification(args,
+                                            models=models,
+                                            base_optimizers=optimizers,
+                                            hidden_dim=hidden_dim,
+                                            tmpdir=tmpdir,
+                                            load_optimizer_states=True)
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_module_only(self, tmpdir, zero_stage):
@@ -216,23 +184,17 @@ class TestZeROCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
-        def _go(args, zero_stage, hidden_dim):
-            if zero_stage == 3:
-                with deepspeed.zero.Init():
-                    models = [
-                        SimpleModel(hidden_dim,
-                                    empty_grad=False) for _ in range(2)
-                    ]
-            else:
+        if zero_stage == 3:
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+        else:
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-            checkpoint_correctness_verification(args,
-                                                models,
-                                                hidden_dim,
-                                                tmpdir,
-                                                load_module_only=True)
-
-        _go(args, zero_stage, hidden_dim)
+        checkpoint_correctness_verification(args,
+                                            models,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_module_only=True)
 
 
 class TestZeROElasticCheckpoint(DistributedTest):
@@ -268,55 +230,51 @@ class TestZeROElasticCheckpoint(DistributedTest):
         }
         hidden_dim = 10
 
-        def _go():
-            # torch 1.2.* stores raw tensor id numbers in checkpoint state which leads to
-            # false positive mismatches in checkpoint state comparisons.
-            # Newer torch versions store tensor ids as 0, 1, 2, ...
-            expected_mismatch_keys = [] if required_minimum_torch_version(
-                1,
-                4) else ['params']
-            models = [SimpleModel(hidden_dim) for _ in range(2)]
-            model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                                model=models[0],
-                                                model_parameters=models[0].parameters())
-            data_loader = random_dataloader(model=model,
-                                            total_samples=8,
-                                            hidden_dim=hidden_dim,
-                                            device=model.device)
-            for n, batch in enumerate(data_loader):
-                loss = model(batch[0], batch[1])
-                model.backward(loss)
-                model.step()
-            if load_optim:
-                torch.save(model.optimizer.optimizer.state_dict(),
-                           os.path.join(tmpdir,
-                                        'opt-state-dict'))
-            model.save_checkpoint(tmpdir)
+        # torch 1.2.* stores raw tensor id numbers in checkpoint state which leads to
+        # false positive mismatches in checkpoint state comparisons.
+        # Newer torch versions store tensor ids as 0, 1, 2, ...
+        expected_mismatch_keys = [] if required_minimum_torch_version(1,
+                                                                      4) else ['params']
+        models = [SimpleModel(hidden_dim) for _ in range(2)]
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                            model=models[0],
+                                            model_parameters=models[0].parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
+        if load_optim:
+            torch.save(model.optimizer.optimizer.state_dict(),
+                       os.path.join(tmpdir,
+                                    'opt-state-dict'))
+        model.save_checkpoint(tmpdir)
 
-            ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
-            model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                                model=models[1],
-                                                model_parameters=models[1].parameters())
-            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
+        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                            model=models[1],
+                                            model_parameters=models[1].parameters())
+        model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
 
-            if load_optim:
-                saved_sd = torch.load(os.path.join(tmpdir, 'opt-state-dict'))
-                curr_sd = model.optimizer.optimizer.state_dict()
-                for curr_param_group, saved_param_group in zip(curr_sd['param_groups'], saved_sd['param_groups']):
-                    compare_state_dicts(curr_param_group,
-                                        saved_param_group,
-                                        expected_mismatch_keys)
+        if load_optim:
+            saved_sd = torch.load(os.path.join(tmpdir, 'opt-state-dict'))
+            curr_sd = model.optimizer.optimizer.state_dict()
+            for curr_param_group, saved_param_group in zip(curr_sd['param_groups'], saved_sd['param_groups']):
+                compare_state_dicts(curr_param_group,
+                                    saved_param_group,
+                                    expected_mismatch_keys)
 
-            data_loader = random_dataloader(model=model,
-                                            total_samples=8,
-                                            hidden_dim=hidden_dim,
-                                            device=model.device)
-            for n, batch in enumerate(data_loader):
-                loss = model(batch[0], batch[1])
-                model.backward(loss)
-                model.step()
-
-        _go()
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
 
     @pytest.mark.parametrize(["elastic_save",
                               "elastic_load",
@@ -351,41 +309,37 @@ class TestZeROElasticCheckpoint(DistributedTest):
         hidden_dim = 10
         models = [SimpleModel(hidden_dim) for _ in range(2)]
 
+        # Save checkpoint with dp world size  = 4
         #TODO - remove this line @distributed_test(world_size=[4])
-        def _go2(models):
-            model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                                model=models[0],
-                                                model_parameters=models[0].parameters())
-            data_loader = random_dataloader(model=model,
-                                            total_samples=8,
-                                            hidden_dim=hidden_dim,
-                                            device=model.device)
-            for n, batch in enumerate(data_loader):
-                loss = model(batch[0], batch[1])
-                model.backward(loss)
-                model.step()
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                            model=models[0],
+                                            model_parameters=models[0].parameters())
+        data_loader = random_dataloader(model=model,
+                                        total_samples=8,
+                                        hidden_dim=hidden_dim,
+                                        device=model.device)
+        for n, batch in enumerate(data_loader):
+            loss = model(batch[0], batch[1])
+            model.backward(loss)
+            model.step()
 
-            if load_optim:
-                torch.save(model.optimizer.optimizer.state_dict(),
-                           os.path.join(tmpdir,
-                                        'opt-state-dict'))
-            model.save_checkpoint(tmpdir)
+        if load_optim:
+            torch.save(model.optimizer.optimizer.state_dict(),
+                       os.path.join(tmpdir,
+                                    'opt-state-dict'))
+        model.save_checkpoint(tmpdir)
 
-        _go2(models)
-
+        # Load checkpoint with dp world size = 2
         #TODO - remove this line @distributed_test(world_size=[2])
-        def _go1(models):
-            ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
-            model, _, _, _ = deepspeed.initialize(config=ds_config,
-                                                    model=models[1],
-                                                    model_parameters=models[1].parameters())
-            if load_optim:
-                with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
-                    model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
-            else:
+        ds_config["zero_optimization"]["elastic_checkpoint"] = elastic_load
+        model, _, _, _ = deepspeed.initialize(config=ds_config,
+                                                model=models[1],
+                                                model_parameters=models[1].parameters())
+        if load_optim:
+            with pytest.raises(deepspeed.runtime.zero.utils.ZeRORuntimeException):
                 model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
-
-        _go1(models)
+        else:
+            model.load_checkpoint(tmpdir, load_optimizer_states=load_optim)
 
 
 class TestZeROSaveLoadEdgeCase(DistributedTest):
@@ -410,18 +364,12 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         model = SimpleModel(hidden_dim)
         args = args_from_dict(tmpdir, config_dict)
 
-        def _test_immediate_save_load(args, model, tmpdir):
-
-            ds_model = create_deepspeed_model(args=args,
-                                              model=model,
-                                              base_optimizer=None)
-            ds_model.save_checkpoint(tmpdir)
-            ds_model.load_checkpoint(tmpdir,
-                                     load_optimizer_states=False,
-                                     load_lr_scheduler_states=False,
-                                     load_module_only=False)
-
-        _test_immediate_save_load(args, model, tmpdir)
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.save_checkpoint(tmpdir)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_load_immediate_save(self, tmpdir, zero_stage):
@@ -442,35 +390,27 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         model = SimpleModel(hidden_dim)
         args = args_from_dict(tmpdir, config_dict)
 
-        def _test_load_immediate_save(args, model, tmpdir):
+        # 1. pretrain a model and save it
+        dtype = torch.half
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=1,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=dtype)
+        for n, batch in enumerate(data_loader):
+            loss = ds_model(batch[0], batch[1])
+            ds_model.backward(loss)
+            ds_model.step()
+        ds_model.save_checkpoint(tmpdir)
 
-            # 1. pretrain a model and save it
-            dtype = torch.half
-            ds_model = create_deepspeed_model(args=args,
-                                              model=model,
-                                              base_optimizer=None)
-            data_loader = random_dataloader(model=ds_model,
-                                            total_samples=1,
-                                            hidden_dim=hidden_dim,
-                                            device=ds_model.device,
-                                            dtype=dtype)
-            for n, batch in enumerate(data_loader):
-                loss = ds_model(batch[0], batch[1])
-                ds_model.backward(loss)
-                ds_model.step()
-            ds_model.save_checkpoint(tmpdir)
-
-            # 2. load and immediately save a model with a fresh ds engine
-            ds_model = create_deepspeed_model(args=args,
-                                              model=model,
-                                              base_optimizer=None)
-            ds_model.load_checkpoint(tmpdir,
-                                     load_optimizer_states=False,
-                                     load_lr_scheduler_states=False,
-                                     load_module_only=False)
-            ds_model.save_checkpoint(tmpdir)
-
-        _test_load_immediate_save(args, model, tmpdir)
+        # 2. load and immediately save a model with a fresh ds engine
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
+        ds_model.load_checkpoint(tmpdir,
+                                 load_optimizer_states=False,
+                                 load_lr_scheduler_states=False,
+                                 load_module_only=False)
+        ds_model.save_checkpoint(tmpdir)
 
     @pytest.mark.parametrize('zero_stage', [0, 1, 2, 3])
     def test_save_before_accum_grad_is_done(self, tmpdir, zero_stage):
@@ -494,30 +434,24 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
         model = SimpleModel(hidden_dim)
         args = args_from_dict(tmpdir, config_dict)
 
-        def _test_save_before_accum_grad_is_done(args, model, tmpdir):
+        # This test reproduces a bug where one tries to retrieve a 16bit model before grad_accum
+        # cycle was completed.
+        # So we config grad_accum=2 and step only once and save_16bit_model
+        ds_model = create_deepspeed_model(args=args, model=model, base_optimizer=None)
 
-            # This test reproduces a bug where one tries to retrieve a 16bit model before grad_accum
-            # cycle was completed.
-            # So we config grad_accum=2 and step only once and save_16bit_model
-            ds_model = create_deepspeed_model(args=args,
-                                              model=model,
-                                              base_optimizer=None)
+        data_loader = random_dataloader(model=ds_model,
+                                        total_samples=2,
+                                        hidden_dim=hidden_dim,
+                                        device=ds_model.device,
+                                        dtype=torch.half)
 
-            data_loader = random_dataloader(model=ds_model,
-                                            total_samples=2,
-                                            hidden_dim=hidden_dim,
-                                            device=ds_model.device,
-                                            dtype=torch.half)
+        batch = next(iter(data_loader))
+        loss = ds_model(batch[0], batch[1])
+        ds_model.backward(loss)
+        ds_model.step()
 
-            batch = next(iter(data_loader))
-            loss = ds_model(batch[0], batch[1])
-            ds_model.backward(loss)
-            ds_model.step()
+        # we stepped only once, and now save 16bit model before gradient_accumulation_steps=2 is complete
+        ds_model.save_16bit_model(tmpdir, "model.pt")
 
-            # we stepped only once, and now save 16bit model before gradient_accumulation_steps=2 is complete
-            ds_model.save_16bit_model(tmpdir, "model.pt")
-
-            # let's test just as well that we can save the checkpoint too
-            ds_model.save_checkpoint(tmpdir)
-
-        _test_save_before_accum_grad_is_done(args, model, tmpdir)
+        # let's test just as well that we can save the checkpoint too
+        ds_model.save_checkpoint(tmpdir)

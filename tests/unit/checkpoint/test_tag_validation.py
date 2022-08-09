@@ -26,20 +26,16 @@ class TestCheckpointValidationTag(DistributedTest):
         }
         hidden_dim = 10
         args = args_from_dict(tmpdir, config_dict)
-
         model = SimpleModel(hidden_dim)
 
-        def _helper(args, model):
-            model, _, _,_ = deepspeed.initialize(args=args,
-                                                model=model,
-                                                model_parameters=model.parameters())
-            if valid_mode == "FAIL":
-                with pytest.raises(AssertionError):
-                    model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{dist.get_rank()}")
-            else:
+        model, _, _,_ = deepspeed.initialize(args=args,
+                                            model=model,
+                                            model_parameters=model.parameters())
+        if valid_mode == "FAIL":
+            with pytest.raises(AssertionError):
                 model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{dist.get_rank()}")
-
-        _helper(args=args, model=model)
+        else:
+            model.save_checkpoint(save_dir=tmpdir, tag=f"tag-{dist.get_rank()}")
 
     def test_checkpoint_unknown_tag_validation(self, tmpdir):
 
@@ -58,13 +54,9 @@ class TestCheckpointValidationTag(DistributedTest):
         }
         hidden_dim = 10
         args = args_from_dict(tmpdir, config_dict)
-
         model = SimpleModel(hidden_dim)
 
-        def _helper(args, model):
-            with pytest.raises(deepspeed.DeepSpeedConfigError):
-                model, _, _,_ = deepspeed.initialize(args=args,
-                                                    model=model,
-                                                    model_parameters=model.parameters())
-
-        _helper(args=args, model=model)
+        with pytest.raises(deepspeed.DeepSpeedConfigError):
+            model, _, _,_ = deepspeed.initialize(args=args,
+                                                model=model,
+                                                model_parameters=model.parameters())

@@ -61,35 +61,20 @@ class TestLRSchedulerCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
-        def _test_checkpoint_lr_scheduler(args,
-                                          zero_stage,
-                                          hidden_dim,
-                                          load_optimizer_states,
-                                          load_lr_scheduler_states):
-            if zero_stage == 3:
-                global DeepSpeedZeroOptimizer_Stage3
-                from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
-                with deepspeed.zero.Init():
-                    models = [
-                        SimpleModel(hidden_dim,
-                                    empty_grad=False) for _ in range(2)
-                    ]
-            else:
+        if zero_stage == 3:
+            global DeepSpeedZeroOptimizer_Stage3
+            from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+        else:
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-            checkpoint_correctness_verification(
-                args,
-                models,
-                hidden_dim,
-                tmpdir,
-                load_optimizer_states=load_optimizer_states,
-                load_lr_scheduler_states=load_lr_scheduler_states)
-
-        _test_checkpoint_lr_scheduler(args=args,
-                                      zero_stage=zero_stage,
-                                      hidden_dim=hidden_dim,
-                                      load_optimizer_states=False,
-                                      load_lr_scheduler_states=True)
+        checkpoint_correctness_verification(args,
+                                            models,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=False,
+                                            load_lr_scheduler_states=True)
 
     @pytest.mark.parametrize('zero_stage, use_cpu_offload',
                              [(0,
@@ -136,30 +121,15 @@ class TestLRSchedulerCheckpoint(DistributedTest):
         args = args_from_dict(tmpdir, config_dict)
         hidden_dim = 10
 
-        def _test_checkpoint_no_lr_scheduler(args,
-                                             zero_stage,
-                                             hidden_dim,
-                                             load_optimizer_states,
-                                             load_lr_scheduler_states):
-            if zero_stage == 3:
-                with deepspeed.zero.Init():
-                    models = [
-                        SimpleModel(hidden_dim,
-                                    empty_grad=False) for _ in range(2)
-                    ]
-            else:
+        if zero_stage == 3:
+            with deepspeed.zero.Init():
                 models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
+        else:
+            models = [SimpleModel(hidden_dim, empty_grad=False) for _ in range(2)]
 
-            checkpoint_correctness_verification(
-                args,
-                models,
-                hidden_dim,
-                tmpdir,
-                load_optimizer_states=load_optimizer_states,
-                load_lr_scheduler_states=load_lr_scheduler_states)
-
-        _test_checkpoint_no_lr_scheduler(args=args,
-                                         zero_stage=zero_stage,
-                                         hidden_dim=hidden_dim,
-                                         load_optimizer_states=False,
-                                         load_lr_scheduler_states=False)
+        checkpoint_correctness_verification(args,
+                                            models,
+                                            hidden_dim,
+                                            tmpdir,
+                                            load_optimizer_states=False,
+                                            load_lr_scheduler_states=False)
