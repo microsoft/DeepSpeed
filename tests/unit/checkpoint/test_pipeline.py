@@ -11,7 +11,7 @@ class TestPipelineCheckpoint(DistributedTest):
     world_size = 4
 
     @pytest.mark.parametrize("zero_stage", [0, 1])
-    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir, num_stages=2):
+    def test_checkpoint_pipe_engine(self, zero_stage, tmpdir):
         config_dict = {
             "train_batch_size": 2,
             "train_micro_batch_size_per_gpu": 1,
@@ -46,7 +46,7 @@ class TestPipelineCheckpoint(DistributedTest):
             }
         }
 
-        models = [LinearStackPipe(num_stages=num_stages) for _ in range(2)]
+        models = [LinearStackPipe(num_stages=2) for _ in range(2)]
         checkpoint_correctness_verification(config_dict=config_dict,
                                             models=models,
                                             hidden_dim=models[0].hidden_dim,
