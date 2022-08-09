@@ -3,10 +3,7 @@
 #define MAX_CAP 4
 #define MAX_SEQ 2048
 
-inline __device__ float relu(const float x)
-{
-    return x < 0 ? 0 : x;
-}
+inline __device__ float relu(const float x) { return x < 0 ? 0 : x; }
 
 __global__ void fused_bias_relu(float* input,
                                 const float* bias,

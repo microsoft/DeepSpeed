@@ -14,8 +14,6 @@ from .layers import LinearAllreduce, LinearLayer
 from .load_checkpoint import load_model_with_checkpoint
 import time
 
-from deepspeed.utils.types import ActivationFuncType
-
 
 class ReplaceWithTensorSlicing:
     def __init__(self, mp_group=None, mp_size=1, out_dim=1, in_dim=0):

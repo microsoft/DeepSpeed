@@ -11,7 +11,7 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 // NOTE: This activation function type enum should be always in sync
 // with the python counterpart, otherwise the casting from python binding
 // will be incorrect.
-enum class ActivationFuncType {UNKNOWN = 0, GELU = 1, ReLU = 2};
+enum class ActivationFuncType { UNKNOWN = 0, GELU = 1, ReLU = 2 };
 
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
@@ -901,21 +901,21 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
                    CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
 
-if (act_func_type == ActivationFuncType::GELU) {
-    launch_bias_gelu((T*)output.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     Context::Instance().GetCurrentStream());
- } else if (act_func_type == ActivationFuncType::ReLU) {
-    launch_bias_relu((T*)output.data_ptr(),
-                     (T*)bias.data_ptr(),
-                     weight.size(1),
-                     bsz,
-                     Context::Instance().GetCurrentStream());
- }
+    if (act_func_type == ActivationFuncType::GELU) {
+        launch_bias_gelu((T*)output.data_ptr(),
+                         (T*)bias.data_ptr(),
+                         weight.size(1),
+                         bsz,
+                         Context::Instance().GetCurrentStream());
+    } else if (act_func_type == ActivationFuncType::ReLU) {
+        launch_bias_relu((T*)output.data_ptr(),
+                         (T*)bias.data_ptr(),
+                         weight.size(1),
+                         bsz,
+                         Context::Instance().GetCurrentStream());
+    }
 
-   return inp_norm;
+    return inp_norm;
 }
 
 template <typename T>

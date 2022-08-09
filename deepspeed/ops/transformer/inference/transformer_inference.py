@@ -800,25 +800,26 @@ class DeepSpeedTransformerInference(nn.Module):
                         device=device))
         self.layer_past = None
 
-    def forward(self,
-                input,
-                input_mask=None,
-                attention_mask=None,
-                head_mask=None,
-                layer_past=None,
-                get_key_value=False,
-                get_present=False,
-                encoder_output=None,
-                enc_dec_attn_mask=None,
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                use_cache=False,
-                alibi=None,
-                output_attentions=False,
-                # TODO(arashb): 'layer_head_mask' and 'past_key_value' are only added to satisfy the OPT models API.
-                # This needs to be redesigned later!
-                layer_head_mask=None,
-                past_key_value=None):
+    def forward(
+            self,
+            input,
+            input_mask=None,
+            attention_mask=None,
+            head_mask=None,
+            layer_past=None,
+            get_key_value=False,
+            get_present=False,
+            encoder_output=None,
+            enc_dec_attn_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=None,
+            use_cache=False,
+            alibi=None,
+            output_attentions=False,
+            # TODO(arashb): 'layer_head_mask' and 'past_key_value' are only added to satisfy the OPT models API.
+            # This needs to be redesigned later!
+            layer_head_mask=None,
+            past_key_value=None):
         get_present = (get_present or get_key_value or use_cache)
         input_mask = input_mask if attention_mask is None else attention_mask
 

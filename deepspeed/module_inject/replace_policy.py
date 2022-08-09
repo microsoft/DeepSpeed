@@ -428,7 +428,9 @@ class HFOPTLayerPolicy(DSPolicy):
 
     def __init__(self, client_module, inference=True):
         # TODO(arashb): linear_layer == True ?
-        super().__init__(inference, linear_layer=True, mlp_act_func_type=ActivationFuncType.ReLU)
+        super().__init__(inference,
+                         linear_layer=True,
+                         mlp_act_func_type=ActivationFuncType.ReLU)
         self.client_module = client_module
         try:
             import transformers
