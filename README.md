@@ -27,7 +27,7 @@
 * Train/Inference dense or sparse models with billions or trillions of parameters
 * Achieve excellent system throughput and efficiently scale to thousands of GPUs
 * Train/Inference on resource constrained GPU systems
-* Achieve unprecedented low latency and high thoughput for inference
+* Achieve unprecedented low latency and high throughput for inference
 * Achieve extreme compression for an unparalleled inference latency and model size reduction with low costs
 
 ---
@@ -43,7 +43,7 @@ DeepSpeed offers a confluence of system innovations, that has made large scale D
 
 ## DeepSpeed-Inference
 
-DeepSpeed brings together innovations in parallelism technology such as tensor, pipeline, expert and ZeRO-parallelism, and combines them with high performance custom inference kernels, communication optimizations and heterogeneous memory technologies to enable inference at an unprecedented scale, while achieving unparalleled latency, thoughput and cost reduction. This systematic composition of system technologies for inference falls under the inference pillar. Learn more: [DeepSpeed-Inference](https://www.deepspeed.ai/inference)
+DeepSpeed brings together innovations in parallelism technology such as tensor, pipeline, expert and ZeRO-parallelism, and combines them with high performance custom inference kernels, communication optimizations and heterogeneous memory technologies to enable inference at an unprecedented scale, while achieving unparalleled latency, throughput and cost reduction. This systematic composition of system technologies for inference falls under the inference pillar. Learn more: [DeepSpeed-Inference](https://www.deepspeed.ai/inference)
 
 
 ## DeepSpeed-Compression
@@ -56,7 +56,7 @@ To further increase the inference efficiency, DeepSpeed offers easy-to-use and f
 
 ## DeepSpeed Library
 
-   The [DeepSpeed](https://github.com/microsoft/deepspeed) library (this repository) implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use, open-sourced repository. It allows for easy composition of multitude of features within a single training, infernece or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see [DeepSpeed Adoption](#deepspeed-adoption)).
+   The [DeepSpeed](https://github.com/microsoft/deepspeed) library (this repository) implements and packages the innovations and technologies in DeepSpeed Training, Inference and Compression Pillars into a single easy-to-use, open-sourced repository. It allows for easy composition of multitude of features within a single training, inference or compression pipeline. The DeepSpeed Library is heavily adopted by the DL community, and has been used to enable some of the most powerful models (see [DeepSpeed Adoption](#deepspeed-adoption)).
 
 ## Model Implementations for Inference (MII)
 
@@ -80,9 +80,11 @@ DeepSpeed has been used to train many different large-scale models, below is a l
   * [Megatron-Turing NLG (530B)](https://www.microsoft.com/en-us/research/blog/using-deepspeed-and-megatron-to-train-megatron-turing-nlg-530b-the-worlds-largest-and-most-powerful-generative-language-model/)
   * [Jurassic-1 (178B)](https://uploads-ssl.webflow.com/60fd4503684b466578c0d307/61138924626a6981ee09caf6_jurassic_tech_paper.pdf)
   * [BLOOM (176B)](https://huggingface.co/blog/bloom-megatron-deepspeed)
+  * [GLM (130B)](https://github.com/THUDM/GLM-130B)
   * [YaLM (100B)](https://github.com/yandex/YaLM-100B)
   * [GPT-NeoX (20B)](https://github.com/EleutherAI/gpt-neox)
   * [AlexaTM (20B)](https://www.amazon.science/blog/20b-parameter-alexa-model-sets-new-marks-in-few-shot-learning)
+  * [Turing NLG (17B](https://www.microsoft.com/en-us/research/blog/turing-nlg-a-17-billion-parameter-language-model-by-microsoft/)
   * [METRO-LM (5.4B)](https://arxiv.org/pdf/2204.06644.pdf)
 
 DeepSpeed has been integrated with several different popular open-source DL frameworks such as:
