@@ -176,7 +176,7 @@ def test_proper_mbsz(ds_config):
 
 
 class TestNonElasticBatchParams(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self):
         config_dict = {
@@ -213,7 +213,7 @@ class TestNonElasticBatchParams(DistributedTest):
 
 
 class TestNonElasticBatchParamsWithOverride(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self):
         config_dict = {
@@ -249,7 +249,7 @@ class TestNonElasticBatchParamsWithOverride(DistributedTest):
 
 
 class TestElasticConfigChanged(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self):
         config_dict = {

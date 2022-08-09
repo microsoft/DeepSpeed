@@ -9,11 +9,10 @@ from tests.unit.util import bf16_required_version_check
 from deepspeed import comm as dist
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
     world_size = 1
 
-    def test(self, zero_stage, use_cpu_offload):
+    def test(self, zero_stage=2, use_cpu_offload=False):
         if not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
@@ -23,7 +22,6 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
             pytest.skip("cpu-adam is not compatible")
 
         config_dict = {
-            "train_batch_size": 1,
             "steps_per_print": 1,
             "optimizer": {
                 "type": "Adam",
@@ -73,11 +71,10 @@ class TestAdamBF16ZeroOneCycleCompatibility(DistributedTest):
             model.step()
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 class TestZeroAllowUntestedOptimizer(DistributedTest):
     world_size = 1
 
-    def test(self, zero_stage, use_cpu_offload):
+    def test(self, zero_stage=2, use_cpu_offload=False):
         if not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
@@ -112,11 +109,10 @@ class TestZeroAllowUntestedOptimizer(DistributedTest):
                                                       model_parameters=model.parameters())
 
 
-@pytest.mark.parametrize('zero_stage, use_cpu_offload', [(2, False)])
 class TestZeroEmptyPartition(DistributedTest):
     world_size = 3
 
-    def test(self, zero_stage, use_cpu_offload):
+    def test(self, zero_stage=2, use_cpu_offload=False):
         if not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
@@ -172,15 +168,11 @@ class TestZeroEmptyPartition(DistributedTest):
             model.step()
 
 
-@pytest.mark.parametrize('zero_stage, optimizer_constructor',
-                         [(2,
-                           torch.optim.Adam),
-                          (2,
-                           FusedAdam)])
+@pytest.mark.parametrize("optimizer_constructor", [torch.optim.Adam, FusedAdam])
 class TestZeroSupportedClientOptimizer(DistributedTest):
     world_size = 1
 
-    def test(self, zero_stage, optimizer_constructor):
+    def test(self, optimizer_constructor, zero_stage=2):
         if not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
@@ -259,11 +251,10 @@ class TestZero2ReduceScatterOff(DistributedTest):
             model.step()
 
 
-@pytest.mark.parametrize('stage', [2])
 class TestZeroEmptyGrad(DistributedTest):
     world_size = 1
 
-    def test(self, stage):
+    def test(self, stage=2):
         if not bf16_required_version_check():
             pytest.skip(
                 " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
@@ -300,55 +291,47 @@ class TestZeroEmptyGrad(DistributedTest):
             model.step()
 
 
-@pytest.mark.parametrize('comp_type_str, comm_type_str',
-                         [("fp16",
-                           "fp16"),
-                          ("bfp16",
-                           "bfp16"),
-                          ("fp16",
-                           "bfp16"),
-                          ("bfp16",
-                           "fp16"),
-                          ("fp32",
-                           "fp16"),
-                          ("fp32",
-                           "bfp16")])
+@pytest.mark.parametrize("comp_type",
+                         [torch.float16,
+                          torch.bfloat16,
+                          torch.float],
+                         ids=["fp16",
+                              "bfp16",
+                              "fp32"])
+@pytest.mark.parametrize("comm_type",
+                         [torch.float16,
+                          torch.bfloat16],
+                         ids=["fp16",
+                              "bfp16"])
 class TestZeroDtypeCocktail(DistributedTest):
     world_size = 2
 
-    def test(self, comp_type_str, comm_type_str):
-        torch_dtype_dict = {
-            "fp16": torch.float16,
-            "bfp16": torch.bfloat16,
-            "fp32": torch.float
-        }
-        comp_torch_dtype = torch_dtype_dict[comp_type_str]
-        comm_torch_dtype = torch_dtype_dict[comm_type_str]
-
-        if comp_torch_dtype == torch.bfloat16 or comm_torch_dtype == torch.bfloat16:
+    def test(self, comp_type, comm_type):
+        if comp_type == torch.bfloat16 or comm_type == torch.bfloat16:
             if not bf16_required_version_check():
                 pytest.skip(
                     " DeepSpeed BFloat16 tests need torch >= 1.10, NCCL >= 2.10.3, CUDA > =11.0 and HW support for BFloat16 to run correctly"
                 )
 
+        type_str = {torch.float16: "fp16", torch.bfloat16: "bfp16"}
+
         config_dict = {
             "train_batch_size": 2,
             "steps_per_print": 1,
             "fp16": {
-                "enabled": torch_dtype_dict[comp_type_str] == torch.float16
+                "enabled": comp_type == torch.float16
             },
             "bf16": {
-                "enabled": torch_dtype_dict[comp_type_str] == torch.bfloat16
+                "enabled": comp_type == torch.bfloat16
             },
             "zero_optimization": {
                 "stage": 2
             },
-            "communication_data_type": comm_type_str
+            "communication_data_type": type_str[comm_type]
         }
         hidden_dim = 10
 
         model = SimpleModel(hidden_dim)
-        orig_torch_reduce = dist.reduce
         optimizer = torch.optim.Adam(model.parameters())
         model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
@@ -357,12 +340,13 @@ class TestZeroDtypeCocktail(DistributedTest):
                                         total_samples=2,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
-                                        dtype=comp_torch_dtype)
+                                        dtype=comp_type)
 
         def custom_reduce(tensor, dst, op=dist.ReduceOp.SUM, group=None, async_op=False):
-            assert tensor.dtype == comm_torch_dtype
+            assert tensor.dtype == comm_type
             return orig_torch_reduce(tensor, dst, op, group, async_op)
 
+        orig_torch_reduce = dist.reduce
         dist.reduce = custom_reduce
         for n, batch in enumerate(data_loader):
             loss = model(batch[0], batch[1])

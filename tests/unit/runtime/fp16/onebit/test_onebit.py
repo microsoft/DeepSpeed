@@ -33,7 +33,7 @@ if rocm_version[0] > 4:
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
 class TestOneBitAdamBasic(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self, dtype):
         config_dict = {
@@ -418,7 +418,7 @@ class TestOneBitAdamFP16Pipeline(DistributedTest):
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
 class TestZeroOneAdamBasic(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self, dtype):
         config_dict = {
@@ -814,7 +814,7 @@ class TestZeroOneAdamFP16Pipeline(DistributedTest):
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16], ids=["fp32", "fp16"])
 class TestOneBitLambBasic(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self, dtype):
         config_dict = {
@@ -1235,7 +1235,7 @@ class TestOneBitLambFP16Pipeline(DistributedTest):
 
 @pytest.mark.sequential
 class TestCompressedAllReduceBasic(DistributedTest):
-    world_size = [1, 2]
+    world_size = 2
 
     def test(self, tmpdir):
         from deepspeed.runtime.comm.nccl import NcclBackend
