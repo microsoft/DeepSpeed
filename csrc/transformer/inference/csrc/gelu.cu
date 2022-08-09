@@ -10,6 +10,10 @@ inline __device__ float gelu(const float x)
     return x * 0.5f * (1.0f + tanhf(sqrt_param * (x + mul_param * x * x * x)));
 }
 
+inline __device__ float relu(const float x)
+{
+    return x < 0 ? 0 : x;
+}
 __global__ void fused_bias_gelu(float* input,
                                 const float* bias,
                                 int total_count,
@@ -67,10 +71,10 @@ __global__ void fused_bias_gelu(__half* input,
         high_data.x += high_bias.x;
         high_data.y += high_bias.y;
 
-        low_data.x = gelu(low_data.x);
-        low_data.y = gelu(low_data.y);
-        high_data.x = gelu(high_data.x);
-        high_data.y = gelu(high_data.y);
+        low_data.x = relu(low_data.x);
+        low_data.y = relu(low_data.y);
+        high_data.x = relu(high_data.x);
+        high_data.y = relu(high_data.y);
 
         vals_half[0] = __float22half2_rn(low_data);
         vals_half[1] = __float22half2_rn(high_data);
