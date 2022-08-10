@@ -1,15 +1,13 @@
 import os
 import glob
-import enum
 
 import re as regex
 
-from collections import defaultdict
 from functools import partial
 
 import torch
 import torch.nn as nn
-import torch.distributed as dist
+from deepspeed import comm as dist
 
 from deepspeed.utils import logger
 from .. import utils as ds_utils
@@ -189,6 +187,7 @@ class PipelineModule(nn.Module):
         self._partition_layers(method=partition_method)
 
         self.forward_funcs = []
+        self.fwd_map = {}
         self.tied_modules = nn.ModuleDict()
         self.tied_weight_attrs = {}
 
@@ -225,6 +224,7 @@ class PipelineModule(nn.Module):
             elif isinstance(layer, nn.Module):
                 name = str(layer_idx)
                 self.forward_funcs.append(layer)
+                self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, layer)
 
             # TiedLayerSpec objects contain an nn.Module that should be allocated now.
@@ -248,6 +248,7 @@ class PipelineModule(nn.Module):
                 module = layer.build()
                 name = str(layer_idx)
                 self.forward_funcs.append(module)
+                self.fwd_map.update({name: len(self.forward_funcs) - 1})
                 self.add_module(name, module)
 
             # Last option: layer may be a functional (e.g., lambda). We do nothing in
@@ -419,6 +420,13 @@ class PipelineModule(nn.Module):
             weight = getattr(self.tied_modules[key], comm['weight_attr'])
             dist.all_reduce(weight.grad, group=comm['group'])
 
+    def get_tied_weights_and_groups(self):
+        weight_group_list = []
+        for key, comm in self.tied_comms.items():
+            weight = getattr(self.tied_modules[key], comm['weight_attr'])
+            weight_group_list.append((weight, comm['group']))
+        return weight_group_list
+
     def _synchronize_tied_weights(self):
         for key, comm in self.tied_comms.items():
             dist.broadcast(
@@ -553,7 +561,7 @@ class PipelineModule(nn.Module):
         ckpt_files.sort()
         return ckpt_files
 
-    def save_state_dict(self, save_dir):
+    def save_state_dict(self, save_dir, checkpoint_engine):
         if self._grid.data_parallel_id != 0:
             return
 
@@ -574,9 +582,9 @@ class PipelineModule(nn.Module):
                 {k: v.clone()
                  for k,
                  v in orig_state_dict.items()})
-            torch.save(final_state_dict, model_ckpt_path)
+            checkpoint_engine.save(final_state_dict, model_ckpt_path)
 
-    def load_state_dir(self, load_dir, strict=True):
+    def load_state_dir(self, load_dir, checkpoint_engine, strict=True):
         for idx, layer in enumerate(self.forward_funcs):
             # Functions, etc. will not have state_dicts
             if not hasattr(layer, 'load_state_dict'):
@@ -587,7 +595,10 @@ class PipelineModule(nn.Module):
             mp_rank = self._grid.get_slice_parallel_rank()
             mp_world_size = self._grid.get_slice_parallel_world_size()
 
-            sd_loader = SDLoaderFactory.get_sd_loader(model_ckpt_list, version=2.0)
+            sd_loader = SDLoaderFactory.get_sd_loader(
+                model_ckpt_list,
+                version=2.0,
+                checkpoint_engine=checkpoint_engine)
             load_path, checkpoint, _ = sd_loader.load(mp_world_size, mp_rank, module_key=None, is_pipe_parallel=True)
 
             layer.load_state_dict(checkpoint)

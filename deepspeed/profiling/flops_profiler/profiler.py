@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional
 from collections import OrderedDict
 import numpy as np
 
@@ -74,8 +74,9 @@ class FlopsProfiler(object):
 
             # if computing the flops of a module directly
             if type(module) in MODULE_HOOK_MAPPING:
-                module.__flops_handle__ = module.register_forward_hook(
-                    MODULE_HOOK_MAPPING[type(module)])
+                if not hasattr(module, "__flops_handle__"):
+                    module.__flops_handle__ = module.register_forward_hook(
+                        MODULE_HOOK_MAPPING[type(module)])
                 return
 
             # if computing the flops of the functionals in a module
@@ -83,7 +84,8 @@ class FlopsProfiler(object):
                 module_flop_count.append([])
                 module_mac_count.append([])
 
-            module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
+            if not hasattr(module, "__pre_hook_handle__"):
+                module.__pre_hook_handle__ = module.register_forward_pre_hook(pre_hook)
 
             def post_hook(module, input, output):
                 if module_flop_count:
@@ -92,20 +94,24 @@ class FlopsProfiler(object):
                     module.__macs__ += sum([elem[1] for elem in module_mac_count[-1]])
                     module_mac_count.pop()
 
-            module.__post_hook_handle__ = module.register_forward_hook(post_hook)
+            if not hasattr(module, "__post_hook_handle__"):
+                module.__post_hook_handle__ = module.register_forward_hook(post_hook)
 
             def start_time_hook(module, input):
                 torch.cuda.synchronize()
                 module.__start_time__ = time.time()
 
-            module.__start_time_hook_handle__ = module.register_forward_pre_hook(
-                start_time_hook)
+            if not hasattr(module, "__start_time_hook_handle"):
+                module.__start_time_hook_handle__ = module.register_forward_pre_hook(
+                    start_time_hook)
 
             def end_time_hook(module, input, output):
                 torch.cuda.synchronize()
                 module.__duration__ += time.time() - module.__start_time__
 
-            module.__end_time_hook_handle__ = module.register_forward_hook(end_time_hook)
+            if not hasattr(module, "__end_time_hook_handle__"):
+                module.__end_time_hook_handle__ = module.register_forward_hook(
+                    end_time_hook)
 
         self.model.apply(partial(register_module_hooks, ignore_list=ignore_list))
         self.started = True
@@ -148,8 +154,7 @@ class FlopsProfiler(object):
         def add_or_reset_attrs(module):
             module.__flops__ = 0
             module.__macs__ = 0
-            module.__params__ = sum(p.numel() for p in module.parameters()
-                                    if p.requires_grad)
+            module.__params__ = sum(p.numel() for p in module.parameters())
             module.__start_time__ = 0
             module.__duration__ = 0
 
@@ -246,7 +251,6 @@ class FlopsProfiler(object):
             return
         import sys
         import os.path
-        from os import path
         original_stdout = None
         f = None
         if output_file and output_file != "":
@@ -287,7 +291,7 @@ class FlopsProfiler(object):
         print('{:<60}  {:<8}'.format(
             'params of model = params per GPU * mp_size: ',
             params_to_string(total_params *
-                             (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+                             ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
 
         print('{:<60}  {:<8}'.format('fwd MACs per GPU: ', macs_to_string(total_macs)))
 
@@ -296,19 +300,19 @@ class FlopsProfiler(object):
         print('{:<60}  {:<8}'.format(
             'fwd flops of model = fwd flops per GPU * mp_size: ',
             num_to_string(total_flops *
-                          (self.ds_engine.mp_world_size) if self.ds_engine else 1)))
+                          ((self.ds_engine.mp_world_size) if self.ds_engine else 1))))
 
         fwd_latency = self.get_total_duration()
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
-            fwd_latency = self.ds_engine.timers('forward').elapsed(False)
+            fwd_latency = self.ds_engine.timers('forward').elapsed(False) / 1000.0
         print('{:<60}  {:<8}'.format('fwd latency: ', duration_to_string(fwd_latency)))
         print('{:<60}  {:<8}'.format(
             'fwd FLOPS per GPU = fwd flops per GPU / fwd latency: ',
             flops_to_string(total_flops / fwd_latency)))
 
         if self.ds_engine and self.ds_engine.wall_clock_breakdown():
-            bwd_latency = self.ds_engine.timers('backward').elapsed(False)
-            step_latency = self.ds_engine.timers('step').elapsed(False)
+            bwd_latency = self.ds_engine.timers('backward').elapsed(False) / 1000.0
+            step_latency = self.ds_engine.timers('step').elapsed(False) / 1000.0
             print('{:<60}  {:<8}'.format('bwd latency: ',
                                          duration_to_string(bwd_latency)))
             print('{:<60}  {:<8}'.format(
@@ -339,7 +343,7 @@ class FlopsProfiler(object):
             macs = get_module_macs(module)
             items = [
                 params_to_string(params),
-                "{:.2%} Params".format(params / total_params),
+                "{:.2%} Params".format(params / total_params if total_params else 0),
                 macs_to_string(macs),
                 "{:.2%} MACs".format(0.0 if total_macs == 0 else macs / total_macs),
             ]
@@ -534,7 +538,7 @@ def _conv_flops_compute(input,
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -575,7 +579,7 @@ def _conv_trans_flops_compute(
     batch_size = input.shape[0]
     in_channels = input.shape[1]
     out_channels = weight.shape[0]
-    kernel_dims = list(weight.shape[-2:])
+    kernel_dims = list(weight.shape[2:])
     input_dims = list(input.shape[2:])
 
     length = len(input_dims)
@@ -734,7 +738,6 @@ def _einsum_flops_compute(equation, *operands):
     np_arrs = [np.zeros(s) for s in input_shapes]
     optim = np.einsum_path(equation, *np_arrs, optimize="optimal")[1]
     for line in optim.split("\n"):
-        print(line.lower())
         if "optimized flop" in line.lower():
             flop = int(float(line.split(":")[-1]))
             return flop, 0

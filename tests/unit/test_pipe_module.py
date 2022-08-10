@@ -2,17 +2,17 @@ import copy
 
 import torch
 import torch.nn as nn
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 import pytest
 
 import deepspeed
 
-from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 
 PipeTopo = PipeDataParallelTopology
 
-from deepspeed.pipe import PipelineModule, LayerSpec
+from deepspeed.pipe import PipelineModule
 from deepspeed.utils import RepeatingLoader
 
 from .common import distributed_test

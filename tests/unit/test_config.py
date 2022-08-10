@@ -8,7 +8,7 @@ from deepspeed.runtime.zero.config import DeepSpeedZeroConfig
 
 from .common import distributed_test, get_test_path
 from .simple_model import SimpleModel, create_config_from_dict, random_dataloader
-import torch.distributed as dist
+import deepspeed.comm as dist
 
 # A test on its own
 import deepspeed
@@ -124,11 +124,9 @@ def test_temp_config_json(tmpdir):
                          ])
 def test_gather_16bit_params_on_model_save(gather_weights_key):
     config_dict = {
-        "zero_optimization": {
-            gather_weights_key: True,
-        },
+        gather_weights_key: True,
     }
-    config = DeepSpeedZeroConfig(config_dict)
+    config = DeepSpeedZeroConfig(**config_dict)
 
     assert config.gather_16bit_weights_on_model_save == True
 

@@ -4,7 +4,6 @@ import subprocess
 import argparse
 from .ops.op_builder import ALL_OPS
 from .git_version_info import installed_ops, torch_info
-from .ops import __compatible_ops__ as compatible_ops
 
 GREEN = '\033[92m'
 RED = '\033[91m'
@@ -54,7 +53,7 @@ def op_report(verbose=True):
 
 def ninja_installed():
     try:
-        import ninja
+        import ninja  # noqa: F401
     except ImportError:
         return False
     return True
@@ -80,7 +79,7 @@ def nvcc_version():
 def debug_report():
     max_dots = 33
 
-    hip_version = 'unknown'
+    hip_version = None
     if hasattr(torch.version, 'hip'):
         hip_version = torch.version.hip
 
@@ -94,15 +93,16 @@ def debug_report():
         ("torch hip version",
          hip_version),
         ("nvcc version",
-         nvcc_version()),
+         (None if hip_version else nvcc_version())),
         ("deepspeed install path",
          deepspeed.__path__),
         ("deepspeed info",
          f"{deepspeed.__version__}, {deepspeed.__git_hash__}, {deepspeed.__git_branch__}"
          ),
         ("deepspeed wheel compiled w.",
-         f"torch {torch_info['version']}, cuda {torch_info['cuda_version']}, hip {torch_info['hip_version']}"
-         ),
+         f"torch {torch_info['version']}, " +
+         (f"hip {torch_info['hip_version']}"
+          if hip_version else f"cuda {torch_info['cuda_version']}")),
     ]
     print("DeepSpeed general environment info:")
     for name, value in report:

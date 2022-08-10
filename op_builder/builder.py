@@ -4,7 +4,6 @@ Copyright 2020 The Microsoft DeepSpeed Team
 import os
 import sys
 import time
-import json
 import importlib
 from pathlib import Path
 import subprocess
@@ -30,9 +29,9 @@ except ImportError:
     print(
         f"{WARNING} unable to import torch, please install it if you want to pre-compile any deepspeed ops."
     )
-
-TORCH_MAJOR = int(torch.__version__.split('.')[0])
-TORCH_MINOR = int(torch.__version__.split('.')[1])
+else:
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
 def installed_cuda_version():
@@ -111,6 +110,7 @@ class OpBuilder(ABC):
     def __init__(self, name):
         self.name = name
         self.jit_mode = False
+        self.error_log = None
 
     @abstractmethod
     def absolute_name(self):
@@ -166,12 +166,17 @@ class OpBuilder(ABC):
             return OpBuilder._is_rocm_pytorch
 
         _is_rocm_pytorch = False
-        if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
-            _is_rocm_pytorch = hasattr(torch.version,
-                                       'hip') and torch.version.hip is not None
-            if _is_rocm_pytorch:
-                from torch.utils.cpp_extension import ROCM_HOME
-                _is_rocm_pytorch = ROCM_HOME is not None
+        try:
+            import torch
+        except ImportError:
+            pass
+        else:
+            if TORCH_MAJOR > 1 or (TORCH_MAJOR == 1 and TORCH_MINOR >= 5):
+                _is_rocm_pytorch = hasattr(torch.version,
+                                           'hip') and torch.version.hip is not None
+                if _is_rocm_pytorch:
+                    from torch.utils.cpp_extension import ROCM_HOME
+                    _is_rocm_pytorch = ROCM_HOME is not None
         OpBuilder._is_rocm_pytorch = _is_rocm_pytorch
         return OpBuilder._is_rocm_pytorch
 
@@ -184,8 +189,15 @@ class OpBuilder(ABC):
         ROCM_MINOR = '0'
         if OpBuilder.is_rocm_pytorch():
             from torch.utils.cpp_extension import ROCM_HOME
-            with open('/opt/rocm/.info/version-dev', 'r') as file:
-                ROCM_VERSION_DEV_RAW = file.read()
+            rocm_ver_file = Path(ROCM_HOME).joinpath(".info/version-dev")
+            if rocm_ver_file.is_file():
+                with open(rocm_ver_file, 'r') as file:
+                    ROCM_VERSION_DEV_RAW = file.read()
+            elif "rocm" in torch.__version__:
+                ROCM_VERSION_DEV_RAW = torch.__version__.split("rocm")[1]
+            else:
+                assert False, "Could not detect ROCm version"
+            assert ROCM_VERSION_DEV_RAW != "", "Could not detect ROCm version"
             ROCM_MAJOR = ROCM_VERSION_DEV_RAW.split('.')[0]
             ROCM_MINOR = ROCM_VERSION_DEV_RAW.split('.')[1]
         OpBuilder._rocm_version = (int(ROCM_MAJOR), int(ROCM_MINOR))
@@ -428,6 +440,7 @@ class OpBuilder(ABC):
         return valid
 
     def warning(self, msg):
+        self.error_log = f"{msg}"
         print(f"{WARNING} {msg}")
 
     def deepspeed_src_path(self, code_path):
@@ -460,10 +473,10 @@ class OpBuilder(ABC):
     def jit_load(self, verbose=True):
         if not self.is_compatible(verbose):
             raise RuntimeError(
-                f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue."
+                f"Unable to JIT load the {self.name} op due to it not being compatible due to hardware/software issue. {self.error_log}"
             )
         try:
-            import ninja
+            import ninja  # noqa: F401
         except ImportError:
             raise RuntimeError(
                 f"Unable to JIT load the {self.name} op due to ninja not being installed."
@@ -571,8 +584,6 @@ class CUDAOpBuilder(OpBuilder):
 
     def version_dependent_macros(self):
         # Fix from apex that might be relevant for us as well, related to https://github.com/NVIDIA/apex/issues/456
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
         version_ge_1_1 = []
         if (TORCH_MAJOR > 1) or (TORCH_MAJOR == 1 and TORCH_MINOR > 0):
             version_ge_1_1 = ['-DVERSION_GE_1_1']

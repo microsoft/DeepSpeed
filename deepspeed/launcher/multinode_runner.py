@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 import warnings
-from shlex import quote
+from shlex import split
 from abc import ABC, abstractmethod
 
 from ..utils import logger
@@ -66,11 +66,11 @@ class PDSHRunner(MultiNodeRunner):
 
         # PDSH flags for max node fan out and specific hosts to launch on
         # See https://linux.die.net/man/1/pdsh for flag details
-        pdsh_cmd_args = ['pdsh', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
+        pdsh_cmd_args = ['pdsh', '-S', '-f', str(PDSH_MAX_FAN_OUT), '-w', active_workers]
 
         exports = ""
         for key, val in self.exports.items():
-            exports += f"export {key}={quote(val)}; "
+            exports += "export {}={}; ".format(key, val)
 
         # https://linux.die.net/man/1/pdsh
         # %n will be replaced by pdsh command
@@ -94,8 +94,16 @@ class PDSHRunner(MultiNodeRunner):
             deepspeed_launch.append("--no_local_rank")
         if self.args.save_pid:
             deepspeed_launch += ["--save_pid", f"{os.getpid()}"]
+        if self.args.elastic_training:
+            deepspeed_launch.append("--enable_elastic_training")
+            deepspeed_launch.append(f"--max_elastic_nodes={self.args.max_elastic_nodes}")
+            deepspeed_launch.append(f"--min_elastic_nodes={self.args.min_elastic_nodes}")
+
+        cmd_to_search = [i + "\\" for i in deepspeed_launch[2:6]]
+
+        kill_command = pdsh_cmd_args + ["pkill -f ", " ".join(cmd_to_search)[:-2]]
         return pdsh_cmd_args + deepspeed_launch + [self.user_script
-                                                   ] + self.user_arguments
+                                                   ] + self.user_arguments, kill_command
 
 
 class OpenMPIRunner(MultiNodeRunner):
@@ -137,11 +145,11 @@ class OpenMPIRunner(MultiNodeRunner):
             '--mca',
             'btl_tcp_if_include',
             'eth0',
-        ]
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
-            export_cmd += ['-x', f'{k}={quote(v)}']
+            export_cmd += ['-x', "{}={}".format(k, v)]
 
         python_exec = []
         if not self.args.no_python:
@@ -227,11 +235,11 @@ class MVAPICHRunner(MultiNodeRunner):
             f'{process_per_node}',
             '--hostfile',
             f'{MVAPICH_TMP_HOSTFILE}',
-        ]
+        ] + split(self.args.launcher_args)
 
         export_cmd = []
         for k, v in self.exports.items():
-            export_cmd += ['-env', f'{k}={quote(v)}']
+            export_cmd += ['-env', "{}={}".format(k, v)]
 
         python_exec = []
         if not self.args.no_python:

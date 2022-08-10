@@ -6,7 +6,6 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 '''
 
 import torch
-import importlib
 from .multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
@@ -109,12 +108,8 @@ class FusedAdam(torch.optim.Optimizer):
             bias_correction = 1 if group['bias_correction'] else 0
             beta1, beta2 = group['betas']
 
-            # assume same step across group now to simplify things
-            # per parameter step can be easily support by making it tensor, or pass list into kernel
-            if 'step' in group:
-                group['step'] += 1
-            else:
-                group['step'] = 1
+            if 'step' not in group:
+                group['step'] = 0
 
             # create lists for multi-tensor apply
             g_16, p_16, m_16, v_16 = [], [], [], []
@@ -131,6 +126,10 @@ class FusedAdam(torch.optim.Optimizer):
                 state = self.state[p]
                 # State initialization
                 if len(state) == 0:
+                    # DeepSpeed ZeRO 3 processes each subgroup a time, so we need to keep tracking step count for each tensor separately.
+                    # While this is not an issue for ZeRO 1 & 2, since they apply a single optimizatin step to the whole param group at the same time.
+                    # In order to keep backward compatibility for the existing checkpoints, we use group['state'] to initialize state['step'] if it exists.
+                    state['step'] = group.get('step', 0)
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(p.data)
                     # Exponential moving average of squared gradient values
@@ -150,6 +149,7 @@ class FusedAdam(torch.optim.Optimizer):
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
 
             if (len(g_16) > 0):
+                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_16,
@@ -160,11 +160,12 @@ class FusedAdam(torch.optim.Optimizer):
                                      beta1,
                                      beta2,
                                      group['eps'],
-                                     group['step'],
+                                     state['step'],
                                      self.adam_w_mode,
                                      bias_correction,
                                      group['weight_decay'])
             if (len(g_32) > 0):
+                state['step'] += 1
                 multi_tensor_applier(self.multi_tensor_adam,
                                      self._dummy_overflow_buf,
                                      [g_32,
@@ -175,7 +176,7 @@ class FusedAdam(torch.optim.Optimizer):
                                      beta1,
                                      beta2,
                                      group['eps'],
-                                     group['step'],
+                                     state['step'],
                                      self.adam_w_mode,
                                      bias_correction,
                                      group['weight_decay'])

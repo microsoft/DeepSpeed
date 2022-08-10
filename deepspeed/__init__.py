@@ -24,10 +24,11 @@ from .runtime.activation_checkpointing import checkpointing
 from .ops.transformer import DeepSpeedTransformerLayer, DeepSpeedTransformerConfig
 from .module_inject import replace_transformer_layer, revert_transformer_layer
 
-from .utils import log_dist
-from .utils.distributed import init_distributed
+from .utils import log_dist, OnDevice
+from .comm.comm import init_distributed
 
 from .runtime import zero
+from .runtime import DeepSpeedOptimizer, ZeROOptimizer
 
 from .pipe import PipelineModule
 
@@ -82,7 +83,7 @@ def initialize(args=None,
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
 
-        dist_init_required: Optional: None will auto-initialize torch.distributed if needed,
+        dist_init_required: Optional: None will auto-initialize torch distributed if needed,
             otherwise the user can force it to be initialized or not via boolean.
 
         collate_fn: Optional: Merges a list of samples to form a
@@ -113,6 +114,10 @@ def initialize(args=None,
         __git_hash__,
         __git_branch__),
              ranks=[0])
+
+    # Disable zero.Init context if it's currently enabled
+    zero.partition_parameters.shutdown_init_context()
+
     assert model is not None, "deepspeed.initialize requires a model"
 
     if not isinstance(model, PipelineModule):
@@ -220,6 +225,7 @@ def add_config_arguments(parser):
 def init_inference(model,
                    triangular_masking=True,
                    mp_size=1,
+                   training_mp_size=1,
                    mpu=None,
                    ep_group=None,
                    expert_mp_group=None,
@@ -233,7 +239,10 @@ def init_inference(model,
                    ep_size=1,
                    moe=False,
                    moe_experts=1,
-                   moe_type='standard'):
+                   moe_type='standard',
+                   args=None,
+                   enable_cuda_graph=False,
+                   save_mp_checkpoint_path=None):
     """Initialize the DeepSpeed InferenceEngine.
 
     Arguments:
@@ -244,6 +253,9 @@ def init_inference(model,
 
         mp_size: Optional: Desired model parallel size, default is 1 meaning no
             model parallelism.
+
+        training_mp_size: Optional: if loading a checkpoint this is the mp size that it was trained with,
+            it may be different than what the mp size that you want to use during inference.
 
         mpu: Optional: A model parallelism unit object that implements
             get_{model,data}_parallel_{rank,group,world_size}()
@@ -277,25 +289,26 @@ def init_inference(model,
         __git_branch__),
              ranks=[0])
 
-    if isinstance(model, PipelineModule):
-        raise NotImplementedError("pipeline module support is not implemented yet")
-    else:
-        engine = InferenceEngine(model,
-                                 triangular_masking,
-                                 mp_size,
-                                 ep_size,
-                                 mpu,
-                                 ep_group,
-                                 expert_mp_group,
-                                 checkpoint,
-                                 dtype,
-                                 injection_policy,
-                                 return_tuple,
-                                 replace_method,
-                                 quantization_setting,
-                                 replace_with_kernel_inject,
-                                 moe,
-                                 moe_experts,
-                                 moe_type)
+    engine = InferenceEngine(model,
+                             triangular_masking,
+                             mp_size,
+                             training_mp_size,
+                             ep_size,
+                             mpu,
+                             ep_group,
+                             expert_mp_group,
+                             checkpoint,
+                             dtype,
+                             injection_policy,
+                             return_tuple,
+                             replace_method,
+                             quantization_setting,
+                             replace_with_kernel_inject,
+                             moe,
+                             moe_experts,
+                             moe_type,
+                             args,
+                             enable_cuda_graph,
+                             save_mp_checkpoint_path)
 
     return engine

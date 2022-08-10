@@ -2,13 +2,21 @@ from abc import ABC
 
 import torch
 from torch.nn.parameter import Parameter
+from packaging import version as pkg_version
+
+supported_models = {None}
 
 
 class DSPolicy(ABC):
-    def __init__(self, inference=True, linear_layer=True, scale_attention=True):
+    def __init__(self,
+                 inference=True,
+                 linear_layer=True,
+                 scale_attention=True,
+                 megatron_v2=False):
         self.inference = inference
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
+        self.is_megatron_v2 = megatron_v2
 
     def attention(self):
         """
@@ -51,7 +59,10 @@ class HFBertLayerPolicy(DSPolicy):
         if HFBertLayerPolicy._orig_layer_class is None:
             try:
                 import transformers
-                HFBertLayerPolicy._orig_layer_class = transformers.models.bert.modeling_bert.BertLayer
+                HFBertLayerPolicy._orig_layer_class = [
+                    transformers.models.bert.modeling_bert.BertLayer,
+                    transformers.models.roberta.modeling_roberta.RobertaLayer
+                ]
             except:
                 HFBertLayerPolicy._orig_layer_class = None
 
@@ -67,15 +78,16 @@ class HFBertLayerPolicy(DSPolicy):
         vw = self.client_module.attention.self.value.weight
         vb = self.client_module.attention.self.value.bias
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
-        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0))
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
+        qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=False)
 
         return self.linear_layer, \
                qkvw, \
                qkvb, \
                self.client_module.attention.output.dense.weight, \
                self.client_module.attention.output.dense.bias, \
-               self.scale_attention
+               self.scale_attention, \
+               self.is_megatron_v2
 
     def mlp(self):
         if self.preln:
@@ -121,14 +133,15 @@ class HFGPTNEOLayerPolicy(DSPolicy):
         kw = self.client_module.attn.attention.k_proj.weight
         vw = self.client_module.attn.attention.v_proj.weight
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
 
         return self.linear_layer, \
                 qkvw, \
                 None, \
                 self.client_module.attn.attention.out_proj.weight, \
                 self.client_module.attn.attention.out_proj.bias, \
-                self.scale_attention
+                self.scale_attention, \
+               self.is_megatron_v2
 
     def mlp(self):
         return self.linear_layer, \
@@ -165,14 +178,15 @@ class HFGPTJLayerPolicy(DSPolicy):
         kw = self.client_module.attn.k_proj.weight
         vw = self.client_module.attn.v_proj.weight
 
-        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0))
+        qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
 
         return self.linear_layer, \
                 qkvw, \
                 None, \
                 self.client_module.attn.out_proj.weight, \
                 None, \
-                self.scale_attention
+                self.scale_attention, \
+               self.is_megatron_v2
 
     def mlp(self):
         return self.linear_layer, \
@@ -199,12 +213,14 @@ class MegatronLayerPolicy(DSPolicy):
         # we use megatron version to differentiate between the old and new
         # megatron-lm source code
         if MegatronLayerPolicy._orig_layer_class is None:
-            try:
-                import megatron
-                from megatron.model.transformer import ParallelTransformerLayer
-                MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
-            except ImportError:
+            if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
                 MegatronLayerPolicy._orig_layer_class = None
+            else:
+                try:
+                    from megatron.model.transformer import ParallelTransformerLayer
+                    MegatronLayerPolicy._orig_layer_class = ParallelTransformerLayer
+                except ImportError:
+                    MegatronLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
         return self.client_module.attention.query_key_value.weight.shape[1], \
@@ -222,7 +238,8 @@ class MegatronLayerPolicy(DSPolicy):
                 attention.query_key_value.bias, \
                 attention.dense.weight, \
                 attention.dense.bias, \
-                self.scale_attention
+                self.scale_attention, \
+                self.is_megatron_v2
 
     def mlp(self, moe_type='standard'):
         from deepspeed.moe.utils import has_moe_layers
@@ -275,7 +292,7 @@ class HFGPT2LayerPolicy(DSPolicy):
         try:
             import transformers
             HFGPT2LayerPolicy._orig_layer_class = transformers.models.gpt2.modeling_gpt2.GPT2Block
-        except ImportError:
+        except:
             HFGPT2LayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
@@ -288,7 +305,8 @@ class HFGPT2LayerPolicy(DSPolicy):
                 self.client_module.attn.c_attn.bias, \
                 self.client_module.attn.c_proj.weight, \
                 self.client_module.attn.c_proj.bias, \
-                self.scale_attention
+                self.scale_attention, \
+                self.is_megatron_v2
 
     def mlp(self):
         return self.linear_layer, \
@@ -304,10 +322,108 @@ class HFGPT2LayerPolicy(DSPolicy):
                self.client_module.ln_1.bias
 
 
+class BLOOMLayerPolicy(DSPolicy):
+    _orig_layer_class = None
+
+    def __init__(self, client_module, inference=True):
+        super().__init__(inference, linear_layer=True)
+        self.client_module = client_module
+        try:
+            import transformers
+            BLOOMLayerPolicy._orig_layer_class = transformers.models.bloom.modeling_bloom.BloomBlock
+            global supported_models
+            supported_models.update(
+                {transformers.models.bloom.modeling_bloom.BloomModel})
+        except:
+            BLOOMLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        return self.client_module.self_attention.hidden_size, \
+                self.client_module.self_attention.num_heads
+
+    def attention(self):
+        return self.linear_layer, \
+                self.client_module.self_attention.query_key_value.weight, \
+                self.client_module.self_attention.query_key_value.bias, \
+                self.client_module.self_attention.dense.weight, \
+                self.client_module.self_attention.dense.bias, \
+                self.scale_attention, \
+                self.is_megatron_v2
+
+    def mlp(self):
+        return self.linear_layer, \
+            self.client_module.mlp.dense_h_to_4h.weight, \
+            self.client_module.mlp.dense_h_to_4h.bias, \
+            self.client_module.mlp.dense_4h_to_h.weight, \
+            self.client_module.mlp.dense_4h_to_h.bias
+
+    def layerNorm(self):
+        return self.client_module.post_attention_layernorm.weight, \
+               self.client_module.post_attention_layernorm.bias, \
+               self.client_module.input_layernorm.weight, \
+               self.client_module.input_layernorm.bias
+
+
+class GPTNEOXLayerPolicy(DSPolicy):
+    _orig_layer_class = None
+    version = 0
+
+    def __init__(self, client_module, inference=True, megatron_v2=True):
+        super().__init__(inference, megatron_v2=megatron_v2)
+        self.client_module = client_module
+        if GPTNEOXLayerPolicy._orig_layer_class is None:
+            if pkg_version.parse(torch.__version__) <= pkg_version.parse("1.2"):
+                GPTNEOXLayerPolicy._orig_layer_class = None
+            else:
+                try:
+                    from transformers import GPTNeoXLayer
+                    GPTNEOXLayerPolicy._orig_layer_class = GPTNeoXLayer
+                except ImportError:
+                    GPTNEOXLayerPolicy._orig_layer_class = None
+
+    def get_hidden_heads(self):
+        if GPTNEOXLayerPolicy.version == 0:
+            attention = self.client_module.attention
+        else:
+            attention = self.client_module.self_attention
+
+        return self.client_module.attention.query_key_value.weight.shape[1], \
+                self.client_module.attention.num_attention_heads
+
+    def attention(self):
+        if GPTNEOXLayerPolicy.version == 0:
+            attention = self.client_module.attention
+        else:
+            attention = self.client_module.self_attention
+
+        return self.linear_layer, \
+                attention.query_key_value.weight, \
+                attention.query_key_value.bias, \
+                attention.dense.weight, \
+                attention.dense.bias, \
+                self.scale_attention, \
+                self.is_megatron_v2
+
+    def mlp(self):
+        return self.linear_layer, \
+            self.client_module.mlp.dense_h_to_4h.weight, \
+            self.client_module.mlp.dense_h_to_4h.bias, \
+            self.client_module.mlp.dense_4h_to_h.weight, \
+            self.client_module.mlp.dense_4h_to_h.bias
+
+    def layerNorm(self):
+        return self.client_module.post_attention_layernorm.weight, \
+               self.client_module.post_attention_layernorm.bias, \
+               self.client_module.input_layernorm.weight, \
+               self.client_module.input_layernorm.bias
+
+
 replace_policies = [
     HFBertLayerPolicy,
     HFGPTNEOLayerPolicy,
+    GPTNEOXLayerPolicy,
     HFGPTJLayerPolicy,
     MegatronLayerPolicy,
     HFGPT2LayerPolicy,
+    BLOOMLayerPolicy,
 ]

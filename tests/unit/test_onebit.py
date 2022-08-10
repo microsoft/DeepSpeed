@@ -1,23 +1,19 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.distributed as dist
+import deepspeed.comm as dist
 import deepspeed
-import argparse
 import pytest
 import copy
-import json
 import os
 import numpy as np
-import time
 
-from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
+from deepspeed.runtime.pipe.topology import PipeDataParallelTopology
 from deepspeed.ops.op_builder import OpBuilder
 
 PipeTopo = PipeDataParallelTopology
-from deepspeed.runtime.pipe.module import PipelineModule, LayerSpec
+from deepspeed.runtime.pipe.module import PipelineModule
 from .common import distributed_test
-from .simple_model import SimpleModel, SimpleOptimizer, random_dataloader, args_from_dict, create_deepspeed_args
+from .simple_model import SimpleModel, random_dataloader, args_from_dict
 from .test_pipe import AlexNetPipe, train_cifar
 
 TORCH_MAJOR = int(torch.__version__.split('.')[0])
@@ -1274,7 +1270,7 @@ def test_compressed_allreduce_basic(tmpdir):
         local_rank = dist.get_rank()
         device = torch.device("cuda", dist.get_rank())
 
-        # A simulated compression function using torch.distributed
+        # A simulated compression function using deepspeed.comm
         def torch_sim(a):
             a_sign = a.sign().add_(1).bool().float().add_(-0.5).mul_(2.0)
             scale = a.norm() / np.sqrt(a.numel())
@@ -1295,7 +1291,7 @@ def test_compressed_allreduce_basic(tmpdir):
             rank = dist.get_rank()
             server_error = a_list[rank] - server_scale[rank] * a_sign_list[rank]
             torch.cuda.synchronize()
-            torch.distributed.barrier()
+            dist.barrier()
             return a_server_compressed, worker_error, server_error
 
         tensor_size = 300 * 2**20

@@ -5,15 +5,15 @@ Licensed under the MIT license.
 Functionality of swapping optimizer tensors to/from (NVMe) storage devices.
 """
 
-import os
 import torch
 
 from deepspeed.utils.logging import logger
 from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed import comm as dist
 
 from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, print_object, \
-    MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers, get_sized_buffer
+    get_sized_buffers
 from deepspeed.runtime.swap_tensor.async_swapper import AsyncTensorSwapper
 from deepspeed.runtime.swap_tensor.optimizer_utils import OptimizerSwapper
 
@@ -62,7 +62,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
             'print_exclude_list'
         ]
 
-        if torch.distributed.get_rank() == 0:
+        if dist.get_rank() == 0:
             print_object(obj=self,
                          name='PartitionedOptimizerSwapper',
                          exclude_list=self.print_exclude_list)
@@ -160,7 +160,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
 
         self._log_timers([WRITE_TIMER])
 
-        if DEBUG_MODE and torch.distributed.get_rank() == 0:
+        if DEBUG_MODE and dist.get_rank() == 0:
             logger.info(f'optimizer_param_swap_out: {(swap_bytes/(1024**3)):5.2f} GB')
 
     def swap_out_gradients(self, parameter, gradient_offsets, gradient_tensors):
@@ -200,7 +200,7 @@ class PartitionedOptimizerSwapper(OptimizerSwapper):
             t.data = buffer.data
 
         self._log_timers([READ_TIMER, WAIT_TIMER])
-        if DEBUG_MODE and torch.distributed.get_rank() == 0:
+        if DEBUG_MODE and dist.get_rank() == 0:
             logger.info(f'optimizer_param_swap_in: {(swap_bytes/(1024**3)):5.2f} GB')
 
     def _separate_pinned_tensors(self, swap_info):

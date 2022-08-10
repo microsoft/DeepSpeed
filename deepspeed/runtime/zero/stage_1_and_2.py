@@ -3,26 +3,34 @@ Copyright 2019 The Microsoft DeepSpeed Team
 '''
 
 import torch
-from torch.distributed.distributed_c10d import _get_global_rank
-import torch.distributed as dist
+from deepspeed import comm as dist
 from torch._six import inf
 from packaging import version as pkg_version
 
+from deepspeed.runtime import ZeROOptimizer
 from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
-from deepspeed.runtime.utils import bwc_tensor_model_parallel_rank, \
-    get_global_norm, see_memory_usage, is_model_parallel_parameter, torch_max_memory_reserved
-from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
-from deepspeed.runtime.zero.offload_constants import OFFLOAD_CPU_DEVICE, OFFLOAD_OPTIMIZER
+from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
+                                     get_global_norm,
+                                     see_memory_usage,
+                                     is_model_parallel_parameter,
+                                     align_dense_tensors,
+                                     all_gather_dp_groups)
+
+from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from deepspeed.ops.op_builder import UtilsBuilder
 from deepspeed.utils import logger
 from deepspeed.moe.utils import is_moe_param
 from deepspeed.git_version_info import version
 
+from deepspeed.runtime.constants import PIPE_REPLICATED
 from deepspeed.checkpoint.constants import (DS_VERSION,
+                                            GROUP_PADDINGS,
                                             PARTITION_COUNT,
                                             SINGLE_PARTITION_OF_FP32_GROUPS,
                                             BASE_OPTIMIZER_STATE,
+                                            CLIP_GRAD,
                                             ZERO_STAGE)
 
 # Toggle this to true to enable correctness test
@@ -82,7 +90,7 @@ def _get_padded_tensor(src_tensor, size):
     return padded_tensor
 
 
-class DeepSpeedZeroOptimizer(object):
+class DeepSpeedZeroOptimizer(ZeROOptimizer):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
     required for training large deep learning models.
@@ -277,15 +285,6 @@ class DeepSpeedZeroOptimizer(object):
             ]
             self.bit16_groups.append(trainable_parameters)
 
-            # Record padding required to align group to world size
-            if partition_id == dist.get_world_size(
-                    group=self.real_dp_process_group[i]) - 1:
-                padding = get_alignment_padding(self.bit16_groups[i],
-                                                self.partition_count[i])
-            else:
-                padding = 0
-            self.groups_padding.append(padding)
-
             # not sure why apex was cloning the weights before flattening
             # removing cloning here
 
@@ -320,6 +319,15 @@ class DeepSpeedZeroOptimizer(object):
             see_memory_usage(f"After flattening and moving param group {i} to GPU",
                              force=False)
 
+            # Record padding required for alignment
+            if partition_id == dist.get_world_size(
+                    group=self.real_dp_process_group[i]) - 1:
+                padding = self.bit16_groups_flat[i].numel() - sum(
+                    [t.numel() for t in self.round_robin_bit16_groups[i]])
+            else:
+                padding = 0
+            self.groups_padding.append(padding)
+
             if dist.get_rank(group=self.real_dp_process_group[i]) == 0:
                 see_memory_usage(
                     f"After Flattening and after emptying param group {i} cache",
@@ -345,7 +353,9 @@ class DeepSpeedZeroOptimizer(object):
                 assert (partitioned_data.data_ptr() %
                         (2 * self.nccl_start_alignment_factor) == 0)
 
-            # a partition of the fp32 master weights that will be updated by this process
+            # A partition of the fp32 master weights that will be updated by this process.
+            # Note that the params in single_partition_of_fp32_groups is cloned and detached
+            # from the origin params of the model.
             if not fp16_master_weights_and_gradients:
                 self.single_partition_of_fp32_groups.append(
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
@@ -355,7 +365,9 @@ class DeepSpeedZeroOptimizer(object):
                     self.parallel_partitioned_bit16_groups[i][partition_id].to(
                         self.device).clone().half().detach())
 
-            # modify optimizer of have flat master weight
+            # Set local optimizer to have flat params of its own partition.
+            # After this, the local optimizer will only contain its own partition of params.
+            # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
             self.single_partition_of_fp32_groups[
                 i].requires_grad = True  # keep this in case internal optimizer uses it
             param_group['params'] = [self.single_partition_of_fp32_groups[i]]
@@ -481,6 +493,9 @@ class DeepSpeedZeroOptimizer(object):
         if self.partition_gradients or self.overlap_comm:
             self.create_reduce_and_remove_grad_hooks()
 
+        self.custom_loss_scaler = False
+        self.external_loss_scale = None
+
         # we may have a way of fusing dynamic scale. Do not support for now
         if self.dtype == torch.float or self.dtype == torch.bfloat16 or not dynamic_loss_scale:
             loss_scale_value = 1.0 if (
@@ -512,7 +527,14 @@ class DeepSpeedZeroOptimizer(object):
         return 'moe' in group and group['moe']
 
     def _configure_moe_settings(self):
-        assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        # if we're using ZeRO stage 2, ensure contiguous gradients are used
+        if self.partition_gradients:
+            assert self.contiguous_gradients, "Contiguous Gradients in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
+        # NOTE: To run ZeRO stage 1 with MoE, we need to set self.contiguous_gradients to True or ignore the assertion
+        if not self.partition_gradients and not self.contiguous_gradients:
+            logger.warn(
+                "ZeRO Stage 1 has not been thoroughly tested with MoE. This configuration is still experimental."
+            )
         assert self.reduce_scatter, "Reduce Scatter in ZeRO Stage 2 must be set to True for MoE. Other code paths are not tested with MoE"
 
         assert any([self.is_moe_group(group) for group in self.optimizer.param_groups]), "The model has moe layers, but None of the param groups are marked as MoE. Create a param group with 'moe' key set to True before creating optimizer"
@@ -800,19 +822,7 @@ class DeepSpeedZeroOptimizer(object):
 
     # create a flat tensor aligned at the alignment boundary
     def flatten_dense_tensors_aligned(self, tensor_list, alignment):
-        num_elements = sum(t.numel() for t in tensor_list)
-        remaining = num_elements % alignment
-
-        if remaining:
-            elements_to_add = alignment - remaining
-            pad_tensor = torch.zeros(elements_to_add,
-                                     device=tensor_list[0].device,
-                                     dtype=tensor_list[0].dtype)
-            padded_tensor_list = tensor_list + [pad_tensor]
-        else:
-            padded_tensor_list = tensor_list
-
-        return self.flatten(padded_tensor_list)
+        return self.flatten(align_dense_tensors(tensor_list, alignment))
 
     ############### Independent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
@@ -961,14 +971,18 @@ class DeepSpeedZeroOptimizer(object):
             if not self.ipg_bucket_has_moe_params:
                 tensor.div_(dist.get_world_size(group=self.dp_process_group))
 
+            tensor_to_reduce = tensor
+            if self.communication_data_type != tensor.dtype:
+                tensor_to_reduce = tensor.to(self.communication_data_type)
+
             async_handles = []
             for i, (dst, bucket_offset, numel) in enumerate(rank_and_offsets):
-                grad_slice = tensor.narrow(0, int(bucket_offset), int(numel))
+                grad_slice = tensor_to_reduce.narrow(0, int(bucket_offset), int(numel))
                 # if dist.get_rank() == 0:
                 #     print(f"Rank {dist.get_rank()} rank offset id {i} real dp size {dist.get_world_size(group=real_dp_process_group[i])} and dst: {dst}")
                 # dist.barrier()
                 #dist.barrier()
-                dst_rank = _get_global_rank(real_dp_process_group[i], dst)
+                dst_rank = dist.get_global_rank(real_dp_process_group[i], dst)
                 async_handle = dist.reduce(grad_slice,
                                            dst=dst_rank,
                                            group=real_dp_process_group[i],
@@ -977,6 +991,9 @@ class DeepSpeedZeroOptimizer(object):
 
             for handle in async_handles:
                 handle.wait()
+
+            if self.communication_data_type != tensor.dtype:
+                tensor.copy_(tensor_to_reduce)
 
     ##############################################################################
     ############################# CPU Offload Methods#############################
@@ -989,7 +1006,6 @@ class DeepSpeedZeroOptimizer(object):
             param_start_offset = 0
 
             num_elements = tensor.numel()
-            tensor_offset = 0
 
             # we need to offset to get to the right element
             if i == 0 and first_offset > 0:
@@ -1123,7 +1139,7 @@ class DeepSpeedZeroOptimizer(object):
         norm_type = 2.0
         for p in params:
             # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-            if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+            if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                 continue
 
             if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
@@ -1149,12 +1165,11 @@ class DeepSpeedZeroOptimizer(object):
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        torch.distributed.all_reduce(total_norm_cuda,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=self.dp_process_group)
+        dist.all_reduce(total_norm_cuda,
+                        op=dist.ReduceOp.SUM,
+                        group=self.dp_process_group)
 
-        self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.SUM)
+        self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
@@ -1334,11 +1349,7 @@ class DeepSpeedZeroOptimizer(object):
                 param.grad = torch.zero_like(param)
 
     ######################Reduction Related Methods##############################
-    def allreduce_bucket(self,
-                         bucket,
-                         communication_data_type=torch.float16,
-                         rank=None,
-                         log=None):
+    def allreduce_bucket(self, bucket, rank=None, log=None):
         rank = None
         tensor = self.flatten(bucket)
 
@@ -1346,6 +1357,8 @@ class DeepSpeedZeroOptimizer(object):
 
         if pg_correctness_test:
             communication_data_type = torch.float32
+        else:
+            communication_data_type = self.communication_data_type
 
         if communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(communication_data_type)
@@ -1356,7 +1369,7 @@ class DeepSpeedZeroOptimizer(object):
             #    "All Reducing"
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
-            global_rank = _get_global_rank(self.dp_process_group, rank)
+            global_rank = dist.get_global_rank(self.dp_process_group, rank)
             dist.reduce(tensor_to_allreduce, global_rank, group=self.dp_process_group)
 
         if communication_data_type != tensor.dtype and tensor is not tensor_to_allreduce:
@@ -1429,7 +1442,7 @@ class DeepSpeedZeroOptimizer(object):
         partitions = []
 
         dp = dist.get_world_size(group=self.real_dp_process_group[group_id])
-        dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
+        # dp_id = dist.get_rank(group=self.real_dp_process_group[group_id])
 
         total_num_elements = tensor.numel()
 
@@ -1497,9 +1510,7 @@ class DeepSpeedZeroOptimizer(object):
         if self.model_parallel_group is None:
             pass
         else:
-            torch.distributed.all_reduce(tensor=tensor,
-                                         op=op,
-                                         group=self.model_parallel_group)
+            dist.all_reduce(tensor=tensor, op=op, group=self.model_parallel_group)
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
         """Clips gradient norm of an iterable of parameters.
@@ -1522,13 +1533,12 @@ class DeepSpeedZeroOptimizer(object):
         if norm_type == inf:
             total_norm = max(g.data.abs().max() for g in gradients)
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
             # Take max across all GPUs.
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.MAX)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
             total_norm = total_norm_cuda[0].item()
         else:
             total_norm = 0.0
@@ -1536,19 +1546,18 @@ class DeepSpeedZeroOptimizer(object):
             #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params):
                 # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-                if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                     continue
                 if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=self.dp_process_group)
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.SUM,
+                            group=self.dp_process_group)
 
-            self._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.SUM)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
 
             total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
@@ -1639,6 +1648,61 @@ class DeepSpeedZeroOptimizer(object):
         for name in timer_names:
             self.timers(name).stop()
 
+    def set_lr(self, lr):
+        """Set the learning rate."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
+
+    def get_lr(self):
+        """Return the current learning rate."""
+        return self.optimizer.param_groups[0]["lr"]
+
+    def override_loss_scale(self, loss_scale):
+        if loss_scale != self.external_loss_scale:
+            logger.info(
+                f'[deepspeed] setting loss scale from {self.external_loss_scale} -> {loss_scale}'
+            )
+        self.custom_loss_scaler = True
+        self.external_loss_scale = loss_scale
+
+    def scaled_global_norm(self, norm_type=2):
+        assert norm_type == 2, "only L2 norm supported"
+        norm_groups = []
+        for i, group in enumerate(self.bit16_groups):
+            partition_id = dist.get_rank(group=self.real_dp_process_group[i])
+            if self.cpu_offload:
+                norm_groups.append(
+                    self.complete_grad_norm_calculation_for_cpu_offload(
+                        self.params_in_partition[i]))
+                single_grad_partition = self.single_partition_of_fp32_groups[i].grad
+            else:
+                norm_groups.append(
+                    self.get_grad_norm_direct(self.averaged_gradients[i],
+                                              self.params_in_partition[i]))
+
+        if self.has_moe_layers:
+            self._average_expert_grad_norms(norm_groups)
+
+        # note that the get_global_norm function only supports l2 norm
+        return get_global_norm(norm_list=norm_groups)
+
+    def get_bit16_param_group(self, group_no):
+        bit16_partitions = self.parallel_partitioned_bit16_groups[group_no]
+        partition_id = dist.get_rank(group=self.real_dp_process_group[group_no])
+        return [
+            bit16_partitions[dist.get_rank(group=self.real_dp_process_group[group_no])]
+        ]
+
+    def _optimizer_step(self, group_no):
+        original_param_groups = self.optimizer.param_groups
+        self.optimizer.param_groups = [original_param_groups[group_no]]
+        from deepspeed.ops.adam import DeepSpeedCPUAdam
+        if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
+            self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
+        else:
+            self.optimizer.step()
+        self.optimizer.param_groups = original_param_groups
+
     def step(self, closure=None):
         """
         Not supporting closure.
@@ -1657,10 +1721,9 @@ class DeepSpeedZeroOptimizer(object):
         prev_scale = self.loss_scale
         self._update_scale(self.overflow)
         if self.overflow:
-
             if dist.get_rank() == 0:
                 logger.info(
-                    "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
+                    "[deepspeed] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
                     "reducing to {}".format(dist.get_rank(),
                                             prev_scale,
                                             self.loss_scale))
@@ -1678,23 +1741,34 @@ class DeepSpeedZeroOptimizer(object):
             self.stop_timers(timer_names)
             return
 
-        self.start_timers([OPTIMIZER_GRADIENTS])
-        norm_groups = []
-        single_partition_grad_groups = []
-        skip = False
+        # Step 1:- Calculate gradient norm using fp-16 grads
+        see_memory_usage('Before norm calculation')
+        scaled_global_grad_norm = self.scaled_global_norm()
+        self._global_grad_norm = scaled_global_grad_norm / self.loss_scale
+
+        see_memory_usage('After norm before optimizer')
+        # Step 2:- run optimizer and upscaling simultaneously
         for i, group in enumerate(self.bit16_groups):
+            self.start_timers([OPTIMIZER_GRADIENTS])
             partition_id = dist.get_rank(group=self.real_dp_process_group[i])
             if self.cpu_offload:
-                norm_groups.append(
-                    self.complete_grad_norm_calculation_for_cpu_offload(
-                        self.params_in_partition[i]))
                 single_grad_partition = self.single_partition_of_fp32_groups[i].grad
-            else:
-                norm_groups.append(
-                    self.get_grad_norm_direct(self.averaged_gradients[i],
-                                              self.params_in_partition[i]))
+                self.unscale_and_clip_grads([single_grad_partition],
+                                            scaled_global_grad_norm)
+                self.stop_timers([OPTIMIZER_GRADIENTS])
+                self.start_timers([OPTIMIZER_STEP])
+                self._optimizer_step(i)
 
-                # free gradients for all the parameters that are not updated by this process
+                from deepspeed.ops.adam import DeepSpeedCPUAdam
+                if not (type(self.optimizer) == DeepSpeedCPUAdam
+                        and self.dtype == torch.half):
+                    bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                    fp32_partition = self.single_partition_of_fp32_groups[i]
+                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+
+                self.stop_timers([OPTIMIZER_STEP])
+            else:
+                # free gradients for all the parameters that are not updated by this process(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_not_in_partition[i])
 
                 # create a flat gradients for parameters updated by this process
@@ -1713,94 +1787,50 @@ class DeepSpeedZeroOptimizer(object):
                         single_grad_partition.numel(), self.partition_size[i], i, partition_id)
 
                 self.single_partition_of_fp32_groups[i].grad = single_grad_partition
-                # release all the gradient since we have already created a necessary copy in dp_grad_partition
+                # release all the gradient since we have already created a necessary copy in dp_grad_partition(ZeRO stage2)
                 self.free_grad_in_param_list(self.params_in_partition[i])
 
                 self.averaged_gradients[i] = None
 
-            single_partition_grad_groups.append(single_grad_partition)
+                self.unscale_and_clip_grads([single_grad_partition],
+                                            scaled_global_grad_norm)
+                self.stop_timers([OPTIMIZER_GRADIENTS])
 
-        if self.has_moe_layers:
-            self._average_expert_grad_norms(norm_groups)
-
-        self._global_grad_norm = get_global_norm(norm_list=norm_groups)
-        self.unscale_and_clip_grads(single_partition_grad_groups, self._global_grad_norm)
-        self.stop_timers([OPTIMIZER_GRADIENTS])
-
-        self.start_timers([OPTIMIZER_STEP])
-        if self.deepspeed_adam_offload:
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
-            if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-                bit16_param_groups = [[
-                    bit16_partitions[partition_id]
-                ] for bit16_partitions in self.parallel_partitioned_bit16_groups]
-                self.optimizer.step(fp16_param_groups=bit16_param_groups)
-            else:
-                self.optimizer.step()
-                for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
-                    bit16_partitions[partition_id].data.copy_(fp32_partition.data)
-        else:
-            self.optimizer.step()
-
-            # get rid of the fp32 gradients. Not needed anymore
-            if not self.cpu_offload:
-                for group in self.single_partition_of_fp32_groups:
-                    group.grad = None  # in step
-
-            for bit16_partitions, fp32_partition in zip(self.parallel_partitioned_bit16_groups, self.single_partition_of_fp32_groups):
+                # Step 3:- run the optimizer if no offloading
+                self.start_timers([OPTIMIZER_STEP])
+                self._optimizer_step(i)
+                # Step 4:- get rid of the fp32 gradients. Not needed anymore
+                self.single_partition_of_fp32_groups[i].grad = None
+                del single_grad_partition
+                bit16_partitions = self.parallel_partitioned_bit16_groups[i]
+                fp32_partition = self.single_partition_of_fp32_groups[i]
                 bit16_partitions[partition_id].data.copy_(fp32_partition.data)
+                self.stop_timers([OPTIMIZER_STEP])
 
-        self.stop_timers([OPTIMIZER_STEP])
-
+        see_memory_usage('After optimizer before all-gather')
         if self.cpu_offload:
             self.reset_cpu_buffers()
 
         self.start_timers([OPTIMIZER_ALLGATHER])
-        # gather the updated weights from everyone
-        for group_id, partitioned_params in enumerate(self.parallel_partitioned_bit16_groups):
+        # Gather the updated weights from everyone.
+        # Then all partitions of the model parameters are updated and ready for next round forward.
+        all_gather_dp_groups(
+            partitioned_param_groups=self.parallel_partitioned_bit16_groups,
+            dp_process_group=self.real_dp_process_group,
+            start_alignment_factor=self.nccl_start_alignment_factor,
+            allgather_bucket_size=self.allgather_bucket_size)
 
-            # Sequential AllGather Best of both worlds
-            dp_world_size = dist.get_world_size(
-                group=self.real_dp_process_group[group_id])
-            num_shards = max(
-                1,
-                partitioned_params[partition_id].numel() * dp_world_size //
-                self.allgather_bucket_size)
-
-            shard_size = partitioned_params[partition_id].numel() // num_shards
-
-            # Enforce nccl/rccl alignment of start location of each shard
-            shard_size = shard_size - (shard_size % self.nccl_start_alignment_factor)
-
-            num_elements = shard_size
-            self.print_rank_0(f"Effective ABS={num_elements}")
-
-            assert shard_size * num_shards <= partitioned_params[partition_id].numel()
-
-            for shard_id in range(num_shards):
-
-                if shard_id == (num_shards - 1):
-                    num_elements = partitioned_params[partition_id].numel(
-                    ) - shard_id * shard_size
-
-                shard_list = []
-                for dp_id in range(dp_world_size):
-                    curr_shard = partitioned_params[dp_id].narrow(
-                        0,
-                        shard_id * shard_size,
-                        num_elements).detach()
-                    shard_list.append(curr_shard)
-                dist.all_gather(shard_list,
-                                shard_list[partition_id],
-                                group=self.real_dp_process_group[group_id])
         self.stop_timers([OPTIMIZER_ALLGATHER])
 
         # TODO: we probably don't need this? just to be safe
-        for i in range(len(norm_groups)):
+        for i in range(len(self.bit16_groups)):
             self._update_model_bit16_weights(i)
 
-        self.log_timers(timer_names)
-        see_memory_usage('After zero_optimizer step')
+        if self.reduce_bucket_size != proposed_bucket_size or self.allgather_bucket_size != proposed_bucket_size:
+            self.print_rank_0(f"spare_memory={spare_memory}, current_bucket_memory={curr_bucket_memory}")
+            self.print_rank_0(f"[allgather|reduce]_bucket_size={self.allgather_bucket_size} -> {proposed_bucket_size}")
+            self.reduce_bucket_size = proposed_bucket_size
+            self.allgather_bucket_size = proposed_bucket_size
 
         self._maximize_bucket_sizes()
         return
@@ -1895,9 +1925,9 @@ class DeepSpeedZeroOptimizer(object):
             overflow_gpu = torch.cuda.ByteTensor([overflow])
             '''This will capture overflow across all data parallel and expert parallel process
             Since expert parallel process are a subset of data parallel process'''
-            torch.distributed.all_reduce(overflow_gpu,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=self.dp_process_group)
+            dist.all_reduce(overflow_gpu,
+                            op=dist.ReduceOp.MAX,
+                            group=self.dp_process_group)
 
         else:
             params = []
@@ -1910,8 +1940,7 @@ class DeepSpeedZeroOptimizer(object):
 
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        self._model_parallel_all_reduce(tensor=overflow_gpu,
-                                        op=torch.distributed.ReduceOp.MAX)
+        self._model_parallel_all_reduce(tensor=overflow_gpu, op=dist.ReduceOp.MAX)
 
         overflow = overflow_gpu[0].item()
         return bool(overflow)
@@ -1963,7 +1992,11 @@ class DeepSpeedZeroOptimizer(object):
                 self.ipg_buffer.append(buf_1)
             self.ipg_index = 0
 
-        self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
+        if self.custom_loss_scaler:
+            scaled_loss = self.external_loss_scale * loss
+            scaled_loss.backward()
+        else:
+            self.loss_scaler.backward(loss.float(), retain_graph=retain_graph)
 
     def check_overflow(self, partition_gradients=True):
         self._check_overflow(partition_gradients)
@@ -1992,7 +2025,10 @@ class DeepSpeedZeroOptimizer(object):
 
     # Promote loss scale so it can be retrieved or set via "fp16_optimizer_instance.loss_scale"
     def _get_loss_scale(self):
-        return self.loss_scaler.loss_scale
+        if self.custom_loss_scaler:
+            return self.external_loss_scale
+        else:
+            return self.loss_scaler.cur_scale
 
     def _set_loss_scale(self, value):
         self.loss_scaler.cur_scale = value
@@ -2050,6 +2086,7 @@ class DeepSpeedZeroOptimizer(object):
         state_dict['loss_scaler'] = self.loss_scaler
         state_dict['dynamic_loss_scale'] = self.dynamic_loss_scale
         state_dict['overflow'] = self.overflow
+        state_dict[CLIP_GRAD] = self.clip_grad
 
         if self.elastic_checkpoint:
             state_dict[BASE_OPTIMIZER_STATE] = self._get_base_optimizer_state()
@@ -2061,7 +2098,9 @@ class DeepSpeedZeroOptimizer(object):
             self.single_partition_of_fp32_groups)
         state_dict[SINGLE_PARTITION_OF_FP32_GROUPS] = fp32_groups_without_padding
 
-        state_dict[ZERO_STAGE] = ZERO_OPTIMIZATION_GRADIENTS
+        state_dict[
+            ZERO_STAGE] = ZeroStageEnum.gradients if self.partition_gradients else ZeroStageEnum.optimizer_states
+        state_dict[GROUP_PADDINGS] = self.groups_padding
         state_dict[PARTITION_COUNT] = self.partition_count
 
         state_dict[DS_VERSION] = version
@@ -2174,7 +2213,8 @@ class DeepSpeedZeroOptimizer(object):
     def load_state_dict(self,
                         state_dict_list,
                         load_optimizer_states=True,
-                        load_from_fp32_weights=False):
+                        load_from_fp32_weights=False,
+                        checkpoint_folder=None):
         r"""Loading ZeRO checkpoint
 
         Arguments:
@@ -2204,9 +2244,11 @@ class DeepSpeedZeroOptimizer(object):
         # I think it should actually be ok to reload the optimizer before the model.
         dp_rank = dist.get_rank(group=self.dp_process_group)
         current_rank_sd = state_dict_list[dp_rank]
-        self.loss_scaler = current_rank_sd['loss_scaler']
-        self.dynamic_loss_scale = current_rank_sd['dynamic_loss_scale']
-        self.overflow = current_rank_sd['overflow']
+        self.loss_scaler = current_rank_sd.get('loss_scaler', self.loss_scaler)
+        self.dynamic_loss_scale = current_rank_sd.get('dynamic_loss_scale',
+                                                      self.dynamic_loss_scale)
+        self.overflow = current_rank_sd.get('overflow', self.overflow)
+        self.clip_grad = current_rank_sd.get(CLIP_GRAD, self.clip_grad)
 
         ckpt_version = current_rank_sd.get(DS_VERSION, False)
         assert ckpt_version, f"Empty ds_version in checkpoint, not clear how to proceed"
@@ -2221,6 +2263,16 @@ class DeepSpeedZeroOptimizer(object):
             assert required_version <= ckpt_version, f"Old version: {ckpt_version} {error_str}"
 
         ckpt_is_rigid = isinstance(current_rank_sd[BASE_OPTIMIZER_STATE], dict)
+
+        # padding is always at the last rank/partition
+        # if DP=1024 and param-group elems=16 -> padding will be 1024-16 across all but one rank
+        # scenario-1 (shrink): saving w. 4 gpus -> loading w. 2 gpus
+        # scenario-2 (expand): saving w. 2 gpus -> loading w. 4 gpus
+        # if load_optimizer_states:
+        #     if new_dp_size:
+        #         self.strip_padding()
+        #         self.add_padding_w_new_dp_size()
+        #     self.optimizer.load_state_dict(current_rank_sd[BASE_OPTIMIZER_STATE])
 
         if load_optimizer_states:
             if ckpt_is_rigid:
@@ -2266,7 +2318,7 @@ class DeepSpeedZeroOptimizer(object):
 
 def _handle_overflow(cpu_sum, x, i):
     import math
-    rank = torch.distributed.get_rank()
+    rank = dist.get_rank()
     if rank == 0:
         t_i = -1
         for v_i, v in enumerate(x.data.contiguous().view(-1)):
@@ -2358,8 +2410,8 @@ def estimate_zero2_model_states_mem_needs_all_cold(total_params,
     """
     def format_options(cpu_offload):
         enabled = []
-        device = f'{OFFLOAD_CPU_DEVICE:4}' if cpu_offload else "none"
-        enabled.append(f"{OFFLOAD_OPTIMIZER}={device}")
+        device = f'{OffloadDeviceEnum.cpu:4}' if cpu_offload else "none"
+        enabled.append(f"offload_optimizer={device}")
         return ", ".join(enabled)
 
     nodes_str = "nodes" if num_nodes > 1 else "node"
