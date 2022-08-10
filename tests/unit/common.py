@@ -68,7 +68,7 @@ class DistributedTest(ABC):
     world_size = 2
     backend = "nccl"
 
-    # Temporary directory that can be shared among test methods in a class
+    # Temporary directory that is shared among test methods in a class
     @pytest.fixture(autouse=True, scope="class")
     def class_tmpdir(self, tmpdir_factory):
         fn = tmpdir_factory.mktemp(self.__class__.__name__)
