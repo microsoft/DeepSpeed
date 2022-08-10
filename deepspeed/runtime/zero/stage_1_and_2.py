@@ -12,6 +12,7 @@ from deepspeed.runtime.fp16.loss_scaler import LossScaler, DynamicLossScaler
 from deepspeed.runtime.utils import (bwc_tensor_model_parallel_rank,
                                      get_global_norm,
                                      see_memory_usage,
+                                     torch_max_memory_reserved,
                                      is_model_parallel_parameter,
                                      align_dense_tensors,
                                      all_gather_dp_groups)
@@ -1825,12 +1826,6 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         # TODO: we probably don't need this? just to be safe
         for i in range(len(self.bit16_groups)):
             self._update_model_bit16_weights(i)
-
-        if self.reduce_bucket_size != proposed_bucket_size or self.allgather_bucket_size != proposed_bucket_size:
-            self.print_rank_0(f"spare_memory={spare_memory}, current_bucket_memory={curr_bucket_memory}")
-            self.print_rank_0(f"[allgather|reduce]_bucket_size={self.allgather_bucket_size} -> {proposed_bucket_size}")
-            self.reduce_bucket_size = proposed_bucket_size
-            self.allgather_bucket_size = proposed_bucket_size
 
         self._maximize_bucket_sizes()
         return

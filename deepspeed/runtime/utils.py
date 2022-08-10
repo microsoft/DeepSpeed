@@ -997,6 +997,7 @@ def all_gather_dp_groups(partitioned_param_groups,
         shard_size = shard_size - (shard_size % start_alignment_factor)
 
         num_elements = shard_size
+        print(f"DS Self-Tuning: ---> Effective ABS={num_elements}")
 
         assert shard_size * num_shards <= partitioned_params[partition_id].numel()
 
