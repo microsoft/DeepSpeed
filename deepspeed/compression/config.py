@@ -3,6 +3,13 @@ from typing import Dict, List, Any
 from enum import Enum
 from deepspeed.runtime.config_utils import DeepSpeedConfigModel
 
+COMPRESSION_TRAINING = "compression_training"
+
+
+def get_compression_config(param_dict):
+    compression_config_dict = param_dict.get(COMPRESSION_TRAINING, {})
+    return DeepSpeedCompressionConfig(**compression_config_dict)
+
 
 class QuantizationTypeEnum(str, Enum):
     symmetric = "symmetric"
