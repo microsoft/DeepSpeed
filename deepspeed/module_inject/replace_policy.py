@@ -10,6 +10,10 @@ supported_models = {None}
 
 
 class DSPolicy(ABC):
+    # a static class variable containing the HuggingFace model configuration.
+    # see e.g., transformers.models.opt.configuration_opt.OPTConfig
+    hf_model_config = None
+
     def __init__(
         self,
         inference=True,
@@ -430,9 +434,6 @@ class GPTNEOXLayerPolicy(DSPolicy):
 
 class HFOPTLayerPolicy(DSPolicy):
     _orig_layer_class = None
-    # a static class variable containing the HuggingFace model configuration.
-    # see transformers.models.opt.configuration_opt.OPTConfig
-    hf_model_config = None
 
     def __init__(self, client_module, inference=True):
         super().__init__(inference,
@@ -446,11 +447,7 @@ class HFOPTLayerPolicy(DSPolicy):
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
-        # TODO(arashb):
-        # if self.hf_model_config is None:
-        #     raise ValueError("For HuggingFace OPT models the model configuration needs to be set in policy class.")
-
-        if self.hf_model_config is not None:
+        if DSPolicy.hf_model_config is not None:
             self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
 
     def get_hidden_heads(self):
@@ -486,7 +483,6 @@ class HFOPTLayerPolicy(DSPolicy):
             self.client_module.fc2.bias
 
     def layerNorm(self):
-        # TODO(arashb): # 125m, 1.7B, ..., 175B applies layer norm BEFORE attention
         return self.client_module.final_layer_norm.weight, \
             self.client_module.final_layer_norm.bias, \
             self.client_module.self_attn_layer_norm.weight, \
