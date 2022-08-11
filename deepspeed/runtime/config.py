@@ -22,9 +22,9 @@ from .config_utils import (
     ScientificNotationEncoder,
 )
 from .zero.config import get_zero_config, ZeroStageEnum
-from .activation_checkpointing.config import DeepSpeedActivationCheckpointingConfig
-from ..comm.config import DeepSpeedCommsConfig
-from ..monitor.config import DeepSpeedMonitorConfig
+from .activation_checkpointing.config import get_activation_checkpointing_config
+from ..comm.config import get_comms_config
+from ..monitor.config import get_monitor_config
 
 from deepspeed import comm as dist
 
@@ -818,11 +818,11 @@ class DeepSpeedConfig(object):
         self.zero_optimization_stage = self.zero_config.stage
         self.zero_enabled = self.zero_optimization_stage > 0
 
-        self.activation_checkpointing_config = DeepSpeedActivationCheckpointingConfig(
+        self.activation_checkpointing_config = get_activation_checkpointing_config(
             param_dict)
 
-        self.comms_config = DeepSpeedCommsConfig(param_dict)
-        self.monitor_config = DeepSpeedMonitorConfig(param_dict)
+        self.comms_config = get_comms_config(param_dict)
+        self.monitor_config = get_monitor_config(param_dict)
 
         self.gradient_clipping = get_gradient_clipping(param_dict)
         self.fp16_enabled = get_fp16_enabled(param_dict)
