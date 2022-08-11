@@ -47,9 +47,9 @@ from ..elasticity.constants import (
     NUM_GPUS_PER_NODE_DEFAULT,
 )
 
-from ..profiling.config import DeepSpeedFlopsProfilerConfig
-from ..autotuning.config import DeepSpeedAutotuningConfig
-from ..nebula.config import DeepSpeedNebulaConfig
+from ..profiling.config import get_flops_profiler_config
+from ..autotuning.config import get_autotuning_config
+from ..nebula.config import get_nebula_config
 
 from ..compression.config import get_compression_config
 from ..compression.constants import *
@@ -853,11 +853,11 @@ class DeepSpeedConfig(object):
         self.scheduler_name = get_scheduler_name(param_dict)
         self.scheduler_params = get_scheduler_params(param_dict)
 
-        self.flops_profiler_config = DeepSpeedFlopsProfilerConfig(param_dict)
+        self.flops_profiler_config = get_flops_profiler_config(param_dict)
         self.wall_clock_breakdown = (get_wall_clock_breakdown(param_dict)
                                      | self.flops_profiler_config.enabled)
         self.memory_breakdown = get_memory_breakdown(param_dict)
-        self.autotuning_config = DeepSpeedAutotuningConfig(param_dict)
+        self.autotuning_config = get_autotuning_config(param_dict)
 
         (
             self.eigenvalue_enabled,
@@ -893,7 +893,7 @@ class DeepSpeedConfig(object):
 
         self.dataloader_drop_last = get_dataloader_drop_last(param_dict)
 
-        self.nebula_config = DeepSpeedNebulaConfig(param_dict)
+        self.nebula_config = get_nebula_config(param_dict)
 
     def _batch_assertion(self):
 

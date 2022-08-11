@@ -75,7 +75,7 @@ from deepspeed.comm.utils import *
 
 
 def _configure_using_config_file(config):
-    if config.comms_logger_enabled:
+    if config.enabled:
         comms_logger.configure(config)
 
 
