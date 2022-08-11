@@ -430,6 +430,9 @@ class GPTNEOXLayerPolicy(DSPolicy):
 
 class HFOPTLayerPolicy(DSPolicy):
     _orig_layer_class = None
+    # a static class variable containing the HuggingFace model configuration.
+    # see transformers.models.opt.configuration_opt.OPTConfig
+    hf_model_config = None
 
     def __init__(self, client_module, inference=True):
         super().__init__(inference,
@@ -442,6 +445,13 @@ class HFOPTLayerPolicy(DSPolicy):
             HFOPTLayerPolicy._orig_layer_class = transformers.models.opt.modeling_opt.OPTDecoderLayer
         except:
             HFOPTLayerPolicy._orig_layer_class = None
+
+        # TODO(arashb):
+        # if self.hf_model_config is None:
+        #     raise ValueError("For HuggingFace OPT models the model configuration needs to be set in policy class.")
+
+        if self.hf_model_config is not None:
+            self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
 
     def get_hidden_heads(self):
         return self.client_module.self_attn.embed_dim, \
