@@ -51,7 +51,7 @@ from ..profiling.config import DeepSpeedFlopsProfilerConfig
 from ..autotuning.config import DeepSpeedAutotuningConfig
 from ..nebula.config import DeepSpeedNebulaConfig
 
-from ..compression.config import get_compression_config, get_quantize_enabled
+from ..compression.config import get_compression_config
 from ..compression.constants import *
 from .swap_tensor.aio_config import get_aio_config
 
@@ -551,8 +551,8 @@ def get_memory_breakdown(param_dict):
     return get_scalar_param(param_dict, MEMORY_BREAKDOWN, MEMORY_BREAKDOWN_DEFAULT)
 
 
-def get_eigenvalue_config(param_dict):
-    if get_quantize_enabled(param_dict):
+def get_eigenvalue_config(param_dict, compression_config):
+    if compression_config.weight_quantization.shared_parameters.enabled:
         param_dict = param_dict[QUANTIZE_TRAINING]
         assert not get_eigenvalue_enabled(param_dict), "Eigenvalue based MoQ is temporarily disabled"
         return (
@@ -868,7 +868,8 @@ class DeepSpeedConfig(object):
             self.eigenvalue_gas_boundary_resolution,
             self.eigenvalue_layer_name,
             self.eigenvalue_layer_num,
-        ) = get_eigenvalue_config(param_dict)
+        ) = get_eigenvalue_config(param_dict,
+                                  self.compression_config)
 
         self.sparse_attention = get_sparse_attention(param_dict)
         self.pipeline = get_pipeline_config(param_dict)
