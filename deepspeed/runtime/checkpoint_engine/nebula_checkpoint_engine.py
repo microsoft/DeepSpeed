@@ -53,10 +53,9 @@ class NebulaCheckpointEngine(CheckpointEngine):
         if not self.enable_nebula_load and first_load_flag:
             self.tag_flag = tag
             logger.info(
-                f"[Nebula] Disable nebula load. Loading checkpoint from {path}...")
+                f"[Nebula] Disable nebula load. Loading checkpoint from {path} ...")
             partition = torch.load(path, map_location=map_location)
-            logger.info(
-                f"[Nebula] Disable nebula load. Loaded checkpoint from {path}...")
+            logger.info(f"[Nebula] Disable nebula load. Loaded checkpoint from {path} .")
             return partition
 
         partititon_name = os.path.basename(path)
@@ -73,9 +72,18 @@ class NebulaCheckpointEngine(CheckpointEngine):
                                                      persist_path=self.nebula_load_path)
 
         if checkpoint is None or (checkpoint is not None and checkpoint.tag == ''):
-            logger.warning(f"Unable to find latest valid checkpoint from Nebula!")
-            return None
+            logger.info(
+                f"Unable to find valid checkpoint tag:{tag} from Nebula, try to get latest checkpoint again!"
+            )
+            checkpoint = torch_nebula.get_latest_checkpoint(
+                persist_path=self.nebula_load_path)
+            if checkpoint is None:
+                logger.warning(
+                    f"Unable to find valid checkpoint from Nebula under tag:{tag}.")
+                return None
 
+        tag = checkpoint.tag
+        self.tag_flag = -1
         partition = checkpoint.load(partititon_name, map_location=map_location)
         logger.info(
             f"[Nebula] Loaded {path} under tag {tag} from {self.nebula_load_path}.")
