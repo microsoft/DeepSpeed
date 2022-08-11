@@ -835,7 +835,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             return self._all_gather(param_list, async_op=async_op, hierarchy=hierarchy)
 
         @instrument_w_nvtx
-        def all_gather_coalesced(params: Iterable[Parameter],
+        def all_gather_coalesced(params: Iterable[Parameter],forward: bool,
                                  safe_mode: bool = False) -> AllGatherCoalescedHandle:
 
             # fetches from nvme if the partition is not available and in nvme
@@ -891,7 +891,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 )
 
                 #All gather on secondary tensor (with intragroup comm) if available
-                param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor else param.ds_tensor
+                param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward  else param.ds_tensor
                 handles = _dist_allgather_fn(
                     param_ds_tensor.to(torch.cuda.current_device()), 
                     param_buffer, 
@@ -923,7 +923,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz))
                  
                 
-                if self.use_secondary_tensor:
+                if self.use_secondary_tensor and not forward :
+                        print_rank_0("Using hpZeRO ", force=True)
                         instrument_w_nvtx(torch.cat)(
                             [p.ds_secondary_tensor.to(torch.cuda.current_device()) for p in params],
                             out=partitions[rank_in_group])
