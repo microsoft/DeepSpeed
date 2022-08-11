@@ -50,7 +50,7 @@ class DeepSpeedAutotuningConfig(DeepSpeedConfigModel):
     tuner_type: TunerTypeEnum = TunerTypeEnum.gridsearch
     tuner_early_stopping: int = Field(5, ge=0)
     tuner_num_trials: int = Field(50, gt=0)
-    arg_mapping: str = None
+    arg_mappings: str = None
     model_info: ModelInfoConfig = ModelInfoConfig()
     model_info_path: str = None
     mp_size: int = Field(1, gt=0)
