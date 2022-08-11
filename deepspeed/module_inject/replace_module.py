@@ -147,7 +147,6 @@ def replace_transformer_layer(orig_layer_impl,
                               mp_group=None,
                               ep_group=None,
                               expert_mp_group=None,
-                              preln=True,
                               fp16=True,
                               local_rank=-1,
                               stochastic_mode=True,
@@ -204,13 +203,8 @@ def replace_transformer_layer(orig_layer_impl,
                             policy_cls,
                             triangular_masking,
                             inference=False,
-                            preln=True,
                             layer_id=0):
-        preln = False if policy_cls is HFBertLayerPolicy else preln
-        if policy_cls is HFBertLayerPolicy:
-            policy = policy_cls(child, inference=inference, preln=preln)
-        else:
-            policy = policy_cls(child, inference=inference)
+        policy = policy_cls(child, inference=inference)
 
         if inference:
             hidden_size, num_attention_heads = policy.get_hidden_heads()
@@ -275,7 +269,7 @@ def replace_transformer_layer(orig_layer_impl,
                         config,
                         'layer_norm_eps') else 1e-12,
                     fp16=fp16,
-                    pre_layer_norm=preln,
+                    pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
                     q_int8=quantize,
                     moe_experts=local_ep_size,
@@ -297,7 +291,7 @@ def replace_transformer_layer(orig_layer_impl,
                      if hasattr(config,
                                 'layernorm_epsilon') else 1.0e-12),
                     fp16=fp16,
-                    pre_layer_norm=preln,
+                    pre_layer_norm=policy.pre_attn_norm,
                     mp_size=mp_size,
                     q_int8=quantize,
                     return_tuple=(return_tuple or (policy_cls is HFBertLayerPolicy)),
@@ -595,7 +589,7 @@ def replace_transformer_layer(orig_layer_impl,
                     'layer_norm_eps') else 1e-12,
                 seed=seed,
                 fp16=fp16,
-                pre_layer_norm=(False if policy_cls is HFBertLayerPolicy else preln),
+                pre_layer_norm=policy.pre_attn_norm,
                 return_tuple=return_tuple,
                 local_rank=local_rank,
                 stochastic_mode=stochastic_mode,
@@ -759,10 +753,7 @@ def replace_transformer_layer(orig_layer_impl,
     def replace_fn(child, _policy, layer_id=0):
         if training:
             # copy relevant state from child -> new module
-            new_module = replace_with_policy(child,
-                                             _policy,
-                                             triangular_masking,
-                                             preln=preln)
+            new_module = replace_with_policy(child, _policy, triangular_masking)
 
         else:
             # copy relevant state from child -> new module
@@ -771,8 +762,6 @@ def replace_transformer_layer(orig_layer_impl,
                                                  _policy,
                                                  triangular_masking,
                                                  inference=True,
-                                                 preln=(_policy
-                                                        is not HFBertLayerPolicy),
                                                  layer_id=layer_id)
             else:
                 new_module = replace_wo_policy(child, _policy)

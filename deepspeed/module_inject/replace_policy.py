@@ -10,18 +10,23 @@ supported_models = {None}
 
 
 class DSPolicy(ABC):
-    def __init__(self,
-                 inference=True,
-                 linear_layer=True,
-                 scale_attention=True,
-                 megatron_v2=False,
-                 mlp_act_func_type=ActivationFuncType.GELU):
+    def __init__(
+        self,
+        inference=True,
+        linear_layer=True,
+        scale_attention=True,
+        megatron_v2=False,
+        # the type of activation function used in MLP
+        mlp_act_func_type=ActivationFuncType.GELU,
+        # applies layer norm before attention if `pre_attn_norm` is set to True
+        pre_attn_norm=True):
 
         self.inference = inference
         self.linear_layer = linear_layer
         self.scale_attention = scale_attention
         self.is_megatron_v2 = megatron_v2
         self.mlp_act_func_type = mlp_act_func_type
+        self.pre_attn_norm = pre_attn_norm
 
     def attention(self):
         """
@@ -57,10 +62,10 @@ class DSPolicy(ABC):
 class HFBertLayerPolicy(DSPolicy):
     _orig_layer_class = None
 
-    def __init__(self, client_module, inference=False, preln=False):
-        super().__init__(inference)
+    def __init__(self, client_module, inference=False):
+        super().__init__(inference, pre_attn_norm=False)
         self.client_module = client_module
-        self.preln = preln
+
         if HFBertLayerPolicy._orig_layer_class is None:
             try:
                 import transformers
@@ -95,7 +100,7 @@ class HFBertLayerPolicy(DSPolicy):
                self.is_megatron_v2
 
     def mlp(self):
-        if self.preln:
+        if self.pre_attn_norm:
             intermediate_ff = self.client_module.intermediate.dense_act
         else:
             intermediate_ff = self.client_module.intermediate.dense
@@ -105,7 +110,7 @@ class HFBertLayerPolicy(DSPolicy):
             self.client_module.output.dense.bias
 
     def layerNorm(self):
-        if self.preln:
+        if self.pre_attn_norm:
             attention_layernorm = self.client_module.PostAttentionLayerNorm
             transformer_layernorm = self.client_module.PreAttentionLayerNorm
         else:
@@ -427,10 +432,10 @@ class HFOPTLayerPolicy(DSPolicy):
     _orig_layer_class = None
 
     def __init__(self, client_module, inference=True):
-        # TODO(arashb): linear_layer == True ?
         super().__init__(inference,
                          linear_layer=True,
-                         mlp_act_func_type=ActivationFuncType.ReLU)
+                         mlp_act_func_type=ActivationFuncType.ReLU,
+                         pre_attn_norm=True)
         self.client_module = client_module
         try:
             import transformers
@@ -455,7 +460,6 @@ class HFOPTLayerPolicy(DSPolicy):
         qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=False)
         qkvb = Parameter(torch.cat((qb, kb, vb), dim=0), requires_grad=False)
 
-        # TODO(arashb): what is linear_layer used for?
         return self.linear_layer, \
             qkvw, \
             qkvb, \
@@ -465,7 +469,6 @@ class HFOPTLayerPolicy(DSPolicy):
             self.is_megatron_v2
 
     def mlp(self):
-        # TODO(arashb): what is linear_layer used for?
         return self.linear_layer, \
             self.client_module.fc1.weight, \
             self.client_module.fc1.bias, \
