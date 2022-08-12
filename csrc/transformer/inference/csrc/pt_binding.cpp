@@ -319,7 +319,7 @@ void attention_unfused(T* prev_key_cont,
         // If we are doing the prompt, switch to the tail workspace
         T* scratch = (T*)Context::Instance().GetWorkSpace();
         workspace = scratch + (Context::Instance().get_workspace_size() / sizeof(T)) -
-                    heads * seq_len * seq_len;
+                    bsz * heads * seq_len * seq_len;
     }
 
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
