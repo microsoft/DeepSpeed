@@ -447,7 +447,8 @@ class HFOPTLayerPolicy(DSPolicy):
         except:
             HFOPTLayerPolicy._orig_layer_class = None
 
-        if DSPolicy.hf_model_config is not None:
+        if isinstance(DSPolicy.hf_model_config,
+                      transformers.models.opt.configuration_opt.OPTConfig):
             self.pre_attn_norm = self.hf_model_config.do_layer_norm_before
 
     def get_hidden_heads(self):
