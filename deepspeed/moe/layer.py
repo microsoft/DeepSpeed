@@ -27,7 +27,8 @@ class MoE(torch.nn.Module):
                  drop_tokens: bool = True,
                  use_rts=True,
                  use_tutel: bool = False,
-                 enable_expert_tensor_parallelism: bool = False):
+                 enable_expert_tensor_parallelism: bool = False,
+                 drop_duplicates_before_gating: bool = False):
         """Initialize an MoE layer.
 
         Arguments:
@@ -48,7 +49,6 @@ class MoE(torch.nn.Module):
         """
 
         super(MoE, self).__init__()
-
         self.use_residual = use_residual
         self.enable_expert_tensor_parallelism = enable_expert_tensor_parallelism
         assert num_experts % ep_size == 0, f"Number of experts ({num_experts}) should be divisible by expert parallel size ({ep_size})"
@@ -65,20 +65,22 @@ class MoE(torch.nn.Module):
             'Unsupported noisy_gate_policy: ' + noisy_gate_policy
 
         experts = Experts(expert, self.num_local_experts, self.expert_group_name)
-        self.deepspeed_moe = MOELayer(TopKGate(hidden_size,
-                                               num_experts,
-                                               k,
-                                               capacity_factor,
-                                               eval_capacity_factor,
-                                               min_capacity,
-                                               noisy_gate_policy,
-                                               drop_tokens,
-                                               use_rts),
-                                      experts,
-                                      self.expert_group_name,
-                                      self.ep_size,
-                                      self.num_local_experts,
-                                      use_tutel=use_tutel)
+        self.deepspeed_moe = MOELayer(
+            TopKGate(hidden_size,
+                     num_experts,
+                     k,
+                     capacity_factor,
+                     eval_capacity_factor,
+                     min_capacity,
+                     noisy_gate_policy,
+                     drop_tokens,
+                     use_rts),
+            experts,
+            self.expert_group_name,
+            self.ep_size,
+            self.num_local_experts,
+            use_tutel=use_tutel,
+            drop_duplicates_before_gating=drop_duplicates_before_gating)
         if self.use_residual:
             self.mlp = expert
             # coefficient is used for weighted sum of the output of expert and mlp

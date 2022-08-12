@@ -9,6 +9,7 @@ import torch
 import hashlib
 from collections import defaultdict, OrderedDict
 from shutil import copyfile
+import numpy as np
 
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
@@ -175,6 +176,26 @@ class EngineTimers(object):
             ]
 
 
+class InfinibandNetworkCounters(object):
+    r"ib network counters"
+
+    def __init__(self, total=8):
+        self.current_counter_data = np.array([self.read(i) for i in range(total)])
+        self.total = total
+
+    def get_profile(self):
+        new_counter_data = np.array([self.read(i) for i in range(self.total)])
+        data = (new_counter_data - self.current_counter_data) * 4 / 1024 / 1024
+        self.current_counter_data = new_counter_data
+        return data
+
+    def read(self, port_id, counter_name="port_rcv_data"):
+        file_name = f"/sys/class/infiniband/mlx5_ib{port_id}/ports/1/counters/{counter_name}"
+        with open(file_name, "r") as f:
+            data = int(f.read().strip())
+        return data
+
+
 class DeepSpeedEngine(Module):
     r"""DeepSpeed engine for training."""
     def __init__(
@@ -193,6 +214,7 @@ class DeepSpeedEngine(Module):
         dont_change_device=False,
     ):
         super(DeepSpeedEngine, self).__init__()
+        self.network_counters = InfinibandNetworkCounters()
         self.dont_change_device = dont_change_device
         self.client_optimizer = optimizer
         self.client_model_parameters = model_parameters
@@ -1697,23 +1719,34 @@ class DeepSpeedEngine(Module):
         moe_time = 0.0
         falltoall = 0.0
         salltoall = 0.0
+        compute = 0.0
+        all_gather = 0.0
+        einsum = 0.0
+        drop_tokens = 0.0
 
         for gate in self.gate_modules:
             #logger.info(f"Individual TopK gate time: {gate.gate_time:.2f} ms")
             gate_time += gate.gate_time
+            gate.gate_time = 0
 
         for l in self.moe_layers:
             #logger.info(f"MoE layer; total: {l.time_moe:.2f} ms, first alltoall: {l.time_falltoall:.2f}, second alltoall: {l.time_salltoall:.2f}")
             moe_time += l.time_moe
             falltoall += l.time_falltoall
             salltoall += l.time_salltoall
+            compute += l.time_compute
+            all_gather += l.time_all_gather
+            einsum += l.time_einsum_1 + l.time_einsum_2
+            drop_tokens += l.time_drop_tokens
 
         # TODO: Allreduce/average them across ranks for more accurate timing.
 
         # if deepspeed.comm.get_rank() == 0:
         log_dist(
-            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f})",
+            f"rank={dist.get_rank()} time (ms) | forward: {fwd_time:.2f} (forward_moe: {moe_time:.2f}, compute: {compute:.2f}, 1st alltoall: {falltoall:.2f}, 2nd alltoall: {salltoall:.2f}, top-k: {gate_time:.2f}, all-gather: {all_gather:.2f}, einsum: {einsum:.2f}, drop_tokens: {drop_tokens:.2f})",
             ranks=[0])
+        log_dist(f"Network counter data = {self.network_counters.get_profile()}",
+                 ranks=[0])
 
     @instrument_w_nvtx
     def allreduce_gradients(self, bucket_size=MEMORY_OPT_ALLREDUCE_SIZE):
@@ -2048,8 +2081,7 @@ class DeepSpeedEngine(Module):
                     self._write_monitor()
 
                 if self.has_moe_layers:
-                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(
-                        reset=False) * 1000
+                    fwd_time = self.timers(FORWARD_GLOBAL_TIMER).elapsed(reset=False)
                     self.print_forward_breakdown(fwd_time=fwd_time)
 
                 self.timers.log(self.engine_timers.global_timers)

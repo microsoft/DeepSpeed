@@ -20,6 +20,7 @@ import torch
 from torch import Tensor
 from torch.nn import Module
 import torch.nn.functional as F
+
 from deepspeed.utils import groups
 from .mappings import drop_tokens, gather_tokens
 
@@ -431,7 +432,7 @@ class TopKGate(Module):
 
         if self.wall_clock_breakdown:
             self.timers('TopKGate').stop()
-            self.gate_time = self.timers('TopKGate').elapsed(reset=False) * 1000
+            self.gate_time = self.timers('TopKGate').elapsed(reset=False)
 
         return gate_output
 
@@ -459,7 +460,8 @@ class MOELayer(Base):
                  ep_group_name,
                  ep_size,
                  num_local_experts: int,
-                 use_tutel: bool = False) -> None:
+                 use_tutel: bool = False,
+                 drop_duplicates_before_gating: bool = False) -> None:
         super().__init__()
         self.gate = gate
         self.experts = experts
@@ -470,11 +472,13 @@ class MOELayer(Base):
         self.time_falltoall = 0.0
         self.time_salltoall = 0.0
         self.time_moe = 0.0
+        self.time_compute = 0.0
+        self.time_all_gather = 0.0
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
+        self.drop_duplicates_before_gating = drop_duplicates_before_gating
 
         self.use_tutel = use_tutel and TUTEL_INSTALLED and gate.k == 1
-
         if self.use_tutel:
             logger.info('Using Tutel optimizations.')
         elif use_tutel and not TUTEL_INSTALLED:
@@ -501,10 +505,14 @@ class MOELayer(Base):
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
 
+        if self.drop_duplicates_before_gating:  ## sm -> (s/tp)m
+            reshaped_input = drop_tokens(reshaped_input, dim=0)
+
         if self.use_tutel:
             self.l_aux, C, E, indices_, locations_, gates_, self.exp_counts = self.gate(reshaped_input, input[1], True)
             S, M = reshaped_input.size(0), reshaped_input.size(1)
-
+            if self.wall_clock_breakdown:
+                self.timers('einsum-1').start()
             if not hasattr(self, '_tutel_dispatcher'):
                 self._tutel_dispatcher = tutel_moe.fast_dispatcher(
                     E,
@@ -513,40 +521,57 @@ class MOELayer(Base):
                     dispatch_dtype=reshaped_input.dtype)
             self._tutel_dispatcher.update(indices_, locations_, gates_, capacity=C)
             dispatched_input = self._tutel_dispatcher.encode(reshaped_input)
+            if self.wall_clock_breakdown:
+                self.timers('einsum-1').stop()
         else:
             self.l_aux, combine_weights, dispatch_mask, self.exp_counts = self.gate(reshaped_input, input[1])
+            if self.wall_clock_breakdown:
+                self.timers('einsum-1').start()
             dispatched_input = einsum("sec,sm->ecm",
                                       dispatch_mask.type_as(input[0]),
                                       reshaped_input)
+            # logger.info(f"{all_mask}, number of zero dispatches = {(dispatched_input.sum(dim=-1) == 0).sum()}")
+            # logger.info(f"ZeRO DISPATCHES = {(dispatched_input.sum(dim=-1) == 0).sum()}")
+            if self.wall_clock_breakdown:
+                self.timers('einsum-1').stop()
 
         if self.wall_clock_breakdown:
-            self.timers('falltoall').start()
+            self.timers('drop-tokens').start()
 
-        #if groups._get_expert_model_parallel_world_size() == 1:
         # If the non-expert is tensor-parallel, it will create
         # duplicate tokens on the tensor-parallel ranks.
         # Since our experts are not tensor-parallel, these duplicates
         # need to be dropped to ensure correctness.
         # this also doubles up as a communication optimization as we are
         # reducing the all-to-all communication volume.
-        dispatched_input = drop_tokens(dispatched_input, dim=1)
+        if not self.drop_duplicates_before_gating:  # ecm -> e(c/tp)m
+            dispatched_input = drop_tokens(dispatched_input, dim=1)
+
+        if self.wall_clock_breakdown:
+            self.timers('drop-tokens').stop()
+
+        if self.wall_clock_breakdown:
+            self.timers('falltoall').start()
 
         dispatched_input = _AllToAll.apply(self.ep_group, dispatched_input)
 
-        if groups._get_expert_model_parallel_world_size() > 1:
-            dispatched_input = gather_tokens(dispatched_input, dim=1)
-
         if self.wall_clock_breakdown:
             self.timers('falltoall').stop()
-            self.time_falltoall = self.timers('falltoall').elapsed(reset=False) * 1000
+
+        if groups._get_expert_model_parallel_world_size() > 1:
+            dispatched_input = gather_tokens(dispatched_input, dim=1)
 
         # Re-shape after all-to-all: ecm -> gecm
         dispatched_input = dispatched_input.reshape(self.ep_size,
                                                     self.num_local_experts,
                                                     -1,
                                                     d_model)
-
+        if self.wall_clock_breakdown:
+            self.timers('compute').start()
         expert_output = self.experts(dispatched_input)
+
+        if self.wall_clock_breakdown:
+            self.timers('compute').stop()
 
         if self.wall_clock_breakdown:
             self.timers('salltoall').start()
@@ -555,30 +580,59 @@ class MOELayer(Base):
 
         if self.wall_clock_breakdown:
             self.timers('salltoall').stop()
-            self.time_salltoall = self.timers('salltoall').elapsed(reset=False) * 1000
 
         # Re-shape back: gecm -> ecm
         expert_output = expert_output.reshape(self.ep_size * self.num_local_experts,
                                               -1,
                                               d_model)
 
-        if groups._get_expert_model_parallel_world_size() == 1:
+        if self.wall_clock_breakdown:
+            self.timers('all-gather').start()
+
+        if groups._get_expert_model_parallel_world_size(
+        ) == 1 and not self.drop_duplicates_before_gating:
             # the dropped duplicate tokens need to be gathered on each
             # tensor parallel rank again for the tensor-parallel
             # non-expert of the next layer.
-            expert_output = gather_tokens(expert_output, dim=1)
+            expert_output = gather_tokens(expert_output, dim=1)  # e(c/tp)m -> ecm
+
+        if self.wall_clock_breakdown:
+            self.timers('all-gather').stop()
+
+        if self.wall_clock_breakdown:
+            self.timers('einsum-2').start()
 
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
         else:
+            #  if self.gate.k != 1:
             combined_output = einsum("sec,ecm->sm",
                                      combine_weights.type_as(input[0]),
                                      expert_output)
+        #   else:
+        #        combined_output = torch.flatten(expert_output, start_dim=0, end_dim=1)
+
+        if groups._get_expert_model_parallel_world_size(
+        ) == 1 and self.drop_duplicates_before_gating:
+            # the dropped duplicate tokens need to be gathered on each
+            # tensor parallel rank again for the tensor-parallel
+            # non-expert of the next layer.
+            combined_output = gather_tokens(combined_output, dim=0)  #(s/tp)m
+
+        if self.wall_clock_breakdown:
+            self.timers('einsum-2').stop()
 
         a = combined_output.reshape(input[0].shape)
 
         if self.wall_clock_breakdown:
             self.timers('moe').stop()
-            self.time_moe = self.timers('moe').elapsed(reset=False) * 1000
+            self.time_moe = self.timers('moe').elapsed(reset=False)
+            self.time_drop_tokens = self.timers('drop-tokens').elapsed(reset=False)
+            self.time_einsum_1 = self.timers('einsum-1').elapsed(reset=False)
+            self.time_einsum_2 = self.timers('einsum-2').elapsed(reset=False)
+            self.time_all_gather = self.timers('all-gather').elapsed(reset=False)
+            self.time_salltoall = self.timers('salltoall').elapsed(reset=False)
+            self.time_compute = self.timers('compute').elapsed(reset=False)
+            self.time_falltoall = self.timers('falltoall').elapsed(reset=False)
 
         return a
