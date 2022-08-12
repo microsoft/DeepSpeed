@@ -46,7 +46,7 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
                                                   outputs[key])
         return outputs
 
-    elif isinstance(outputs, (torch.Tensor, torch.nn.parameter.Parameter)):
+    elif type(outputs) is torch.Tensor:
         return functional.apply(module, backward_function, outputs)
     else:
         if not is_builtin_type(outputs):
