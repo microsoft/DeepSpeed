@@ -647,7 +647,9 @@ class DeepSpeedEngine(Module):
         return self._config.zero_config.offload_param
 
     def zero_cpu_offload(self):
-        return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        if self._config.zero_config.offload_optimizer is not None:
+            return self._config.zero_config.offload_optimizer.device == OffloadDeviceEnum.cpu
+        return False
 
     def zero_sub_group_size(self):
         return self._config.zero_config.sub_group_size
