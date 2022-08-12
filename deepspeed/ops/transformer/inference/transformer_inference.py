@@ -401,6 +401,8 @@ class DeepSpeedSelfAttentionFunction(Function):
         def selfAttention_fp():
             vector_matmul_func = inference_cuda_module.vector_matmul_fp16 if config.fp16 else \
                                     inference_cuda_module.vector_matmul_fp32
+
+            head_size = (attn_qkvw.shape[-1] // 3 // num_attention_heads_per_partition)
             if not config.pre_layer_norm:
                 linear_func = inference_cuda_module.linear_layer_fp16 if config.fp16 else \
                                     inference_cuda_module.linear_layer_fp32
@@ -408,7 +410,8 @@ class DeepSpeedSelfAttentionFunction(Function):
                 qkv_out = linear_func(input,
                                       attn_qkvw,
                                       attn_qkvb,
-                                      DeepSpeedTransformerInference.layer_id)
+                                      DeepSpeedTransformerInference.layer_id,
+                                      head_size)
             else:
                 qkv_func = inference_cuda_module.qkv_gemm_fp16 if config.fp16 else \
                                     inference_cuda_module.qkv_gemm_fp32
@@ -421,7 +424,9 @@ class DeepSpeedSelfAttentionFunction(Function):
                     config.epsilon,
                     (attn_qkvb is not None),
                     1 if config.bigscience_bloom else
-                    DeepSpeedTransformerInference.layer_id)
+                    DeepSpeedTransformerInference.layer_id,
+                    config.bigscience_bloom,
+                    head_size)
             context_layer, key_layer, value_layer = compute_attention(qkv_out[0] if isinstance(qkv_out, list) else qkv_out, input_mask)
             output = vector_matmul_func(context_layer, attn_ow, False)
 
