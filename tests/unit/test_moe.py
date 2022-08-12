@@ -1,9 +1,9 @@
 import torch
 import deepspeed
 import pytest
-from .common import distributed_test
-from .simple_model import SimplePRMoEModel, args_from_dict, SimpleMoEModel, sequence_dataloader
-from .util import required_torch_version
+from tests.unit.common import distributed_test
+from tests.unit.simple_model import SimplePRMoEModel, SimpleMoEModel, sequence_dataloader, args_from_dict
+from tests.unit.util import required_torch_version
 
 try:
     from apex import amp  # noqa: F401

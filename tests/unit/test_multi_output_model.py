@@ -1,9 +1,8 @@
 import torch
 import deepspeed
 from pytest import approx
-from .common import distributed_test
-from .simple_model import args_from_dict
-from .multi_output_model import MultiOutputModel, multi_output_dataloader
+from tests.unit.common import DistributedTest
+from tests.unit.multi_output_model import MultiOutputModel, multi_output_dataloader
 
 
 def create_config_dict(micro_batch_size, grad_accumulation_steps, world_size):
@@ -24,23 +23,18 @@ def create_config_dict(micro_batch_size, grad_accumulation_steps, world_size):
     }
 
 
-def test_two_output_model(tmpdir):
-    gradient_accumulation_steps = 2
-    micro_batch_size = 1
+class TestMultiModelOutput(DistributedTest):
     world_size = 1
-    config_dict = create_config_dict(micro_batch_size,
-                                     gradient_accumulation_steps,
-                                     world_size)
 
-    hidden_dim = 10
-    weight_value = 0.1
-    args = args_from_dict(tmpdir, config_dict)
+    def test_two(self, gradient_accumulation_steps=2, micro_batch_size=1):
+        config_dict = create_config_dict(micro_batch_size,
+                                         gradient_accumulation_steps,
+                                         self.world_size)
+        hidden_dim = 10
+        weight_value = 0.1
 
-    model = MultiOutputModel(hidden_dim, weight_value)
-
-    @distributed_test(world_size=[1])
-    def _test_two_output_model(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = MultiOutputModel(hidden_dim, weight_value)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
         total_samples = 4
@@ -74,26 +68,16 @@ def test_two_output_model(tmpdir):
 
             model.step()
 
-    _test_two_output_model(args=args, model=model, hidden_dim=hidden_dim)
+    def test_three(self, gradient_accumulation_steps=3, micro_batch_size=1):
+        config_dict = create_config_dict(micro_batch_size,
+                                         gradient_accumulation_steps,
+                                         self.world_size)
 
+        hidden_dim = 10
+        weight_value = 0.1
 
-def test_three_output_model(tmpdir):
-    gradient_accumulation_steps = 3
-    micro_batch_size = 1
-    world_size = 1
-    config_dict = create_config_dict(micro_batch_size,
-                                     gradient_accumulation_steps,
-                                     world_size)
-
-    hidden_dim = 10
-    weight_value = 0.1
-    args = args_from_dict(tmpdir, config_dict)
-
-    model = MultiOutputModel(hidden_dim, weight_value)
-
-    @distributed_test(world_size=[1])
-    def _test_three_output_model(args, model, hidden_dim):
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model = MultiOutputModel(hidden_dim, weight_value)
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               model_parameters=model.parameters())
 
@@ -131,5 +115,3 @@ def test_three_output_model(tmpdir):
             assert scaled_loss.item() == approx(expected_scaled_loss.item())
 
             model.step()
-
-    _test_three_output_model(args=args, model=model, hidden_dim=hidden_dim)

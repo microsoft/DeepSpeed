@@ -1,8 +1,8 @@
 import torch
 import deepspeed
 import pytest
-from .common import distributed_test
-from .simple_model import SimpleModel, random_dataloader, args_from_dict
+from tests.unit.common import DistributedTest
+from tests.unit.simple_model import SimpleModel, random_dataloader
 from deepspeed.runtime.lr_schedules import LR_RANGE_TEST, LR_RANGE_TEST_MIN_LR, LR_RANGE_TEST_STEP_RATE, LR_RANGE_TEST_STEP_SIZE, LR_RANGE_TEST_STAIRCASE
 from deepspeed.runtime.lr_schedules import WARMUP_LR, WARMUP_MIN_LR, WARMUP_MAX_LR, WARMUP_NUM_STEPS, WARMUP_TYPE, WARMUP_LOG_RATE, WARMUP_LINEAR_RATE
 from deepspeed.runtime.lr_schedules import ONE_CYCLE, CYCLE_MIN_LR, CYCLE_MAX_LR, CYCLE_FIRST_STEP_SIZE, DECAY_LR_RATE, DECAY_STEP_SIZE
@@ -42,30 +42,29 @@ def _verify_staircase_increase(values, step_size):
                            }),
                           (LR_RANGE_TEST,
                            {})])
-def test_get_lr_before_train(tmpdir, scheduler_type, params):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+class TestGetLrBeforeTrain(DistributedTest):
+    world_size = 1
+
+    def test(self, scheduler_type, params):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": scheduler_type,
-            "params": params
-        },
-        "gradient_clipping": 1.0
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+            "scheduler": {
+                "type": scheduler_type,
+                "params": params
+            },
+            "gradient_clipping": 1.0
+        }
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_get_lr_before_train(args, model, hidden_dim):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -80,65 +79,44 @@ def test_get_lr_before_train(tmpdir, scheduler_type, params):
             model.backward(loss)
             model.step()
 
-    _test_get_lr_before_train(args=args, model=model, hidden_dim=hidden_dim)
 
+@pytest.mark.parametrize("warmup_num_steps", [10, 15, 19, 33])
+@pytest.mark.parametrize("warnup_type", [WARMUP_LOG_RATE, WARMUP_LINEAR_RATE])
+class TestLrSchedule(DistributedTest):
+    world_size = 1
 
-@pytest.mark.parametrize("warmup_num_steps, warmup_type",
-                         [
-                             (10,
-                              WARMUP_LOG_RATE),
-                             (15,
-                              WARMUP_LOG_RATE),
-                             (19,
-                              WARMUP_LOG_RATE),
-                             (33,
-                              WARMUP_LOG_RATE),
-                             (10,
-                              WARMUP_LINEAR_RATE),
-                             (15,
-                              WARMUP_LINEAR_RATE),
-                             (19,
-                              WARMUP_LINEAR_RATE),
-                             (33,
-                              WARMUP_LINEAR_RATE),
-                         ])
-def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+    def test_lr_warmup_schedule(self, warmup_num_steps, warmup_type):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": WARMUP_LR,
-            "params": {
-                WARMUP_MIN_LR: 0.1,
-                WARMUP_MAX_LR: 0.2,
-                WARMUP_NUM_STEPS: warmup_num_steps,
-                WARMUP_TYPE: warmup_type,
-            }
-        },
-        "gradient_clipping": 1.0
-    }
+            "scheduler": {
+                "type": WARMUP_LR,
+                "params": {
+                    WARMUP_MIN_LR: 0.1,
+                    WARMUP_MAX_LR: 0.2,
+                    WARMUP_NUM_STEPS: warmup_num_steps,
+                    WARMUP_TYPE: warmup_type,
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+        schedule_params = config_dict["scheduler"]["params"]
+        total_num_steps = 2 * warmup_num_steps
+        hidden_dim = 10
 
-    total_num_steps = 2 * warmup_num_steps
-
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
-
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_lr_warmup_schedule(args, model, hidden_dim, schedule_params, num_steps):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
 
         data_loader = random_dataloader(model=model,
-                                        total_samples=num_steps * 2,
+                                        total_samples=total_num_steps * 2,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
@@ -160,72 +138,39 @@ def test_lr_warmup_schedule(tmpdir, warmup_num_steps, warmup_type):
         # Verify post-warmup completion
         assert all([warmup_max_lr == lr for lr in step_lrs[warmup_num_steps:]])
 
-    _test_lr_warmup_schedule(args=args,
-                             model=model,
-                             hidden_dim=hidden_dim,
-                             schedule_params=config_dict["scheduler"]["params"],
-                             num_steps=total_num_steps)
-
-
-@pytest.mark.parametrize("warmup_num_steps, warmup_type",
-                         [
-                             (10,
-                              WARMUP_LOG_RATE),
-                             (15,
-                              WARMUP_LOG_RATE),
-                             (19,
-                              WARMUP_LOG_RATE),
-                             (33,
-                              WARMUP_LOG_RATE),
-                             (10,
-                              WARMUP_LINEAR_RATE),
-                             (15,
-                              WARMUP_LINEAR_RATE),
-                             (19,
-                              WARMUP_LINEAR_RATE),
-                             (33,
-                              WARMUP_LINEAR_RATE),
-                         ])
-def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+    def test_lr_warmup_decay_schedule(self, warmup_num_steps, warmup_type):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": WARMUP_DECAY_LR,
-            "params": {
-                WARMUP_MIN_LR: 0.1,
-                WARMUP_MAX_LR: 0.2,
-                WARMUP_NUM_STEPS: warmup_num_steps,
-                TOTAL_NUM_STEPS: warmup_num_steps * 2,
-                WARMUP_TYPE: warmup_type
-            }
-        },
-        "gradient_clipping": 1.0
-    }
+            "scheduler": {
+                "type": WARMUP_DECAY_LR,
+                "params": {
+                    WARMUP_MIN_LR: 0.1,
+                    WARMUP_MAX_LR: 0.2,
+                    WARMUP_NUM_STEPS: warmup_num_steps,
+                    TOTAL_NUM_STEPS: warmup_num_steps * 2,
+                    WARMUP_TYPE: warmup_type
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+        schedule_params = config_dict["scheduler"]["params"]
+        total_num_steps = schedule_params[TOTAL_NUM_STEPS]
+        hidden_dim = 10
 
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
-
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_lr_warmup_decay_schedule(args,
-                                       model,
-                                       hidden_dim,
-                                       schedule_params,
-                                       num_steps):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
 
         data_loader = random_dataloader(model=model,
-                                        total_samples=num_steps * 2,
+                                        total_samples=total_num_steps * 2,
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
@@ -250,16 +195,6 @@ def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
             assert lr < previous_lr
             previous_lr = lr
 
-    schedule_params = config_dict["scheduler"]["params"]
-
-    total_num_steps = schedule_params[TOTAL_NUM_STEPS]
-
-    _test_lr_warmup_decay_schedule(args=args,
-                                   model=model,
-                                   hidden_dim=hidden_dim,
-                                   schedule_params=schedule_params,
-                                   num_steps=total_num_steps)
-
 
 @pytest.mark.parametrize("scheduler_type,params",
                          [(WARMUP_LR,
@@ -281,30 +216,29 @@ def test_lr_warmup_decay_schedule(tmpdir, warmup_num_steps, warmup_type):
                                LR_RANGE_TEST_MIN_LR: 1e-4,
                                LR_RANGE_TEST_STEP_SIZE: 1
                            })])
-def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+class TestSchedulerOptimizerParity(DistributedTest):
+    world_size = 1
+
+    def test(self, scheduler_type, params):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": scheduler_type,
-            "params": params
-        },
-        "gradient_clipping": 1.0
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+            "scheduler": {
+                "type": scheduler_type,
+                "params": params
+            },
+            "gradient_clipping": 1.0
+        }
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_scheduler_optimizer_parity(args, model, hidden_dim):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -318,8 +252,6 @@ def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
             model.step()
             assert lr_scheduler.get_lr() == model.get_lr()
 
-    _test_scheduler_optimizer_parity(args=args, model=model, hidden_dim=hidden_dim)
-
 
 @pytest.mark.parametrize("min_lr, step_rate, step_size, staircase",
                          [(1e-4, 1e-5, 1, True),
@@ -329,35 +261,34 @@ def test_scheduler_optimizer_parity(tmpdir, scheduler_type, params):
                           (1e-2, 1e-2, 19, True),
                           (1e-2, 1e-2, 19, False)
                            ])# yapf: disable
-def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+class TestLrRange(DistributedTest):
+    world_size = 1
+
+    def test(self, min_lr, step_rate, step_size, staircase):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": LR_RANGE_TEST,
-            "params": {
-                LR_RANGE_TEST_MIN_LR: min_lr,
-                LR_RANGE_TEST_STEP_RATE: step_rate,
-                LR_RANGE_TEST_STEP_SIZE: step_size,
-                LR_RANGE_TEST_STAIRCASE: staircase
-            }
-        },
-        "gradient_clipping": 1.0
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+            "scheduler": {
+                "type": LR_RANGE_TEST,
+                "params": {
+                    LR_RANGE_TEST_MIN_LR: min_lr,
+                    LR_RANGE_TEST_STEP_RATE: step_rate,
+                    LR_RANGE_TEST_STEP_SIZE: step_size,
+                    LR_RANGE_TEST_STAIRCASE: staircase
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_lr_range_test(args, model, hidden_dim, min_lr, step_size, staircase):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -384,68 +315,49 @@ def test_lr_range_test(tmpdir, min_lr, step_rate, step_size, staircase):
             # Verify continuous increasing lr
             _verify_continuous_increase(step_lrs)
 
-    _test_lr_range_test(args=args,
-                        model=model,
-                        hidden_dim=hidden_dim,
-                        min_lr=[min_lr],
-                        step_size=step_size,
-                        staircase=staircase)
 
+class TestOneCycle(DistributedTest):
+    world_size = 1
 
-@pytest.mark.parametrize("min_lr, max_lr, decay_rate, cycle_step_size, decay_step_size",
-                         [
-                             (1e-5, 1e-2, 1e-3, 10, 10),
-                             (1e-3, 1e-1, 0, 21, 21),
-                             (1e-5, 1e-2, 1e-3, 10, 10),
-                             (1e-3, 1e-1, 1e-1, 21, 21),
-                             (1e-5, 1e-1, 0, 10, 0),
-                         ])  # yapf: disable
-def test_onecycle_lr(tmpdir,
-                     min_lr,
-                     max_lr,
-                     decay_rate,
-                     cycle_step_size,
-                     decay_step_size):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+    @pytest.mark.parametrize("min_lr, max_lr, decay_rate, cycle_step_size, decay_step_size",
+                             [
+                                 (1e-5, 1e-2, 1e-3, 10, 10),
+                                 (1e-3, 1e-1, 0, 21, 21),
+                                 (1e-5, 1e-2, 1e-3, 10, 10),
+                                 (1e-3, 1e-1, 1e-1, 21, 21),
+                                 (1e-5, 1e-1, 0, 10, 0),
+                             ])  # yapf: disable
+    def test_lr(self, min_lr, max_lr, decay_rate, cycle_step_size, decay_step_size):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": ONE_CYCLE,
-            "params": {
-                CYCLE_MIN_LR: min_lr,
-                CYCLE_MAX_LR: max_lr,
-                DECAY_LR_RATE: decay_rate,
-                CYCLE_FIRST_STEP_SIZE: cycle_step_size,
-                DECAY_STEP_SIZE: decay_step_size
-            }
-        },
-        "gradient_clipping": 1.0
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+            "scheduler": {
+                "type": ONE_CYCLE,
+                "params": {
+                    CYCLE_MIN_LR: min_lr,
+                    CYCLE_MAX_LR: max_lr,
+                    DECAY_LR_RATE: decay_rate,
+                    CYCLE_FIRST_STEP_SIZE: cycle_step_size,
+                    DECAY_STEP_SIZE: decay_step_size
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_onecycle_lr(args,
-                          model,
-                          hidden_dim,
-                          min_lr,
-                          max_lr,
-                          step_size,
-                          decay_rate):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
                                         total_samples=max(50,
-                                                          step_size * 3),
+                                                          cycle_step_size * 3),
                                         hidden_dim=hidden_dim,
                                         device=model.device,
                                         dtype=torch.float)
@@ -461,72 +373,53 @@ def test_onecycle_lr(tmpdir,
         assert step_lrs[0] == min_lr
 
         # Verify peak lr
-        assert step_lrs[step_size] == max_lr
+        assert step_lrs[cycle_step_size] == max_lr
 
         # Verify increasing phase
-        _verify_continuous_increase(step_lrs[:step_size])
+        _verify_continuous_increase(step_lrs[:cycle_step_size])
 
         # Verify decreasing phase
-        _verify_continuous_decrease(step_lrs[step_size:(step_size * 2)])
+        _verify_continuous_decrease(step_lrs[cycle_step_size:(cycle_step_size * 2)])
 
         # Verify decay phase
         if decay_rate > 0:
-            _verify_continuous_decrease(step_lrs[(step_size * 2):])
+            _verify_continuous_decrease(step_lrs[(cycle_step_size * 2):])
 
-    _test_onecycle_lr(args=args,
-                      model=model,
-                      hidden_dim=hidden_dim,
-                      min_lr=[min_lr],
-                      max_lr=[max_lr],
-                      step_size=cycle_step_size,
-                      decay_rate=decay_rate)
-
-
-@pytest.mark.parametrize("min_mom, max_mom, decay_rate, step_size",
-                         [
-                             (0.08, 0.09, 1e-3, 10),
-                             (0.08, 0.09, 0, 21),
-                             (0.08, 0.09, 1e-3, 10),
-                             (0.08, 0.09, 0, 21),
-                         ]) # yapf: disable
-def test_onecycle_mom(tmpdir, min_mom, max_mom, decay_rate, step_size):
-    config_dict = {
-        "train_batch_size": 2,
-        "steps_per_print": 1,
-        "optimizer": {
-            "type": "Adam",
-            "params": {
-                "lr": 0.00015
+    @pytest.mark.parametrize("min_mom, max_mom, decay_rate, step_size",
+                             [
+                                 (0.08, 0.09, 1e-3, 10),
+                                 (0.08, 0.09, 0, 21),
+                                 (0.08, 0.09, 1e-3, 10),
+                                 (0.08, 0.09, 0, 21),
+                             ]) # yapf: disable
+    def test_mom(self, min_mom, max_mom, decay_rate, step_size):
+        config_dict = {
+            "train_batch_size": 2,
+            "steps_per_print": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {
+                    "lr": 0.00015
+                },
             },
-        },
-        "scheduler": {
-            "type": ONE_CYCLE,
-            "params": {
-                CYCLE_MIN_LR: 1e-3,
-                CYCLE_MAX_LR: 1e-2,
-                CYCLE_MIN_MOM: min_mom,
-                CYCLE_MAX_MOM: max_mom,
-                DECAY_MOM_RATE: decay_rate,
-                CYCLE_FIRST_STEP_SIZE: step_size,
-                DECAY_STEP_SIZE: step_size
-            }
-        },
-        "gradient_clipping": 1.0
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 10
+            "scheduler": {
+                "type": ONE_CYCLE,
+                "params": {
+                    CYCLE_MIN_LR: 1e-3,
+                    CYCLE_MAX_LR: 1e-2,
+                    CYCLE_MIN_MOM: min_mom,
+                    CYCLE_MAX_MOM: max_mom,
+                    DECAY_MOM_RATE: decay_rate,
+                    CYCLE_FIRST_STEP_SIZE: step_size,
+                    DECAY_STEP_SIZE: step_size
+                }
+            },
+            "gradient_clipping": 1.0
+        }
+        hidden_dim = 10
 
-    model = SimpleModel(hidden_dim, empty_grad=False)
-
-    @distributed_test(world_size=[1])
-    def _test_onecycle_mom(args,
-                           model,
-                           hidden_dim,
-                           min_mom,
-                           max_mom,
-                           step_size,
-                           decay_rate):
-        model, _, _, lr_scheduler = deepspeed.initialize(args=args,
+        model = SimpleModel(hidden_dim, empty_grad=False)
+        model, _, _, lr_scheduler = deepspeed.initialize(config=config_dict,
                                                          model=model,
                                                          model_parameters=model.parameters())
         data_loader = random_dataloader(model=model,
@@ -558,11 +451,3 @@ def test_onecycle_mom(tmpdir, min_mom, max_mom, decay_rate, step_size):
         # Verify decay phase
         if decay_rate > 0:
             _verify_continuous_increase(step_moms[(step_size * 2):])
-
-    _test_onecycle_mom(args=args,
-                       model=model,
-                       hidden_dim=hidden_dim,
-                       min_mom=min_mom,
-                       max_mom=max_mom,
-                       step_size=step_size,
-                       decay_rate=decay_rate)

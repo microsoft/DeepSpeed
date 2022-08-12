@@ -1,118 +1,68 @@
 import torch
 import deepspeed
 import pytest
-from .common import distributed_test
-from .simple_model import args_from_dict
-from .util import required_torch_version
+from tests.unit.common import DistributedTest
+from tests.unit.util import required_torch_version
 from deepspeed.moe.layer import MoE
 
 
-@pytest.mark.parametrize("ep_size, tp_size, enable_expert_tp, use_residual",
-                         [
-                             (1,
-                              2,
-                              False,
-                              False),
-                             (1,
-                              2,
-                              True,
-                              False),
-                             (1,
-                              2,
-                              False,
-                              True),
-                             (1,
-                              2,
-                              True,
-                              True),
-                             (1,
-                              4,
-                              False,
-                              False),
-                             (1,
-                              4,
-                              True,
-                              False),
-                             (1,
-                              4,
-                              False,
-                              True),
-                             (1,
-                              4,
-                              True,
-                              True),
-                             (2,
-                              2,
-                              False,
-                              False),
-                             (2,
-                              2,
-                              True,
-                              False),
-                             (2,
-                              2,
-                              False,
-                              True),
-                             (2,
-                              2,
-                              True,
-                              True),
-                         ])
-def test_moe_tensor_parallel(tmpdir, ep_size, tp_size, enable_expert_tp, use_residual):
-    if not required_torch_version():
-        pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+class MPU():
+    def __init__(self, tp_world_size):
+        self.rank = deepspeed.comm.get_rank()
+        self.world_size = deepspeed.comm.get_world_size()
+        self.tp_world_size = tp_world_size
 
-    config_dict = {
-        "train_batch_size": 8,
-        "steps_per_print": 1,
-        "fp16": {
-            "enabled": True
-        }
-    }
-    args = args_from_dict(tmpdir, config_dict)
-    hidden_dim = 16
+        for i in range(0, self.world_size, tp_world_size):
+            ranks = range(i, i + tp_world_size)
+            group = deepspeed.comm.new_group(ranks)
+            if self.rank in ranks:
+                self.tp_group = group
 
-    class MPU():
-        def __init__(self, tp_world_size):
-            self.rank = deepspeed.comm.get_rank()
-            self.world_size = deepspeed.comm.get_world_size()
-            self.tp_world_size = tp_world_size
+        for i in range(0, tp_world_size):
+            ranks = range(i, self.world_size, tp_world_size)
+            group = deepspeed.comm.new_group(ranks)
+            if self.rank in ranks:
+                self.dp_group = group
 
-            for i in range(0, self.world_size, tp_world_size):
-                ranks = range(i, i + tp_world_size)
-                group = deepspeed.comm.new_group(ranks)
-                if self.rank in ranks:
-                    self.tp_group = group
+    def get_model_parallel_rank(self):
+        return self.rank % self.tp_world_size
 
-            for i in range(0, tp_world_size):
-                ranks = range(i, self.world_size, tp_world_size)
-                group = deepspeed.comm.new_group(ranks)
-                if self.rank in ranks:
-                    self.dp_group = group
+    def get_model_parallel_world_size(self):
+        return self.tp_world_size
 
-        def get_model_parallel_rank(self):
-            return self.rank % self.tp_world_size
+    def get_data_parallel_rank(self):
+        return self.rank // self.tp_world_size
 
-        def get_model_parallel_world_size(self):
-            return self.tp_world_size
+    def get_data_parallel_world_size(self):
+        return self.world_size // self.tp_world_size
 
-        def get_data_parallel_rank(self):
-            return self.rank // self.tp_world_size
+    def get_data_parallel_group(self):
+        return self.dp_group
 
-        def get_data_parallel_world_size(self):
-            return self.world_size // self.tp_world_size
+    def get_model_parallel_group(self):
+        return self.tp_group
 
-        def get_data_parallel_group(self):
-            return self.dp_group
 
-        def get_model_parallel_group(self):
-            return self.tp_group
+@pytest.mark.parametrize("ep_size, tp_size", [(1, 2), (1, 4), (2, 2)])
+@pytest.mark.parametrize("enable_expert_tp", [True, False])
+@pytest.mark.parametrize("use_residual", [True, False])
+class TestMOETensorParallel(DistributedTest):
+    world_size = 4
 
-    @distributed_test(world_size=[4])
-    def _test_moe(args, hidden_dim, ep_size, tp_size, enable_expert_tp, use_residual):
-
+    def test(self, ep_size, tp_size, enable_expert_tp, use_residual):
         # TODO: replace this with a true parallel mlp in the future
         # and run convergence tests
+        if not required_torch_version():
+            pytest.skip("DeepSpeed MoE tests need torch 1.8 or higher to run correctly")
+
+        config_dict = {
+            "train_batch_size": 8,
+            "steps_per_print": 1,
+            "fp16": {
+                "enabled": True
+            }
+        }
+        hidden_dim = 16
 
         tensor_parallel_expert = torch.nn.Sequential(
             torch.nn.Linear(hidden_dim,
@@ -132,7 +82,7 @@ def test_moe_tensor_parallel(tmpdir, ep_size, tp_size, enable_expert_tp, use_res
             enable_expert_tensor_parallelism=enable_expert_tp,
         )
         optimizer = torch.optim.AdamW(params=model.parameters())
-        model, _, _, _ = deepspeed.initialize(args=args,
+        model, _, _, _ = deepspeed.initialize(config=config_dict,
                                               model=model,
                                               optimizer=optimizer,
                                               dist_init_required=False,
@@ -144,10 +94,3 @@ def test_moe_tensor_parallel(tmpdir, ep_size, tp_size, enable_expert_tp, use_res
             ) == tp_size
         else:
             assert deepspeed.utils.groups._get_expert_model_parallel_world_size() == 1
-
-    _test_moe(args=args,
-              hidden_dim=hidden_dim,
-              ep_size=ep_size,
-              tp_size=tp_size,
-              enable_expert_tp=enable_expert_tp,
-              use_residual=use_residual)
