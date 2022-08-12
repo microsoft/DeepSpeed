@@ -607,7 +607,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     const float epsilon,
                                     bool add_bias,
                                     unsigned num_layers,
-                                    bool bloom_seq_len,
+                                    bool is_bloom,
                                     unsigned head_size)
 {
     int bsz = input.size(0) * input.size(1);
