@@ -8,11 +8,11 @@ Functionality of swapping tensors to/from (NVMe) storage devices.
 import os
 import torch
 
+from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
-from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.constants import *
 from deepspeed.runtime.swap_tensor.utils import swap_in_tensors, swap_out_tensors, \
-    MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers, get_sized_buffer
+    MIN_AIO_BYTES, AIO_ALIGNED_BYTES, get_sized_buffers
 from deepspeed.runtime.swap_tensor.utils import SwapBufferManager, SwapBufferPool
 
 
@@ -133,7 +133,7 @@ class OptimizerSwapper(object):
         self.swap_element_size = torch.tensor([], dtype=dtype).element_size()
         self.swap_folder = os.path.join(base_folder,
                                         'optimizer',
-                                        f'rank{torch.distributed.get_rank()}')
+                                        f'rank{dist.get_rank()}')
         os.makedirs(self.swap_folder, exist_ok=True)
 
         self.optimizer = optimizer
@@ -146,10 +146,9 @@ class OptimizerSwapper(object):
         # Swap buffer management
         self.largest_numel = self._io_aligned_numel(largest_numel)
         self.dtype = dtype
-        self.swap_buffer_manager = SwapBufferManager(
-            num_elems=self.largest_numel,
-            count=swap_config[OFFLOAD_OPTIMIZER_BUFFER_COUNT],
-            dtype=dtype)
+        self.swap_buffer_manager = SwapBufferManager(num_elems=self.largest_numel,
+                                                     count=swap_config.buffer_count,
+                                                     dtype=dtype)
 
         # Timers
         self.timers = timers
@@ -271,7 +270,7 @@ class OptimizerSwapper(object):
                 fp16_partitions_info=fp16_partitions_info[curr_index:],
                 fp16_swap_buffers=fp16_swap_buffers)
 
-            if torch.distributed.get_rank() == 0 and SWAPPER_DEBUG_MODE:
+            if dist.get_rank() == 0 and SWAPPER_DEBUG_MODE:
                 for i, tensor in enumerate(fp16_pinned_tensors):
                     true_index = curr_index + i
                     logger.info(
@@ -376,7 +375,7 @@ class OptimizerSwapper(object):
                                         dest_paths=swap_paths,
                                         pinned_buffers=pinned_buffers)
 
-        if torch.distributed.get_rank() == 0 and SWAPPER_DEBUG_MODE:
+        if dist.get_rank() == 0 and SWAPPER_DEBUG_MODE:
             for i, tensor in enumerate(src_tensors):
                 logger.info(
                     f'copy_in_fp16_param: fp32_id = {id(parameters[i])} index = {i}, swap_num_elem = {src_tensors[i].numel()}'

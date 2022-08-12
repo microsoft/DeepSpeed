@@ -4,17 +4,15 @@ Licensed under the MIT license.
 """
 
 from dataclasses import dataclass
-import functools
 import collections
-from collections import OrderedDict, UserDict
-from typing import Deque, Dict, Iterable, Set, Tuple
-import torch
+from collections import UserDict
+from typing import Deque, Set
 from torch.cuda import Event, Stream
-from torch.nn import Module, Parameter
 
+from deepspeed import comm as dist
 from deepspeed.utils.logging import logger
+from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 from deepspeed.runtime.zero.partition_parameters import *
-from deepspeed.runtime.zero.offload_constants import *
 from deepspeed.runtime.swap_tensor.partitioned_param_swapper import PartitionedParamStatus
 from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id
 
@@ -312,7 +310,7 @@ class PartitionedParameterCoordinator:
                 if param.nvme_swapper is None:
                     return False
 
-                return param.ds_tensor.final_location == OFFLOAD_NVME_DEVICE \
+                return param.ds_tensor.final_location == OffloadDeviceEnum.nvme \
                     and param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE
 
             # kick off all gather for params in the next few submodules (prefetch)
@@ -402,6 +400,16 @@ class PartitionedParameterCoordinator:
                 assert param.ds_status == ZeroParamStatus.INFLIGHT, param.ds_summary()
                 self.__inflight_param_registry[param] = handle
 
+            # Release swap buffers for persisted params on nvme since they will never be partitioned or evicted from GPU
+            swap_persisted_params = [
+                p for p in partitioned_params
+                if p.ds_persist and p.ds_tensor.final_location == OffloadDeviceEnum.nvme
+            ]
+            if swap_persisted_params:
+                swap_persisted_params[
+                    0].nvme_swapper.remove_partition_and_release_buffers(
+                        swap_persisted_params)
+
     @instrument_w_nvtx
     def __release_param(self, param: Parameter) -> None:
         if param.ds_status == ZeroParamStatus.AVAILABLE and not param.ds_active_sub_modules:
@@ -420,12 +428,23 @@ class PartitionedParameterCoordinator:
         params_to_release = set(p.ds_id for p in iter_params(submodule_to_release)
                                 if not p.ds_persist)
 
+        # Problem: When prefetcher scans the param trace, it skips AVAILABLE params.
+        # This creates issues if those params are released before the skipped uses:
+        # 1) It hurts performance as the skipped uses are never prefetched.
+        # 2) For nvme params, we run out of swap buffers because the prefetch order
+        # diverges from the trace.
+        # Solution: Don't release params whose reuse was skipped by prefetch. This is
+        # possible because we detect such skips during prefetch and mark those params.
+        for param in iter_params(submodule_to_release):
+            if self.__most_recent_step_id_param_fetched_for[param] > step_id:
+                params_to_release.discard(param.ds_id)
+
         # examine all modules within `max_reuse_dist_in_numel` of the current step,
         # if we see any of the candidate parameters to be released reoccur while
         # doing this, remove them from the set of parameters to release.
         params_traversed = 0
         for module in self.__submodule_order[step_id:]:
-            if params_traversed > self.__max_reuse_dist_in_numel:
+            if params_traversed >= self.__max_reuse_dist_in_numel:
                 break
             for param in iter_params(module):
                 params_to_release.discard(param.ds_id)

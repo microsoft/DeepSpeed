@@ -11,27 +11,36 @@ std::array<int, 3> gemm_algos = std::array<int, 3>({99, 99, 99});
 template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
                       at::Tensor& attn_mask,
+                      at::Tensor& alibi,
                       bool triangular,
                       bool recompute,
                       bool local_attention,
                       int window_size,
-                      bool async_op)
+                      bool async_op,
+                      float layer_scale,
+                      int head_offset,
+                      int mp_size)
 {
     auto attn_scores_c = attn_scores.contiguous();
     int bsz = attn_scores_c.size(0);
 
     int seq_len = attn_scores_c.size(1);
     int len = attn_scores_c.sizes().size();
-    if (len > 3) seq_len = attn_scores_c.size(2);
+    if (len > 2) seq_len = attn_scores_c.size(2);
 
     int soft_len = attn_scores_c.size(2);
     if (len > 3) soft_len = attn_scores_c.size(3);
 
     int heads = 1;
-    if (len > 3) heads = attn_scores_c.size(1);
+    if (len > 1) heads = attn_scores_c.size(1);
+
+    int mask_stride = 1;
+    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
 
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
+                           (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -40,7 +49,9 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            heads,
                            seq_len,
                            soft_len,
-                           1.0,
+                           head_offset,
+                           mask_stride,
+                           mp_size,
                            Context::Instance().GetCurrentStream(async_op));
 
     return attn_scores_c;
@@ -123,6 +134,8 @@ void attention_unfused(at::Tensor& prev_key_cont,
     float gemm_beta = 0.0;
     auto attn_score = at::empty({bsz, heads, seq_len, soft_len}, options);
     int k = prev_value_cont.size(2) / heads;
+    int mask_stride = heads;
+    if (attn_mask.sizes().size() > 2 && attn_mask.size(2) == 1) mask_stride *= seq_len;
     cublasSetStream(Context::Instance().GetCublasHandle(), Context::Instance().GetCurrentStream());
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 soft_len,
@@ -144,8 +157,22 @@ void attention_unfused(at::Tensor& prev_key_cont,
 #else
                                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
-    attn_score = ds_softmax<T>(
-        attn_score, attn_mask, triangular, recompute, local_attention, window_size, false);
+    launch_attn_softmax_v2((T*)attn_score.data_ptr(),
+                           (T*)(attn_mask.sizes().size() > 1 ? attn_mask.data_ptr() : nullptr),
+                           (T*)nullptr,
+                           1.0,
+                           triangular,
+                           recompute,
+                           local_attention,
+                           window_size,
+                           bsz,
+                           heads,
+                           seq_len,
+                           soft_len,
+                           0,
+                           mask_stride,
+                           1,
+                           Context::Instance().GetCurrentStream(false));
     alpha = 1.0;
     cublas_strided_batched_gemm(Context::Instance().GetCublasHandle(),
                                 k,
@@ -225,6 +252,8 @@ std::vector<at::Tensor> ds_softmax_context1(at::Tensor& query,
 template <typename T>
 void ds_softmax_internal(T* attn_scores,
                          at::Tensor& attn_mask,
+                         at::Tensor& alibi,
+                         float& layer_scale,
                          bool triangular,
                          bool recompute,
                          bool local_attention,
@@ -234,8 +263,12 @@ void ds_softmax_internal(T* attn_scores,
                          int soft_len,
                          int heads)
 {
+    int mask_stride = 1;
+    if (attn_mask.sizes().size() > 2) mask_stride = attn_mask.size(2);
     launch_attn_softmax_v2((T*)attn_scores,
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
+                           (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -244,7 +277,9 @@ void ds_softmax_internal(T* attn_scores,
                            heads,
                            seq_len,
                            soft_len,
-                           1.0,
+                           0,
+                           mask_stride,
+                           1,
                            at::cuda::getCurrentCUDAStream());
 }
 
@@ -263,9 +298,12 @@ void attention_unfused(T* prev_key_cont,
                        bool triangular,
                        bool recompute,
                        bool local_attention,
-                       int window_size)
+                       int window_size,
+                       at::Tensor& alibi,
+                       int layer_id)
 {
-    float alpha = norm_factor * norm_factor;
+    float layer_scale = alibi.sizes().size() > 1 ? std::max(1, layer_id) : 1.0;
+    float alpha = norm_factor * norm_factor / layer_scale;
     float gemm_beta = 0.0;
     T* workspace = (T*)output + bsz * seq_len * heads * k;
 
@@ -292,6 +330,8 @@ void attention_unfused(T* prev_key_cont,
 #endif
     ds_softmax_internal<T>(workspace,
                            attn_mask,
+                           alibi,
+                           layer_scale,
                            triangular,
                            recompute,
                            local_attention,
@@ -336,7 +376,8 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                                            int window_size,
                                            bool no_masking,
                                            unsigned layer_id,
-                                           unsigned num_layers)
+                                           unsigned num_layers,
+                                           at::Tensor& alibi)
 {
     unsigned bsz = query_key_value.size(0);
     unsigned seq_len = query_key_value.size(1);
@@ -410,7 +451,9 @@ std::vector<at::Tensor> ds_softmax_context(at::Tensor& query_key_value,
                          (triangular && is_prompt),
                          is_prompt,
                          local_attention,
-                         window_size);
+                         window_size,
+                         alibi,
+                         layer_id);
     launch_transform4d_0213<T>((T*)output.data_ptr(),
                                temp_buf,
                                bsz,
@@ -506,7 +549,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
-    workspace += (3 * input.size(0) * MAX_OUT_TOKES * input.size(2));
+    workspace += (3 * bsz * input.size(2));
     ds_layernorm_internal<T>(workspace, input, gamma, beta, epsilon);
     // cudaEventRecord(Context::Instance().GetCompEvent(1), Context::Instance().GetCurrentStream());
 
@@ -551,7 +594,6 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     unsigned num_layers)
 {
     int bsz = input.size(0) * input.size(1);
-    int out_size = weight.size(1);
     T* workspace = (T*)Context::Instance().GetWorkSpace();
     if (!workspace) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
@@ -654,7 +696,10 @@ at::Tensor ds_qkv_gemm_int8(at::Tensor& input,
 }
 
 template <typename T>
-at::Tensor ds_linear_layer(at::Tensor& input, at::Tensor& weight, at::Tensor& bias)
+at::Tensor ds_linear_layer(at::Tensor& input,
+                           at::Tensor& weight,
+                           at::Tensor& bias,
+                           unsigned num_layers)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -663,8 +708,15 @@ at::Tensor ds_linear_layer(at::Tensor& input, at::Tensor& weight, at::Tensor& bi
                        .device(at::kCUDA)
                        .requires_grad(false);
 
-    auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
-    int bsz = input_cont.size(0) * input_cont.size(1);
+    int bsz = input.size(0) * input.size(1);
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    if (!workspace) {
+        cublasSetStream(Context::Instance().GetCublasHandle(),
+                        Context::Instance().GetCurrentStream());
+        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
+        workspace = (T*)Context::Instance().GetWorkSpace();
+    }
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
 
     float alpha = (T)1.0;
     float gemm_beta = (T)0.0;
@@ -778,17 +830,17 @@ at::Tensor ds_vector_matmul_int8(at::Tensor& input,
 }
 
 template <typename T>
-void mlp_unfused_cublas(at::Tensor& output,
-                        at::Tensor& input,
-                        at::Tensor& residual,
-                        at::Tensor& input_bias,
-                        at::Tensor& weight,
-                        at::Tensor& bias,
-                        at::Tensor& gamma,
-                        at::Tensor& beta,
-                        const float epsilon,
-                        bool preLayerNorm,
-                        bool mlp_after_attn)
+at::Tensor mlp_unfused_cublas(at::Tensor& output,
+                              at::Tensor& input,
+                              at::Tensor& residual,
+                              at::Tensor& input_bias,
+                              at::Tensor& weight,
+                              at::Tensor& bias,
+                              at::Tensor& gamma,
+                              at::Tensor& beta,
+                              const float epsilon,
+                              bool preLayerNorm,
+                              bool mlp_after_attn)
 {
     int bsz = input.size(0) * input.size(1);
     auto inp_norm = at::empty_like(input);
@@ -831,18 +883,19 @@ void mlp_unfused_cublas(at::Tensor& output,
                      weight.size(1),
                      bsz,
                      Context::Instance().GetCurrentStream());
+    return inp_norm;
 }
 template <typename T>
-at::Tensor ds_mlp_gemm(at::Tensor& input,
-                       at::Tensor& residual,
-                       at::Tensor& input_bias,
-                       at::Tensor& weight,
-                       at::Tensor& bias,
-                       at::Tensor& gamma,
-                       at::Tensor& beta,
-                       const float epsilon,
-                       bool preLayerNorm,
-                       bool mlp_after_attn)
+std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
+                                    at::Tensor& residual,
+                                    at::Tensor& input_bias,
+                                    at::Tensor& weight,
+                                    at::Tensor& bias,
+                                    at::Tensor& gamma,
+                                    at::Tensor& beta,
+                                    const float epsilon,
+                                    bool preLayerNorm,
+                                    bool mlp_after_attn)
 {
     auto input_cont = input.contiguous();
     auto options = at::TensorOptions()
@@ -854,19 +907,19 @@ at::Tensor ds_mlp_gemm(at::Tensor& input,
     auto output = at::empty({input_cont.size(0), input_cont.size(1), weight.size(1)}, options);
     int bsz = input_cont.size(0) * input_cont.size(1);
 
-    mlp_unfused_cublas<T>(output,
-                          mlp_after_attn ? input : residual,
-                          residual,
-                          input_bias,
-                          weight,
-                          bias,
-                          gamma,
-                          beta,
-                          epsilon,
-                          preLayerNorm,
-                          mlp_after_attn);
+    auto res_add = mlp_unfused_cublas<T>(output,
+                                         mlp_after_attn ? input : residual,
+                                         residual,
+                                         input_bias,
+                                         weight,
+                                         bias,
+                                         gamma,
+                                         beta,
+                                         epsilon,
+                                         preLayerNorm,
+                                         mlp_after_attn);
 
-    return output;
+    return {output, res_add};
 }
 
 template <typename T>
@@ -992,7 +1045,8 @@ void residual_add_bias(at::Tensor& output,
                        at::Tensor& attention_b,
                        int mp_size,
                        bool mlp_after_attn,
-                       bool add_bias)
+                       bool add_bias,
+                       bool preln)
 {
     int bsz = input.size(0) * input.size(1);
     int hidden_size = input.size(2);
@@ -1008,6 +1062,7 @@ void residual_add_bias(at::Tensor& output,
                                  bsz,
                                  hidden_size,
                                  mp_size,
+                                 preln,
                                  Context::Instance().GetCurrentStream());
         else
             launch_gptj_residual_add<float>((float*)input.data_ptr(),
@@ -1028,6 +1083,7 @@ void residual_add_bias(at::Tensor& output,
                              bsz,
                              hidden_size,
                              mp_size,
+                             preln,
                              Context::Instance().GetCurrentStream());
     else
         launch_gptj_residual_add<__half>((__half*)input.data_ptr(),

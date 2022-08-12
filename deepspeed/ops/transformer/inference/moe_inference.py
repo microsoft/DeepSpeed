@@ -3,11 +3,8 @@ Copyright 2020 The Microsoft DeepSpeed Team
 '''
 import json
 import math
-import importlib
 import torch
-from torch import nn
 from torch.autograd import Function
-import time
 from ... import op_builder
 #from ...inference.engine import inference_cuda_module, specialized_mode
 # Cuda modules will be imported if needed
@@ -16,9 +13,7 @@ specialized_mode = None
 import torch.nn as nn
 from .transformer_inference import DeepSpeedSelfAttention, DeepSpeedInferenceConfig
 from ....moe.sharded_moe import TopKGate
-import torch.distributed as dist
-
-import torch.nn.functional as F
+from deepspeed import comm as dist
 
 
 class DeepSpeedMoEInferenceConfig(DeepSpeedInferenceConfig):
