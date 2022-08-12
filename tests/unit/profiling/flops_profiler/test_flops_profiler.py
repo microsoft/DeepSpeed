@@ -40,7 +40,7 @@ class TestFlopsProfilerInDSTraining(DistributedTest):
             },
             "flops_profiler": {
                 "enabled": True,
-                "step": 1,
+                "profile_step": 1,
                 "module_depth": -1,
                 "top_modules": 3,
             },
