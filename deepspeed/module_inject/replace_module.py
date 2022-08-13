@@ -5,7 +5,7 @@ import deepspeed
 import deepspeed.ops.transformer as transformer_inference
 from .replace_policy import HFBertLayerPolicy, HFGPT2LayerPolicy, BLOOMLayerPolicy
 from .replace_policy import replace_policies
-from ..runtime.weight_quantizer import WeightQuantization
+#from ..runtime.weight_quantizer import WeightQuantization
 from deepspeed import comm as dist
 from torch import nn
 
@@ -115,8 +115,10 @@ class ReplaceWithTensorSlicing:
                                          dst_shape[-1])[self.gpu_index].to(
                                              torch.cuda.current_device()).contiguous()
                 dst.data.copy_(bias_split)
-
-        return torch.nn.parameter.Parameter(dst, requires_grad=False)
+        dst = torch.nn.parameter.Parameter(dst, requires_grad=False)
+        if hasattr(src, 'scale'):
+            dst.scale = src.scale
+        return dst
 
 
 def get_transformer_name(replaced_module):
@@ -132,6 +134,31 @@ def get_transformer_name(replaced_module):
                     break
             break
     return transformer_name
+
+
+class GroupQuantizer:
+    def __init__(self, q_int8=True, num_groups=32, group_size=32, num_bits=8):
+        self.num_groups = num_groups
+        self.group_size = group_size
+        self.num_bits = num_bits
+        self.q_int8 = q_int8
+
+    def quantize(self, inputs, qkv=True, count=1):
+        if not self.q_int8 or not qkv:
+            inputs = torch.nn.Parameter(inputs, requires_grad=False)
+            inputs.scale = torch.empty(1)
+            return inputs
+        q_range = 2**self.num_bits
+        inputs = inputs.to(torch.cuda.current_device())
+        input_flat = inputs.reshape(self.num_groups, -1).contiguous()
+        input_min = torch.min(input_flat, dim=1, keepdim=True)[0].float()
+        input_max = torch.max(input_flat, dim=1, keepdim=True)[0].float()
+        scale = torch.max(input_min.abs(), input_max.abs()) * 2.0 / (q_range)
+        input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
+        inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
+        out = torch.nn.Parameter(inputs_q, requires_grad=False)
+        out.scale = scale
+        return out
 
 
 def replace_transformer_layer(orig_layer_impl,
@@ -231,7 +258,7 @@ def replace_transformer_layer(orig_layer_impl,
                 _res_h4h_w, _res_h4h_b, _res_4hh_w, _res_4hh_b, _res_coef = policy.mlp(moe_type)
 
         attn_nw, attn_nb, input_nw, input_nb = policy.layerNorm()
-        if quantize:
+        if False:
             if policy_cls is not HFBertLayerPolicy:
                 qkvw = qkvw.to(torch.int8)
             dense_w = dense_w.to(torch.int8)
@@ -334,21 +361,21 @@ def replace_transformer_layer(orig_layer_impl,
                     new_module = transformer_inference.DeepSpeedTransformerInference(
                         transformer_config,
                         mp_group=mp_group,
-                        quantize_scales=quantization_scales[layer_id],
+                        #quantize_scales=quantization_scales[layer_id],
                         quantize_groups=quantize_groups,
                         merge_count=merge_count,
                         mlp_extra_grouping=mlp_extra_grouping,
                         qkv_merging=(policy_cls is HFBertLayerPolicy))
 
-                if quantize and qkvw.dtype != torch.int8:
-                    quantize_bits = 8
-                    quantizer = WeightQuantization()
-                    if policy_cls is HFBertLayerPolicy:
-                        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups * 3)
-                    else:
-                        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups)
-                    qkvw.data.copy_(data_quantized)
-                    qkvw.data = qkvw.data.to(torch.int8)
+                #if quantize and qkvw.dtype != torch.int8:
+                #    quantize_bits = 8
+                #    quantizer = WeightQuantization()
+                #    if policy_cls is HFBertLayerPolicy:
+                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups * 3)
+                #    else:
+                #        data_quantized, _ = quantizer.quantize_data(qkvw.data, quantize_bits, quantize_groups)
+                #    qkvw.data.copy_(data_quantized)
+                #    qkvw.data = qkvw.data.to(torch.int8)
             else:
 
                 if moe:
@@ -783,6 +810,7 @@ def replace_transformer_layer(orig_layer_impl,
                                      replace_fn=replace_fn,
                                      _replace_policy=policy)
 
+    quantizer = GroupQuantizer(q_int8=quantize)
     if checkpoint_dict is not None:
         start_time = time.time()
         rank = dist.get_rank() if dist.is_initialized() else 0
@@ -792,36 +820,70 @@ def replace_transformer_layer(orig_layer_impl,
         ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
         base_dir = checkpoint_dict.get('base_dir', '')
 
-        if ckpt_type == 'pp':
+        if ckpt_type == 'pp' and type(checkpoint) is list:
             pbar = tqdm.tqdm(total=len(checkpoint),
                              desc=f"Loading {len(checkpoint)} checkpoint shards")
-            for i in range(len(checkpoint)):
-                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                    pbar.update(1)
-                sd = torch.load(checkpoint[i], map_location='cpu')
-                load_model_with_checkpoint(replaced_module, sd, mp_replace, ckpt_type)
-        else:
-            num_checkpoints = len(checkpoint) // ckpt_mp_size
-            assert world_size >= ckpt_mp_size,\
-                "Currently, merging checkpoints is not supported (when world_size is smaller than #checkpoints)!"
-            checkpoint_stride = world_size // ckpt_mp_size
-            if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                pbar = tqdm.tqdm(total=num_checkpoints,
-                                 desc=f"Loading {num_checkpoints} checkpoint shards")
-            for i in range(num_checkpoints):
-                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                    pbar.update(1)
 
-                ckpt_index = i * ckpt_mp_size + (rank // checkpoint_stride)
-                ckpt_file = os.path.join(
-                    base_dir,
-                    checkpoint[ckpt_index]) if base_dir else checkpoint[ckpt_index]
-                sd = torch.load(ckpt_file, map_location='cpu')
-                load_model_with_checkpoint(replaced_module,
-                                           sd,
-                                           mp_replace,
-                                           ckpt_type,
-                                           rank % (world_size // ckpt_mp_size))
+            for i in range(len(checkpoint)):
+
+                sd = torch.load(checkpoint[i], map_location='cpu')
+                load_model_with_checkpoint(
+                    replaced_module,
+                    sd,
+                    mp_replace,
+                    ckpt_type,
+                    quantizer,
+                )
+        else:
+            if "tp" in checkpoint:
+                num_checkpoints = len(checkpoint["tp"]) // ckpt_mp_size
+                sd_offset = int(rank / (world_size / ckpt_mp_size))
+                sd_count = int((rank + 1) / (world_size / ckpt_mp_size)) - sd_offset
+                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
+                    pbar = tqdm.tqdm(total=num_checkpoints,
+                                     desc=f"Loading {num_checkpoints} checkpoint shards")
+                for i in range(num_checkpoints):
+                    if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank(
+                    ) == 0:
+                        pbar.update(1)
+                    ckpt_index = i * ckpt_mp_size + sd_offset
+                    ckpt_files = [
+                        os.path.join(base_dir,
+                                     checkpoint["tp"][ckpt_index + j])
+                        if base_dir else checkpoint["tp"][ckpt_index + j]
+                        for j in range(sd_count)
+                    ]
+
+                    sds = [
+                        torch.load(ckpt_file,
+                                   map_location='cpu') for ckpt_file in ckpt_files
+                    ]
+                    load_model_with_checkpoint(replaced_module,
+                                               sds,
+                                               mp_replace,
+                                               ckpt_type,
+                                               quantizer,
+                                               int(rank % (world_size / ckpt_mp_size)))
+
+            if "non_tp" in checkpoint:
+                pbar = tqdm.tqdm(
+                    total=len(checkpoint["non_tp"]),
+                    desc=f"Loading {len(checkpoint['non_tp'])} checkpoint shards")
+
+                for i in range(len(checkpoint["non_tp"])):
+                    if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank(
+                    ) == 0:
+                        pbar.update(1)
+                    ckpt_file = os.path.join(
+                        base_dir,
+                        checkpoint["non_tp"][i]) if base_dir else checkpoint["non_tp"][i]
+                    sds = [torch.load(ckpt_file, map_location='cpu')]
+                    load_model_with_checkpoint(replaced_module,
+                                               sds,
+                                               mp_replace,
+                                               ckpt_type,
+                                               quantizer,
+                                               int(rank % (world_size / ckpt_mp_size)))
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:
@@ -833,7 +895,7 @@ def replace_transformer_layer(orig_layer_impl,
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)
         non_tp_ckpt_name = f'{ckpt_name}-non-tp.pt'
-        ckpt_files = [non_tp_ckpt_name] * world_size
+        ckpt_files = [non_tp_ckpt_name]  #* world_size
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
@@ -844,11 +906,14 @@ def replace_transformer_layer(orig_layer_impl,
                     if transformer_name not in k
                 }),
                 f'{save_mp_checkpoint_path}/{non_tp_ckpt_name}')
-            ckpt_files += [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
+            #ckpt_files += [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
             config = json.dumps({
                 'type': ckpt_name,
                 'base_dir': f'{save_mp_checkpoint_path}',
-                'checkpoints': ckpt_files,
+                'checkpoints': {
+                    "non_tp": ckpt_files,
+                    "tp": [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
+                },
                 'version': 1.0,
                 'parallelization': 'tp',
                 'mp_size': world_size

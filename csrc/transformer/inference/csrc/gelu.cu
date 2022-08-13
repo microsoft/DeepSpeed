@@ -1,5 +1,6 @@
 #include "custom_cuda_layers.h"
 
+namespace cg = cooperative_groups;
 #define MAX_CAP 4
 #define MAX_SEQ 2048
 
@@ -537,3 +538,178 @@ template void launch_moe_res_matmul(__half* residual,
                                     int seq_len,
                                     int hidden_dim,
                                     cudaStream_t stream);
+
+__device__ void quantize_kernel_glue(float2* data,
+                                     unsigned cnt,
+                                     int8_t* vals_int,
+                                     float* q_scale_d,
+                                     int num_bits,
+                                     int group_size)
+{
+    cg::thread_block b = cg::this_thread_block();
+    cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+
+    int gid = threadIdx.x >> 5;
+    int lane = threadIdx.x & 0x1f;
+    int warp_num = blockDim.x >> 5;
+    int id = threadIdx.x;
+
+    float* vals_int_cast = reinterpret_cast<float*>(vals_int);
+
+    __half max = -10000.0;
+    int bid = blockIdx.x;
+    unsigned group_index;
+    for (int i = 0; i < cnt; i++) {
+        __half* data_h = reinterpret_cast<__half*>(&data[i]);
+        if (__hgt(__habs(data_h[0]), max)) max = __habs(data_h[0]);
+        if (__hgt(__habs(data_h[1]), max)) max = __habs(data_h[1]);
+        if (__hgt(__habs(data_h[2]), max)) max = __habs(data_h[2]);
+        if (__hgt(__habs(data_h[3]), max)) max = __habs(data_h[3]);
+    }
+
+#pragma unroll
+    for (int i = 1; i < WARP_SIZE; i <<= 1) {
+        auto temp = g.shfl_xor(max, i);
+        if (__hgt(temp, max)) max = temp;
+    }
+    __shared__ __half partialMax[WARP_SIZE];
+
+    if (lane == 0) partialMax[gid] = max;
+
+    b.sync();
+
+    max = partialMax[lane];
+
+    b.sync();
+
+#pragma unroll
+    for (int i = 1; i < warp_num; i <<= 1) {
+        auto temp = g.shfl_xor(max, i);
+        if (__hgt(temp, max)) max = temp;
+    }
+    max = g.shfl(max, 0);
+
+    float q_scale = (1 << num_bits) / (2 * (float)max);
+
+    group_index = threadIdx.x + bid * group_size;
+    for (int i = 0; i < cnt; i++) {
+        float q_data_int;  // = (float)(int)(1 << 8 | 1 << 16 | 1 << 24 | 1);
+        int8_t* q_data_8 = reinterpret_cast<int8_t*>(&q_data_int);
+        __half* data_h = reinterpret_cast<__half*>(&data[i]);
+        int32_t data_f[4];
+        data_f[0] = round((float)data_h[0] * q_scale);
+        data_f[1] = round((float)data_h[1] * q_scale);
+        data_f[2] = round((float)data_h[2] * q_scale);
+        data_f[3] = round((float)data_h[3] * q_scale);
+        q_data_8[0] = data_f[0] > 127 ? 127 : (data_f[0] < -128 ? -128 : data_f[0]);
+        q_data_8[1] = data_f[1] > 127 ? 127 : (data_f[1] < -128 ? -128 : data_f[1]);
+        q_data_8[2] = data_f[2] > 127 ? 127 : (data_f[2] < -128 ? -128 : data_f[2]);
+        q_data_8[3] = data_f[3] > 127 ? 127 : (data_f[3] < -128 ? -128 : data_f[3]);
+        vals_int_cast[group_index] = q_data_int;
+        group_index += (blockDim.x);
+    }
+    if (threadIdx.x == 0) q_scale_d[blockIdx.x] = 1 / q_scale;
+}
+__global__ void fused_bias_gelu_int8(int8_t* output,
+                                     float* scales,
+                                     __half* input,
+                                     const __half* bias,
+                                     int total_count,
+                                     int intermediate_size)
+{
+#if __CUDA_ARCH__ >= 700
+
+    float2* input_cast = reinterpret_cast<float2*>(input);
+    const float2* bias_cast = reinterpret_cast<const float2*>(bias);
+
+    int offset = blockIdx.x * intermediate_size;
+    int id = threadIdx.x;
+    float2 vals_vec[8];
+    unsigned cnt = 0;
+    while (id < intermediate_size) {
+        vals_vec[cnt] = input_cast[offset + id];
+        float2 bias_vec = bias_cast[id];
+
+        __half2* vals_half = reinterpret_cast<__half2*>(vals_vec + cnt);
+
+        float2 low_data = __half22float2(vals_half[0]);
+        float2 high_data = __half22float2(vals_half[1]);
+
+        __half2* bias_half = reinterpret_cast<__half2*>(&bias_vec);
+
+        float2 low_bias = __half22float2(bias_half[0]);
+        float2 high_bias = __half22float2(bias_half[1]);
+
+        low_data.x += low_bias.x;
+        low_data.y += low_bias.y;
+        high_data.x += high_bias.x;
+        high_data.y += high_bias.y;
+
+        low_data.x = gelu(low_data.x);
+        low_data.y = gelu(low_data.y);
+        high_data.x = gelu(high_data.x);
+        high_data.y = gelu(high_data.y);
+
+        vals_half[0] = __float22half2_rn(low_data);
+        vals_half[1] = __float22half2_rn(high_data);
+
+        // input_cast[offset + id] = vals_vec;
+        id += blockDim.x;
+        cnt++;
+    }
+    quantize_kernel_glue(vals_vec, cnt, output, scales, 8, intermediate_size);
+#endif
+}
+__global__ void quantize_int8(int8_t* output,
+                              float* scales,
+                              __half* input,
+                              int total_count,
+                              int intermediate_size)
+{
+    float2* input_cast = reinterpret_cast<float2*>(input);
+
+    int offset = blockIdx.x * intermediate_size;
+    int id = threadIdx.x;
+    float2 vals_vec[8];
+    unsigned cnt = 0;
+    while (id < intermediate_size) {
+        vals_vec[cnt] = input_cast[offset + id];
+
+        id += blockDim.x;
+        cnt++;
+    }
+    quantize_kernel_glue(vals_vec, cnt, output, scales, 8, intermediate_size);
+}
+
+void launch_bias_gelu_int8(int8_t* output,
+                           float* scales,
+                           __half* input,
+                           const __half* bias,
+                           int intermediate_size,
+                           int batch_size,
+                           cudaStream_t stream)
+{
+    int total_count = batch_size * (intermediate_size / 4);
+    int threads = 1024;  // intermediate_size / iterations / 4;
+    dim3 block_dims(threads);
+    dim3 grid_dims(batch_size);  // (batch_size);
+
+    fused_bias_gelu_int8<<<grid_dims, block_dims, 0, stream>>>(
+        output, scales, input, bias, total_count, intermediate_size / 4);
+}
+
+void launch_me(int8_t* output,
+               float* scales,
+               __half* input,
+               int intermediate_size,
+               int batch_size,
+               cudaStream_t stream)
+{
+    int total_count = batch_size * (intermediate_size / 4);
+    int threads = 1024;  // intermediate_size / iterations / 4;
+    dim3 block_dims(threads);
+    dim3 grid_dims(batch_size);  // (batch_size);
+
+    quantize_int8<<<grid_dims, block_dims, 0, stream>>>(
+        output, scales, input, total_count, intermediate_size / 4);
+}

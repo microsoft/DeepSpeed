@@ -5,7 +5,12 @@ from .layers import LinearLayer, Normalize, EmbeddingLayer
 import torch
 
 
-def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
+def load_model_with_checkpoint(r_module,
+                               sd,
+                               mp_replace,
+                               ckpt_type,
+                               weight_quantizer=None,
+                               rank=0):
     error_msgs = []
 
     def transpose(data):
@@ -15,7 +20,7 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
         return data.reshape(data.shape[-1], data.shape[-2])
 
     def load(module, prefix):
-        args = (sd, prefix, {}, True, [], [], error_msgs)
+        args = (sd[0], prefix, {}, True, [], [], error_msgs)
 
         if len(list(module.parameters())) > 0 and list(
                 module.parameters())[0].numel() == 0:
@@ -25,9 +30,9 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
         else:
             if hasattr(module, 'weight'):
                 module.weight = mp_replace.copy(module.weight.data,
-                                                sd[prefix + 'weight'])
-            if prefix + 'bias' in sd.keys():
-                module.bias = mp_replace.copy(module.bias.data, sd[prefix + 'bias'])
+                                                sd[0][prefix + 'weight'])
+            if prefix + 'bias' in sd[0].keys():
+                module.bias = mp_replace.copy(module.bias.data, sd[0][prefix + 'bias'])
 
     def load_transformer_layer(module, prefix):
         if ckpt_type == "tp":
@@ -35,71 +40,90 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
             def load_parameters(module, prefix):
                 for n, p in module.named_parameters():
                     if len(n.split('.')) == 1:
-                        src_shape = sd[prefix + n].shape
+                        src_shape = sd[0][prefix + n].shape
                         dst_shape = p.shape
-
                         if (len(src_shape) == 2 and len(dst_shape) == 2):
                             if src_shape[0] == dst_shape[0] and src_shape[
                                     1] == dst_shape[1]:
-                                p.data.copy_(sd[prefix + n])
+                                p = weight_quantizer.quantize(
+                                    transpose(sd[0][prefix + n]) if weight_quantizer.
+                                    q_int8 else sd[0][prefix + n])
+                                setattr(module, n, p)
                             else:
-                                if src_shape[0] != dst_shape[0]:
-                                    weight_split = torch.split(
-                                        sd[prefix + n],
-                                        dst_shape[0],
-                                        dim=0)[rank].to(
-                                            torch.cuda.current_device()).contiguous()
+                                dim = 0 if src_shape[0] != dst_shape[0] else 1
+                                if src_shape[dim] > dst_shape[dim]:
+                                    weight_partition = torch.split(sd[0][prefix + n],
+                                                                   dst_shape[0],
+                                                                   dim=dim)[rank]
+
+                                    p.data.copy_(weight_partition.contiguous())
                                 else:
-                                    weight_split = torch.split(
-                                        sd[prefix + n],
-                                        dst_shape[1],
-                                        dim=1)[rank].to(
-                                            torch.cuda.current_device()).contiguous()
-                                p.data.copy_(weight_split.contiguous())
+                                    weight_partition = torch.cat([
+                                        sd[j][prefix + n].to(torch.cuda.current_device())
+                                        for j in range(len(sd))
+                                    ],
+                                                                 dim=dim)
+
+                                weight_partition = transpose(
+                                    weight_partition
+                                ) if weight_quantizer.q_int8 else weight_partition
+                                setattr(
+                                    module,
+                                    n,
+                                    weight_quantizer.quantize(
+                                        weight_partition.to(
+                                            torch.cuda.current_device())))
                         else:
                             if src_shape[0] == dst_shape[0]:
-                                p.data.copy_(sd[prefix + n])
+                                p.data.copy_(sd[0][prefix + n])
                             else:
-                                bias_split = torch.split(
-                                    sd[prefix + n],
-                                    dst_shape[-1])[rank].to(
-                                        torch.cuda.current_device()).contiguous()
-                                p.data.copy_(bias_split)
+                                if src_shape[0] > dst_shape[0]:
+                                    bias_split = torch.split(
+                                        sd[0][prefix + n],
+                                        dst_shape[-1])[rank].to(
+                                            torch.cuda.current_device()).contiguous()
+                                    p.data.copy_(bias_split)
+                                else:
+                                    p.data.copy_(
+                                        torch.cat(
+                                            [sd[j][prefix + n] for j in range(len(sd))],
+                                            dim=0).to(torch.cuda.current_device()).
+                                        contiguous())
 
             load_parameters(module, prefix)
             for n, child in module.named_children():
                 load_parameters(child, prefix + n + '.')
         else:
-            module.norm_w.data.copy_(sd[prefix + 'input_layernorm.' + 'weight'])
-            module.norm_b.data.copy_(sd[prefix + 'input_layernorm.' + 'bias'])
-            module.attention.attn_qkvw = mp_replace.copy(
-                module.attention.attn_qkvw.data,
-                transpose(sd[prefix + 'self_attention.query_key_value.' + 'weight']))
+            module.norm_w.data.copy_(sd[0][prefix + 'input_layernorm.' + 'weight'])
+            module.norm_b.data.copy_(sd[0][prefix + 'input_layernorm.' + 'bias'])
+            module.attention.attn_qkvw = mp_replace.copy(module.attention.attn_qkvw,
+                weight_quantizer.quantize(sd[0][prefix + 'self_attention.query_key_value.' + 'weight']) if weight_quantizer.q_int8 else \
+                weight_quantizer.quantize(transpose(sd[0][prefix + 'self_attention.query_key_value.' + 'weight'])))
             module.attention.attn_qkvb = mp_replace.copy(
                 module.attention.attn_qkvb.data,
-                sd[prefix + 'self_attention.query_key_value.' + 'bias'])
-            module.attention.attn_ow = mp_replace.copy(
-                module.attention.attn_ow.data,
-                transpose(sd[prefix + 'self_attention.dense.' + 'weight']))
+                sd[0][prefix + 'self_attention.query_key_value.' + 'bias'])
+            module.attention.attn_ow = mp_replace.copy(module.attention.attn_ow,
+                weight_quantizer.quantize(sd[0][prefix + 'self_attention.dense.' + 'weight']) if weight_quantizer.q_int8 else \
+                weight_quantizer.quantize(transpose(sd[0][prefix + 'self_attention.dense.' + 'weight'])))
             module.attention.attn_ob = mp_replace.copy(
                 module.attention.attn_ob.data,
-                sd[prefix + 'self_attention.dense.' + 'bias'])
-            module.mlp.attn_nw.data.copy_(sd[prefix + 'post_attention_layernorm.' +
-                                             'weight'])
-            module.mlp.attn_nb.data.copy_(sd[prefix + 'post_attention_layernorm.' +
-                                             'bias'])
-            module.mlp.inter_w = mp_replace.copy(
-                module.mlp.inter_w.data,
-                transpose(sd[prefix + 'mlp.dense_h_to_4h.' + 'weight']))
+                sd[0][prefix + 'self_attention.dense.' + 'bias'])
+            module.mlp.attn_nw.data.copy_(sd[0][prefix + 'post_attention_layernorm.' +
+                                                'weight'])
+            module.mlp.attn_nb.data.copy_(sd[0][prefix + 'post_attention_layernorm.' +
+                                                'bias'])
+            module.mlp.inter_w = mp_replace.copy(module.mlp.inter_w,
+                weight_quantizer.quantize(sd[0][prefix + 'mlp.dense_h_to_4h.' + 'weight']) if weight_quantizer.q_int8 else \
+                weight_quantizer.quantize(transpose(sd[0][prefix + 'mlp.dense_h_to_4h.' + 'weight'])))
             module.mlp.inter_b = mp_replace.copy(
                 module.mlp.inter_b.data,
-                sd[prefix + 'mlp.dense_h_to_4h.' + 'bias'])
-            module.mlp.output_w = mp_replace.copy(
-                module.mlp.output_w.data,
-                transpose(sd[prefix + 'mlp.dense_4h_to_h.' + 'weight']))
+                sd[0][prefix + 'mlp.dense_h_to_4h.' + 'bias'])
+            module.mlp.output_w = mp_replace.copy(module.mlp.output_w,
+                weight_quantizer.quantize(sd[0][prefix + 'mlp.dense_4h_to_h.' + 'weight']) if weight_quantizer.q_int8 else \
+                weight_quantizer.quantize(transpose(sd[0][prefix + 'mlp.dense_4h_to_h.' + 'weight'])))
             module.mlp.output_b = mp_replace.copy(
                 module.mlp.output_b.data,
-                sd[prefix + 'mlp.dense_4h_to_h.' + 'bias'])
+                sd[0][prefix + 'mlp.dense_4h_to_h.' + 'bias'])
 
     layer_policies = {
         nn.Linear: load,
@@ -117,7 +141,7 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
         for name, child in module.named_children():
             if child.__class__ in layer_policies:
                 checking_key = prefix + name + '.'
-                if not any(checking_key in item for item in sd.keys()):
+                if not any(checking_key in item for item in sd[0].keys()):
                     if hasattr(child, 'weight') and \
                         (hasattr(child.weight, 'ds_id') and \
                         child.weight.ds_id in all_ds_ids):
@@ -168,6 +192,6 @@ def load_model_with_checkpoint(r_module, sd, mp_replace, ckpt_type, rank=0):
             embedding_weight = p
     assert hasattr(r_module, 'lm_head'), "attempting to set lm_head but it doesn't exist"
     r_module.lm_head.weight = embedding_weight
-
-    del sd
+    for sd_ in sd:
+        del sd_
     sd = None

@@ -336,7 +336,7 @@ class InferenceEngine(Module):
             ep_group=self.ep_group,
             expert_mp_group=self.expert_mp_group,
             config=self.config,
-            fp16=(self.dtype == torch.half),
+            fp16=(self.dtype == torch.half) or (self.dtype == torch.int8),
             training=False,
             return_tuple=return_tuple,
             quantize=(self.dtype == torch.int8),
@@ -446,7 +446,7 @@ class InferenceEngine(Module):
             return 'model'
 
     def _convert_to_dtype(self):
-        if self.dtype is torch.int8 and self.quantization_scales is None:
+        if False:  #self.dtype is torch.int8 and self.quantization_scales is None:
             quantizer = WeightQuantization(mlp_extra_grouping=self.mlp_extra_grouping)
             model, self.quantization_scales = quantizer.model_quantize(self.module,
                                                                         self.injection_dict,
