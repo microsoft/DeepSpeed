@@ -362,7 +362,6 @@ class TestZeROSaveLoadEdgeCase(DistributedTest):
                                           model=model,
                                           base_optimizer=None)
         ds_model.save_checkpoint(tmpdir)
-        deepspeed.comm.barrier()
         ds_model.load_checkpoint(tmpdir,
                                  load_optimizer_states=False,
                                  load_lr_scheduler_states=False,
