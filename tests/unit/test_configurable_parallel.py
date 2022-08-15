@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch.multiprocessing as mp
 import deepspeed.comm as dist
-from tests.unit.common import distributed_test
+from tests.unit.common import distributed_test, DistributedTest
 from tests.unit.megatron_model import get_gpt2_model, get_megatron_version
 from tests.unit.megatron_model import MockGPT2ModelPipe as GPT2ModelPipe
 from deepspeed.utils import RepeatingLoader
@@ -17,6 +17,7 @@ pytestmark = pytest.mark.skipif(
     reason='Megatron-LM package requires Pytorch version 1.5 or above')
 
 
+@pytest.fixture(autouse=True)
 def reset_random(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
@@ -24,159 +25,142 @@ def reset_random(seed=1234):
     torch.cuda.manual_seed_all(seed)
 
 
-class TestConfigurableMP:
-    def setup_method(self, method):
-        reset_random()
+@pytest.mark.fixture()
+def inputs(bs=1, seq_len=20):
+    input_ids = torch.randint(low=0, high=1000, size=(bs, seq_len))
+    position_ids = torch.randint(low=0, high=2, size=(bs, seq_len))
+    attention_mask = torch.randint(low=0, high=2, size=(bs, seq_len), dtype=torch.bool)
+    return [input_ids, position_ids, attention_mask]
 
-    def get_inputs(self, bs=1, seq_len=20):
-        input_ids = torch.randint(low=0, high=1000, size=(bs, seq_len))
-        position_ids = torch.randint(low=0, high=2, size=(bs, seq_len))
-        attention_mask = torch.randint(low=0,
-                                       high=2,
-                                       size=(bs,
-                                             seq_len),
-                                       dtype=torch.bool)
-        return [input_ids, position_ids, attention_mask]
 
-    def get_deepspeed_model(self, model, tmpdir):
-        ds_config_dict = {
-            "train_micro_batch_size_per_gpu": 1,
-            "optimizer": {
-                "type": "Lamb",
-                "params": {
-                    "lr": 0.00015
-                }
-            },
+def get_deepspeed_model(model, tmpdir):
+    ds_config_dict = {
+        "train_micro_batch_size_per_gpu": 1,
+        "optimizer": {
+            "type": "Lamb",
+            "params": {
+                "lr": 0.00015
+            }
+        },
+    }
+
+    from megatron import mpu
+    model, _, _,_ = deepspeed.initialize(model=model,
+                                         mpu=mpu,
+                                         model_parameters=model.parameters(),
+                                         config=ds_config_dict)
+    return model
+
+
+class TestConfigurableMP(DistributedTest):
+    @pytest.mark.world_size(1)
+    def test_gpt2_basic(self, inputs, tmpdir):
+        # basic test case, mp_size=1, verify ckpt saving/loading.
+        args_defaults = {
+            'num_layers': 2,
+            'hidden_size': 128,
+            'num_attention_heads': 8,
+            'max_position_embeddings': 128,
         }
 
-        from megatron import mpu
-        model, _, _,_ = deepspeed.initialize(model=model,
-                                             mpu=mpu,
-                                             model_parameters=model.parameters(),
-                                             config=ds_config_dict)
-        return model
+        model = get_gpt2_model(args_defaults)
+        model = self.get_deepspeed_model(model, tmpdir)
 
-    def test_gpt2_basic(self, tmpdir):
-        # basic test case, mp_size=1, verify ckpt saving/loading.
+        model.eval()
+        baseline = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
 
-        @distributed_test(world_size=1)
-        def _run():
-            inputs = self.get_inputs()
-            args_defaults = {
-                'num_layers': 2,
-                'hidden_size': 128,
-                'num_attention_heads': 8,
-                'max_position_embeddings': 128,
-            }
+        tag = 'mp_1'
+        state_dict = {}
+        state_dict['checkpoint_version'] = get_megatron_version()
+        model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
+        dist.barrier()
+        model.load_checkpoint(tmpdir,
+                              tag=tag,
+                              load_optimizer_states=False,
+                              load_lr_scheduler_states=False)
 
-            model = get_gpt2_model(args_defaults)
-            model = self.get_deepspeed_model(model, tmpdir)
+        test = model(inputs[0], inputs[1], inputs[2])
+        assert torch.allclose(baseline, test, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
 
-            model.eval()
-            baseline = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
-
-            tag = 'mp_1'
-            state_dict = {}
-            state_dict['checkpoint_version'] = get_megatron_version()
-            model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
-            dist.barrier()
-            model.load_checkpoint(tmpdir,
-                                  tag=tag,
-                                  load_optimizer_states=False,
-                                  load_lr_scheduler_states=False)
-
-            test = model(inputs[0], inputs[1], inputs[2])
-            assert torch.allclose(baseline, test, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
-
-        _run()
-
-    def test_gpt2_mp2_no_resize(self, tmpdir):
+    @pytest.mark.world_size(2)
+    def test_gpt2_mp2_no_resize(self, inputs, tmpdir):
         # test mp_size=2 case, verify ckpt saving/loading without resize.
+        args_defaults = {
+            'num_layers': 2,
+            'hidden_size': 128,
+            'num_attention_heads': 8,
+            'max_position_embeddings': 128,
+        }
 
-        @distributed_test(world_size=2)
-        def _run(inputs):
-            args_defaults = {
-                'num_layers': 2,
-                'hidden_size': 128,
-                'num_attention_heads': 8,
-                'max_position_embeddings': 128,
-            }
+        model = get_gpt2_model(args_defaults, mp_size=2)
+        model = self.get_deepspeed_model(model, tmpdir)
 
-            model = get_gpt2_model(args_defaults, mp_size=2)
-            model = self.get_deepspeed_model(model, tmpdir)
+        model.eval()
 
-            model.eval()
+        baseline = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
 
+        tag = 'mp_2'
+        state_dict = {}
+        state_dict['checkpoint_version'] = get_megatron_version()
+        model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
+        dist.barrier()
+        model.load_checkpoint(tmpdir,
+                              tag=tag,
+                              load_optimizer_states=False,
+                              load_lr_scheduler_states=False)
+
+        test = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
+        assert torch.allclose(baseline, test, rtol=1.0, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
+
+
+#TODO: Figure out how to run fixtures as distributed processes
+'''
+class TestResizeMP(DistributedTest):
+    @pytest.mark.world_size(2)
+    def test_gpt2_mp_save_ckpt(self, class_tmpdir, inputs, mp_size=2):
+        args_defaults = {
+            'num_layers': 2,
+            'hidden_size': 128,
+            'num_attention_heads': 8,
+            'max_position_embeddings': 128,
+        }
+
+        model = get_gpt2_model(args_defaults, mp_size=mp_size)
+        model = self.get_deepspeed_model(model, class_tmpdir)
+
+        model.eval()
+
+        with torch.no_grad():
             baseline = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
+            if dist.get_rank() == 0:
+                output.put(baseline.cpu())
 
-            tag = 'mp_2'
             state_dict = {}
             state_dict['checkpoint_version'] = get_megatron_version()
-            model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
-            dist.barrier()
+            model.save_checkpoint(class_tmpdir, client_state=state_dict)
+
+    @pytest.mark.world_size(1)
+    def test_gpt2_mp_2to1(self, class_tmpdir, inputs, resize=1):
+        args_defaults = {
+            'num_layers': 2,
+            'hidden_size': 128,
+            'num_attention_heads': 8,
+            'max_position_embeddings': 128,
+        }
+
+        model = get_gpt2_model(args_defaults, mp_size=resize)
+        model = self.get_deepspeed_model(model, class_tmpdir)
+
+        model.eval()
+
+        with torch.no_grad():
             model.load_checkpoint(tmpdir,
                                   tag=tag,
                                   load_optimizer_states=False,
                                   load_lr_scheduler_states=False)
-
             test = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
-            assert torch.allclose(baseline, test, rtol=1.0, atol=1e-07), f"Baseline output {baseline} is not equal to save-then-load output {test}"
-
-        inputs = self.get_inputs()
-        _run(inputs)
-
-    def _test_gpt2_config_mp(self, tmpdir, mp_size, resize):
-        # test mp_size=2 case, verify resize=1 case for ckpt merging.
-
-        @distributed_test(world_size=mp_size)
-        def _run_baseline(inputs, tag, output, quit_event):
-            reset_random()
-            args_defaults = {
-                'num_layers': 2,
-                'hidden_size': 128,
-                'num_attention_heads': 8,
-                'max_position_embeddings': 128,
-            }
-
-            model = get_gpt2_model(args_defaults, mp_size=mp_size)
-            model = self.get_deepspeed_model(model, tmpdir)
-
-            model.eval()
-
-            with torch.no_grad():
-                baseline = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
-                if dist.get_rank() == 0:
-                    output.put(baseline.cpu())
-
-                state_dict = {}
-                state_dict['checkpoint_version'] = get_megatron_version()
-                model.save_checkpoint(tmpdir, tag=tag, client_state=state_dict)
-                quit_event.wait()
-
-        @distributed_test(world_size=resize)
-        def _run_resize(inputs, tag, output, quit_event):
-            reset_random()
-            args_defaults = {
-                'num_layers': 2,
-                'hidden_size': 128,
-                'num_attention_heads': 8,
-                'max_position_embeddings': 128,
-            }
-
-            model = get_gpt2_model(args_defaults, mp_size=resize)
-            model = self.get_deepspeed_model(model, tmpdir)
-
-            model.eval()
-
-            with torch.no_grad():
-                model.load_checkpoint(tmpdir,
-                                      tag=tag,
-                                      load_optimizer_states=False,
-                                      load_lr_scheduler_states=False)
-                test = model(inputs[0].cuda(), inputs[1].cuda(), inputs[2].cuda())
-                if dist.get_rank() == 0:
-                    output.put(test.cpu())
-            quit_event.wait()
+            if dist.get_rank() == 0:
+                output.put(test.cpu())
 
         def _verify(b_queue, t_queue, baseline_event, test_event):
             baseline = b_queue.get()
@@ -214,6 +198,7 @@ class TestConfigurableMP:
     def test_gpt2_mp_2to4(self, tmpdir):
         # test mp_size=2 case, verify resize=4 case for ckpt splitting.
         self._test_gpt2_config_mp(tmpdir, mp_size=2, resize=4)
+'''
 
 
 class TestConfigurablePP:
