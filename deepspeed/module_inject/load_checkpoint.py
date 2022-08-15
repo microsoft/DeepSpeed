@@ -40,21 +40,35 @@ def load_model_with_checkpoint(r_module,
             def load_parameters(module, prefix):
                 for n, p in module.named_parameters():
                     if len(n.split('.')) == 1:
-                        src_shape = sd[0][prefix + n].shape
+                        if type(sd[0][prefix + n]) is list:
+                            tmp_data, scale = sd[0][prefix + n]
+                            scale = scale.to(torch.cuda.current_device())
+                        else:
+                            tmp_data = sd[0][prefix + n]
+                            scale = None
+                        src_shape = tmp_data.shape
                         dst_shape = p.shape
+                        inner_dim = 1 if tmp_data.dtype == torch.int8 else 0
+                        outer_dim = 0 if tmp_data.dtype == torch.int8 else 1
                         if (len(src_shape) == 2 and len(dst_shape) == 2):
-                            if src_shape[0] == dst_shape[0] and src_shape[
-                                    1] == dst_shape[1]:
-                                p = weight_quantizer.quantize(
-                                    transpose(sd[0][prefix + n]) if weight_quantizer.
-                                    q_int8 else sd[0][prefix + n])
+                            if (src_shape[inner_dim] == dst_shape[0]
+                                    and src_shape[outer_dim] == dst_shape[1]):
+                                if tmp_data.dtype != torch.int8:
+                                    p = weight_quantizer.quantize(
+                                        transpose(tmp_data) if weight_quantizer.
+                                        q_int8 else tmp_data)
+                                else:
+                                    p = tmp_data
+                                    p.scale = scale
                                 setattr(module, n, p)
                             else:
-                                dim = 0 if src_shape[0] != dst_shape[0] else 1
+                                dim = inner_dim if src_shape[inner_dim] != dst_shape[
+                                    0] else outer_dim
                                 if src_shape[dim] > dst_shape[dim]:
-                                    weight_partition = torch.split(sd[0][prefix + n],
-                                                                   dst_shape[0],
-                                                                   dim=dim)[rank]
+                                    weight_partition = torch.split(
+                                        tmp_data,
+                                        dst_shape[0],
+                                        dim=dim)[rank].to(torch.cuda.current_device())
                                 else:
                                     weight_partition = torch.cat([
                                         sd[j][prefix + n].to(torch.cuda.current_device())
@@ -62,22 +76,20 @@ def load_model_with_checkpoint(r_module,
                                     ],
                                                                  dim=dim)
 
-                                weight_partition = transpose(
-                                    weight_partition
-                                ) if weight_quantizer.q_int8 else weight_partition
-                                setattr(
-                                    module,
-                                    n,
-                                    weight_quantizer.quantize(
-                                        weight_partition.to(
-                                            torch.cuda.current_device())))
+                                if tmp_data.dtype != torch.int8:
+                                    weight_partition = weight_quantizer.quantize(
+                                        transpose(weight_partition) if weight_quantizer.
+                                        q_int8 else weight_partition)
+                                else:
+                                    weight_partition.scale = scale
+                                setattr(module, n, weight_partition)
                         else:
                             if src_shape[0] == dst_shape[0]:
-                                p.data.copy_(sd[0][prefix + n])
+                                p.data.copy_(tmp_data)
                             else:
                                 if src_shape[0] > dst_shape[0]:
                                     bias_split = torch.split(
-                                        sd[0][prefix + n],
+                                        tmp_data,
                                         dst_shape[-1])[rank].to(
                                             torch.cuda.current_device()).contiguous()
                                     p.data.copy_(bias_split)

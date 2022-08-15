@@ -919,11 +919,18 @@ def replace_transformer_layer(orig_layer_impl,
             with open(f"{save_mp_checkpoint_path}/{ckpt_name}_ds-inference_config.json",
                       "w") as cfg:
                 cfg.write(config)
+
+        rep_sd = replaced_module.state_dict()
+        for n, p in replaced_module.named_parameters():
+            if hasattr(p, 'scale'):
+                rep_sd[n] = [p, p.scale]
         torch.save(
             OrderedDict({
-                k: v
+                k: [v,
+                    v.scale] if hasattr(v,
+                                        'scale') else v
                 for k,
-                v in dict(replaced_module.state_dict()).items() if transformer_name in k
+                v in dict(rep_sd).items() if transformer_name in k
             }),
             f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{rank:0>2d}.pt')
 
