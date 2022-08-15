@@ -1,12 +1,11 @@
 import hjson
 
-from ..constants import AUTOTUNING, AUTOTUNING_METRIC_PATH
+from ..config import AUTOTUNING, MetricEnum
 from .base_tuner import BaseTuner
 from .cost_model import XGBoostCostModel
 from .utils import *
 from ..utils import *
 import numbers
-from ..constants import AUTOTUNING_METRIC_LATENCY
 
 INIT_NUM = 2
 
@@ -69,9 +68,7 @@ class ModelBasedTuner(BaseTuner):
 
         n = len(estimates)
         top_idx = np.argsort(estimates)
-        top_idx_ret = top_idx if self.metric == AUTOTUNING_METRIC_LATENCY else top_idx[::
-                                                                                       -1][:
-                                                                                           n]
+        top_idx_ret = top_idx if self.metric == MetricEnum.latency else top_idx[::-1][:n]
 
         # top_configs = [self.all_configs[i] for i in top_idx]
 
@@ -129,7 +126,7 @@ class ModelBasedTuner(BaseTuner):
                 self.evaluated_perf.append(0.0)
                 continue
 
-            p = exp["ds_config"][AUTOTUNING][AUTOTUNING_METRIC_PATH]
+            p = exp["ds_config"][AUTOTUNING].metric_path
             with open(p, 'r') as f:
                 results = hjson.load(f)
                 curr_iter = results[self.metric]

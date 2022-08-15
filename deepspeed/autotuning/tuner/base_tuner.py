@@ -1,6 +1,6 @@
 import sys
 
-from deepspeed.autotuning.constants import *
+from deepspeed.autotuning.config import DeepSpeedAutotuningConfig
 from deepspeed.autotuning.utils import write_experiments
 from deepspeed.utils import logger
 
@@ -12,7 +12,7 @@ class BaseTuner:
         self.best_iter = 0
         self.best_exp = None
         self.best_metric_val = None
-        self.metric = metric if metric else AUTOTUNING_METRIC_DEFAULT
+        self.metric = metric if metric else DeepSpeedAutotuningConfig().metric
         logger.info(f"total number of exps =  {len(self.all_exps)}")
 
     def has_next(self):
