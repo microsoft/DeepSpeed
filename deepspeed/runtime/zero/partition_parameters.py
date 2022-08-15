@@ -489,12 +489,14 @@ class AllGatherCoalescedHandle:
         partitions: List[Tensor],
         world_size: int,
         use_secondary_tensor: bool,
+        forward: bool,
     ) -> None:
         self.__allgather_handle = allgather_handle
         self.__params = params
         self.__partitions = partitions
         self.__world_size = world_size
         self.__use_secondary_tensor = use_secondary_tensor
+        self.__forward = forward
         self.__complete = False
 
         for param in self.__params:
@@ -515,7 +517,7 @@ class AllGatherCoalescedHandle:
             assert param.ds_status == ZeroParamStatus.INFLIGHT, f"expected param {param.ds_summary()} to be inflight"
             partitions: List[Tensor] = []
             ds_tensor_numel = param.ds_tensor.ds_numel
-            if self.__use_secondary_tensor:
+            if self.__use_secondary_tensor and not self.__forward:
                 ds_tensor_numel *= param.ds_secondary_tensor_num_of_groups
             for rank in range(self.__world_size):
                 param_start = rank * ds_tensor_numel
@@ -850,10 +852,13 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             ds_process_group = self.ds_process_group
             rank_in_group = self.rank
             world_size = self.world_size
-            if self.use_secondary_tensor:
+            if self.use_secondary_tensor and not forward:
                 ds_process_group = self.zero_param_process_group #intragroup
                 rank_in_group = self.rank_in_group
                 world_size = self.num_ranks_in_param_group 
+
+            #print_rank_0(f"SAGE ALLGATHERZ forward ? {forward} \
+            #            LEN(params) {len(params)} {[p.ds_tensor.ds_numel for p in params]}", force=True)
 
             # ensure that each rank has params in same order. the allgather
             # is done by flattening the parameter list into a single tensor that
@@ -883,7 +888,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 #    buffer_size *= self.num_ranks_in_group
 
                 param_buffer = torch.empty(
-                    math.ceil(param.ds_numel / self.world_size) * self.world_size,
+                    #math.ceil(param.ds_numel / self.world_size) * self.world_size,
+                    math.ceil(param.ds_numel / world_size) * world_size,
                     #buffer_size,
                     dtype=param.dtype,
                     device=torch.cuda.current_device(),
@@ -891,7 +897,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 )
 
                 #All gather on secondary tensor (with intragroup comm) if available
-                param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward  else param.ds_tensor
+                #param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward  else param.ds_tensor
+                param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward else param.ds_tensor
                 handles = _dist_allgather_fn(
                     param_ds_tensor.to(torch.cuda.current_device()), 
                     param_buffer, 
@@ -907,7 +914,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
                 #Recalc (correct) partition size for secondary partition
-                if self.use_secondary_tensor:
+                if self.use_secondary_tensor and not forward:
                     partition_sz = sum(p.ds_tensor.ds_numel*p.ds_secondary_tensor_num_of_groups for p in params)
 
                 flat_tensor = torch.empty(partition_sz * world_size,
@@ -923,12 +930,14 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz))
                  
                 
-                if self.use_secondary_tensor and not forward :
-                        print_rank_0("Using hpZeRO ", force=True)
+                #if self.use_secondary_tensor:
+                if self.use_secondary_tensor and not forward:
+                        #print_rank_0(f"SAGE ALLGATHER using hpZeRO forward ? {forward}", force=True)
                         instrument_w_nvtx(torch.cat)(
                             [p.ds_secondary_tensor.to(torch.cuda.current_device()) for p in params],
                             out=partitions[rank_in_group])
                 else:
+                    #print_rank_0(f"SAGE ALLGATHER NOT using hpZeRO forward ? {forward}", force=True)
                     instrument_w_nvtx(torch.cat)(
                         [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                         out=partitions[rank_in_group])
@@ -944,6 +953,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                     partitions=partitions, 
                     world_size=world_size,  
                     use_secondary_tensor=self.use_secondary_tensor,
+                    forward=forward,
                 )
 
 
@@ -951,7 +961,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             cls = param
             print_rank_0(
                 f"{'--'*hierarchy}----Partitioning param {debug_param2name_id_shape_device(cls)}"
-            )
+            , force=False)
             if param_list is None:
                 param_list = [cls]
             self._partition(param_list, has_been_updated=has_been_updated)
@@ -1096,15 +1106,15 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            print_rank_0(f"Before Partitioning Param {param.ds_id} {param.ds_tensor} sec: {param.ds_secondary_tensor}",force=False)
+            #print_rank_0(f"Before Partitioning Param {param.ds_id} {param.ds_tensor} sec: {param.ds_secondary_tensor}",force=False)
             self._partition_param(param, has_been_updated=has_been_updated)
             param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             # if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
-            print_rank_0(f"After Primary Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor}",force=False)
-            if self.use_secondary_tensor:
-                print_rank_0(f"After Secondary Partitioning Param {param.ds_id} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=False)
+            #print_rank_0(f"After Primary Partitioning Param {param.ds_id} {param.ds_tensor.size()} {param.ds_tensor}",force=False)
+            #if self.use_secondary_tensor:
+            #    print_rank_0(f"After Secondary Partitioning Param {param.ds_id} sec: {param.ds_secondary_tensor.size()} {param.ds_secondary_tensor}",force=False)
             #self._param_status(param)
 
     @instrument_w_nvtx
@@ -1114,9 +1124,9 @@ class Init(InsertPostInitMethodToModuleSubClasses):
         global reuse_buffers
         #print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
         if param.ds_status is ZeroParamStatus.AVAILABLE:
-            print_rank_0(
-                f"Partitioning param id {param.ds_id} reuse buffers {reuse_buffers}",
-                force=False)
+            #print_rank_0(
+            #    f"Partitioning param id {param.ds_id} reuse buffers {reuse_buffers}",
+            #    force=False)
             # if reuse_buffers and False:
             #     numel = buffer.numel()
             #     buffer = param.data.view(-1)
@@ -1154,8 +1164,8 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             secondary_partition_size = tensor_size // self.num_ranks_in_param_group ##group size
 
             ##TODO: assert
-            print_rank_0(f" SAGE Param partition sizes PRIMARY {partition_size} SEC {secondary_partition_size} ",
-                    force=False)
+            #print_rank_0(f" SAGE Param partition sizes PRIMARY {partition_size} SEC {secondary_partition_size} ",
+            #        force=False)
 
             if param.ds_tensor is None: ##assumption, invalid primary assumes invalid secondary, here create both!!!
                 final_location = None

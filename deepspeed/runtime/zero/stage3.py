@@ -106,7 +106,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  gradient_accumulation_steps=1,
                  elastic_checkpoint=False,
                  aio_config=None,
-                 zero_param_group_size=1):
+                 zero_param_group_size=8):
 
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
@@ -1863,7 +1863,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         ##Invalidate secondary partition
         if self.parameter_offload:
-            print_rank_0(f"INVALIDATE secondary partition",force=True)
+            print_rank_0(f"INVALIDATE secondary partition",force=False)
             self.parameter_offload.invalidate_secondary_partition()
 
         self.log_timers(timer_names)
