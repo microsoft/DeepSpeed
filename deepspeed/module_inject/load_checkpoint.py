@@ -55,8 +55,6 @@ def load_model_with_checkpoint(r_module,
                                     weight_partition = torch.split(sd[0][prefix + n],
                                                                    dst_shape[0],
                                                                    dim=dim)[rank]
-
-                                    p.data.copy_(weight_partition.contiguous())
                                 else:
                                     weight_partition = torch.cat([
                                         sd[j][prefix + n].to(torch.cuda.current_device())

@@ -816,8 +816,9 @@ def replace_transformer_layer(orig_layer_impl,
         rank = dist.get_rank() if dist.is_initialized() else 0
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         checkpoint = checkpoint_dict['checkpoints']
+        ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
-        ckpt_mp_size = checkpoint_dict.get('mp_size', mp_size)
+        ckpt_mp_size = checkpoint_dict.get('mp_size', len(ckpt_list))
         base_dir = checkpoint_dict.get('base_dir', '')
 
         if ckpt_type == 'pp' and type(checkpoint) is list:
@@ -826,7 +827,7 @@ def replace_transformer_layer(orig_layer_impl,
 
             for i in range(len(checkpoint)):
 
-                sd = torch.load(checkpoint[i], map_location='cpu')
+                sd = [torch.load(checkpoint[i], map_location='cpu')]
                 load_model_with_checkpoint(
                     replaced_module,
                     sd,
@@ -835,35 +836,32 @@ def replace_transformer_layer(orig_layer_impl,
                     quantizer,
                 )
         else:
-            if "tp" in checkpoint:
-                num_checkpoints = len(checkpoint["tp"]) // ckpt_mp_size
-                sd_offset = int(rank / (world_size / ckpt_mp_size))
-                sd_count = int((rank + 1) / (world_size / ckpt_mp_size)) - sd_offset
+            num_checkpoints = len(ckpt_list) // ckpt_mp_size
+            sd_offset = int(rank / (world_size / ckpt_mp_size))
+            sd_count = int((rank + 1) / (world_size / ckpt_mp_size)) - sd_offset
+            if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
+                pbar = tqdm.tqdm(total=num_checkpoints,
+                                 desc=f"Loading {num_checkpoints} checkpoint shards")
+            for i in range(num_checkpoints):
                 if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                    pbar = tqdm.tqdm(total=num_checkpoints,
-                                     desc=f"Loading {num_checkpoints} checkpoint shards")
-                for i in range(num_checkpoints):
-                    if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank(
-                    ) == 0:
-                        pbar.update(1)
-                    ckpt_index = i * ckpt_mp_size + sd_offset
-                    ckpt_files = [
-                        os.path.join(base_dir,
-                                     checkpoint["tp"][ckpt_index + j])
-                        if base_dir else checkpoint["tp"][ckpt_index + j]
-                        for j in range(sd_count)
-                    ]
-
-                    sds = [
-                        torch.load(ckpt_file,
-                                   map_location='cpu') for ckpt_file in ckpt_files
-                    ]
-                    load_model_with_checkpoint(replaced_module,
-                                               sds,
-                                               mp_replace,
-                                               ckpt_type,
-                                               quantizer,
-                                               int(rank % (world_size / ckpt_mp_size)))
+                    pbar.update(1)
+                ckpt_index = i * ckpt_mp_size + sd_offset
+                ckpt_files = [
+                    os.path.join(base_dir,
+                                 ckpt_list[ckpt_index +
+                                           j]) if base_dir else ckpt_list[ckpt_index + j]
+                    for j in range(sd_count)
+                ]
+                sds = [
+                    torch.load(ckpt_file,
+                               map_location='cpu') for ckpt_file in ckpt_files
+                ]
+                load_model_with_checkpoint(replaced_module,
+                                           sds,
+                                           mp_replace,
+                                           ckpt_type,
+                                           quantizer,
+                                           int(rank % (world_size / ckpt_mp_size)))
 
             if "non_tp" in checkpoint:
                 pbar = tqdm.tqdm(

@@ -621,7 +621,7 @@ at::Tensor qkv_unfused_cublas(at::Tensor& output,
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
                         (T*)bias.data_ptr(),
-                        weight.size(1),
+                        q_int8 ? weight.size(0) : weight.size(1),
                         bsz,
                         Context::Instance().GetCurrentStream());
     return torch::from_blob(workspace, input.sizes(), input.options());
