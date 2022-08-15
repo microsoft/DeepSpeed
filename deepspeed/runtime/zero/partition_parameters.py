@@ -692,7 +692,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             self.rank_in_group = groups._get_zero_param_intra_parallel_rank_in_mygroup() #use rank in groups
             ##TODO: check that MPU is not set
             logger.info(
-                     "SAGE partition parameter my rank in world {} my rank in group {} ranks in my param partition group: {} "
+                     "Partition parameter my rank in world {} my rank in group {} ranks in my param partition group: {} "
                      .format(self.rank,self.rank_in_group, groups._get_zero_param_intra_parallel_group_ranks()))
 
         # Local device is the device where the parameters are consumed, must be default device.
@@ -857,9 +857,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 rank_in_group = self.rank_in_group
                 world_size = self.num_ranks_in_param_group 
 
-            #print_rank_0(f"SAGE ALLGATHERZ forward ? {forward} \
-            #            LEN(params) {len(params)} {[p.ds_tensor.ds_numel for p in params]}", force=True)
-
             # ensure that each rank has params in same order. the allgather
             # is done by flattening the parameter list into a single tensor that
             # can be allgathered in a single call - this means that if each rank
@@ -878,26 +875,19 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 # ensure that tensors from each rank agree on the same ds_numel
                 # otherwise could mix data between tensors.
                 assert_ints_same_as_other_ranks([p.ds_tensor.ds_numel for p in params])
-                ##TODO, check secondary tensor
 
             if len(params) == 1:
                 # have an opportunity to avoid some intermediate memory allocations
                 param, = params
-                #buffer_size = math.ceil(param.ds_numel / self.world_size) * self.world_size
-                #if self.use_secondary_tensor:
-                #    buffer_size *= self.num_ranks_in_group
 
                 param_buffer = torch.empty(
-                    #math.ceil(param.ds_numel / self.world_size) * self.world_size,
                     math.ceil(param.ds_numel / world_size) * world_size,
-                    #buffer_size,
                     dtype=param.dtype,
                     device=torch.cuda.current_device(),
                     requires_grad=False,
                 )
 
                 #All gather on secondary tensor (with intragroup comm) if available
-                #param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward  else param.ds_tensor
                 param_ds_tensor = param.ds_secondary_tensor if self.use_secondary_tensor and not forward else param.ds_tensor
                 handles = _dist_allgather_fn(
                     param_ds_tensor.to(torch.cuda.current_device()), 
@@ -913,7 +903,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             else:
                 partition_sz = sum(p.ds_tensor.ds_numel for p in params)
 
-                #Recalc (correct) partition size for secondary partition
                 if self.use_secondary_tensor and not forward:
                     partition_sz = sum(p.ds_tensor.ds_numel*p.ds_secondary_tensor_num_of_groups for p in params)
 
@@ -930,14 +919,11 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz))
                  
                 
-                #if self.use_secondary_tensor:
                 if self.use_secondary_tensor and not forward:
-                        #print_rank_0(f"SAGE ALLGATHER using hpZeRO forward ? {forward}", force=True)
                         instrument_w_nvtx(torch.cat)(
                             [p.ds_secondary_tensor.to(torch.cuda.current_device()) for p in params],
                             out=partitions[rank_in_group])
                 else:
-                    #print_rank_0(f"SAGE ALLGATHER NOT using hpZeRO forward ? {forward}", force=True)
                     instrument_w_nvtx(torch.cat)(
                         [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
                         out=partitions[rank_in_group])
@@ -1163,10 +1149,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
             secondary_partition_size = tensor_size // self.num_ranks_in_param_group ##group size
 
-            ##TODO: assert
-            #print_rank_0(f" SAGE Param partition sizes PRIMARY {partition_size} SEC {secondary_partition_size} ",
-            #        force=False)
-
             if param.ds_tensor is None: ##assumption, invalid primary assumes invalid secondary, here create both!!!
                 final_location = None
                 if self.remote_device == OffloadDeviceEnum.nvme and self.param_swapper.swappable_tensor(
@@ -1247,8 +1229,6 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                 
 
             else:
-                #logger.info("SAGE PARAM NOT IN BETWEEN .REVISE el_per_r < numel.....? Rank {} , start {}, end {}, numel {} " 
-                #            .format(dist.get_rank(), start, end, param.ds_numel))
                 # partitioned_tensor = torch.zeros(partition_size,
                 #                                  dtype=param.dtype,
                 #                                  device=self.remote_device )

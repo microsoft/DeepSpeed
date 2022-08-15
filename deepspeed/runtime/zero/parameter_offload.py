@@ -315,7 +315,9 @@ class DeepSpeedZeRoOffload(object):
         persistent_params = []
         total_persistent_parameters = 0
         params_count = 0
-        for _, param in self.module.named_parameters(recurse=True):
+        for name, param in self.module.named_parameters(recurse=True):
+            print_rank_0(f'param {param.ds_id} - {name} numel = {param.ds_numel}', force=True)
+        #for _, param in self.module.named_parameters(recurse=True):
             if param.ds_numel + total_persistent_parameters > model_threshold:
                 continue
 

@@ -756,6 +756,9 @@ class DeepSpeedEngine(Module):
     def zero_round_robin_gradients(self):
         return self._config.zero_config.round_robin_gradients
 
+    def zero_param_group_size(self):
+        return self._config.zero_config.zero_param_group_size
+
     def dump_state(self):
         return self._config.dump_state
 
@@ -1411,7 +1414,8 @@ class DeepSpeedEngine(Module):
                 fp16_master_weights_and_gradients=self.fp16_master_weights_and_gradients(
                 ),
                 communication_data_type=self.communication_data_type,
-                elastic_checkpoint=self.zero_elastic_checkpoint())
+                elastic_checkpoint=self.zero_elastic_checkpoint(),
+                zero_param_group_size=self.zero_param_group_size())
 
         elif zero_stage == ZeroStageEnum.weights:
             assert not self.has_moe_layers, "MoE not supported with Stage 3"
@@ -1428,7 +1432,8 @@ class DeepSpeedEngine(Module):
                     param_persistence_threshold=self.zero_param_persistence_threshold(),
                     model_persistence_threshold=self.zero_model_persistence_threshold(),
                     offload_param_config=self.zero_offload_param(),
-                    mpu=self.mpu)
+                    mpu=self.mpu,
+                    zero_param_group_size=self.zero_param_group_size)
             else:
                 log_dist('Creating fp16 ZeRO stage {} optimizer'.format(zero_stage),
                          ranks=[0])
@@ -1460,7 +1465,8 @@ class DeepSpeedEngine(Module):
                     gradient_predivide_factor=self.gradient_predivide_factor(),
                     gradient_accumulation_steps=self.gradient_accumulation_steps(),
                     aio_config=self.aio_config(),
-                    communication_data_type=self.communication_data_type)
+                    communication_data_type=self.communication_data_type,
+                    zero_param_group_size=self.zero_param_group_size())
 
         else:
             raise NotImplementedError("ZeRO stage {} not implemented".format(zero_stage))

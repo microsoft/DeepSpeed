@@ -106,7 +106,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
                  gradient_accumulation_steps=1,
                  elastic_checkpoint=False,
                  aio_config=None,
-                 zero_param_group_size=8):
+                 zero_param_group_size=1):
 
         see_memory_usage("Stage 3 initialize beginning", force=True)
 
