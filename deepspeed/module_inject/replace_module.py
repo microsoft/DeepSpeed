@@ -510,10 +510,14 @@ def replace_transformer_layer(orig_layer_impl,
                         attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
                         attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
             else:
-                attn_block.attn_qkvw = mp_replace.copy(attn_block.attn_qkvw, qkvw)
-                attn_block.attn_qkvb = mp_replace.copy(attn_block.attn_qkvb, qkvb)
+                attn_block.attn_qkvw = quantizer.quantize(
+                    mp_replace.qkv_copy(attn_block.attn_qkvw,
+                                        qkvw))
+                attn_block.attn_qkvb = mp_replace.qkv_copy(attn_block.attn_qkvb, qkvb)
 
-                attn_block.attn_ow = mp_replace.copy(attn_block.attn_ow, dense_w)
+                attn_block.attn_ow = quantizer.quantize(
+                    mp_replace.copy(attn_block.attn_ow,
+                                    dense_w))
                 attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
 
             if moe:
@@ -569,9 +573,13 @@ def replace_transformer_layer(orig_layer_impl,
                                 mpl_block.output_b,
                                 _4hh_b)
                 else:
-                    mpl_block.inter_w = mp_replace.copy(mpl_block.inter_w, _h4h_w)
+                    mpl_block.inter_w = quantizer.quantize(
+                        mp_replace.copy(mpl_block.inter_w,
+                                        _h4h_w))
                     mpl_block.inter_b = mp_replace.copy(mpl_block.inter_b, _h4h_b)
-                    mpl_block.output_w = mp_replace.copy(mpl_block.output_w, _4hh_w)
+                    mpl_block.output_w = quantizer.quantize(
+                        mp_replace.copy(mpl_block.output_w,
+                                        _4hh_w))
                     mpl_block.output_b = mp_replace.copy(mpl_block.output_b, _4hh_b)
 
                 if attn_nw is None:
