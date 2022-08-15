@@ -5,6 +5,7 @@ Licensed under the MIT license.
 from dataclasses import dataclass
 from deepspeed.utils import log_dist
 
+
 class PartitionedParameterProfiler(object):
     @dataclass
     class EventCounter:
@@ -21,7 +22,7 @@ class PartitionedParameterProfiler(object):
             self.num_elem += numel
 
     def __init__(self, timers):
-        self.timers = timers 
+        self.timers = timers
         self.event_counters = {}
 
     def reset_events(self):
@@ -33,16 +34,14 @@ class PartitionedParameterProfiler(object):
             return
 
         if name not in self.event_counters:
-            self.event_counters[name] = __class__.EventCounter(
-                name=name,
-                count=0,
-                num_elem=0
-            ) 
+            self.event_counters[name] = __class__.EventCounter(name=name,
+                                                               count=0,
+                                                               num_elem=0)
         self.timers(name).start()
 
     def stop_event(self, name, num_elem):
         if self.timers is None:
-            return 
+            return
         assert name in self.event_counters, f'unknown event {name}'
         self.event_counters[name].increment(num_elem)
         self.timers(name).stop()

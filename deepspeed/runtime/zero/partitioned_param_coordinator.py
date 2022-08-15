@@ -10,7 +10,7 @@ from typing import Deque, Set
 from torch.cuda import Event, Stream
 
 from deepspeed import comm as dist
-from deepspeed.utils.logging import logger
+from deepspeed.utils.logging import logger, log_dist
 from deepspeed.runtime.zero.offload_config import OffloadDeviceEnum
 
 from deepspeed.runtime.zero.partition_parameters import *
@@ -235,14 +235,14 @@ class PartitionedParameterCoordinator:
         if step_id is None:
             step_id = self.__step_id
         param_names = [debug_param2name_id(p) for p in params]
-        print(
-            f'{tag} step = {step_id} mod = {debug_module2name_id(sub_module)} p_names = {param_names}'
-        )
+        log_dist(
+            f'{tag} step = {step_id} mod = {debug_module2name_id(sub_module)} p_names = {param_names}',
+            ranks=[0])
 
     def _dump_param_ids(self, tag, mod_id, p_ids, step_id=None):
         if step_id is None:
             step_id = self.__step_id
-        print(f'{tag} mod = {mod_id}, step = {step_id}, p_ids = {p_ids}')
+        log_dist(f'{tag} mod = {mod_id}, step = {step_id}, p_ids = {p_ids}', ranks=[0])
 
     """Fetch and Release
     Fetching, prefetching, and releasing parameters
@@ -266,17 +266,22 @@ class PartitionedParameterCoordinator:
 
         params_to_fetch = frozenset(iter_params(current_submodule))
         fetch_numel = sum([
-            p.partition_numel() for p in params_to_fetch
+            p.ds_numel for p in params_to_fetch
             if p.ds_status == ZeroParamStatus.NOT_AVAILABLE
         ])
         if fetch_numel > 0:
             event_name = __class__.FORWARD_FETCH_SUBMIT if forward else __class__.BACKWARD_FETCH_SUBMIT
-            self._dump_param_ids(event_name,
-                                 current_submodule.id,
-                                 [
-                                     p.ds_id for p in params_to_fetch
-                                     if p.ds_status == ZeroParamStatus.NOT_AVAILABLE
-                                 ])
+            # self._dump_param_ids(event_name,
+            #                      current_submodule.id,
+            #                      [
+            #                          p.ds_id for p in params_to_fetch
+            #                          if p.ds_status == ZeroParamStatus.NOT_AVAILABLE
+            #                      ])
+            # self._dump_params(
+            #     event_name,
+            #     current_submodule,
+            #     [p for p in params_to_fetch if p.ds_status == ZeroParamStatus.NOT_AVAILABLE]
+            # )
             self.__profiler.start_event(event_name)
             # kick off all gather for params in the immediately required submodule
             # for param in params_to_fetch:
@@ -292,7 +297,7 @@ class PartitionedParameterCoordinator:
             param.ds_active_sub_modules.add(current_submodule.id)
             #debug_rank0(f"-wait: {param.ds_summary()}")
             if param in self.__inflight_param_registry:
-                wait_numel += param.partition_numel()
+                wait_numel += param.ds_numel
                 with torch.cuda.stream(self.__allgather_stream):
                     while self.__ongoing_fetch_events and self.__ongoing_fetch_events[
                             0].query():
