@@ -257,7 +257,7 @@ class PartitionedParameterCoordinator:
         3. block on parameters in immediately required sub module
         """
         debug_rank0(
-            f"NTR Fetch subModule forward? {forward} {self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule)]} "
+            f"Fetch subModule forward? {forward} {self.__step_id}: M{current_submodule.id}({type(current_submodule).__name__}) P{[p.ds_id for p in iter_params(current_submodule)]} "
            + str({
                 "avail": f"{self.__n_available_params:.1e}",
                 "queue_sz": f"{len(self.__param_queue or [])}",
@@ -280,7 +280,6 @@ class PartitionedParameterCoordinator:
             self.__profiler.start_event(event_name)
             # kick off all gather for params in the immediately required submodule
             #for param in params_to_fetch:
-            #     print_rank_0(f"-NTR event name {event_name} fetch: {param.ds_summary()}",force=False)
             self.__all_gather_params(params_to_fetch, forward)
             self.__profiler.stop_event(event_name, fetch_numel)
 
@@ -290,7 +289,6 @@ class PartitionedParameterCoordinator:
         # wait for parameters in the immediately needed submodule to become available
         for param in params_to_fetch:
             param.ds_active_sub_modules.add(current_submodule.id)
-            #print_rank_0(f"NTR event name {wait_event_name} -wait: {param.ds_summary()}",force=False)
             if param in self.__inflight_param_registry:
                 wait_numel += param.partition_numel()
                 with torch.cuda.stream(self.__allgather_stream):
@@ -379,8 +377,6 @@ class PartitionedParameterCoordinator:
                 if numel_prefetching > 0:
                     event_name = __class__.FORWARD_PREFETCH_SUBMIT if forward else __class__.BACKWARD_PREFETCH_SUBMIT
                     self.__profiler.start_event(event_name)
-                    #for param in params_to_prefetch:
-                    #    print_rank_0(f"NTR event {event_name} -prefetch: {param.ds_summary()}")
                     self.__all_gather_params(params_to_prefetch, forward)
                     self.__profiler.stop_event(event_name, numel_prefetching)
 
@@ -438,8 +434,6 @@ class PartitionedParameterCoordinator:
             with torch.cuda.stream(self.__allgather_stream):
                 event_name = __class__.FORWARD_ALL_GATHER if forward else __class__.BACKWARD_ALL_GATHER
                 self.__profiler.start_event(event_name)
-                #for param in partitioned_params:
-                #    print_rank_0(f"NTR event {event_name} -ALLGather {param.ds_summary()}", force=True)
                 handle = partitioned_params[0].all_gather_coalesced(partitioned_params,forward)
                 self.__profiler.stop_event(event_name, all_gather_numel)
 
