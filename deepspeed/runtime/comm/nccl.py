@@ -9,6 +9,7 @@ import cupy
 import numpy as np
 
 from deepspeed.runtime.compression.cupy import CupyBackend
+from deepspeed.accelerator import literal_device
 
 
 class NcclBackend(object):
@@ -101,7 +102,8 @@ class NcclBackend(object):
         recvbuf_scale = [
             torch.zeros(1,
                         dtype=worker_scale.dtype,
-                        device=torch.device(local_rank)) for i in range(self.size)
+                        device=torch.device(literal_device(local_rank)))
+            for i in range(self.size)
         ]
 
         # communication phase 1

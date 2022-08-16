@@ -7,6 +7,7 @@ import pytest
 import torch
 import deepspeed
 from deepspeed.ops.op_builder import SparseAttnBuilder
+from deepspeed.accelerator import literal_device
 
 if not deepspeed.ops.__compatible_ops__[SparseAttnBuilder.NAME]:
     pytest.skip("sparse attention op is not compatible on this system",
@@ -252,14 +253,18 @@ def init_softmax_inputs(Z, H, M, N, scale, rho, block, dtype, dense_x=True, layo
 
 
 def _skip_on_cuda_compatability():
-    if torch.cuda.get_device_capability()[0] < 7:
-        pytest.skip("needs higher compute capability than 7")
-    cuda_major = int(torch.version.cuda.split('.')[0]) * 10
-    cuda_minor = int(torch.version.cuda.split('.')[1])
-    cuda_version = cuda_major + cuda_minor
-    if (cuda_version != 101 and cuda_version != 102) and \
-            (cuda_version != 111 and cuda_version != 110):
-        pytest.skip("requires cuda 10.1 or 10.2 or 11.0 or 11.1")
+    if deepspeed.accelerator.literal_device() == 'cuda':
+        if torch.cuda.get_device_capability()[0] < 7:
+            pytest.skip("needs higher compute capability than 7")
+        cuda_major = int(torch.version.cuda.split('.')[0]) * 10
+        cuda_minor = int(torch.version.cuda.split('.')[1])
+        cuda_version = cuda_major + cuda_minor
+        if (cuda_version != 101 and cuda_version != 102) and \
+                (cuda_version != 111 and cuda_version != 110):
+            pytest.skip("requires cuda 10.1 or 10.2 or 11.0 or 11.1")
+    else:
+        assert deepspeed.accelerator.literal_device() == 'xpu'
+        return
 
 
 @pytest.mark.parametrize("block", [16, 32])

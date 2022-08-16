@@ -90,6 +90,11 @@ cmdclass = {}
 # For any pre-installed ops force disable ninja
 if torch_available:
     cmdclass['build_ext'] = BuildExtension.with_options(use_ninja=False)
+    try:
+        from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
+        cmdclass['build_ext'] = DpcppBuildExtension.with_options(use_ninja=False)
+    except ImportError:
+        pass
 
 if torch_available:
     TORCH_MAJOR = torch.__version__.split('.')[0]

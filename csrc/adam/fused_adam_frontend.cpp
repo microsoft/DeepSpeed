@@ -1,5 +1,21 @@
 #include <torch/extension.h>
 
+#ifdef SYCL_KERNEL
+
+void multi_tensor_adam_sycl(int chunk_size,
+                            at::Tensor noop_flag,
+                            std::vector<std::vector<at::Tensor>> tensor_lists,
+                            const float lr,
+                            const float beta1,
+                            const float beta2,
+                            const float epsilon,
+                            const int step,
+                            const int mode,
+                            const int bias_correction,
+                            const float weight_decay);
+
+#else
+
 void multi_tensor_adam_cuda(int chunk_size,
                             at::Tensor noop_flag,
                             std::vector<std::vector<at::Tensor>> tensor_lists,
@@ -12,9 +28,17 @@ void multi_tensor_adam_cuda(int chunk_size,
                             const int bias_correction,
                             const float weight_decay);
 
+#endif
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+#ifdef SYCL_KERNEL
+    m.def("multi_tensor_adam",
+          &multi_tensor_adam_sycl,
+          "Compute and apply gradient update to parameters for Adam optimizer");
+#else
     m.def("multi_tensor_adam",
           &multi_tensor_adam_cuda,
           "Compute and apply gradient update to parameters for Adam optimizer");
+#endif
 }

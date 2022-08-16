@@ -6,6 +6,7 @@ import pytest
 import copy
 
 import deepspeed
+from deepspeed.accelerator import literal_device
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.op_builder import CPUAdamBuilder
 
@@ -39,7 +40,7 @@ def test_cpu_adam_opt(model_size):
     torch.set_rng_state(rng_state)
     param1 = torch.nn.Parameter(torch.randn(model_size, device=device))
     torch.set_rng_state(rng_state)
-    param2_data = torch.randn(model_size, device=device).cuda()
+    param2_data = torch.randn(model_size, device=device).to(literal_device())
     param2 = torch.nn.Parameter(param2_data)
 
     optimizer1 = torch.optim.AdamW([param1])
@@ -52,7 +53,7 @@ def test_cpu_adam_opt(model_size):
         torch.set_rng_state(rng_state)
         param1.grad = torch.randn(model_size, device=device)
         torch.set_rng_state(rng_state)
-        param2.grad = torch.randn(model_size, device=device).cuda()
+        param2.grad = torch.randn(model_size, device=device).to(literal_device())
 
         optimizer.step()
         optimizer2.step()
@@ -65,7 +66,7 @@ def test_cpu_adam_opt(model_size):
 def test_cpu_adam_gpu_error():
     model_size = 64
     from deepspeed.ops.adam import DeepSpeedCPUAdam
-    device = 'cuda:0'
+    device = literal_device(0)
     param = torch.nn.Parameter(torch.randn(model_size, device=device))
     optimizer = DeepSpeedCPUAdam([param])
 

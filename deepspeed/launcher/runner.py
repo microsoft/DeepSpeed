@@ -15,14 +15,13 @@ import subprocess
 import collections
 from copy import deepcopy
 
-import torch.cuda
-
 from .multinode_runner import PDSHRunner, OpenMPIRunner, MVAPICHRunner
 from .constants import PDSH_LAUNCHER, OPENMPI_LAUNCHER, MVAPICH_LAUNCHER
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT
 from ..utils import logger
 
 from ..autotuning import Autotuner
+from deepspeed.accelerator import runtime as accel_runtime
 
 DLTS_HOSTFILE = "/job/hostfile"
 EXPORT_ENVS = ["NCCL", "PYTHON", "MV2", "UCX"]
@@ -340,7 +339,7 @@ def main(args=None):
     multi_node_exec = True
     if not resource_pool:
         resource_pool = {}
-        device_count = torch.cuda.device_count()
+        device_count = accel_runtime.device_count()
         if device_count == 0:
             raise RuntimeError("Unable to proceed, no GPU resources available")
         resource_pool['localhost'] = device_count

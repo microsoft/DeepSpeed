@@ -10,6 +10,8 @@ import pytest
 
 import deepspeed
 import deepspeed.runtime.utils as ds_utils
+from deepspeed.accelerator import literal_device
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 from deepspeed.runtime.pipe.topology import PipeDataParallelTopology, PipeModelDataParallelTopology
@@ -123,7 +125,7 @@ def cifar_trainset(fp16=False):
 
     transform = transforms.Compose(transform_list)
 
-    local_rank = torch.cuda.current_device()
+    local_rank = accel_runtime.current_device()
 
     # Only one rank per machine downloads.
     dist.barrier()
@@ -139,7 +141,7 @@ def cifar_trainset(fp16=False):
 
 
 def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, seed=123):
-    with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
+    with torch.random.fork_rng(devices=[accel_runtime.current_device()]):
         ds_utils.set_random_seed(seed)
 
         # disable dropout
@@ -162,7 +164,7 @@ def train_cifar(model, args, num_steps=400, average_dp_losses=True, fp16=True, s
                 print(f'STEP={step} LOSS={loss.item()}')
 
         if average_dp_losses:
-            loss_tensor = torch.tensor(losses).cuda()
+            loss_tensor = torch.tensor(losses).to(literal_device())
             dist.all_reduce(loss_tensor)
             loss_tensor /= dist.get_world_size()
             losses = loss_tensor.tolist()

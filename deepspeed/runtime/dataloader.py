@@ -5,6 +5,7 @@ Copyright 2019 The Microsoft DeepSpeed Team
 import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class RepeatingLoader:
@@ -55,7 +56,7 @@ class DeepSpeedDataLoader(object):
         else:
             if data_sampler is None:
                 data_sampler = RandomSampler(dataset)
-            device_count = torch.cuda.device_count()
+            device_count = accel_runtime.device_count()
             batch_size *= device_count
 
         if num_local_io_workers is None:

@@ -7,9 +7,10 @@ from datetime import timedelta
 
 from .logging import logger
 from ..constants import TORCH_DISTRIBUTED_DEFAULT_PORT, default_pg_timeout
+from ..accelerator import literal_device
 
 
-def init_distributed(dist_backend="nccl",
+def init_distributed(dist_backend=None,
                      auto_mpi_discovery=True,
                      distributed_port=TORCH_DISTRIBUTED_DEFAULT_PORT,
                      verbose=True,
@@ -44,6 +45,11 @@ def init_distributed(dist_backend="nccl",
             mpi_discovery(distributed_port=distributed_port, verbose=verbose)
 
     if not torch.distributed.is_initialized():
+        if dist_backend == None:
+            if literal_device() == 'xpu':
+                dist_backend = 'ccl'
+            else:
+                dist_backend = 'nccl'
         if verbose and int(os.getenv('RANK', '0')) == 0:
             logger.info(
                 "Initializing torch distributed with backend: {}".format(dist_backend))

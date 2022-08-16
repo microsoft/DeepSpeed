@@ -5,6 +5,7 @@ import torch
 import deepspeed
 import torch.distributed as dist
 from deepspeed.ops.aio import AsyncIOBuilder
+from deepspeed.accelerator import runtime as accel_runtime
 from .common import distributed_test
 
 MEGA_BYTE = 1024**2
@@ -33,7 +34,7 @@ def _get_test_file_and_buffer(tmpdir, ref_buffer, cuda_device, index=0):
     file_suffix = f'{dist.get_rank()}_{index}'
     test_file = os.path.join(tmpdir, f'_aio_write_random_{file_suffix}.pt')
     if cuda_device:
-        test_buffer = torch.cuda.ByteTensor(list(ref_buffer))
+        test_buffer = accel_runtime.ByteTensor(list(ref_buffer))
     else:
         test_buffer = torch.ByteTensor(list(ref_buffer)).pin_memory()
 

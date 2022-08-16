@@ -18,6 +18,7 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 from torch.nn.modules.module import Module
 from deepspeed.runtime.utils import noop_decorator
+from deepspeed.accelerator import literal_device
 
 tensor_map = {}
 
@@ -28,8 +29,13 @@ def print_rank_0(message, debug=False, force=False):
 
 
 try:
-    autocast_custom_fwd = torch.cuda.amp.custom_fwd
-    autocast_custom_bwd = torch.cuda.amp.custom_bwd
+    device = literal_device()
+    if device == 'cuda':
+        autocast_custom_fwd = torch.cuda.amp.custom_fwd
+        autocast_custom_bwd = torch.cuda.amp.custom_bwd
+    else:
+        autocast_custom_fwd = noop_decorator
+        autocast_custom_bwd = noop_decorator
 except (ImportError, AttributeError) as exp:
     autocast_custom_fwd = noop_decorator
     autocast_custom_bwd = noop_decorator

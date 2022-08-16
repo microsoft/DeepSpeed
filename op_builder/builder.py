@@ -107,6 +107,7 @@ def assert_no_cuda_mismatch():
 class OpBuilder(ABC):
     _rocm_version = None
     _is_rocm_pytorch = None
+    _is_xpu_pytorch = None
 
     def __init__(self, name):
         self.name = name
@@ -124,6 +125,13 @@ class OpBuilder(ABC):
     def sources(self):
         '''
         Returns list of source files for your op, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
+        '''
+        pass
+
+    #@abstractmethod
+    def sycl_sources(self):
+        '''
+        Returns list of sycl source files for your op, relative to root of deepspeed package
         '''
         pass
 
@@ -181,6 +189,23 @@ class OpBuilder(ABC):
         return OpBuilder._is_rocm_pytorch
 
     @staticmethod
+    def is_xpu_pytorch():
+        if OpBuilder._is_xpu_pytorch is not None:
+            return OpBuilder._is_xpu_pytorch
+
+        _is_xpu_pytorch = False
+        try:
+            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
+        except ImportError:
+            pass
+        else:
+            # Hardcode temporarily
+            _is_xpu_pytorch = True
+
+        OpBuilder._is_xpu_pytorch = _is_xpu_pytorch
+        return OpBuilder._is_xpu_pytorch
+
+    @staticmethod
     def installed_rocm_version():
         if OpBuilder._rocm_version:
             return OpBuilder._rocm_version
@@ -199,6 +224,12 @@ class OpBuilder(ABC):
     def include_paths(self):
         '''
         Returns list of include paths, relative to root of deepspeed package (i.e., DeepSpeed/deepspeed)
+        '''
+        return []
+
+    def sycl_include_paths(self):
+        '''
+        Returns list of sycl include paths, relative to root of deepspeed package
         '''
         return []
 
@@ -519,6 +550,39 @@ class OpBuilder(ABC):
             os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
 
         return op_module
+
+
+class SYCLOpBuilder(OpBuilder):
+    def builder(self):
+        if self.is_xpu_pytorch():
+            from intel_extension_for_pytorch.xpu.utils import DPCPPExtension
+
+            dpcpp_ext = DPCPPExtension(
+                name=self.absolute_name(),
+                sources=self.strip_empty_entries(self.sycl_sources()),
+                include_dirs=self.strip_empty_entries(self.sycl_include_paths()),
+                extra_compile_args={
+                    'cxx': self.strip_empty_entries(self.xpu_cxx_args()),
+                },
+                extra_link_args=self.strip_empty_entries(self.xpu_extra_ldflags()))
+            return dpcpp_ext
+        # Add more SYCL compatible device via elif
+        else:
+            raise Exception(f"Unknown SYCL sub type.")
+
+    def xpu_cxx_args(self):
+        return [
+            '-O3',
+            '-g',
+            '-std=c++20',
+            '-w',
+            '-fPIC',
+            '-DMKL_ILP64',
+            '-DSYCL_KERNEL'
+        ]
+
+    def xpu_extra_ldflags(self):
+        return ['-fPIC', '-Wl,-export-dynamic']
 
 
 class CUDAOpBuilder(OpBuilder):

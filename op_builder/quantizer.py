@@ -1,7 +1,8 @@
-from .builder import CUDAOpBuilder
+from .builder import CUDAOpBuilder, SYCLOpBuilder
 
 
-class QuantizerBuilder(CUDAOpBuilder):
+class QuantizerBuilder(SYCLOpBuilder if SYCLOpBuilder.is_xpu_pytorch() else CUDAOpBuilder
+                       ):
     BUILD_VAR = "DS_BUILD_QUANTIZER"
     NAME = "quantizer"
 
@@ -20,3 +21,9 @@ class QuantizerBuilder(CUDAOpBuilder):
 
     def include_paths(self):
         return ['csrc/includes']
+
+    def sycl_sources(self):
+        return []
+
+    def sycl_include_paths(self):
+        return []

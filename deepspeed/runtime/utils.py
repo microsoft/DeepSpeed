@@ -22,16 +22,10 @@ import torch.distributed as dist
 from deepspeed.utils import groups, logger
 from deepspeed.runtime.constants import PIPE_REPLICATED
 from numpy import prod
+from deepspeed.accelerator import runtime as accel_runtime
 
-# pt-1.9 deprecations
-if hasattr(torch.cuda, "memory_reserved"):
-    torch_memory_reserved = torch.cuda.memory_reserved
-else:
-    torch_memory_reserved = torch.cuda.memory_allocated
-if hasattr(torch.cuda, "max_memory_reserved"):
-    torch_max_memory_reserved = torch.cuda.max_memory_reserved
-else:
-    torch_max_memory_reserved = torch.cuda.memory_cached
+torch_memory_reserved = accel_runtime.memory_reserved
+torch_max_memory_reserved = accel_runtime.max_memory_reserved
 
 
 class DummyOptim():
@@ -191,7 +185,7 @@ class CheckOverflow(object):
     def check_using_norm(self, norm_group, reduce_overflow=True):
         # TODO: I don't think reduce_overflow is needed if mpu is None
         overflow = -1 in norm_group
-        overflow_gpu = torch.cuda.FloatTensor([overflow])
+        overflow_gpu = accel_runtime.FloatTensor([overflow])
         if self.has_moe_params:
             # In this case, we need to do an all_reduce across
             # the expert_parallel_group, so that if there was
@@ -242,7 +236,7 @@ class CheckOverflow(object):
         overflow = self.has_overflow_serial(params)
         # Since each model parallel GPU carries only part of the model,
         # make sure overflow flag is synced across all the model parallel GPUs
-        overflow_gpu = torch.cuda.ByteTensor([overflow])
+        overflow_gpu = accel_runtime.ByteTensor([overflow])
         # torch.distributed.all_reduce(overflow_gpu,
         #                             op=torch.distributed.ReduceOp.MAX,
         #                             group=mpu.get_model_parallel_group())
@@ -353,7 +347,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
@@ -373,7 +367,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
                 total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
@@ -384,7 +378,7 @@ def clip_grad_norm_(parameters, max_norm, norm_type=2, mpu=None):
     pg = groups._get_data_parallel_group()
     scaled_norm = total_norm * 1.0 / float(dist.get_world_size(group=pg))
 
-    scaled_norm_tensor = torch.cuda.FloatTensor([float(scaled_norm)])
+    scaled_norm_tensor = accel_runtime.FloatTensor([float(scaled_norm)])
     dist.all_reduce(scaled_norm_tensor, group=pg)
     total_norm = scaled_norm_tensor.item()
 
@@ -419,7 +413,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
@@ -443,7 +437,7 @@ def get_grad_norm(parameters, norm_type=2, mpu=None):
             total_norm += param_norm.item()**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
@@ -489,7 +483,7 @@ def get_grad_zeros(parameters, mpu=None):
         total_zeros += count_zeros.item()
 
     # Sum across all model parallel GPUs.
-    total_zeros_cuda = torch.cuda.FloatTensor([float(total_zeros)])
+    total_zeros_cuda = accel_runtime.FloatTensor([float(total_zeros)])
     if mpu is not None:
         torch.distributed.all_reduce(total_zeros_cuda,
                                      op=torch.distributed.ReduceOp.SUM,
@@ -522,7 +516,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(p.data.abs().max() for p in parameters)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         # Take max across all GPUs.
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
@@ -546,7 +540,7 @@ def get_weight_norm(parameters, norm_type=2, mpu=None):
             total_norm += param_norm**norm_type
 
         # Sum across all model parallel GPUs.
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,
@@ -774,14 +768,14 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     if print_rank != -1 and rank != print_rank:
         return
 
-    torch.cuda.synchronize()
+    accel_runtime.synchronize()
 
     if reset_max:
-        torch.cuda.reset_max_memory_cached()
-        torch.cuda.reset_max_memory_allocated()
+        accel_runtime.reset_max_memory_cached()
+        accel_runtime.reset_max_memory_allocated()
 
-    new_alloced = torch.cuda.memory_allocated()
-    new_cached = torch.cuda.memory_cached()
+    new_alloced = accel_runtime.memory_allocated()
+    new_cached = accel_runtime.memory_cached()
 
     delta_alloced = new_alloced - mem_alloced
     delta_cached = new_cached - mem_cached
@@ -789,8 +783,8 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     mem_cached = new_cached
     mem_alloced = new_alloced
 
-    max_alloced = torch.cuda.max_memory_allocated()
-    max_cached = torch.cuda.max_memory_cached()
+    max_alloced = accel_runtime.max_memory_allocated()
+    max_cached = accel_runtime.max_memory_cached()
 
     # convert to GB for printing
     new_alloced /= 1024**3
@@ -803,7 +797,7 @@ def memory_status(msg, print_rank=-1, reset_max=False):
     print(
         f'RANK={rank} MEMSTATS',
         msg,
-        f'device={torch.cuda.current_device()} '
+        f'device={accel_runtime.current_device()} '
         f'current alloc={new_alloced:0.4f}GB (delta={delta_alloced:0.4f}GB max={max_alloced:0.4f}GB) '
         f'current cache={new_cached:0.4f}GB (delta={delta_cached:0.4f}GB max={max_cached:0.4f}GB)'
     )
@@ -812,7 +806,7 @@ def memory_status(msg, print_rank=-1, reset_max=False):
 def get_ma_status():
     if torch.distributed.is_initialized() and not torch.distributed.get_rank() == 0:
         return 0
-    return torch.cuda.memory_allocated()
+    return accel_runtime.memory_allocated()
 
 
 def see_memory_usage(message, force=False):
@@ -827,8 +821,8 @@ def see_memory_usage(message, force=False):
     # Print message except when distributed but not rank 0
     logger.info(message)
     logger.info(
-        f"MA {round(torch.cuda.memory_allocated() / (1024 * 1024 * 1024),2 )} GB \
-        Max_MA {round(torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
+        f"MA {round(accel_runtime.memory_allocated() / (1024 * 1024 * 1024),2 )} GB \
+        Max_MA {round(accel_runtime.max_memory_allocated() / (1024 * 1024 * 1024),2)} GB \
         CA {round(torch_memory_reserved() / (1024 * 1024 * 1024),2)} GB \
         Max_CA {round(torch_max_memory_reserved() / (1024 * 1024 * 1024))} GB ")
 
@@ -838,8 +832,7 @@ def see_memory_usage(message, force=False):
         f'CPU Virtual Memory:  used = {used_GB} GB, percent = {vm_stats.percent}%')
 
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats()
+    accel_runtime.reset_peak_memory_stats()
 
 
 def call_to_str(base, *args, **kwargs):
@@ -913,7 +906,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     norm_type = float(norm_type)
     if norm_type == inf:
         total_norm = max(t.data.abs().max() for t in input_tensors)
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.MAX,
@@ -922,7 +915,7 @@ def get_global_norm_of_tensors(input_tensors, norm_type=2, mpu=None):
     else:
         total_norm = sum(
             [t.data.float().norm(norm_type).item()**norm_type for t in input_tensors])
-        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        total_norm_cuda = accel_runtime.FloatTensor([float(total_norm)])
         if mpu is not None:
             torch.distributed.all_reduce(total_norm_cuda,
                                          op=torch.distributed.ReduceOp.SUM,

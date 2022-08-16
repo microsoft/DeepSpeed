@@ -14,6 +14,7 @@ from deepspeed.runtime.utils import get_global_norm, CheckOverflow, get_weight_n
 from deepspeed.runtime.fp16.loss_scaler import INITIAL_LOSS_SCALE, SCALE_WINDOW, MIN_LOSS_SCALE
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import OPTIMIZER_STATE_DICT
+from deepspeed.accelerator import runtime as accel_runtime
 
 
 class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
@@ -39,8 +40,8 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         if torch.distributed.get_rank() == 0:
             logger.info(f'Fused Lamb Legacy : {self.fused_lamb_legacy} ')
 
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
+        if not accel_runtime.is_available():
+            raise SystemError("No accelerator or accelerator does not support FP16.")
         self.optimizer = init_optimizer
 
         # param groups
@@ -386,7 +387,7 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
         will call ``model.load_state_dict()`` before
         ``fp16_optimizer_instance.load_state_dict()`` is called.
         Example::
-            model = torch.nn.Linear(D_in, D_out).cuda().half()
+            model = torch.nn.Linear(D_in, D_out).to(literal_device()).half()
             optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
             optimizer = FP16_Optimizer(optimizer, static_loss_scale = 128.0)
             ...
@@ -431,13 +432,13 @@ class FP16_UnfusedOptimizer(DeepSpeedOptimizer):
             for param in group:
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
-                                         device=torch.cuda.current_device())
+                                         device=accel_runtime.current_device())
 
         for i, group in enumerate(self.fp32_groups):
             for param in group:
                 param.grad = torch.zeros(param.size(),
                                          dtype=param.dtype,
-                                         device=torch.cuda.current_device())
+                                         device=accel_runtime.current_device())
 
         self.optimizer.step()
 

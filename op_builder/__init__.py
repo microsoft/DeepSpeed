@@ -13,17 +13,31 @@ from .async_io import AsyncIOBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
 from .builder import get_default_compute_capabilities, OpBuilder
+from .dropout import DropoutBuilder
+from .feedforward import FeedForwardBuilder
+from .gelu import GeluBuilder
+from .layer_reorder import LayerReorderBuilder
+from .normalize import NormalizeBuilder
+from .softmax import SoftmaxBuilder
+from .stridedbatchgemm import StridedBatchGemmBuilder
 
 # TODO: infer this list instead of hard coded
 # List of all available ops
 __op_builders__ = [
     CPUAdamBuilder(),
     CPUAdagradBuilder(),
+    DropoutBuilder(),
+    FeedForwardBuilder(),
     FusedAdamBuilder(),
     FusedLambBuilder(),
+    GeluBuilder(),
+    LayerReorderBuilder(),
+    NormalizeBuilder(),
+    SoftmaxBuilder(),
     SparseAttnBuilder(),
     TransformerBuilder(),
     StochasticTransformerBuilder(),
+    StridedBatchGemmBuilder(),
     AsyncIOBuilder(),
     UtilsBuilder(),
     QuantizerBuilder(),

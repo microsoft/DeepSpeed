@@ -2,6 +2,7 @@ from deepspeed.utils import RepeatingLoader
 import torch
 import pytest
 import deepspeed
+from deepspeed.accelerator import runtime as accel_runtime
 from .common import distributed_test
 from .simple_model import SimpleModel, args_from_dict, random_dataset
 
@@ -49,8 +50,8 @@ def test_dataloader_drop_last(tmpdir, train_batch_size, drop_last):
                                                                 training_data=train_dataset,
                                                                 optimizer=optimizer)
         for n, batch in enumerate(training_dataloader):
-            x = batch[0].to(torch.cuda.current_device())
-            y = batch[1].to(torch.cuda.current_device())
+            x = batch[0].to(accel_runtime.current_device())
+            y = batch[1].to(accel_runtime.current_device())
             loss = model(x, y)
             model.backward(loss)
             model.step()

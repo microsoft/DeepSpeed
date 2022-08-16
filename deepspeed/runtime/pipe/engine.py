@@ -16,6 +16,7 @@ import torch.distributed as dist
 
 from deepspeed.utils.logging import logger
 from deepspeed.utils.timer import SynchronizedWallClockTimer, ThroughputTimer
+from deepspeed.accelerator import runtime as accel_runtime
 
 from deepspeed.inference.engine import InferenceEngine
 from ..engine import DeepSpeedEngine, MEMORY_OPT_ALLREDUCE_SIZE
@@ -1282,14 +1283,14 @@ class PipelineEngine(DeepSpeedEngine):
         if print_rank != -1 and rank != print_rank:
             return
 
-        torch.cuda.synchronize()
+        accel_runtime.synchronize()
 
         if reset_max:
-            torch.cuda.reset_max_memory_cached()
-            torch.cuda.reset_max_memory_allocated()
+            accel_runtime.reset_max_memory_cached()
+            accel_runtime.reset_max_memory_allocated()
 
-        new_alloced = torch.cuda.memory_allocated()
-        new_cached = torch.cuda.memory_cached()
+        new_alloced = accel_runtime.memory_allocated()
+        new_cached = accel_runtime.memory_cached()
 
         delta_alloced = new_alloced - mem_alloced
         delta_cached = new_cached - mem_cached
@@ -1297,8 +1298,8 @@ class PipelineEngine(DeepSpeedEngine):
         mem_cached = new_cached
         mem_alloced = new_alloced
 
-        max_alloced = torch.cuda.max_memory_allocated()
-        max_cached = torch.cuda.max_memory_cached()
+        max_alloced = accel_runtime.max_memory_allocated()
+        max_cached = accel_runtime.max_memory_cached()
 
         # convert to GB for printing
         new_alloced /= 1024**3
