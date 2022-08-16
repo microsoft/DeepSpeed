@@ -68,6 +68,7 @@ class DistributedTest(ABC):
     world_size = 2
     backend = "nccl"
     init_distributed = True
+    set_dist_env = True
 
     # Temporary directory that is shared among test methods in a class
     @pytest.fixture(autouse=True, scope="class")
@@ -152,12 +153,13 @@ class DistributedTest(ABC):
 
     def _dist_init(self, local_rank, num_procs, skip_msg):
         """Initialize deepspeed.comm and execute the user function. """
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = get_master_port()
-        os.environ['LOCAL_RANK'] = str(local_rank)
-        # NOTE: unit tests don't support multi-node so local_rank == global rank
-        os.environ['RANK'] = str(local_rank)
-        os.environ['WORLD_SIZE'] = str(num_procs)
+        if self.set_dist_env:
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = get_master_port()
+            os.environ['LOCAL_RANK'] = str(local_rank)
+            # NOTE: unit tests don't support multi-node so local_rank == global rank
+            os.environ['RANK'] = str(local_rank)
+            os.environ['WORLD_SIZE'] = str(num_procs)
 
         # turn off NCCL logging if set
         os.environ.pop('NCCL_DEBUG', None)
