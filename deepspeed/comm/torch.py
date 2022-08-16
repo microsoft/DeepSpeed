@@ -16,7 +16,7 @@ class TorchBackend(Backend):
         so no need to wrap all the functions. We can keep adding wrappers as
         needed.
     """
-    def __init__(self, backend, timeout, init_method, init_pg=True, name='torch'):
+    def __init__(self, backend, timeout, init_method, name='torch'):
         super(TorchBackend, self).__init__()
         self.torch_version_before_18 = older_torch()
         self.has_allgather_base = has_allgather_base()
@@ -27,8 +27,7 @@ class TorchBackend(Backend):
         # The idea is to fake that dist backend is initialized even when
         # it is not so we can run on a single GPU without doing any init_process_group
         self.single_gpu_mode = True
-        if init_pg:
-            self.init_process_group(backend, timeout, init_method)
+        self.init_process_group(backend, timeout, init_method)
 
     def init_process_group(self, backend, timeout, init_method):
         if not torch.distributed.is_initialized():

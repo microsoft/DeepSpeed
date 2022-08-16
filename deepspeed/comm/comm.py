@@ -602,7 +602,7 @@ def init_distributed(dist_backend="nccl",
 
     if cdb is None and torch.distributed.is_initialized():
         # The user initialized torch.dist themselves, create cdb and short-circuit
-        cdb = TorchBackend(dist_backend, timeout, init_method, init_pg=False)
+        cdb = TorchBackend(dist_backend, timeout, init_method)
         return
 
     if dist_init_required is False:
