@@ -67,6 +67,7 @@ class DistributedTest(ABC):
     is_dist_test = True
     world_size = 2
     backend = "nccl"
+    init_distributed = True
 
     # Temporary directory that is shared among test methods in a class
     @pytest.fixture(autouse=True, scope="class")
@@ -163,8 +164,9 @@ class DistributedTest(ABC):
 
         set_cuda_visibile()
 
-        deepspeed.init_distributed(dist_backend=self.backend)
-        dist.barrier()
+        if self.init_distributed:
+            deepspeed.init_distributed(dist_backend=self.backend)
+            dist.barrier()
 
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
@@ -177,10 +179,11 @@ class DistributedTest(ABC):
             else:
                 raise e
 
-        # make sure all ranks finish at the same time
-        dist.barrier()
-        # tear down after test completes
-        dist.destroy_process_group()
+        if self.init_distributed or dist.is_initialized():
+            # make sure all ranks finish at the same time
+            dist.barrier()
+            # tear down after test completes
+            dist.destroy_process_group()
 
 
 def distributed_test(world_size=2, backend='nccl'):

@@ -1,7 +1,9 @@
 import torch
 import deepspeed.comm as dist
+import deepspeed
 
 from tests.unit.common import DistributedTest
+from tests.unit.simple_model import SimpleModel
 
 import pytest
 
@@ -71,3 +73,45 @@ class TestDistAllReduce(DistributedTest):
         result = torch.ones(1, 3).cuda() * sum_of_ranks
         dist.all_reduce(x)
         assert torch.all(x == result)
+
+
+@pytest.mark.parametrize("dist_init_required", [True, False])
+class TestDistAlreadyInited(DistributedTest):
+    init_distributed = False
+
+    def test(self, dist_init_required):
+        torch.distributed.init_process_group('nccl')
+        deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+
+
+@pytest.mark.parametrize("dist_init_required", [True, False])
+class TestDistNotInited(DistributedTest):
+    init_distributed = False
+
+    def test(self, dist_init_required):
+        if dist_init_required:
+            deepspeed.init_distributed('nccl', dist_init_required=True)
+        else:
+            with pytest.raises(Exception):
+                deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+
+
+@pytest.mark.parametrize("dist_init_required", [True, False])
+class TestDistInitWithModel(DistributedTest):
+    init_distributed = False
+
+    def test(self, dist_init_required):
+        model = SimpleModel(4)
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {}
+            }
+        }
+        engine, *_ = deepspeed.initialize(
+            model=model,
+            config=config_dict,
+            model_parameters=model.parameters(),
+            dist_init_required=dist_init_required
+        )
