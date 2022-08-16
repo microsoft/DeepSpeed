@@ -76,31 +76,29 @@ class TestDistAllReduce(DistributedTest):
 
 
 @pytest.mark.parametrize("dist_init_required", [True, False])
-class TestDistAlreadyInited(DistributedTest):
+class TestDistInit(DistributedTest):
     init_distributed = False
 
-    def test(self, dist_init_required):
+    def test_already_init(self, dist_init_required):
         torch.distributed.init_process_group('nccl')
         deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
 
-
-@pytest.mark.parametrize("dist_init_required", [True, False])
-class TestDistNotInited(DistributedTest):
-    init_distributed = False
-
-    def test(self, dist_init_required):
+    def test_no_init(self, dist_init_required):
         if dist_init_required:
             deepspeed.init_distributed('nccl', dist_init_required=True)
         else:
+            # torch.dist is not done and for some reason the user says they don't want it done
             with pytest.raises(Exception):
                 deepspeed.init_distributed('nccl', dist_init_required=dist_init_required)
+
 
 
 @pytest.mark.parametrize("dist_init_required", [True, False])
 class TestDistInitWithModel(DistributedTest):
     init_distributed = False
 
-    def test(self, dist_init_required):
+    def test_already_init(self, dist_init_required):
+        torch.distributed.init_process_group('nccl')
         model = SimpleModel(4)
         config_dict = {
             "train_micro_batch_size_per_gpu": 1,
@@ -115,3 +113,29 @@ class TestDistInitWithModel(DistributedTest):
             model_parameters=model.parameters(),
             dist_init_required=dist_init_required
         )
+        
+    def test_no_init(self, dist_init_required):
+        model = SimpleModel(4)
+        config_dict = {
+            "train_micro_batch_size_per_gpu": 1,
+            "optimizer": {
+                "type": "Adam",
+                "params": {}
+            }
+        }
+        if dist_init_required:
+            engine, *_ = deepspeed.initialize(
+                model=model,
+                config=config_dict,
+                model_parameters=model.parameters(),
+                dist_init_required=dist_init_required
+            )
+        else:
+            # torch.dist is not done and for some reason the user says they don't want it done
+            with pytest.raises(Exception):
+                engine, *_ = deepspeed.initialize(
+                    model=model,
+                    config=config_dict,
+                    model_parameters=model.parameters(),
+                    dist_init_required=dist_init_required
+                )
