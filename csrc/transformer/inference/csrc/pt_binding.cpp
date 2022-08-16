@@ -616,7 +616,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
     if (!workspace || input.size(1) != 1) {
         cublasSetStream(Context::Instance().GetCublasHandle(),
                         Context::Instance().GetCurrentStream());
-        const int max_seq_len = (bloom_seq_len) ? 128 : MAX_OUT_TOKES;
+        const int max_seq_len = (is_bloom) ? 128 : MAX_OUT_TOKES;
         allocate_workspace<T>(
             input.size(2), input.size(1), max_seq_len, input.size(0), num_layers, head_size);
         workspace = (T*)Context::Instance().GetWorkSpace();
