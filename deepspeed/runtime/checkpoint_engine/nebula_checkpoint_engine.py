@@ -65,6 +65,11 @@ class NebulaCheckpointEngine(CheckpointEngine):
 
         checkpoint = None
         if tag in (None, 'latest', 'latest_universal'):
+            # In some cases, there is the inconsistent tag between deepspeed metadata (latest file)
+            # and nebula metadata, will lead to the failure on loading with deepspeed tag. Then we
+            # will try to load the valid latest checkpoint from nebula(tier3 > tier1). So, in summary
+            # when met failure loading for given tag, the loading priority would be like:
+            #               nebula tier3 latest > nebula tier1 latest.
             checkpoint = torch_nebula.get_latest_checkpoint(
                 persist_path=self.nebula_load_path)
         else:
@@ -73,11 +78,17 @@ class NebulaCheckpointEngine(CheckpointEngine):
 
         if checkpoint is None or (checkpoint is not None and checkpoint.tag == ''):
             logger.info(
-                f"Unable to find valid checkpoint tag:{tag} from Nebula, try to get latest checkpoint again!"
+                f"Unable to find valid checkpoint tag:{tag} from Nebula, try to get latest checkpoint again from nebula {self.nebula_load_path} path!"
             )
+            # nebula tier3 latest
             checkpoint = torch_nebula.get_latest_checkpoint(
                 persist_path=self.nebula_load_path)
-            if checkpoint is None:
+            if checkpoint is None or (checkpoint is not None and checkpoint.tag == ''):
+                logger.info(
+                    f"Unable to find latest checkpoint from Nebula tier3, try to get latest checkpoint again from nebula tier1 path!"
+                )
+                # nebula tier1 latest
+                checkpoint = torch_nebula.get_latest_checkpoint()
                 logger.warning(
                     f"Unable to find valid checkpoint from Nebula under tag:{tag}.")
                 return None
