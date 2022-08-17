@@ -274,6 +274,55 @@ class TestModelTask(DistributedTest):
         assert assert_fn(bs_output, ds_output)
 
 
+@pytest.mark.inference
+@pytest.mark.parametrize("model_w_task",
+                         [("gpt2",
+                           "text-generation"),
+                          ("roberta-large",
+                           "fill-mask"),
+                          ("bert-large-cased",
+                           "fill-mask")],
+                         ids=["gpt2",
+                              "roberta-large",
+                              "bert-large-cased"])
+class TestMPSize(DistributedTest):
+    world_size = 2
+
+    def test(
+        self,
+        model_w_task,
+        dtype,
+        enable_cuda_graph,
+        query,
+        inf_kwargs,
+        assert_fn,
+        invalid_model_task_config,
+    ):
+        if invalid_model_task_config:
+            pytest.skip(invalid_model_task_config)
+
+        model, task = model_w_task
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+
+        pipe = pipeline(task, model=model, device=local_rank, framework="pt")
+        if dtype == torch.half:
+            pipe.model.half()
+
+        bs_output = pipe(query, **inf_kwargs)
+
+        pipe.model = deepspeed.init_inference(
+            pipe.model,
+            mp_size=self.world_size,
+            dtype=dtype,
+            replace_method="auto",
+            replace_with_kernel_inject=True,
+            enable_cuda_graph=enable_cuda_graph,
+        )
+        ds_output = pipe(query, **inf_kwargs)
+
+        assert assert_fn(bs_output, ds_output)
+
+
 @pytest.mark.nightly
 @pytest.mark.parametrize(
     "model_family, model_name",
