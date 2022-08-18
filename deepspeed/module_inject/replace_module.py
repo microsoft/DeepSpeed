@@ -506,9 +506,11 @@ def replace_transformer_layer(orig_layer_impl,
                         attn_block.attn_ob = mp_replace.copy(attn_block.attn_ob, dense_b)
             else:
                 attn_block.attn_qkvw = quantizer.quantize(
-                    mp_replace.qkv_copy(attn_block.attn_qkvw,
-                                        qkvw))
-                attn_block.attn_qkvb = mp_replace.qkv_copy(attn_block.attn_qkvb, qkvb)
+                    mp_replace.copy(attn_block.attn_qkvw, qkvw) if bigscience_bloom else \
+                    mp_replace.qkv_copy(attn_block.attn_qkvw, qkvw))
+                attn_block.attn_qkvb = \
+                    mp_replace.copy(attn_block.attn_qkvb, qkvb) if bigscience_bloom else \
+                    mp_replace.qkv_copy(attn_block.attn_qkvb, qkvb)
 
                 attn_block.attn_ow = quantizer.quantize(
                     mp_replace.copy(attn_block.attn_ow,
@@ -810,10 +812,10 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     quantizer = GroupQuantizer(q_int8=quantize)
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    world_size = dist.get_world_size() if dist.is_initialized() else 1
     if checkpoint_dict is not None:
         start_time = time.time()
-        rank = dist.get_rank() if dist.is_initialized() else 0
-        world_size = dist.get_world_size() if dist.is_initialized() else 1
         checkpoint = checkpoint_dict['checkpoints']
         ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
@@ -887,7 +889,7 @@ def replace_transformer_layer(orig_layer_impl,
         from collections import OrderedDict
         import json
 
-        ckpt_name = checkpoint_dict['type']
+        ckpt_name = checkpoint_dict.get('type', 'ds_model')
         if dist.is_initialized():
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)

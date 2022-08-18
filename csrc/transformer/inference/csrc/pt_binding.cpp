@@ -939,11 +939,6 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 
     if (q_int8) {
         quantized_gemm<T>(output, (T*)inp_norm.data_ptr(), weight, q_scale, q_scale.size(0), bsz);
-        launch_bias_gelu((T*)output.data_ptr(),
-                         (T*)bias.data_ptr(),
-                         weight.size(0),
-                         bsz,
-                         Context::Instance().GetCurrentStream());
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
@@ -965,16 +960,17 @@ at::Tensor mlp_unfused_cublas(at::Tensor& output,
 #else
                        CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 #endif
+    }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu((T*)output.data_ptr(),
                          (T*)bias.data_ptr(),
-                         weight.size(1),
+                         q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     } else if (act_func_type == ActivationFuncType::ReLU) {
         launch_bias_relu((T*)output.data_ptr(),
                          (T*)bias.data_ptr(),
-                         weight.size(1),
+                         q_int8 ? weight.size(0) : weight.size(1),
                          bsz,
                          Context::Instance().GetCurrentStream());
     }
