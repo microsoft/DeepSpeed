@@ -681,6 +681,7 @@ class PipelineEngine(DeepSpeedEngine):
             part = None
 
         self.pipe_buffers['outputs'][buffer_id] = outputs
+
         # Optionally compute loss on the last device
         if self.is_last_stage():
             if self._compute_loss and self.module.loss_fn is not None:
@@ -713,7 +714,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         # The last stage just runs backward on the loss using DeepSpeed's typical
         # mechanisms.
-
         if self.is_last_stage():
             super().backward(self.loss)
             self.mem_status('AFTER BWD')
