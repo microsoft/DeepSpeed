@@ -63,15 +63,24 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 }
 
 template <typename T>
-void allocate_workspace(size_t hidden_dim,
-                        size_t max_seq_len,
-                        size_t batch_size,
-                        unsigned num_layers,
-                        size_t head_size = 128)
+T* allocate_workspace_if_need(size_t hidden_dim,
+                              size_t max_seq_len,
+                              size_t batch_size,
+                              unsigned num_layers,
+                              size_t head_size = 128)
 {
+    T* workspace = (T*)Context::Instance().GetWorkSpace();
     size_t _workSpaceSize = 16 * (hidden_dim * batch_size * max_seq_len) +
                             (num_layers * batch_size * max_seq_len * hidden_dim * 2);  // KV-cache
-    Context::Instance().GenWorkSpace(_workSpaceSize * sizeof(T));
+    _workSpaceSize *= sizeof(T);
+    if (!workspace || _workSpaceSize > Context::Instance().get_workspace_size())
+    {
+        cublasSetStream(Context::Instance().GetCublasHandle(),
+                    Context::Instance().GetCurrentStream());
+        Context::Instance().GenWorkSpace(_workSpaceSize);
+        workspace = (T*)Context::Instance().GetWorkSpace();
+    }
+    return workspace;
 }
 
 template <typename T>
@@ -82,14 +91,9 @@ at::Tensor einsum_sec_sm_ecm(at::Tensor& Q, at::Tensor& W)
                        .layout(at::kStrided)
                        .device(at::kCUDA)
                        .requires_grad(false);
-    T* workspace = (T*)Context::Instance().GetWorkSpace();
+    T* workspace = allocate_workspace_if_need<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1);
     float alpha = 1;
     float gemm_beta = 0.0;
-
-    if (!workspace) {
-        allocate_workspace<T>(W.size(1), MAX_OUT_TOKES, Q.size(0), 1);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
 
     auto O = at::from_blob(workspace, {Q.size(1), Q.size(2), W.size(1)}, options);
     unsigned m = W.size(1);
@@ -615,13 +619,7 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     unsigned num_layers)
 {
     int bsz = input.size(0) * input.size(1);
-    T* workspace = (T*)Context::Instance().GetWorkSpace();
-    if (!workspace) {
-        cublasSetStream(Context::Instance().GetCublasHandle(),
-                        Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
+    T* workspace = allocate_workspace_if_need<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
                        .layout(at::kStrided)
@@ -730,13 +728,7 @@ at::Tensor ds_linear_layer(at::Tensor& input,
                        .requires_grad(false);
 
     int bsz = input.size(0) * input.size(1);
-    T* workspace = (T*)Context::Instance().GetWorkSpace();
-    if (!workspace) {
-        cublasSetStream(Context::Instance().GetCublasHandle(),
-                        Context::Instance().GetCurrentStream());
-        allocate_workspace<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
-        workspace = (T*)Context::Instance().GetWorkSpace();
-    }
+    T* workspace = allocate_workspace_if_need<T>(input.size(2), MAX_OUT_TOKES, input.size(0), num_layers);
     auto output = at::from_blob(workspace, {input.size(0), input.size(1), weight.size(1)}, options);
 
     float alpha = (T)1.0;
