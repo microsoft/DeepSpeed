@@ -49,10 +49,10 @@ public:
 #ifndef __HIP_PLATFORM_HCC__
         cublasSetMathMode(_cublasHandle, CUBLAS_TENSOR_OP_MATH);
 #endif
-    cudaEventCreate(&_comp1_event);
-    cudaEventCreate(&_comp2_event);
-    cudaEventCreate(&_comp_event);
-    cudaEventCreate(&_comm_event);
+        cudaEventCreate(&_comp1_event);
+        cudaEventCreate(&_comp2_event);
+        cudaEventCreate(&_comp_event);
+        cudaEventCreate(&_comm_event);
     }
 
     virtual ~Context()
