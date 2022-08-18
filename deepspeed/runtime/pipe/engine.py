@@ -335,7 +335,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         self.module.train()
         self.total_loss = None
-        self.moe_losses = {}
         self._compute_loss = True
 
         # Do the work
@@ -657,16 +656,6 @@ class PipelineEngine(DeepSpeedEngine):
 
         outputs = super().forward(inputs)
 
-        # stash moe loss
-        moe_loss = torch.zeros(1, device='cuda')
-        has_moe_loss = False
-        for layer in self.module.forward_funcs:
-            if hasattr(layer, 'stashed_moe_loss'):
-                moe_loss += layer.stashed_moe_loss
-                has_moe_loss = True
-        if has_moe_loss:
-            self.moe_losses[buffer_id] = moe_loss
-
         # Partition the outputs if we are not the last stage
         if self.is_pipe_partitioned and not self.is_last_stage():
             if isinstance(outputs, tuple):
@@ -726,11 +715,7 @@ class PipelineEngine(DeepSpeedEngine):
         # mechanisms.
 
         if self.is_last_stage():
-            total_loss = self.loss
-            if buffer_id in self.moe_losses:
-                total_loss = total_loss + self.moe_losses[buffer_id]
-                del self.moe_losses[buffer_id]
-            super().backward(total_loss)
+            super().backward(self.loss)
             self.mem_status('AFTER BWD')
             return
 
@@ -771,12 +756,6 @@ class PipelineEngine(DeepSpeedEngine):
         if self.bfloat16_enabled() and not self.is_last_stage():
             # manually call because we don't call optimizer.backward()
             self.optimizer.clear_lp_grads()
-
-        if buffer_id in self.moe_losses:
-            if self.moe_losses[buffer_id].requires_grad:
-                outputs = (*outputs, self.moe_losses[buffer_id])
-                grad_tensors = (*grad_tensors, None)
-            del self.moe_losses[buffer_id]
 
         # This handles either a single tensor or tuple of tensors.
         if isinstance(outputs, tuple):
