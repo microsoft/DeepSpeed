@@ -185,23 +185,32 @@ def _get_expert_parallel_ranks(world_size, model_parallel_size_, expert_parallel
     _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     # Generate data parallel groups
+
+    #expert_parallel_groups = []
     data_parallel_groups = []
-    dp_group_size = model_parallel_size_
-    for i in range(dp_group_size):
-        data_parallel_groups.append(list(range(i, world_size, dp_group_size)))
+    for i in range(0, model_parallel_size_):
+        data_parallel_groups.append(list(range(i, world_size, model_parallel_size_)))
 
     expert_parallel_groups = []
     expert_data_parallel_groups = []
-    for dp_ranks in data_parallel_groups:
-        # partition of expert parallel groups, e.g. [0,2,4,6], [8,10,12,14]
-        part_ep_groups = []
-        for i in range(0, dp_world_size, expert_parallel_size_):
-            part_ep_groups.append(dp_ranks[i:i + expert_parallel_size_])
-        expert_parallel_groups.extend(part_ep_groups)
 
-        # zip part_ep_groups get expert data parallel ranks, e.g [0,8],[2,10],[4,12],[6,14]
-        for expert_dp_ranks in zip(*part_ep_groups):
-            expert_data_parallel_groups.append(list(expert_dp_ranks))
+    for dp_group in data_parallel_groups:
+        for i in range(0, len(dp_group), expert_parallel_size_):
+            expert_parallel_groups.append(dp_group[i:i + expert_parallel_size_])
+        for i in range(expert_parallel_size_):
+            expert_data_parallel_groups.append(
+                dp_group[i:len(dp_group):expert_parallel_size_])
+
+    #for i in range(0, world_size, expert_parallel_size_):
+    #    expert_parallel_groups.append(list(range(i, i + expert_parallel_size_)))
+
+    #expert_data_parallel_groups = []
+
+    #for i in range(0, model_parallel_size_ * expert_parallel_size_):
+    #    expert_data_parallel_groups.append(
+    #        list(range(i,
+    #                   world_size,
+    #                   model_parallel_size_ * expert_parallel_size_)))
 
     return expert_parallel_groups, expert_data_parallel_groups
 
@@ -236,14 +245,12 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
     _ensure_divisibility(dp_world_size, expert_parallel_size_)
 
     log_dist(
-        f"Creating deepspeed groups with model parallel size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
+        f"Creating deepspeed groups with pipeline_parallel_size {model_parallel_size_}, expert parallel size {expert_parallel_size_}, world size {world_size}, dp world size {dp_world_size}",
         [0])
 
     global _EXPERT_PARALLEL_GROUP, _EXPERT_DATA_PARALLEL_GROUP
 
     # Get world size and rank. Ensure some consistencies.
-    _DATA_PARALLEL_GROUP = mpu.get_data_parallel_group()
-    _MODEL_PARALLEL_GROUP = mpu.get_model_parallel_group()
 
     group_name = f"ep_size_{expert_parallel_size_}"
 
