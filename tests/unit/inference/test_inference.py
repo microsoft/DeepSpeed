@@ -269,9 +269,6 @@ class TestModelTask(DistributedTest):
         torch.cuda.synchronize()
         ds_time = time.time() - start
 
-        if task == "text-generation":
-            bs_output = pipe(query, **inf_kwargs)
-
         # These performance tests are only measuring the time for a single
         # inference request, we just want to check that performance isn't terrible
         #assert ds_time <= (bs_time * 1.1)
