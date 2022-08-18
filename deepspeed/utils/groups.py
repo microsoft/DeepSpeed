@@ -260,6 +260,7 @@ def _create_expert_data_and_model_parallel(expert_parallel_size_, mpu):
         expert_parallel_groups, expert_data_parallel_groups = _get_expert_parallel_ranks(
             world_size, model_parallel_size_, expert_parallel_size_)
         for ranks in expert_parallel_groups:
+            print(f"Creating group for ranks - {ranks}")
             group = dist.new_group(ranks)
             if rank in list(ranks):
                 _EXPERT_PARALLEL_GROUP[group_name] = group
