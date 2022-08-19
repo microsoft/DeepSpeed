@@ -1,7 +1,8 @@
+import os
 import torch
 import deepspeed.comm as dist
 
-from tests.unit.common import DistributedTest
+from tests.unit.common import DistributedTest, DistributedFixture
 
 import pytest
 
@@ -60,6 +61,40 @@ class TestWorldSizeOverrideDistTest(DistributedTest):
     @pytest.mark.world_size(1)
     def test_world_size_1(self):
         assert dist.get_world_size() == 1
+
+
+# Demonstration of the DistributedFixture class
+@pytest.fixture(params=[2, 4])
+def val1(request):
+    return request.param
+
+
+@pytest.fixture(params=[16, 32])
+def val2(request):
+    return request.param
+
+
+class distributed_fixture(DistributedFixture):
+    world_size = 2
+
+    def run(self, class_tmpdir, val1, val2):
+        assert int(os.environ["WORLD_SIZE"]) == self.world_size
+        local_rank = os.environ["LOCAL_RANK"]
+        file_path = os.path.join(class_tmpdir, f"checkpoint-{local_rank}.pt")
+        with open(file_path, "w") as f:
+            f.write(f"{local_rank},{val1},{val2}")
+
+
+class TestDistributedFixture(DistributedTest):
+    world_size = 1
+
+    def test(self, distributed_fixture, class_tmpdir, val1, val2):
+        for rank in range(2):
+            file_path = os.path.join(class_tmpdir, f"checkpoint-{rank}.pt")
+            with open(file_path, "r") as f:
+                chkpt = f.read()
+            assert chkpt == f"{rank},{val1},{val2}"
+        assert int(os.environ["WORLD_SIZE"]) == 1
 
 
 class TestDistAllReduce(DistributedTest):

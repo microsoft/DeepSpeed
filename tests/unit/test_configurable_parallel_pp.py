@@ -86,7 +86,7 @@ class TestConfigurablePP(ConfigurablePP):
                                         mp_size=mp_size,
                                         args_others=args_defaults,
                                         topo=topo)
-        model = get_deepspeed_model(gpt2_pipe_model, tmpdir)
+        model = get_deepspeed_model(gpt2_pipe_model)
 
         tag = 'pp_basic'
         state_dict = {}
