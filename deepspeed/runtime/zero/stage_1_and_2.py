@@ -1689,14 +1689,14 @@ class DeepSpeedZeroOptimizer(ZeROOptimizer):
         ]
 
     def _optimizer_step(self, group_no):
-        original_param_groups = self.optimizer.param_groups
-        self.optimizer.param_groups = [original_param_groups[group_no]]
-        from deepspeed.ops.adam import DeepSpeedCPUAdam
-        if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
-            self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
-        else:
-            self.optimizer.step()
-        self.optimizer.param_groups = original_param_groups
+        #original_param_groups = self.optimizer.param_groups
+        #self.optimizer.param_groups = [original_param_groups[group_no]]
+        #from deepspeed.ops.adam import DeepSpeedCPUAdam
+        #if type(self.optimizer) == DeepSpeedCPUAdam and self.dtype == torch.half:
+        #    self.optimizer.step(fp16_param_groups=[self.get_bit16_param_group(group_no)])
+        #else:
+        self.optimizer.step()
+        #self.optimizer.param_groups = original_param_groups
 
     def step(self, closure=None):
         """
