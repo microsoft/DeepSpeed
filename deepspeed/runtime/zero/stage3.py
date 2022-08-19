@@ -446,14 +446,14 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     def _configure_offloading(self, offload_optimizer_config, offload_param_config):
         ###################### offload optimizer setup ##################################
-        if offload_optimizer_config is not None:
+        if offload_optimizer_config is not None and offload_optimizer_config.device != OffloadDeviceEnum.none:
             self.offload_optimizer = True
             self.offload_optimizer_pin_memory = offload_optimizer_config.pin_memory
             self.swap_optimizer = offload_optimizer_config.device == OffloadDeviceEnum.nvme
             self.offload_optimizer_fast_init = offload_optimizer_config.fast_init
 
         ###################### offload param setup ##################################
-        if offload_param_config is not None:
+        if offload_param_config is not None and offload_param_config.device != OffloadDeviceEnum.none:
             self.offload_param = True
             self.offload_param_pin_memory = offload_param_config.pin_memory
             self.params_in_nvme_and_cpu = offload_param_config.device == OffloadDeviceEnum.nvme
@@ -1384,11 +1384,7 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
     ######################Reduction Related Methods##############################
 
-    def allreduce_bucket(self,
-                         bucket,
-                         communication_data_type=torch.float16,
-                         rank=None,
-                         log=None):
+    def allreduce_bucket(self, bucket, rank=None, log=None):
         rank = None
         tensor = self.flatten(bucket)
 
@@ -1396,6 +1392,8 @@ class DeepSpeedZeroOptimizer_Stage3(ZeROOptimizer):
 
         if pg_correctness_test:
             communication_data_type = torch.float32
+        else:
+            communication_data_type = self.communication_data_type
 
         if communication_data_type != tensor.dtype:
             tensor_to_allreduce = tensor.to(communication_data_type)
