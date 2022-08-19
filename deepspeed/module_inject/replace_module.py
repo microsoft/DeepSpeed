@@ -839,8 +839,8 @@ def replace_transformer_layer(orig_layer_impl,
                                      _replace_policy=policy)
 
     quantizer = GroupQuantizer(q_int8=quantize)
-    rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
+    rank = dist.get_rank() if dist.is_initialized() else 0
     if checkpoint_dict is not None:
         start_time = time.time()
         checkpoint = checkpoint_dict['checkpoints']
@@ -914,12 +914,23 @@ def replace_transformer_layer(orig_layer_impl,
         from collections import OrderedDict
         import json
         num_partitions = 8
-        ckpt_name = checkpoint_dict.get('type', 'ds_model')
+
+        if checkpoint_dict is None:
+            ckpt_name = "ds_model"
+            try:
+                from transformers.models.bloom.modeling_bloom import BloomForCausalLM
+                if isinstance(model, BloomForCausalLM):
+                    ckpt_name = "bloom"
+            except ImportError:
+                ckpt_name = "ds_model"
+        else:
+            ckpt_name = checkpoint_dict['type']
         if dist.is_initialized():
             dist.barrier()
         transformer_name = get_transformer_name(replaced_module)
         non_tp_ckpt_name = f'{ckpt_name}-non-tp.pt'
         ckpt_files = [non_tp_ckpt_name]  #* world_size
+        os.makedirs(save_mp_checkpoint_path, exist_ok=True)
         if not dist.is_initialized() or dist.get_rank() == 0:
             print("Saving tp-sharded checkpoints")
             torch.save(
