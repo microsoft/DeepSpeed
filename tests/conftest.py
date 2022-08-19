@@ -54,3 +54,10 @@ def pytest_runtest_call(item):
         dist_test_class = item.cls()
         dist_test_class._run_test(item._request)
         item.runtest = lambda: True  # Dummy function so test is not run twice
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_fixture_setup(fixturedef, request):
+    if getattr(fixturedef.func, "is_dist_fixture", False):
+        dist_fixture_class = fixturedef.func()
+        dist_fixture_class(request)

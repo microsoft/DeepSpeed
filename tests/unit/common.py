@@ -1,7 +1,7 @@
 import os
 import time
 import inspect
-from abc import ABC
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 import torch
@@ -12,7 +12,7 @@ from torch.multiprocessing import Process
 
 import pytest
 from _pytest.outcomes import Skipped
-from _pytest.fixtures import FixtureLookupError
+from _pytest.fixtures import FixtureLookupError, FixtureFunctionMarker
 
 # Worker timeout *after* the first worker has completed.
 DEEPSPEED_UNIT_WORKER_TIMEOUT = 120
@@ -63,51 +63,25 @@ def set_cuda_visibile():
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(dev_id_list)
 
 
-class DistributedTest(ABC):
-    is_dist_test = True
+class DistributedExec(ABC):
     world_size = 2
     backend = "nccl"
 
-    # Temporary directory that is shared among test methods in a class
-    @pytest.fixture(autouse=True, scope="class")
-    def class_tmpdir(self, tmpdir_factory):
-        fn = tmpdir_factory.mktemp(self.__class__.__name__)
-        return fn
+    @abstractmethod
+    def run(self):
+        NotImplementedError("Inheriting classes must define this method")
 
-    def _run_test(self, request):
-        self.current_test = self._get_current_test_func(request)
-        self.test_kwargs = self._get_test_kwargs(request)
-
-        # Catch world_size override pytest mark
-        for mark in getattr(request.function, "pytestmark", []):
-            if mark.name == "world_size":
-                world_size = mark.args[0]
-                break
-        else:
-            world_size = self.world_size
-
-        if isinstance(world_size, int):
-            world_size = [world_size]
-        for procs in world_size:
-            self._launch_procs(procs)
-            time.sleep(0.5)
-
-    def _get_current_test_func(self, request):
-        # DistributedTest subclasses may have multiple test methods
-        func_name = request.function.__name__
-        return getattr(self, func_name)
-
-    def _get_test_kwargs(self, request):
+    def _get_fixture_kwargs(self, request, func):
         # Grab fixture / parametrize kwargs from pytest request object
-        test_kwargs = {}
-        params = inspect.getfullargspec(self.current_test).args
+        fixture_kwargs = {}
+        params = inspect.getfullargspec(func).args
         params.remove("self")
         for p in params:
             try:
-                test_kwargs[p] = request.getfixturevalue(p)
+                fixture_kwargs[p] = request.getfixturevalue(p)
             except FixtureLookupError:
                 pass  # test methods can have kwargs that are not fixtures
-        return test_kwargs
+        return fixture_kwargs
 
     def _launch_procs(self, num_procs):
         mp.set_start_method('forkserver', force=True)
@@ -170,7 +144,7 @@ class DistributedTest(ABC):
             torch.cuda.set_device(local_rank)
 
         try:
-            self.current_test(**self.test_kwargs)
+            self.run(**self.fixture_kwargs)
         except BaseException as e:
             if isinstance(e, Skipped):
                 skip_msg.put(e.msg)
@@ -181,6 +155,61 @@ class DistributedTest(ABC):
         dist.barrier()
         # tear down after test completes
         dist.destroy_process_group()
+
+
+class DistributedFixture(DistributedExec):
+    is_dist_fixture = True
+
+    # These values are just placeholders so that pytest recognizes this as a fixture
+    _pytestfixturefunction = FixtureFunctionMarker(scope="function", params=None)
+    __name__ = ""
+
+    def __init__(self):
+        assert isinstance(self.world_size, int), "Only one world size is allowed for distributed fixtures"
+        self.__name__ = type(self).__name__
+        _pytestfixturefunction = FixtureFunctionMarker(scope="function",
+                                                       params=None,
+                                                       name=self.__name__)
+
+    def __call__(self, request):
+        self.fixture_kwargs = self._get_fixture_kwargs(self.run)
+        self._launch_procs(self.world_size)
+
+
+class DistributedTest(DistributedExec):
+    is_dist_test = True
+
+    # Temporary directory that is shared among test methods in a class
+    @pytest.fixture(autouse=True, scope="class")
+    def class_tmpdir(self, tmpdir_factory):
+        fn = tmpdir_factory.mktemp(self.__class__.__name__)
+        return fn
+
+    def run(self, **fixture_kwargs):
+        self.current_test(**fixture_kwargs)
+
+    def __call__(self, request):
+        self.current_test = self._get_current_test_func(request)
+        self.fixture_kwargs = self._get_fixture_kwargs(request, self.current_test)
+
+        # Catch world_size override pytest mark
+        for mark in getattr(request.function, "pytestmark", []):
+            if mark.name == "world_size":
+                world_size = mark.args[0]
+                break
+        else:
+            world_size = self.world_size
+
+        if isinstance(world_size, int):
+            world_size = [world_size]
+        for procs in world_size:
+            self._launch_procs(procs)
+            time.sleep(0.5)
+
+    def _get_current_test_func(self, request):
+        # DistributedTest subclasses may have multiple test methods
+        func_name = request.function.__name__
+        return getattr(self, func_name)
 
 
 def distributed_test(world_size=2, backend='nccl'):
