@@ -71,7 +71,18 @@ class DistributedExec(ABC):
     def run(self):
         NotImplementedError("Inheriting classes must define this method")
 
+    def __call__(self, request=None):
+        self._fixture_kwargs = self._get_fixture_kwargs(request, self.run)
+        world_size = self.world_size
+        if isinstance(world_size, int):
+            world_size = [world_size]
+        for procs in world_size:
+            self._launch_procs(procs)
+            time.sleep(0.5)
+
     def _get_fixture_kwargs(self, request, func):
+        if not request:
+            return {}
         # Grab fixture / parametrize kwargs from pytest request object
         fixture_kwargs = {}
         params = inspect.getfullargspec(func).args
@@ -144,7 +155,7 @@ class DistributedExec(ABC):
             torch.cuda.set_device(local_rank)
 
         try:
-            self.run(**self.fixture_kwargs)
+            self.run(**self._fixture_kwargs)
         except BaseException as e:
             if isinstance(e, Skipped):
                 skip_msg.put(e.msg)
@@ -171,10 +182,6 @@ class DistributedFixture(DistributedExec):
                                                        params=None,
                                                        name=self.__name__)
 
-    def __call__(self, request):
-        self.fixture_kwargs = self._get_fixture_kwargs(self.run)
-        self._launch_procs(self.world_size)
-
 
 class DistributedTest(DistributedExec):
     is_dist_test = True
@@ -186,11 +193,11 @@ class DistributedTest(DistributedExec):
         return fn
 
     def run(self, **fixture_kwargs):
-        self.current_test(**fixture_kwargs)
+        self._current_test(**fixture_kwargs)
 
     def __call__(self, request):
-        self.current_test = self._get_current_test_func(request)
-        self.fixture_kwargs = self._get_fixture_kwargs(request, self.current_test)
+        self._current_test = self._get_current_test_func(request)
+        self._fixture_kwargs = self._get_fixture_kwargs(request, self._current_test)
 
         # Catch world_size override pytest mark
         for mark in getattr(request.function, "pytestmark", []):
