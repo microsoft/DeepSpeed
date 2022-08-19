@@ -827,10 +827,12 @@ def replace_transformer_layer(orig_layer_impl,
         import json
 
         if checkpoint_dict is None:
-            from transformers.models.bloom.modeling_bloom import BloomForCausalLM
-            if isinstance(model, BloomForCausalLM):
-                ckpt_name = "bloom"
-            else:
+            ckpt_name = "ds_model"
+            try:
+                from transformers.models.bloom.modeling_bloom import BloomForCausalLM
+                if isinstance(model, BloomForCausalLM):
+                    ckpt_name = "bloom"
+            except ImportError:
                 ckpt_name = "ds_model"
         else:
             ckpt_name = checkpoint_dict['type']
