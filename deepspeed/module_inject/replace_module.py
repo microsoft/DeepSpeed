@@ -143,7 +143,7 @@ class GroupQuantizer:
         self.num_bits = num_bits
         self.q_int8 = q_int8
 
-    def quantize(self, inputs, qkv=True, count=1):
+    def quantize(self, inputs, qkv=True, count=1, parallel_dim=0):
         if not self.q_int8 or not qkv:
             inputs = torch.nn.Parameter(inputs, requires_grad=False)
             inputs.scale = torch.empty(1)
@@ -157,7 +157,33 @@ class GroupQuantizer:
         input_flat = (input_flat / scale).round().clamp(-q_range // 2, q_range // 2 - 1)
         inputs_q = input_flat.reshape(inputs.shape).to(torch.int8).contiguous()
         out = torch.nn.Parameter(inputs_q, requires_grad=False)
-        out.scale = scale
+        #print(inputs.shape)
+        inputs_split = inputs.split(inputs.shape[parallel_dim] // 2, dim=parallel_dim)
+        input_flat = [
+            inputs_split[i].reshape(self.num_groups,
+                                    -1).contiguous() for i in range(2)
+        ]
+        input_min = [
+            torch.min(input_flat[i],
+                      dim=1,
+                      keepdim=True)[0].float() for i in range(2)
+        ]
+        input_max = [
+            torch.max(input_flat[i],
+                      dim=1,
+                      keepdim=True)[0].float() for i in range(2)
+        ]
+        scale1 = [
+            (torch.max(input_min[i].abs(),
+                       input_max[i].abs()) * 2.0 / (q_range)).squeeze().unsqueeze(0)
+            for i in range(2)
+        ]
+
+        out.scale = torch.cat([scale.squeeze().unsqueeze(0),
+                               scale1[0],
+                               scale1[1]],
+                              dim=0).reshape(self.num_groups,
+                                             -1).contiguous()
         return out
 
 
@@ -188,7 +214,8 @@ def replace_transformer_layer(orig_layer_impl,
                               moe_experts=1,
                               moe_type='standard',
                               checkpoint_dict=None,
-                              save_mp_checkpoint_path=None):
+                              save_mp_checkpoint_path=None,
+                              base_dir=""):
     """ Replace bert-style transformer layers with DeepSpeed's transformer layer
     Arguments:
         orig_layer_impl (torch.nn.Module): the original transformer layer implementation to look for,
@@ -820,7 +847,7 @@ def replace_transformer_layer(orig_layer_impl,
         ckpt_list = checkpoint["tp"] if type(checkpoint) is dict else checkpoint
         ckpt_type = checkpoint_dict.get('parallelization', 'pp')
         ckpt_mp_size = checkpoint_dict.get('mp_size', len(ckpt_list))
-        base_dir = checkpoint_dict.get('base_dir', '')
+        base_dir1 = checkpoint_dict.get('base_dir', base_dir)
 
         if ckpt_type == 'pp' and type(checkpoint) is list:
             pbar = tqdm.tqdm(total=len(checkpoint),
@@ -838,19 +865,19 @@ def replace_transformer_layer(orig_layer_impl,
                 )
         else:
             num_checkpoints = len(ckpt_list) // ckpt_mp_size
-            sd_offset = int(rank / (world_size / ckpt_mp_size))
-            sd_count = int((rank + 1) / (world_size / ckpt_mp_size)) - sd_offset
-            if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                pbar = tqdm.tqdm(total=num_checkpoints,
-                                 desc=f"Loading {num_checkpoints} checkpoint shards")
+            tp_split_size = (world_size / ckpt_mp_size)
+            sd_offset = int(rank / tp_split_size)
+            sd_count = int((rank + max(1, tp_split_size)) / tp_split_size) - sd_offset
+            pbar = tqdm.tqdm(total=num_checkpoints,
+                             desc=f"Loading {num_checkpoints} checkpoint shards")
             for i in range(num_checkpoints):
-                if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank() == 0:
-                    pbar.update(1)
+                pbar.update(1)
                 ckpt_index = i * ckpt_mp_size + sd_offset
                 ckpt_files = [
-                    os.path.join(base_dir,
+                    os.path.join(base_dir1,
                                  ckpt_list[ckpt_index +
-                                           j]) if base_dir else ckpt_list[ckpt_index + j]
+                                           j]) if base_dir1 else ckpt_list[ckpt_index +
+                                                                           j]
                     for j in range(sd_count)
                 ]
                 sds = [
@@ -862,7 +889,7 @@ def replace_transformer_layer(orig_layer_impl,
                                            mp_replace,
                                            ckpt_type,
                                            quantizer,
-                                           int(rank % (world_size / ckpt_mp_size)))
+                                           int(rank % tp_split_size))
 
             if "non_tp" in checkpoint:
                 pbar = tqdm.tqdm(
@@ -870,25 +897,23 @@ def replace_transformer_layer(orig_layer_impl,
                     desc=f"Loading {len(checkpoint['non_tp'])} checkpoint shards")
 
                 for i in range(len(checkpoint["non_tp"])):
-                    if not deepspeed.comm.is_initialized() or deepspeed.comm.get_rank(
-                    ) == 0:
-                        pbar.update(1)
-                    ckpt_file = os.path.join(
-                        base_dir,
-                        checkpoint["non_tp"][i]) if base_dir else checkpoint["non_tp"][i]
+                    pbar.update(1)
+                    ckpt_file = os.path.join(base_dir1,
+                                             checkpoint["non_tp"][i]
+                                             ) if base_dir1 else checkpoint["non_tp"][i]
                     sds = [torch.load(ckpt_file, map_location='cpu')]
                     load_model_with_checkpoint(replaced_module,
                                                sds,
                                                mp_replace,
                                                ckpt_type,
                                                quantizer,
-                                               int(rank % (world_size / ckpt_mp_size)))
+                                               int(rank % tp_split_size))
         print(f"checkpoint loading time at rank {rank}: {time.time()-start_time} sec")
 
     if save_mp_checkpoint_path is not None:
         from collections import OrderedDict
         import json
-
+        num_partitions = 8
         ckpt_name = checkpoint_dict.get('type', 'ds_model')
         if dist.is_initialized():
             dist.barrier()
@@ -910,8 +935,12 @@ def replace_transformer_layer(orig_layer_impl,
                 'type': ckpt_name,
                 'base_dir': f'{save_mp_checkpoint_path}',
                 'checkpoints': {
-                    "non_tp": ckpt_files,
-                    "tp": [f'{ckpt_name}-tp_{r:0>2d}.pt' for r in range(world_size)]
+                    "non_tp":
+                    ckpt_files,
+                    "tp": [
+                        f'{ckpt_name}-tp_{r:0>2d}_{m:0>2d}.pt'
+                        for m in range(num_partitions) for r in range(world_size)
+                    ]
                 },
                 'version': 1.0,
                 'parallelization': 'tp',
@@ -925,15 +954,18 @@ def replace_transformer_layer(orig_layer_impl,
         for n, p in replaced_module.named_parameters():
             if hasattr(p, 'scale'):
                 rep_sd[n] = [p, p.scale]
-        torch.save(
-            OrderedDict({
-                k: [v,
-                    v.scale] if hasattr(v,
-                                        'scale') else v
-                for k,
-                v in dict(rep_sd).items() if transformer_name in k
-            }),
-            f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{rank:0>2d}.pt')
+        keys = list(rep_sd.keys())
+        partition_size = (len(keys) // num_partitions + 1)
+        for m in range(num_partitions):
+            torch.save(
+                OrderedDict({
+                    k: [rep_sd[k],
+                        rep_sd[k].scale] if hasattr(rep_sd[k],
+                                                    'scale') else rep_sd[k]
+                    for k in keys[m * partition_size:(m + 1) * partition_size]
+                    if transformer_name in k
+                }),
+                f'{save_mp_checkpoint_path}/{ckpt_name}-tp_{rank:0>2d}_{m:0>2d}.pt')
 
     return replaced_module
 

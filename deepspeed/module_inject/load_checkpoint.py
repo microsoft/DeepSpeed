@@ -39,7 +39,7 @@ def load_model_with_checkpoint(r_module,
 
             def load_parameters(module, prefix):
                 for n, p in module.named_parameters():
-                    if len(n.split('.')) == 1:
+                    if prefix + n in sd[0] and len(n.split('.')) == 1:
                         if type(sd[0][prefix + n]) is list:
                             tmp_data, scale = sd[0][prefix + n]
                             scale = scale.to(torch.cuda.current_device())
@@ -64,23 +64,48 @@ def load_model_with_checkpoint(r_module,
                             else:
                                 dim = inner_dim if src_shape[inner_dim] != dst_shape[
                                     0] else outer_dim
-                                if src_shape[dim] > dst_shape[dim]:
+                                dim1 = 0 if src_shape[inner_dim] != dst_shape[0] else 1
+                                if src_shape[dim] > dst_shape[dim1]:
                                     weight_partition = torch.split(
                                         tmp_data,
-                                        dst_shape[0],
+                                        dst_shape[dim1],
                                         dim=dim)[rank].to(torch.cuda.current_device())
+                                    assert tmp_data.dtype != torch.int8 or scale.numel() > weight_quantizer.num_groups * (rank+1), \
+                                        '''ERROR: We require the quantization scales for larger TP-size when loading INT8 checkpoint!\
+                                           Please use the FP16 checkpoint to generate INT8 checkpoint with the sharding parameters!'''
+                                    scale = scale.view(
+                                        -1)[weight_quantizer.num_groups *
+                                            (rank + 1):].reshape(
+                                                weight_quantizer.num_groups,
+                                                -1).contiguous()
                                 else:
-                                    weight_partition = torch.cat([
-                                        sd[j][prefix + n].to(torch.cuda.current_device())
-                                        for j in range(len(sd))
-                                    ],
-                                                                 dim=dim)
+                                    assert tmp_data.dtype != torch.int8, \
+                                        '''Merging of the checkpoints are not supported when using INT8 checkpoint! \
+                                           Please use a as many GPUs as TP-size for the checkpoint'''
+                                    all_data = [
+                                        sd[j][prefix + n] for j in range(len(sd))
+                                    ]
+                                    weight_partition = torch.cat(
+                                        [(ad[0] if type(ad) is list else ad).to(
+                                            torch.cuda.current_device())
+                                         for ad in all_data],
+                                        dim=dim)
+                                    if tmp_data.dtype == torch.int8:
+                                        scale = torch.cat([
+                                            ad[1].to(torch.cuda.current_device())
+                                            for ad in all_data
+                                        ],
+                                                          dim=dim)
 
                                 if tmp_data.dtype != torch.int8:
                                     weight_partition = weight_quantizer.quantize(
-                                        transpose(weight_partition) if weight_quantizer.
-                                        q_int8 else weight_partition)
+                                        transpose(weight_partition), \
+                                        parallel_dim=(0 if dim == 1 else 1)) if weight_quantizer.q_int8 else \
+                                        weight_quantizer.quantize(weight_partition)
                                 else:
+                                    weight_partition = torch.nn.parameter.Parameter(
+                                        weight_partition,
+                                        requires_grad=False)
                                     weight_partition.scale = scale
                                 setattr(module, n, weight_partition)
                         else:

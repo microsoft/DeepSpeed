@@ -51,7 +51,8 @@ class InferenceEngine(Module):
                  moe_type='standard',
                  config=None,
                  enable_cuda_graph=False,
-                 save_mp_checkpoint_path=None):
+                 save_mp_checkpoint_path=None,
+                 base_dir=""):
         """
         Args:
             model: torch.nn.Module
@@ -135,7 +136,8 @@ class InferenceEngine(Module):
                     moe_type,
                     training_mp_size,
                     self.checkpoint if replace_with_kernel_inject else None,
-                    save_mp_checkpoint_path=save_mp_checkpoint_path)
+                    save_mp_checkpoint_path=save_mp_checkpoint_path,
+                    base_dir=base_dir)
         elif replace_method == 'auto':
             self._apply_injection_policy(
                 return_tuple=return_tuple,
@@ -145,7 +147,8 @@ class InferenceEngine(Module):
                 moe_type=moe_type,
                 training_mp_size=training_mp_size,
                 checkpoint_dir=self.checkpoint if replace_with_kernel_inject else None,
-                save_mp_checkpoint_path=save_mp_checkpoint_path)
+                save_mp_checkpoint_path=save_mp_checkpoint_path,
+                base_dir=base_dir)
 
         device = torch.cuda.current_device()
         self.module.to(device)
@@ -326,36 +329,37 @@ class InferenceEngine(Module):
                                 moe_type='standard',
                                 training_mp_size=1,
                                 checkpoint_dir=None,
-                                save_mp_checkpoint_path=False):
+                                save_mp_checkpoint_path=False,
+                                base_dir=""):
         checkpoint = SDLoaderFactory.get_sd_loader_json(
             checkpoint_dir,
             self.checkpoint_engine) if checkpoint_dir is not None else None
-        replace_transformer_layer(
-            client_module,
-            self.module,
-            triangular_masking=self.triangular_masking,
-            policy=injection_policy,
-            mp_size=self.mp_world_size,
-            mp_group=self.mp_group,
-            ep_group=self.ep_group,
-            expert_mp_group=self.expert_mp_group,
-            config=self.config,
-            fp16=(self.dtype == torch.half) or (self.dtype == torch.int8),
-            training=False,
-            return_tuple=return_tuple,
-            quantize=(self.dtype == torch.int8),
-            quantize_settings=(self.quantization_scales,
-                               self.quantize_merge_count,
-                               self.mlp_extra_grouping,
-                               self.quantize_groups),
-            replace_with_kernel_inject=replace_with_kernel_inject,
-            moe=moe,
-            moe_experts=moe_experts,
-            moe_type=moe_type,
-            training_mp_size=training_mp_size,
-            checkpoint_dict=checkpoint,
-            save_mp_checkpoint_path=save_mp_checkpoint_path,
-        )
+        replace_transformer_layer(client_module,
+                                  self.module,
+                                  triangular_masking=self.triangular_masking,
+                                  policy=injection_policy,
+                                  mp_size=self.mp_world_size,
+                                  mp_group=self.mp_group,
+                                  ep_group=self.ep_group,
+                                  expert_mp_group=self.expert_mp_group,
+                                  config=self.config,
+                                  fp16=(self.dtype == torch.half)
+                                  or (self.dtype == torch.int8),
+                                  training=False,
+                                  return_tuple=return_tuple,
+                                  quantize=(self.dtype == torch.int8),
+                                  quantize_settings=(self.quantization_scales,
+                                                     self.quantize_merge_count,
+                                                     self.mlp_extra_grouping,
+                                                     self.quantize_groups),
+                                  replace_with_kernel_inject=replace_with_kernel_inject,
+                                  moe=moe,
+                                  moe_experts=moe_experts,
+                                  moe_type=moe_type,
+                                  training_mp_size=training_mp_size,
+                                  checkpoint_dict=checkpoint,
+                                  save_mp_checkpoint_path=save_mp_checkpoint_path,
+                                  base_dir=base_dir)
 
     def _get_all_ckpt_names(self, checkpoints_path, tag):
         ckpt_file_pattern = self._get_ckpt_name(checkpoints_path,
