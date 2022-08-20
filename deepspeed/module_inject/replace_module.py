@@ -311,6 +311,7 @@ def replace_transformer_layer(orig_layer_impl,
 
         #expert_mp_replace = ReplaceWithTensorSlicing(mp_group=expert_mp_group)
 
+        quantizer = GroupQuantizer(q_int8=quantize)
         if inference:
             if moe:
                 ep_world_size = dist.get_world_size()
